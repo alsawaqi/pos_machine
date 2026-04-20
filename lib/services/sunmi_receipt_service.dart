@@ -44,16 +44,29 @@ class SunmiReceiptService {
       row('TOTAL', money(order.total)),
       style: SunmiTextStyle(bold: true),
     );
+    if (order.charityRoundUpAccepted && order.charityRoundUpAmount > 0) {
+      await SunmiPrinter.printText(
+        row('Charity Round Up', money(order.charityRoundUpAmount)),
+      );
+      await SunmiPrinter.printText(
+        row('AMOUNT PAID', money(order.payableTotal)),
+        style: SunmiTextStyle(bold: true),
+      );
+    }
 
     await SunmiPrinter.lineWrap(1);
     await SunmiPrinter.printText(
       'Status: ${order.paymentStatus}',
       style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
     );
+    await SunmiPrinter.printText(
+      'Method: ${order.paymentMethod}',
+      style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
+    );
 
     await SunmiPrinter.lineWrap(1);
     await SunmiPrinter.printQRCode(
-      'MITHQAL|TOTAL=${order.total.toStringAsFixed(3)}|STATUS=${order.paymentStatus}',
+      'MITHQAL|TOTAL=${order.payableTotal.toStringAsFixed(3)}|STATUS=${order.paymentStatus}',
       style: SunmiQrcodeStyle(
         qrcodeSize: 4,
         errorLevel: SunmiQrcodeLevel.LEVEL_H,
