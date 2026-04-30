@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">Mosambee Parent App</string>
+    <string name="pay_using_mosambee">Pay</string>
+
+    <string name="health_check">HEALTH CHECK MOSAMBEE</string>
+    <string name="health_check_mosambee">HEALTH CHECK</string>
+
+    <string name="init_api_mosambee">INIT API</string>
+
+    <string name="user_id">User Id</string>
+    <string name="password">Password</string>
+    <string name="get_app_details">Get App Details</string>
+    <string name="upload_crash_logs">Upload Crash Logs</string>
+    <string name="get_last_receipt">Get Last Receipt</string>
+    <string name="description">Description</string>
+    <string name="get_app_details_mosambee">Get App Details</string>
+    <string name="add_money_account">Add Money Account</string>
+    <string name="add_money_cash">Add Money Cash</string>
+    <string name="balance_update">Balance Update</string>
+    <string name="balance_enquiry">Balance Enquiry</string>
+    <string name="app_update">App Update</string>
+</resources>

@@ -31,26 +31,133 @@ class PresentationService {
   Future<bool> openFirstRearDisplay() async {
     if (!_supportsRearDisplay) return false;
 
-    final displays = await getPresentationDisplays();
+    final displays = await _loadPresentationDisplays();
 
-    if (displays.isEmpty) return false;
+    if (displays.isEmpty) {
+      debugPrint(
+        'PresentationService did not find a non-default display. The customer screen may still be in mirror-only mode.',
+      );
+      return false;
+    }
 
-    final first = Map<String, dynamic>.from(displays.first as Map);
-    final int displayId = (first['displayId'] as num).toInt();
+    final first = displays.first;
+    final int requestedDisplayId = (first['displayId'] as num).toInt();
+
+    final prepared =
+        await _hostChannel.invokeMapMethod<String, dynamic>(
+          'prepareRearDisplay',
+          <String, dynamic>{'displayId': requestedDisplayId},
+        ) ??
+        <String, dynamic>{};
+    final preparedMap = Map<String, dynamic>.from(prepared);
+    final targetDisplay = await _awaitPreparedDisplay(
+      preferredSerial: preparedMap['serial']?.toString(),
+      fallbackDisplayId:
+          (preparedMap['displayId'] as num?)?.toInt() ?? requestedDisplayId,
+    );
+    final int displayId = (targetDisplay['displayId'] as num).toInt();
 
     _activeDisplayId = displayId;
     debugPrint(
       'PresentationService opening displayId=$displayId with tag=$_engineTag',
     );
 
-    return await _hostChannel.invokeMethod<bool>(
+    final opened =
+        await _hostChannel.invokeMethod<bool>(
           'openRearDisplay',
-          <String, dynamic>{
-            'displayId': displayId,
-            'engineId': _engineTag,
-          },
+          <String, dynamic>{'displayId': displayId, 'engineId': _engineTag},
         ) ??
         false;
+
+    if (!opened) {
+      _activeDisplayId = null;
+      debugPrint(
+        'PresentationService failed to open displayId=$displayId as a customer Presentation.',
+      );
+    }
+
+    return opened;
+  }
+
+  Future<List<Map<String, dynamic>>> _loadPresentationDisplays() async {
+    final displays = await getPresentationDisplays();
+
+    final mapped = displays
+        .whereType<Map>()
+        .map((display) => Map<String, dynamic>.from(display))
+        .where((display) => display['isDefaultDisplay'] != true)
+        .toList();
+
+    mapped.sort((a, b) {
+      final aSunmi = a['isSunmiUsbDisplay'] == true ? 1 : 0;
+      final bSunmi = b['isSunmiUsbDisplay'] == true ? 1 : 0;
+      if (aSunmi != bSunmi) return bSunmi.compareTo(aSunmi);
+
+      final aPresentation = a['isPresentationCategory'] == true ? 1 : 0;
+      final bPresentation = b['isPresentationCategory'] == true ? 1 : 0;
+      if (aPresentation != bPresentation) {
+        return bPresentation.compareTo(aPresentation);
+      }
+
+      final aId = (a['displayId'] as num?)?.toInt() ?? -1;
+      final bId = (b['displayId'] as num?)?.toInt() ?? -1;
+      return bId.compareTo(aId);
+    });
+
+    debugPrint('PresentationService display candidates: $mapped');
+    return mapped;
+  }
+
+  Future<Map<String, dynamic>> _awaitPreparedDisplay({
+    required int fallbackDisplayId,
+    String? preferredSerial,
+  }) async {
+    Map<String, dynamic>? candidate;
+
+    for (var attempt = 0; attempt < 8; attempt++) {
+      final displays = await _loadPresentationDisplays();
+      candidate = _pickDisplay(
+        displays,
+        fallbackDisplayId: fallbackDisplayId,
+        preferredSerial: preferredSerial,
+      );
+
+      if (candidate != null) {
+        if (preferredSerial == null || candidate['serial'] == preferredSerial) {
+          return candidate;
+        }
+      }
+
+      await Future.delayed(const Duration(milliseconds: 150));
+    }
+
+    return candidate ?? <String, dynamic>{'displayId': fallbackDisplayId};
+  }
+
+  Map<String, dynamic>? _pickDisplay(
+    List<Map<String, dynamic>> displays, {
+    required int fallbackDisplayId,
+    String? preferredSerial,
+  }) {
+    final usableDisplays = displays
+        .where((display) => display['isDefaultDisplay'] != true)
+        .toList();
+
+    if (preferredSerial != null) {
+      for (final display in usableDisplays) {
+        if (display['serial']?.toString() == preferredSerial) {
+          return display;
+        }
+      }
+    }
+
+    for (final display in usableDisplays) {
+      if ((display['displayId'] as num?)?.toInt() == fallbackDisplayId) {
+        return display;
+      }
+    }
+
+    return usableDisplays.isEmpty ? null : usableDisplays.first;
   }
 
   Future<void> closeRearDisplay() async {
@@ -71,6 +178,7 @@ class PresentationService {
 
   void listenFromCustomer(void Function(dynamic data) onData) {
     _frontChannel.setMethodCallHandler((call) async {
+      if (call.method != 'customerEvent') return;
       onData(call.arguments);
     });
   }

@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "artifactType": {
+    "type": "APK",
+    "kind": "Directory"
+  },
+  "applicationId": "com.mosambee.mpos.dpo.runner",
+  "variantName": "processDpoReleaseResources",
+  "elements": [
+    {
+      "type": "SINGLE",
+      "filters": [],
+      "versionCode": 100,
+      "versionName": "1.2.006",
+      "outputFile": "Runner_dpo_release_1.2.006_120424_1927.apk"
+    }
+  ]
+}

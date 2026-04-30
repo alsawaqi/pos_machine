@@ -42,3 +42,7 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    implementation(files("libs/libsunmifingeprint_v1.0.0.aar"))
+}

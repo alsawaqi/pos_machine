@@ -149,7 +149,7 @@ class _TerminalSetupScreenState extends State<TerminalSetupScreen> {
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              'Enter the terminal ID before the staff POS is unlocked. This value is saved locally and used for MosamBay payment requests.',
+                              'Enter the terminal ID before the staff POS is unlocked. This value is saved locally and used for Payment Terminaly payment requests.',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.80),
                                 fontSize: 15,

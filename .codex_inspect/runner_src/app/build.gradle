@@ -1,0 +1,220 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 32
+    buildToolsVersion "30.0.0"
+    flavorDimensions "default"
+
+    defaultConfig {
+        minSdkVersion 29
+        targetSdkVersion 32
+        ndk.abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        multiDexEnabled true
+        ndk {
+            moduleName "serial_port"
+        }
+        packagingOptions {
+            exclude 'META-INF/DEPENDENCIES'
+            exclude 'META-INF/INDEX.LIST'
+        }
+        compileOptions {
+            sourceCompatibility JavaVersion.VERSION_1_8
+            targetCompatibility JavaVersion.VERSION_1_8
+        }
+        externalNativeBuild {
+            cmake {
+                cppFlags ""
+            }
+        }
+        vectorDrawables.useSupportLibrary = true
+
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    productFlavors {
+        ntap {
+            applicationId "com.mosambee.mpos.ngenius.runner"
+            versionCode 100
+            ndk.abiFilters 'armeabi-v7a','arm64-v8a','x86','x86_64'
+            versionName "1.2.006"
+            manifestPlaceholders = [
+                    APP_NAME          : "N-Genius Tap Runner",
+            ]
+
+                        buildConfigField "String", "username", "\"6111711167\""
+            buildConfigField "String", "pin", "\"4342\""
+
+
+
+            buildConfigField "String", "username", "\"20045300003\""
+//            buildConfigField "String", "username", "\"20045305740\""
+//            buildConfigField "String", "username", "\"40098765432\""
+            buildConfigField "String", "pin", "\"6000\""
+/*
+20045305740 / 6000-- NI Acq Intent
+ 20013158493 / 1234 -- NI MPGS intent
+ */
+//            NI-ACQ :-20045300003/1321
+//            NI MPGS:-20096614874/1321
+            buildConfigField "String", "target_package_name", "\"com.mosambee.mpos.ngenius\""
+        }
+
+        dpo {
+            applicationId "com.mosambee.mpos.dpo.runner"
+            versionCode 100
+            ndk.abiFilters 'armeabi-v7a','arm64-v8a','x86','x86_64'
+            versionName "1.2.006"
+            manifestPlaceholders = [
+                    APP_NAME          : "DPO SoftPOS Runner",
+            ]
+
+
+//            buildConfigField "String", "username", "\"20045305740\""
+//            buildConfigField "String", "pin", "\"6000\""
+
+            buildConfigField "String", "username", "\"0000444555\""
+            buildConfigField "String", "pin", "\"1234\""
+
+            buildConfigField "String", "target_package_name", "\"com.mosambee.mpos.dpo\""
+        }
+        mobile2i {
+            applicationId "com.mosambee.mpos.mobile2i.runner"
+            versionCode 100
+            ndk.abiFilters 'armeabi-v7a','arm64-v8a','x86','x86_64'
+            versionName "1.2.006"
+            manifestPlaceholders = [
+                    APP_NAME          : "Mobile2i Runner",
+            ]
+            buildConfigField "String", "username", "\"10000321\""
+            buildConfigField "String", "pin", "\"5518\""
+            buildConfigField "String", "target_package_name", "\"com.mosambee.dhofar.softpos\""
+        }
+
+        dhofar {
+            applicationId "com.mosambee.dhofar.softpos.runner"
+            versionCode 100
+            ndk.abiFilters 'armeabi-v7a','arm64-v8a','x86','x86_64'
+            versionName "1.2.006"
+            manifestPlaceholders = [
+                    APP_NAME          : "Bank Dhofar SoftPOS Runner",
+            ]
+            buildConfigField "String", "username", "\"10000421\""
+            buildConfigField "String", "pin", "\"1415\""
+            buildConfigField "String", "target_package_name", "\"com.mosambee.dhofar.softpos\""
+        }
+
+
+
+        muscat {
+            applicationId "com.mosambee.muscat.softpos.runner"
+            versionCode 100
+            ndk.abiFilters 'armeabi-v7a','arm64-v8a','x86','x86_64'
+            versionName "1.2.006"
+            manifestPlaceholders = [
+                    APP_NAME          : "Bank Muscat SoftPOS Runner",
+            ]
+            buildConfigField "String", "username", "\"96510663\""
+            buildConfigField "String", "pin", "\"1321\""
+            buildConfigField "String", "target_package_name", "\"com.mosambee.muscat.softpos\""
+        }
+
+
+        noon {
+            applicationId "com.mosambee.noon.softpos.runner"
+            versionCode 100
+            ndk.abiFilters 'armeabi-v7a','arm64-v8a','x86','x86_64'
+            versionName "1.2.006"
+            manifestPlaceholders = [
+                    APP_NAME          : "Noon SoftPOS Runner",
+            ]
+            buildConfigField "String", "username", "\"1111111123\""
+            buildConfigField "String", "pin", "\"1321\""
+            buildConfigField "String", "target_package_name", "\"com.mosambee.mpos.noon\""
+        }
+
+
+        mosambee {
+            applicationId "com.mosambee.softpos.runner"
+            versionCode 100
+            ndk.abiFilters 'armeabi-v7a','arm64-v8a','x86','x86_64'
+            versionName "1.2.006"
+            manifestPlaceholders = [
+                    APP_NAME          : "Mosambee SoftPOS Runner",
+            ]
+            buildConfigField "String", "username", "\"7666297333\""
+            buildConfigField "String", "pin", "\"1321\""
+            buildConfigField "String", "target_package_name", "\"com.mosambee.softpos\""
+        }
+
+        npci {
+            applicationId "com.mosambee.npci.softpos.runner"
+            versionCode 100
+            ndk.abiFilters 'armeabi-v7a','arm64-v8a','x86','x86_64'
+            versionName "1.2.006"
+            manifestPlaceholders = [
+                    APP_NAME          : "NPCI SoftPOS Runner",
+            ]
+//            buildConfigField "String", "username", "\"9779377653\""
+//            buildConfigField "String", "pin", "\"1321\""
+
+            buildConfigField "String", "username", "\"20045300004\""
+            buildConfigField "String", "pin", "\"2580\""
+            buildConfigField "String", "target_package_name", "\"com.mosambee.npci.softpos\""
+        }
+
+
+        magnati {
+            applicationId "com.mosambee.magnati.softpos.runner"
+            versionCode 100
+            ndk.abiFilters 'armeabi-v7a','arm64-v8a','x86','x86_64'
+            versionName "1.2.006"
+            manifestPlaceholders = [
+                    APP_NAME          : "Magnati SoftPOS Runner",
+            ]
+
+            buildConfigField "String", "username", "\"0000029909\""
+            buildConfigField "String", "pin", "\"1321\""
+            buildConfigField "String", "target_package_name", "\"com.mosambee.mpos.magnati.debug\""
+        }
+
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            def project = "Runner"
+            def SEP = "_"
+            def flavor = variant.productFlavors[0].name
+            def buildType = variant.buildType.name
+            def version = variant.versionName
+            def date = new Date()
+            def formattedDate = date.format('ddMMyy_HHmm')
+
+            def newApkName = project + SEP + flavor + SEP + buildType + SEP + version + SEP + formattedDate + ".apk"
+
+            outputFileName = new File(newApkName)
+        }
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: "libs", include: ["*.aar"])
+    implementation 'androidx.appcompat:appcompat:1.0.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    testImplementation 'junit:junit:4.13.2'
+//    androidTestImplementation 'androidx.test.ext:junit:1.1.1'
+//    androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
+
+    implementation 'com.google.code.gson:gson:2.8.9'
+
+}

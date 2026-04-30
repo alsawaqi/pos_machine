@@ -100,6 +100,11 @@ object MosambeeBridge {
             }
         }
 
+        pendingResult = result
+        paymentRequestData = args.entries.associate { (key, value) ->
+            key.toString() to value
+        }
+
         val loginIntent = Intent().apply {
             setPackage(packageName)
             action = ACTION_LOGIN
@@ -110,15 +115,11 @@ object MosambeeBridge {
             }
         }
 
-        pendingResult = result
-        paymentRequestData = args.entries.associate { (key, value) ->
-            key.toString() to value
-        }
-
         try {
-            // The charity prompt should only change the amount. Keep the actual
-            // Mosambee launch on the same direct activity flow that already
-            // works for ordinary card payments.
+            Log.i(
+                TAG,
+                "Starting Mosambee login package=$packageName userName=$userName partnerIdPresent=${partnerId.isNotEmpty()}",
+            )
             launchSurface = startForResultOnPreferredDisplay(
                 activity = activity,
                 intent = loginIntent,
@@ -147,6 +148,10 @@ object MosambeeBridge {
                     .toString(),
             )
         }
+    }
+
+    fun completeFromProxy(payload: String) {
+        deliverAndReset(payload)
     }
 
     fun completeFromRearProxy(payload: String) {
@@ -235,6 +240,10 @@ object MosambeeBridge {
         }
 
         try {
+            Log.i(
+                TAG,
+                "Starting Mosambee payment amount=$amount mobNoPresent=${mobNo.isNotEmpty()} descriptionPresent=${description.isNotEmpty()}",
+            )
             launchSurface = startForResultOnPreferredDisplay(
                 activity = activity,
                 intent = paymentIntent,
@@ -322,11 +331,6 @@ object MosambeeBridge {
         intent: Intent,
         requestCode: Int,
     ): String {
-        // Bank Dhofar SoftPOS is installed and its intent actions resolve
-        // correctly on this device, but Android denies cross-display launches
-        // when we request launchDisplayId for the rear presentation screen.
-        // Use the default activity launch path so the existing payment flow
-        // keeps working after the charity prompt.
         activity.startActivityForResult(intent, requestCode)
         return "front"
     }

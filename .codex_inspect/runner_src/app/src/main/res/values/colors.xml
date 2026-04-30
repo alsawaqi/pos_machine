@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <color name="colorPrimary">#ffd105</color>
+    <color name="colorPrimaryDark">#ffbc05</color>
+    <color name="colorToast">#fff2b8</color>
+    <color name="colorAccent">#99bbff</color>
+    <color name="dialogTextColorDefault">#000000</color>
+    <color name="colorPrimaryThemeDefault">#ffd105</color>
+    <color name="transparent">#80000000</color>
+</resources>

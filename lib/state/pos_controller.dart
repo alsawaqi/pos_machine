@@ -1,7 +1,10 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
 import '../models/pos_models.dart';
+import '../services/local_order_storage_service.dart';
 import '../services/mosambee_payment_service.dart';
 import '../services/presentation_service.dart';
 import '../services/sunmi_receipt_service.dart';
@@ -9,6 +12,7 @@ import '../services/sunmi_receipt_service.dart';
 class PosController extends ChangeNotifier {
   final PresentationService _presentation = PresentationService.instance;
   final MosambeePaymentService _paymentBridge = MosambeePaymentService();
+  final OrderStorageService _orderStorage;
 
   final List<String> categories = const [
     'Coffee',
@@ -52,50 +56,230 @@ class PosController extends ChangeNotifier {
       imageAsset: 'assets/images/americano.png',
       lowStock: true,
     ),
+    Product(
+      id: '7',
+      name: 'Mocha',
+      category: 'Coffee',
+      price: 2.300,
+      imageAsset: 'assets/images/cappuccino.png',
+      lowStock: true,
+    ),
+    Product(
+      id: '8',
+      name: 'Flat White',
+      category: 'Coffee',
+      price: 2.100,
+      imageAsset: 'assets/images/latte.png',
+      lowStock: true,
+    ),
     Product(id: '5', name: 'Orange Juice', category: 'Drinks', price: 1.700),
     Product(id: '6', name: 'Brownie', category: 'Dessert', price: 1.600),
+  ];
+
+  final List<DiningFloor> diningFloors = const [
+    DiningFloor(id: 'main_hall', label: 'Main Hall'),
+    DiningFloor(id: 'first_floor', label: 'First Floor'),
+    DiningFloor(id: 'second_floor', label: 'Second Floor'),
+  ];
+
+  final List<DiningTableDefinition> diningTableDefinitions = const [
+    DiningTableDefinition(
+      id: 'main_t1',
+      floorId: 'main_hall',
+      name: 'T1',
+      sizeLabel: 'Standard',
+      seats: 4,
+      sortOrder: 1,
+    ),
+    DiningTableDefinition(
+      id: 'main_t2',
+      floorId: 'main_hall',
+      name: 'T2',
+      sizeLabel: 'Standard',
+      seats: 4,
+      sortOrder: 2,
+    ),
+    DiningTableDefinition(
+      id: 'main_t3',
+      floorId: 'main_hall',
+      name: 'T3',
+      sizeLabel: 'Large',
+      seats: 8,
+      sortOrder: 3,
+    ),
+    DiningTableDefinition(
+      id: 'main_t4',
+      floorId: 'main_hall',
+      name: 'T4',
+      sizeLabel: 'Standard',
+      seats: 4,
+      sortOrder: 4,
+    ),
+    DiningTableDefinition(
+      id: 'main_c1',
+      floorId: 'main_hall',
+      name: 'C1',
+      sizeLabel: 'Standard',
+      seats: 4,
+      sortOrder: 5,
+    ),
+    DiningTableDefinition(
+      id: 'main_c2',
+      floorId: 'main_hall',
+      name: 'C2',
+      sizeLabel: 'Standard',
+      seats: 2,
+      sortOrder: 6,
+    ),
+    DiningTableDefinition(
+      id: 'main_t5',
+      floorId: 'main_hall',
+      name: 'T5',
+      sizeLabel: 'Large',
+      seats: 6,
+      sortOrder: 7,
+    ),
+    DiningTableDefinition(
+      id: 'first_f1',
+      floorId: 'first_floor',
+      name: 'F1',
+      sizeLabel: 'Standard',
+      seats: 4,
+      sortOrder: 8,
+    ),
+    DiningTableDefinition(
+      id: 'first_f2',
+      floorId: 'first_floor',
+      name: 'F2',
+      sizeLabel: 'Booth',
+      seats: 6,
+      sortOrder: 9,
+    ),
+    DiningTableDefinition(
+      id: 'first_f3',
+      floorId: 'first_floor',
+      name: 'F3',
+      sizeLabel: 'Large',
+      seats: 8,
+      sortOrder: 10,
+    ),
+    DiningTableDefinition(
+      id: 'first_f4',
+      floorId: 'first_floor',
+      name: 'F4',
+      sizeLabel: 'Standard',
+      seats: 4,
+      sortOrder: 11,
+    ),
+    DiningTableDefinition(
+      id: 'second_s1',
+      floorId: 'second_floor',
+      name: 'S1',
+      sizeLabel: 'Standard',
+      seats: 4,
+      sortOrder: 12,
+    ),
+    DiningTableDefinition(
+      id: 'second_s2',
+      floorId: 'second_floor',
+      name: 'S2',
+      sizeLabel: 'Standard',
+      seats: 4,
+      sortOrder: 13,
+    ),
+    DiningTableDefinition(
+      id: 'second_s3',
+      floorId: 'second_floor',
+      name: 'S3',
+      sizeLabel: 'Large',
+      seats: 8,
+      sortOrder: 14,
+    ),
+    DiningTableDefinition(
+      id: 'second_s4',
+      floorId: 'second_floor',
+      name: 'S4',
+      sizeLabel: 'Booth',
+      seats: 6,
+      sortOrder: 15,
+    ),
   ];
 
   final List<CartItem> _cart = [];
   List<CartItem> get cart => List.unmodifiable(_cart);
 
+  List<OrderHistoryRecord> orderHistory = const [];
+  List<HeldOrderRecord> heldOrders = const [];
+  List<DiningTableSession> diningTableSessions = const [];
+
+  int currentOrderNumber = 1450;
+  String currentOrderReference = '';
+  int _nextOrderNumberSeed = 1451;
+
   String selectedCategory = 'Coffee';
+  String productSearchQuery = '';
+  String diningTableSearchQuery = '';
+  String selectedDiningFloorId = 'main_hall';
+  ProductViewMode productViewMode = ProductViewMode.grid;
+  OrderType selectedOrderType = OrderType.quickOrder;
+  DiscountConfiguration discount = const DiscountConfiguration();
+  int splitCount = 1;
+  final List<SplitPaymentRecord> _splitPayments = [];
+  double? _activePaymentBaseOverride;
+  String? activeDiningTableId;
+
   String paymentStatus = 'Waiting';
   String selectedPaymentMethod = 'Cash';
   String lastCustomerEvent = '';
   String lastPaymentMessage = '';
   String displayNote = '';
+  String paymentOverlayTitle = '';
+  String customerReferenceNumber = '';
   bool rearDisplayOpened = false;
   bool isProcessingPayment = false;
+  bool isLoadingStorage = false;
   bool showCharityRoundUpPrompt = false;
   bool showPaymentLaunchOverlay = false;
   bool charityRoundUpAccepted = false;
   double charityRoundUpAmount = 0;
   double charityRoundUpTotal = 0;
+  String recentProductId = '';
+  int orderUpdateNonce = 0;
 
   bool _presentationEnabled =
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   bool _isDisposed = false;
-  Completer<bool>? _charityRoundUpCompleter;
+  Completer<bool?>? _charityRoundUpCompleter;
+  int _activeCharityRoundUpPromptId = 0;
+  bool _charityPromptCanceled = false;
+  int _referenceSequence = 0;
 
-  PosController() {
+  PosController({OrderStorageService? orderStorage})
+    : _orderStorage = orderStorage ?? LocalOrderStorageService.instance {
     _paymentBridge.setLaunchStateListener(_handlePaymentLaunchState);
   }
 
   Future<void> init() async {
+    await _loadStoredOrders();
+
     if (_presentationEnabled) {
       try {
         _presentation.listenFromCustomer((data) {
-          if (data is Map && data['type'] == 'charity_round_up_response') {
+          if (data is! Map) return;
+
+          final event = Map<String, dynamic>.from(data);
+          if (event['type'] == 'charity_round_up_response') {
+            final accepted = event['accepted'] == true;
+            final promptId = (event['promptId'] as num?)?.toInt();
             debugPrint(
-              'PosController received charity round-up response: accepted=${data['accepted'] == true}',
+              'PosController received charity round-up response: accepted=$accepted promptId=$promptId activePromptId=$_activeCharityRoundUpPromptId',
             );
-            _handleCharityRoundUpResponse(data['accepted'] == true);
+            _handleCharityRoundUpResponse(accepted, promptId: promptId);
             return;
           }
 
-          if (data is Map && data['type'] == 'customer_event') {
-            lastCustomerEvent = data['message']?.toString() ?? '';
+          if (event['type'] == 'customer_event') {
+            lastCustomerEvent = event['message']?.toString() ?? '';
             _notifySafely();
           }
         });
@@ -110,37 +294,205 @@ class PosController extends ChangeNotifier {
     _notifySafely();
   }
 
-  List<Product> get visibleProducts =>
-      allProducts.where((p) => p.category == selectedCategory).toList();
+  List<Product> get visibleProducts {
+    final query = productSearchQuery.trim().toLowerCase();
+    return allProducts.where((product) {
+      final matchesCategory = product.category == selectedCategory;
+      if (!matchesCategory) return false;
+      if (query.isEmpty) return true;
+      return product.name.toLowerCase().contains(query) ||
+          product.category.toLowerCase().contains(query);
+    }).toList();
+  }
 
-  double get subtotal => _cart.fold(0, (sum, item) => sum + item.lineTotal);
+  bool get isEditingDiningTable =>
+      selectedOrderType == OrderType.dineIn && activeDiningTableId != null;
 
-  double get tax => subtotal * 0.05;
-  double get total => subtotal + tax;
-  double get payableTotal =>
-      charityRoundUpAccepted ? charityRoundUpTotal : total;
-  double get offeredCharityRoundUpTotal => _roundMoney(total.ceilToDouble());
+  DiningFloor? get selectedDiningFloor =>
+      _findDiningFloorById(selectedDiningFloorId);
+
+  DiningTableDefinition? get activeDiningTableDefinition =>
+      _findDiningTableDefinitionById(activeDiningTableId);
+
+  DiningTableSession? get activeDiningTableSession =>
+      activeDiningTableId == null
+      ? null
+      : diningSessionFor(activeDiningTableId!);
+
+  List<DiningTableDefinition> get visibleDiningTables {
+    final query = diningTableSearchQuery.trim().toLowerCase();
+
+    return diningTableDefinitions
+        .where((table) => table.floorId == selectedDiningFloorId)
+        .where((table) {
+          if (query.isEmpty) return true;
+          final session = diningSessionFor(table.id);
+          return table.name.toLowerCase().contains(query) ||
+              table.sizeLabel.toLowerCase().contains(query) ||
+              '${session?.orderNumber ?? ''}'.contains(query) ||
+              (session?.orderReference.toLowerCase().contains(query) ?? false);
+        })
+        .toList()
+      ..sort((left, right) => left.sortOrder.compareTo(right.sortOrder));
+  }
+
+  double get rawSubtotal => _cart.fold(0, (sum, item) => sum + item.lineTotal);
+
+  double get discountAmount {
+    if (!discount.isActive) return 0;
+
+    final calculated = switch (discount.kind) {
+      DiscountKind.fixedAmount => discount.value,
+      DiscountKind.percentage => rawSubtotal * (discount.value / 100),
+      DiscountKind.none => 0,
+    };
+
+    return _roundMoney(calculated.clamp(0.0, rawSubtotal).toDouble());
+  }
+
+  double get subtotal => _roundMoney(
+    (rawSubtotal - discountAmount).clamp(0.0, double.infinity).toDouble(),
+  );
+
+  double get tax => _roundMoney(subtotal * 0.05);
+
+  double get total => _roundMoney(subtotal + tax);
+
+  List<SplitPaymentRecord> get splitPayments =>
+      List.unmodifiable(_splitPayments);
+
+  int get paidSplitCount =>
+      splitCount > 1 ? _splitPayments.length.clamp(0, splitCount).toInt() : 0;
+
+  int get activeSplitIndex {
+    if (splitCount <= 1) return 1;
+    if (paidSplitCount >= splitCount) return splitCount;
+    return paidSplitCount + 1;
+  }
+
+  bool get hasRecordedSplitPayments =>
+      splitCount > 1 && _splitPayments.isNotEmpty;
+
+  bool get isSplitPaymentComplete =>
+      splitCount > 1 && paidSplitCount >= splitCount;
+
+  double get _splitBasePaidTotal => _roundMoney(
+    _splitPayments.fold<double>(0, (sum, payment) => sum + payment.baseAmount),
+  );
+
+  double get _splitPaidTotal => _roundMoney(
+    _splitPayments.fold<double>(0, (sum, payment) => sum + payment.paidAmount),
+  );
+
+  double get activePaymentBaseTotal {
+    final override = _activePaymentBaseOverride;
+    if (override != null) return override;
+
+    if (splitCount <= 1) return total;
+    if (isSplitPaymentComplete) {
+      return _splitPayments.isEmpty
+          ? _roundMoney(total / splitCount)
+          : _splitPayments.last.baseAmount;
+    }
+
+    final remainingShares = splitCount - paidSplitCount;
+    if (remainingShares <= 1) {
+      return _roundMoney(
+        (total - _splitBasePaidTotal).clamp(0.0, double.infinity).toDouble(),
+      );
+    }
+
+    return _roundMoney(total / splitCount);
+  }
+
+  double get payableTotal {
+    if (isSplitPaymentComplete) return _splitPaidTotal;
+    return charityRoundUpAccepted
+        ? charityRoundUpTotal
+        : activePaymentBaseTotal;
+  }
+
+  double get offeredCharityRoundUpTotal =>
+      _roundMoney(activePaymentBaseTotal.ceilToDouble());
+
   double get offeredCharityRoundUpAmount =>
-      _roundMoney(offeredCharityRoundUpTotal - total);
+      _roundMoney(offeredCharityRoundUpTotal - activePaymentBaseTotal);
+
   bool get canOfferCharityRoundUp =>
-      selectedPaymentMethod == 'Credit Card' &&
+      (selectedPaymentMethod == 'Credit Card' ||
+          (splitCount > 1 && selectedPaymentMethod == 'Cash')) &&
       offeredCharityRoundUpAmount >= 0.001;
 
+  DiningTableSession? diningSessionFor(String tableId) {
+    for (final session in diningTableSessions) {
+      if (session.tableId == tableId) return session;
+    }
+    return null;
+  }
+
   OrderSnapshot snapshot({String? note}) {
+    final activeTable = activeDiningTableDefinition;
+    final floor = activeTable == null
+        ? null
+        : _findDiningFloorById(activeTable.floorId);
+
     return OrderSnapshot(
+      orderNumber: currentOrderNumber,
+      orderType: selectedOrderType.storageValue,
       items: _cart.map((e) => e.toMap()).toList(),
+      rawSubtotal: rawSubtotal,
+      discountAmount: discountAmount,
+      discountLabel: discount.label,
       subtotal: subtotal,
       tax: tax,
       total: total,
+      activePaymentBaseTotal: activePaymentBaseTotal,
+      splitCount: splitCount,
       payableTotal: payableTotal,
       paymentStatus: paymentStatus,
-      paymentMethod: selectedPaymentMethod,
+      paymentMethod: isSplitPaymentComplete
+          ? 'Split Payment'
+          : selectedPaymentMethod,
+      customerReferenceNumber: customerReferenceNumber,
+      diningFloorId: activeTable?.floorId ?? '',
+      diningFloorLabel: floor?.label ?? '',
+      diningTableId: activeTable?.id ?? '',
+      diningTableName: activeTable?.name ?? '',
       note: note ?? displayNote,
       showCharityRoundUpPrompt: showCharityRoundUpPrompt,
       showPaymentLaunchOverlay: showPaymentLaunchOverlay,
+      paymentOverlayTitle: paymentOverlayTitle,
       charityRoundUpAccepted: charityRoundUpAccepted,
       charityRoundUpAmount: charityRoundUpAmount,
       charityRoundUpTotal: charityRoundUpTotal,
+      splitPayments: List<SplitPaymentRecord>.from(_splitPayments),
+      charityRoundUpPromptId: showCharityRoundUpPrompt
+          ? _activeCharityRoundUpPromptId
+          : 0,
+      recentProductId: recentProductId,
+      orderUpdateNonce: orderUpdateNonce,
+    );
+  }
+
+  OrderSessionDraft createDraft() {
+    final activeTable = activeDiningTableDefinition;
+    final floor = activeTable == null
+        ? null
+        : _findDiningFloorById(activeTable.floorId);
+
+    return OrderSessionDraft(
+      orderReference: _ensureOrderReference(),
+      orderType: selectedOrderType,
+      selectedCategory: selectedCategory,
+      customerReferenceNumber: customerReferenceNumber,
+      diningFloorId: activeTable?.floorId ?? '',
+      diningFloorLabel: floor?.label ?? '',
+      diningTableId: activeTable?.id ?? '',
+      diningTableName: activeTable?.name ?? '',
+      items: _cart.map((item) => CartItem.fromMap(item.toMap())).toList(),
+      discount: discount,
+      splitCount: splitCount,
+      note: displayNote,
     );
   }
 
@@ -161,28 +513,133 @@ class PosController extends ChangeNotifier {
     _notifySafely();
   }
 
+  Future<void> selectOrderType(OrderType orderType) async {
+    if (selectedOrderType == orderType) {
+      if (orderType == OrderType.dineIn && activeDiningTableId == null) {
+        displayNote = 'Choose a table to start or continue a dine-in order.';
+        _broadcast();
+      }
+      return;
+    }
+
+    if (selectedOrderType == OrderType.dineIn && activeDiningTableId != null) {
+      await returnToDiningFloorPlan();
+    }
+
+    selectedOrderType = orderType;
+    if (orderType == OrderType.dineIn) {
+      displayNote = 'Choose a table to start or continue a dine-in order.';
+      paymentStatus = 'Waiting';
+      selectedPaymentMethod = 'Cash';
+      productSearchQuery = '';
+    } else {
+      activeDiningTableId = null;
+      diningTableSearchQuery = '';
+    }
+    _broadcast();
+  }
+
+  void setProductSearchQuery(String value) {
+    productSearchQuery = value;
+    _notifySafely();
+  }
+
+  void setDiningTableSearchQuery(String value) {
+    diningTableSearchQuery = value.trim();
+    _notifySafely();
+  }
+
+  void clearDiningTableSearch() {
+    diningTableSearchQuery = '';
+    _notifySafely();
+  }
+
+  void selectDiningFloor(String floorId) {
+    selectedDiningFloorId = floorId;
+    _notifySafely();
+  }
+
+  void clearProductSearch() {
+    productSearchQuery = '';
+    _notifySafely();
+  }
+
+  void setProductViewMode(ProductViewMode mode) {
+    productViewMode = mode;
+    _notifySafely();
+  }
+
   void selectPaymentMethod(String paymentMethod) {
     selectedPaymentMethod = paymentMethod;
     _broadcast();
   }
 
+  void setCustomerReferenceNumber(String value) {
+    customerReferenceNumber = value.replaceAll(RegExp(r'\D'), '').trim();
+    _broadcast();
+  }
+
+  void applyDiscount(DiscountConfiguration configuration) {
+    discount = configuration;
+    _resetCharityRoundUp();
+    _broadcast();
+  }
+
+  void clearDiscount() {
+    discount = const DiscountConfiguration();
+    _resetCharityRoundUp();
+    _broadcast();
+  }
+
+  void setSplitCount(int count) {
+    if (hasRecordedSplitPayments) return;
+    splitCount = count < 1 ? 1 : count;
+    _splitPayments.clear();
+    _resetCharityRoundUp();
+    _broadcast();
+  }
+
+  void clearSplit() {
+    if (hasRecordedSplitPayments) return;
+    splitCount = 1;
+    _splitPayments.clear();
+    _resetCharityRoundUp();
+    _broadcast();
+  }
+
   void addProduct(Product product) {
-    final index = _cart.indexWhere((e) => e.product.id == product.id);
+    final index = _cart.indexWhere(
+      (item) => item.product.id == product.id && !item.hasCustomization,
+    );
+    _ensureOrderReference();
     if (index == -1) {
-      _cart.add(CartItem(product: product));
+      _cart.insert(0, CartItem(product: product));
     } else {
-      _cart[index].qty++;
+      final updatedItem = _cart.removeAt(index);
+      updatedItem.qty++;
+      _cart.insert(0, updatedItem);
     }
+    _markOrderUpdated(product.id);
     _broadcast();
   }
 
-  void removeProduct(Product product) {
-    _cart.removeWhere((item) => item.product.id == product.id);
+  void incrementCartItem(CartItem item) {
+    final index = _cart.indexOf(item);
+    if (index == -1) return;
+
+    _cart[index].qty++;
+    _markOrderUpdated(_cart[index].product.id);
     _broadcast();
   }
 
-  void decreaseProduct(Product product) {
-    final index = _cart.indexWhere((e) => e.product.id == product.id);
+  void removeCartItem(CartItem item) {
+    final removed = _cart.remove(item);
+    if (!removed) return;
+    _broadcast();
+  }
+
+  void decreaseCartItem(CartItem item) {
+    final index = _cart.indexOf(item);
     if (index == -1) return;
 
     if (_cart[index].qty <= 1) {
@@ -191,6 +648,128 @@ class PosController extends ChangeNotifier {
       _cart[index].qty--;
     }
     _broadcast();
+  }
+
+  void updateCartItemCustomization(
+    CartItem item, {
+    required List<CartItemModifier> modifiers,
+    required String notes,
+  }) {
+    final index = _cart.indexOf(item);
+    if (index == -1) return;
+
+    _cart[index].modifiers = List<CartItemModifier>.from(modifiers);
+    _cart[index].notes = notes.trim();
+    _broadcast();
+  }
+
+  Future<void> openDiningTable(String tableId) async {
+    final definition = _findDiningTableDefinitionById(tableId);
+    if (definition == null) return;
+
+    if (activeDiningTableId != null && activeDiningTableId != tableId) {
+      await returnToDiningFloorPlan();
+    }
+
+    final session = diningSessionFor(tableId);
+    final canReuseCurrentCart =
+        selectedOrderType == OrderType.dineIn &&
+        activeDiningTableId == null &&
+        _cart.isNotEmpty &&
+        (session == null || session.status == DiningTableStatus.available);
+
+    selectedOrderType = OrderType.dineIn;
+    activeDiningTableId = tableId;
+    selectedDiningFloorId = definition.floorId;
+    diningTableSearchQuery = '';
+    productSearchQuery = '';
+    paymentStatus = 'Waiting';
+    selectedPaymentMethod = 'Cash';
+    lastPaymentMessage = '';
+    _splitPayments.clear();
+    _clearPaymentLaunchOverlay();
+    _resetCharityRoundUp();
+
+    if (session != null &&
+        session.status == DiningTableStatus.occupied &&
+        session.draft != null) {
+      _cart
+        ..clear()
+        ..addAll(
+          session.draft!.items.map((item) => CartItem.fromMap(item.toMap())),
+        );
+      currentOrderReference = session.orderReference.isNotEmpty
+          ? session.orderReference
+          : session.draft!.orderReference;
+      selectedCategory = session.draft!.selectedCategory;
+      customerReferenceNumber = session.draft!.customerReferenceNumber;
+      discount = session.draft!.discount;
+      splitCount = session.draft!.splitCount;
+      _splitPayments.clear();
+      displayNote = session.draft!.note.isNotEmpty
+          ? session.draft!.note
+          : 'Editing ${definition.name} in ${_floorLabel(definition.floorId)}.';
+    } else {
+      if (!canReuseCurrentCart) {
+        _cart.clear();
+        selectedCategory = categories.first;
+        customerReferenceNumber = '';
+        discount = const DiscountConfiguration();
+        splitCount = 1;
+        _splitPayments.clear();
+        currentOrderReference = '';
+        displayNote = 'Add items for ${definition.name}.';
+      } else if (displayNote.isEmpty) {
+        displayNote = 'Assigning the current items to ${definition.name}.';
+      }
+    }
+
+    _broadcast();
+  }
+
+  Future<void> returnToDiningFloorPlan() async {
+    if (selectedOrderType != OrderType.dineIn) return;
+
+    await _persistActiveDiningTableSession();
+    _resetForNextOrder(
+      advanceOrderNumber: false,
+      nextOrderType: OrderType.dineIn,
+      clearActiveDiningTable: true,
+      note: 'Choose a table to start or continue a dine-in order.',
+    );
+  }
+
+  Future<void> clearActiveDiningTable() async {
+    final tableId = activeDiningTableId;
+    if (tableId == null) return;
+
+    await _orderStorage.clearDiningTable(tableId);
+    diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
+      ..removeWhere((session) => session.tableId == tableId);
+    _resetForNextOrder(
+      advanceOrderNumber: false,
+      nextOrderType: OrderType.dineIn,
+      clearActiveDiningTable: true,
+      note: 'Choose a table to start or continue a dine-in order.',
+    );
+  }
+
+  Future<void> clearDiningTableById(String tableId) async {
+    await _orderStorage.clearDiningTable(tableId);
+    diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
+      ..removeWhere((session) => session.tableId == tableId);
+
+    if (activeDiningTableId == tableId) {
+      _resetForNextOrder(
+        advanceOrderNumber: false,
+        nextOrderType: OrderType.dineIn,
+        clearActiveDiningTable: true,
+        note: 'Choose a table to start or continue a dine-in order.',
+      );
+      return;
+    }
+
+    _notifySafely();
   }
 
   Future<void> openRearDisplay() async {
@@ -229,18 +808,233 @@ class PosController extends ChangeNotifier {
     await SunmiReceiptService.printReceipt(snapshot());
   }
 
-  Future<String?> payAndPrint() async {
+  Future<void> printHistoricalReceipt(OrderHistoryRecord record) async {
+    await SunmiReceiptService.printReceipt(record.snapshot);
+  }
+
+  Future<String?> holdCurrentOrder() async {
     if (_cart.isEmpty || isProcessingPayment) return null;
 
+    try {
+      final draft = createDraft();
+      await _orderStorage.saveHeldOrder(draft);
+      await refreshHeldOrders();
+      final message = 'Reference ${draft.orderReference} was placed on hold.';
+      _resetForNextOrder(advanceOrderNumber: false);
+      lastPaymentMessage = message;
+      displayNote = message;
+      _broadcast();
+      return message;
+    } catch (error) {
+      final message = 'Unable to hold the order right now.';
+      debugPrint('Failed to hold order: $error');
+      lastPaymentMessage = message;
+      displayNote = message;
+      _notifySafely();
+      return message;
+    }
+  }
+
+  Future<String?> resumeHeldOrder(HeldOrderRecord record) async {
+    if (isProcessingPayment) return null;
+
+    _cart
+      ..clear()
+      ..addAll(
+        record.draft.items.map((item) => CartItem.fromMap(item.toMap())),
+      );
+    currentOrderReference = record.orderReference.isNotEmpty
+        ? record.orderReference
+        : record.draft.orderReference;
+    selectedOrderType = record.draft.orderType;
+    selectedCategory = record.draft.selectedCategory;
+    customerReferenceNumber = record.draft.customerReferenceNumber;
+    discount = record.draft.discount;
+    splitCount = record.draft.splitCount;
+    _splitPayments.clear();
+    _reserveOrderNumber(currentOrderNumber);
+    paymentStatus = 'Waiting';
+    selectedPaymentMethod = 'Cash';
+    displayNote = record.draft.note;
+    lastPaymentMessage = '';
+    activeDiningTableId = record.draft.diningTableId.isEmpty
+        ? null
+        : record.draft.diningTableId;
+    if (record.draft.diningFloorId.isNotEmpty) {
+      selectedDiningFloorId = record.draft.diningFloorId;
+    }
+    _clearPaymentLaunchOverlay();
     _resetCharityRoundUp();
-    showPaymentLaunchOverlay = false;
+    await _orderStorage.deleteHeldOrder(record.id);
+    await refreshHeldOrders();
+    _broadcast();
+    return 'Resumed held reference $currentOrderReference.';
+  }
+
+  Future<void> refreshOrderHistory() async {
+    orderHistory = await _orderStorage.loadOrderHistory();
+    _notifySafely();
+  }
+
+  Future<void> refreshHeldOrders() async {
+    heldOrders = await _orderStorage.loadHeldOrders();
+    _notifySafely();
+  }
+
+  Future<void> refreshDiningTables() async {
+    diningTableSessions = await _orderStorage.loadDiningTableSessions();
+    _notifySafely();
+  }
+
+  Future<String> cancelCompletedOrder(
+    OrderHistoryRecord record, {
+    required bool cancelFullOrder,
+    required Set<int> itemIndexes,
+  }) async {
+    final snapshot = record.snapshot;
+    if (snapshot.isFullyCanceled) {
+      return 'Order #${record.orderNumber} is already fully canceled.';
+    }
+
+    final now = DateTime.now();
+    final existingCancellations = List<OrderCancellationRecord>.from(
+      snapshot.cancellations,
+    );
+    final newCancellations = <OrderCancellationRecord>[];
+
+    if (cancelFullOrder) {
+      final remainingAmount = _roundMoney(
+        (snapshot.payableTotal - snapshot.canceledAmount)
+            .clamp(0.0, double.infinity)
+            .toDouble(),
+      );
+      final quantity = snapshot.items.fold<int>(
+        0,
+        (sum, item) => sum + ((item['qty'] as num?)?.toInt() ?? 0),
+      );
+
+      newCancellations.add(
+        OrderCancellationRecord(
+          id: 'cancel_${record.orderNumber}_${now.microsecondsSinceEpoch}',
+          fullOrder: true,
+          itemName: 'Full order',
+          quantity: quantity,
+          amount: remainingAmount > 0 ? remainingAmount : snapshot.payableTotal,
+          canceledAt: now,
+          authorizedBy: 'Manager',
+        ),
+      );
+    } else {
+      final alreadyCanceled = snapshot.canceledItemIndexes;
+      final sortedIndexes = itemIndexes.toList()..sort();
+
+      for (final itemIndex in sortedIndexes) {
+        if (itemIndex < 0 || itemIndex >= snapshot.items.length) continue;
+        if (alreadyCanceled.contains(itemIndex)) continue;
+
+        final item = snapshot.items[itemIndex];
+        final quantity = (item['qty'] as num?)?.toInt() ?? 1;
+        final amount = _snapshotItemCancellationAmount(snapshot, item);
+
+        newCancellations.add(
+          OrderCancellationRecord(
+            id: 'cancel_${record.orderNumber}_${itemIndex}_${now.microsecondsSinceEpoch}',
+            fullOrder: false,
+            itemIndex: itemIndex,
+            itemName: item['name']?.toString() ?? 'Item ${itemIndex + 1}',
+            quantity: quantity,
+            amount: amount,
+            canceledAt: now,
+            authorizedBy: 'Manager',
+          ),
+        );
+      }
+    }
+
+    if (newCancellations.isEmpty) {
+      return 'No cancellable items were selected.';
+    }
+
+    final updatedCancellations = [
+      ...existingCancellations,
+      ...newCancellations,
+    ];
+    final updatedSnapshot = snapshot.copyWith(
+      paymentStatus: cancelFullOrder ? 'Canceled' : 'Partially Canceled',
+      note: cancelFullOrder
+          ? 'Order canceled by manager.'
+          : '${newCancellations.length} item${newCancellations.length == 1 ? '' : 's'} canceled by manager.',
+      cancellations: updatedCancellations,
+    );
+    final updatedRecord = OrderHistoryRecord(
+      id: record.id,
+      orderNumber: record.orderNumber,
+      orderType: record.orderType,
+      createdAt: record.createdAt,
+      snapshot: updatedSnapshot,
+    );
+
+    await _orderStorage.updateCompletedOrder(updatedRecord);
+    await refreshOrderHistory();
+
+    if (cancelFullOrder) {
+      return 'Order #${record.orderNumber} was fully canceled.';
+    }
+    return '${newCancellations.length} item${newCancellations.length == 1 ? '' : 's'} canceled from order #${record.orderNumber}.';
+  }
+
+  Future<String?> payAndPrint({double? cashTenderedAmount}) async {
+    if (_cart.isEmpty || isProcessingPayment) return null;
+
+    final transactionMethod = selectedPaymentMethod;
+    final transactionSplitCount = splitCount;
+    final transactionSplitIndex = activeSplitIndex;
+    final transactionBaseAmount = activePaymentBaseTotal;
+    final isDineInPayment =
+        selectedOrderType == OrderType.dineIn && activeDiningTableId != null;
+
+    _resetCharityRoundUp();
+    _clearPaymentLaunchOverlay();
     isProcessingPayment = true;
     lastPaymentMessage = '';
 
     try {
-      if (selectedPaymentMethod == 'Cash') {
+      if (canOfferCharityRoundUp) {
+        final accepted = await _promptForCharityRoundUp();
+        if (accepted == null) {
+          final paymentLabel = transactionMethod == 'Credit Card'
+              ? 'Card'
+              : transactionMethod;
+          _clearPaymentLaunchOverlay();
+          paymentStatus = 'Payment canceled';
+          lastPaymentMessage = _charityPromptCanceled
+              ? '$paymentLabel payment canceled.'
+              : 'Timed out waiting for the customer response.';
+          displayNote = lastPaymentMessage;
+          _broadcast();
+          return lastPaymentMessage;
+        }
+      }
+
+      if (transactionMethod == 'Cash') {
+        _clearPaymentLaunchOverlay();
+        if (charityRoundUpAccepted &&
+            cashTenderedAmount != null &&
+            cashTenderedAmount + 0.0005 < payableTotal) {
+          _clearPaymentLaunchOverlay();
+          paymentStatus = 'Payment canceled';
+          lastPaymentMessage =
+              'Tendered cash must be at least ${SunmiReceiptService.money(payableTotal)}.';
+          displayNote = lastPaymentMessage;
+          _broadcast();
+          return lastPaymentMessage;
+        }
+
         paymentStatus = 'Processing payment';
-        displayNote = 'The cashier is completing a cash payment.';
+        displayNote = transactionSplitCount > 1
+            ? 'The cashier is completing split bill cash payment $transactionSplitIndex of $transactionSplitCount.'
+            : 'The cashier is completing a cash payment.';
+        paymentOverlayTitle = '';
         _broadcast();
 
         paymentStatus = 'Paid';
@@ -248,33 +1042,17 @@ class PosController extends ChangeNotifier {
         displayNote = 'Cash payment completed. Thank you.';
         _broadcast();
 
-        await SunmiReceiptService.printReceipt(snapshot());
-        await Future.delayed(const Duration(milliseconds: 700));
-        final successMessage = lastPaymentMessage;
-        clearForNextOrder();
-        return successMessage;
+        return await _completeSuccessfulPayment(
+          transactionMethod: transactionMethod,
+          splitCountAtPayment: transactionSplitCount,
+          splitIndexAtPayment: transactionSplitIndex,
+          baseAmount: transactionBaseAmount,
+          isDineInPayment: isDineInPayment,
+          successMessage: lastPaymentMessage,
+        );
       }
 
-      if (canOfferCharityRoundUp) {
-        final accepted = await _promptForCharityRoundUp();
-        if (accepted == null) {
-          showPaymentLaunchOverlay = false;
-          paymentStatus = 'Payment canceled';
-          lastPaymentMessage = 'Timed out waiting for the customer response.';
-          displayNote = lastPaymentMessage;
-          _broadcast();
-          return lastPaymentMessage;
-        }
-      } else {
-        _showPaymentLaunchOverlay();
-      }
-
-      // Transition to 'Processing payment' and clear the overlay before
-      // invoking the Mosambee bridge so the customer display shows
-      // "Tap to Pay" immediately — without depending on the Kotlin
-      // notifyLaunchState callback which can be delayed across the
-      // microtask boundary after the charity completer fires.
-      showPaymentLaunchOverlay = false;
+      _clearPaymentLaunchOverlay();
       paymentStatus = 'Processing payment';
       displayNote = charityRoundUpAccepted
           ? 'Thank you for rounding up for charity. Tap your card or phone on the rear NFC area to pay.'
@@ -288,7 +1066,7 @@ class PosController extends ChangeNotifier {
       final paymentResult = await _paymentBridge.loginAndPay(payableTotal);
 
       if (!paymentResult.isSuccess) {
-        showPaymentLaunchOverlay = false;
+        _clearPaymentLaunchOverlay();
         paymentStatus = paymentResult.isCanceled
             ? 'Payment canceled'
             : 'Payment failed';
@@ -298,7 +1076,7 @@ class PosController extends ChangeNotifier {
         return lastPaymentMessage;
       }
 
-      showPaymentLaunchOverlay = false;
+      _clearPaymentLaunchOverlay();
       paymentStatus = 'Paid';
       lastPaymentMessage = charityRoundUpAccepted
           ? '${paymentResult.userMessage} Thank you for supporting charity.'
@@ -308,32 +1086,263 @@ class PosController extends ChangeNotifier {
           : 'Payment approved. Thank you.';
       _broadcast();
 
-      await SunmiReceiptService.printReceipt(snapshot());
-
-      await Future.delayed(const Duration(milliseconds: 700));
-      final successMessage = lastPaymentMessage;
-      clearForNextOrder();
-      return successMessage;
+      return await _completeSuccessfulPayment(
+        transactionMethod: transactionMethod,
+        splitCountAtPayment: transactionSplitCount,
+        splitIndexAtPayment: transactionSplitIndex,
+        baseAmount: transactionBaseAmount,
+        isDineInPayment: isDineInPayment,
+        successMessage: lastPaymentMessage,
+      );
     } finally {
-      showPaymentLaunchOverlay = false;
+      _clearPaymentLaunchOverlay();
       isProcessingPayment = false;
       _broadcast();
     }
   }
 
-  void clearForNextOrder() {
-    _cart.clear();
-    paymentStatus = 'Waiting';
-    lastPaymentMessage = '';
-    displayNote = '';
-    isProcessingPayment = false;
-    showPaymentLaunchOverlay = false;
+  Future<String?> payMixedCashAndCard({required double cashAmount}) async {
+    if (_cart.isEmpty || isProcessingPayment) return null;
+
+    if (splitCount > 1 || hasRecordedSplitPayments) {
+      paymentStatus = 'Payment canceled';
+      lastPaymentMessage =
+          'Clear Split Bill before using cash and card split payment.';
+      displayNote = lastPaymentMessage;
+      _broadcast();
+      return lastPaymentMessage;
+    }
+
+    final isDineInPayment =
+        selectedOrderType == OrderType.dineIn && activeDiningTableId != null;
+    final billTotal = total;
+    final cashShare = _roundMoney(cashAmount);
+    final cardBaseAmount = _roundMoney(billTotal - cashShare);
+
+    if (cashShare <= 0 || cardBaseAmount <= 0) {
+      paymentStatus = 'Payment canceled';
+      lastPaymentMessage =
+          'Enter a cash amount less than ${SunmiReceiptService.money(billTotal)} before using split payment.';
+      displayNote = lastPaymentMessage;
+      _broadcast();
+      return lastPaymentMessage;
+    }
+
     _resetCharityRoundUp();
-    _broadcast();
+    _clearPaymentLaunchOverlay();
+    _activePaymentBaseOverride = cardBaseAmount;
+    selectedPaymentMethod = 'Credit Card';
+    isProcessingPayment = true;
+    lastPaymentMessage = '';
+
+    try {
+      if (canOfferCharityRoundUp) {
+        final accepted = await _promptForCharityRoundUp();
+        if (accepted == null) {
+          _clearPaymentLaunchOverlay();
+          paymentStatus = 'Payment canceled';
+          lastPaymentMessage = _charityPromptCanceled
+              ? 'Split payment canceled.'
+              : 'Timed out waiting for the customer response.';
+          displayNote = lastPaymentMessage;
+          _broadcast();
+          return lastPaymentMessage;
+        }
+      }
+
+      _clearPaymentLaunchOverlay();
+      paymentStatus = 'Processing payment';
+      displayNote = charityRoundUpAccepted
+          ? 'Thank you for rounding up for charity. Tap your card or phone for the remaining split payment.'
+          : 'Tap your card or phone for the remaining split payment.';
+      _broadcast();
+
+      debugPrint(
+        'PosController invoking Mosambee split card payment with amount=${payableTotal.toStringAsFixed(3)}',
+      );
+
+      final paymentResult = await _paymentBridge.loginAndPay(payableTotal);
+
+      if (!paymentResult.isSuccess) {
+        _clearPaymentLaunchOverlay();
+        paymentStatus = paymentResult.isCanceled
+            ? 'Payment canceled'
+            : 'Payment failed';
+        lastPaymentMessage = paymentResult.userMessage;
+        displayNote = paymentResult.userMessage;
+        _broadcast();
+        return lastPaymentMessage;
+      }
+
+      final cardPaidAmount = payableTotal;
+      final cardRoundUpAmount = charityRoundUpAccepted
+          ? charityRoundUpAmount
+          : 0.0;
+
+      splitCount = 2;
+      _splitPayments
+        ..clear()
+        ..add(
+          SplitPaymentRecord(
+            splitIndex: 1,
+            splitCount: 2,
+            paymentMethod: 'Cash',
+            baseAmount: cashShare,
+            charityRoundUpAccepted: false,
+            charityRoundUpAmount: 0,
+            paidAmount: cashShare,
+            paidAt: DateTime.now(),
+          ),
+        )
+        ..add(
+          SplitPaymentRecord(
+            splitIndex: 2,
+            splitCount: 2,
+            paymentMethod: 'Credit Card',
+            baseAmount: cardBaseAmount,
+            charityRoundUpAccepted: charityRoundUpAccepted,
+            charityRoundUpAmount: cardRoundUpAmount,
+            paidAmount: cardPaidAmount,
+            paidAt: DateTime.now(),
+          ),
+        );
+
+      _clearPaymentLaunchOverlay();
+      paymentStatus = 'Paid';
+      selectedPaymentMethod = 'Split Payment';
+      lastPaymentMessage =
+          'Split payment completed. Cash ${SunmiReceiptService.money(cashShare)} and card ${SunmiReceiptService.money(cardPaidAmount)} recorded.';
+      displayNote = charityRoundUpAccepted
+          ? 'Split payment completed with a card round-up donation. Thank you.'
+          : 'Split payment completed. Thank you.';
+      _broadcast();
+
+      return await _finishCompletedOrder(
+        isDineInPayment: isDineInPayment,
+        successMessage: lastPaymentMessage,
+      );
+    } finally {
+      _activePaymentBaseOverride = null;
+      _clearPaymentLaunchOverlay();
+      isProcessingPayment = false;
+      _broadcast();
+    }
+  }
+
+  Future<String> _completeSuccessfulPayment({
+    required String transactionMethod,
+    required int splitCountAtPayment,
+    required int splitIndexAtPayment,
+    required double baseAmount,
+    required bool isDineInPayment,
+    required String successMessage,
+  }) async {
+    if (splitCountAtPayment > 1) {
+      final paidAmount = payableTotal;
+      final roundUpAmount = charityRoundUpAccepted ? charityRoundUpAmount : 0.0;
+
+      _splitPayments.add(
+        SplitPaymentRecord(
+          splitIndex: splitIndexAtPayment,
+          splitCount: splitCountAtPayment,
+          paymentMethod: transactionMethod,
+          baseAmount: baseAmount,
+          charityRoundUpAccepted: charityRoundUpAccepted,
+          charityRoundUpAmount: roundUpAmount,
+          paidAmount: paidAmount,
+          paidAt: DateTime.now(),
+        ),
+      );
+
+      if (_splitPayments.length < splitCountAtPayment) {
+        final nextSplitIndex = _splitPayments.length + 1;
+        _resetCharityRoundUp();
+        _clearPaymentLaunchOverlay();
+        paymentStatus = 'Split payment pending';
+        lastPaymentMessage =
+            'Split payment $splitIndexAtPayment of $splitCountAtPayment recorded. Continue with guest $nextSplitIndex.';
+        displayNote =
+            'Guest $splitIndexAtPayment paid ${SunmiReceiptService.money(paidAmount)}. Collect split payment $nextSplitIndex of $splitCountAtPayment.';
+        _broadcast();
+        return lastPaymentMessage;
+      }
+
+      _clearPaymentLaunchOverlay();
+      paymentStatus = 'Paid';
+      selectedPaymentMethod = 'Split Payment';
+      lastPaymentMessage =
+          'Split payment completed. $splitCountAtPayment payments recorded for ${SunmiReceiptService.money(_splitPaidTotal)}.';
+      displayNote =
+          'Split bill completed with $splitCountAtPayment payments. Thank you.';
+      _broadcast();
+
+      return await _finishCompletedOrder(
+        isDineInPayment: isDineInPayment,
+        successMessage: lastPaymentMessage,
+      );
+    }
+
+    return await _finishCompletedOrder(
+      isDineInPayment: isDineInPayment,
+      successMessage: successMessage,
+    );
+  }
+
+  Future<String> _finishCompletedOrder({
+    required bool isDineInPayment,
+    required String successMessage,
+  }) async {
+    _assignFinalOrderNumber();
+    final completedSnapshot = snapshot();
+    await SunmiReceiptService.printReceipt(completedSnapshot);
+    await _saveCompletedOrder(completedSnapshot);
+    if (isDineInPayment) {
+      await _markActiveDiningTablePaid(completedSnapshot);
+    }
+
+    await Future.delayed(const Duration(milliseconds: 700));
+    _resetForNextOrder(
+      advanceOrderNumber: !isDineInPayment,
+      nextOrderType: isDineInPayment ? OrderType.dineIn : OrderType.quickOrder,
+      forceOrderNumber: isDineInPayment ? _nextOrderNumberSeed : null,
+      clearActiveDiningTable: true,
+      note: isDineInPayment
+          ? 'Choose a table to start or continue a dine-in order.'
+          : '',
+    );
+    return successMessage;
+  }
+
+  void clearForNextOrder() {
+    _resetForNextOrder(advanceOrderNumber: false);
   }
 
   Future<void> shutdown() async {
     await closeRearDisplay();
+  }
+
+  void confirmCharityRoundUp(bool accepted) {
+    _handleCharityRoundUpResponse(accepted, source: 'staff');
+  }
+
+  void cancelCharityRoundUpPrompt() {
+    if (_charityRoundUpCompleter == null ||
+        _charityRoundUpCompleter!.isCompleted) {
+      showCharityRoundUpPrompt = false;
+      _clearPaymentLaunchOverlay();
+      _broadcast();
+      return;
+    }
+
+    _charityPromptCanceled = true;
+    showCharityRoundUpPrompt = false;
+    _clearPaymentLaunchOverlay();
+    charityRoundUpAccepted = false;
+    charityRoundUpAmount = 0;
+    charityRoundUpTotal = 0;
+    lastCustomerEvent = 'Staff canceled the charity round-up prompt.';
+    _broadcast();
+    _charityRoundUpCompleter!.complete(null);
   }
 
   @override
@@ -343,6 +1352,8 @@ class PosController extends ChangeNotifier {
   }
 
   void _broadcast() {
+    _syncActiveDiningTableInMemory();
+    unawaited(_persistActiveDiningTableSession());
     _notifySafely();
     unawaited(syncRearDisplay());
   }
@@ -350,13 +1361,15 @@ class PosController extends ChangeNotifier {
   Future<bool?> _promptForCharityRoundUp() async {
     if (_charityRoundUpCompleter != null &&
         !_charityRoundUpCompleter!.isCompleted) {
-      _charityRoundUpCompleter!.complete(false);
+      _charityRoundUpCompleter!.complete(null);
     }
-    _charityRoundUpCompleter = Completer<bool>();
+    _charityPromptCanceled = false;
+    _charityRoundUpCompleter = Completer<bool?>();
+    _activeCharityRoundUpPromptId++;
 
-    paymentStatus = 'Awaiting customer';
+    paymentStatus = 'Awaiting confirmation';
     showCharityRoundUpPrompt = true;
-    showPaymentLaunchOverlay = false;
+    _clearPaymentLaunchOverlay();
     charityRoundUpAccepted = false;
     charityRoundUpAmount = offeredCharityRoundUpAmount;
     charityRoundUpTotal = offeredCharityRoundUpTotal;
@@ -371,7 +1384,7 @@ class PosController extends ChangeNotifier {
       );
     } on TimeoutException {
       showCharityRoundUpPrompt = false;
-      showPaymentLaunchOverlay = false;
+      _clearPaymentLaunchOverlay();
       _broadcast();
       return null;
     } finally {
@@ -379,7 +1392,11 @@ class PosController extends ChangeNotifier {
     }
   }
 
-  void _handleCharityRoundUpResponse(bool accepted) {
+  void _handleCharityRoundUpResponse(
+    bool accepted, {
+    String source = 'customer',
+    int? promptId,
+  }) {
     if (_charityRoundUpCompleter == null ||
         _charityRoundUpCompleter!.isCompleted) {
       debugPrint(
@@ -388,14 +1405,42 @@ class PosController extends ChangeNotifier {
       return;
     }
 
+    if (source == 'customer' &&
+        promptId != null &&
+        promptId != _activeCharityRoundUpPromptId) {
+      debugPrint(
+        'PosController ignored stale charity response promptId=$promptId activePromptId=$_activeCharityRoundUpPromptId.',
+      );
+      return;
+    }
+
     showCharityRoundUpPrompt = false;
     charityRoundUpAccepted = accepted;
     charityRoundUpAmount = accepted ? offeredCharityRoundUpAmount : 0;
-    charityRoundUpTotal = accepted ? offeredCharityRoundUpTotal : total;
-    _showPaymentLaunchOverlay();
-    lastCustomerEvent = accepted
-        ? 'Customer accepted the charity round-up.'
-        : 'Customer declined the charity round-up.';
+    charityRoundUpTotal = accepted
+        ? offeredCharityRoundUpTotal
+        : activePaymentBaseTotal;
+    final paymentKind = selectedPaymentMethod == 'Cash'
+        ? 'cash payment'
+        : 'card payment';
+    _showPaymentLaunchOverlay(
+      title: selectedPaymentMethod == 'Cash'
+          ? 'Preparing Cash Payment'
+          : 'Preparing Secure Payment',
+      message: accepted
+          ? 'Thank you. We are preparing the rounded amount for $paymentKind.'
+          : 'Thank you. We are preparing the original amount for $paymentKind.',
+    );
+    lastCustomerEvent = switch (source) {
+      'staff' =>
+        accepted
+            ? 'Staff confirmed the customer accepted the charity round-up.'
+            : 'Staff confirmed the customer declined the charity round-up.',
+      _ =>
+        accepted
+            ? 'Customer accepted the charity round-up.'
+            : 'Customer declined the charity round-up.',
+    };
     debugPrint(lastCustomerEvent);
     _broadcast();
     _charityRoundUpCompleter!.complete(accepted);
@@ -403,18 +1448,31 @@ class PosController extends ChangeNotifier {
 
   void _resetCharityRoundUp() {
     showCharityRoundUpPrompt = false;
-    showPaymentLaunchOverlay = false;
+    _clearPaymentLaunchOverlay();
     charityRoundUpAccepted = false;
     charityRoundUpAmount = 0;
     charityRoundUpTotal = 0;
+    _charityPromptCanceled = false;
   }
 
-  void _showPaymentLaunchOverlay() {
+  void _markOrderUpdated(String productId) {
+    recentProductId = productId;
+    orderUpdateNonce++;
+  }
+
+  void _showPaymentLaunchOverlay({
+    required String title,
+    required String message,
+  }) {
     showPaymentLaunchOverlay = true;
+    paymentOverlayTitle = title;
     paymentStatus = 'Preparing payment';
-    displayNote = charityRoundUpAccepted
-        ? 'Preparing the charitable card payment on the customer terminal...'
-        : 'Preparing the card payment on the customer terminal...';
+    displayNote = message;
+  }
+
+  void _clearPaymentLaunchOverlay() {
+    showPaymentLaunchOverlay = false;
+    paymentOverlayTitle = '';
   }
 
   void _handlePaymentLaunchState(Map<String, dynamic> event) {
@@ -428,12 +1486,255 @@ class PosController extends ChangeNotifier {
       'PosController received Mosambee launch event: $stage on $surface.',
     );
 
-    showPaymentLaunchOverlay = false;
     paymentStatus = 'Processing payment';
-    displayNote = charityRoundUpAccepted
-        ? 'Thank you for rounding up for charity. Tap your card or phone on the rear NFC area to pay.'
-        : 'Tap your card or phone on the rear NFC area to pay.';
+    _showPaymentLaunchOverlay(
+      title: stage == 'login_started'
+          ? 'Connecting To Payment Terminal'
+          : 'Waiting For Payment Result',
+      message: stage == 'login_started'
+          ? 'Payment Terminal is opening securely. Please wait while the payment terminal prepares the transaction.'
+          : charityRoundUpAccepted
+          ? 'The rounded amount has been sent to Payment Terminal. Please follow the terminal instructions while we wait for the final response.'
+          : 'The order total has been sent to Payment Terminal. Please follow the terminal instructions while we wait for the final response.',
+    );
     _broadcast();
+  }
+
+  Future<void> _loadStoredOrders() async {
+    isLoadingStorage = true;
+    _notifySafely();
+    try {
+      currentOrderNumber = await _orderStorage.fetchNextOrderNumber();
+      _nextOrderNumberSeed = currentOrderNumber + 1;
+      currentOrderReference = '';
+      orderHistory = await _orderStorage.loadOrderHistory();
+      heldOrders = await _orderStorage.loadHeldOrders();
+      diningTableSessions = await _orderStorage.loadDiningTableSessions();
+    } catch (error) {
+      debugPrint('Failed to load local order storage: $error');
+      currentOrderNumber = 1450;
+      currentOrderReference = '';
+      _nextOrderNumberSeed = 1451;
+      orderHistory = const [];
+      heldOrders = const [];
+      diningTableSessions = const [];
+    } finally {
+      isLoadingStorage = false;
+      _notifySafely();
+    }
+  }
+
+  Future<void> _saveCompletedOrder(OrderSnapshot completedSnapshot) async {
+    try {
+      await _orderStorage.saveCompletedOrder(completedSnapshot);
+      await refreshOrderHistory();
+    } catch (error) {
+      debugPrint('Failed to save completed order: $error');
+    }
+  }
+
+  DiningFloor? _findDiningFloorById(String? floorId) {
+    if (floorId == null || floorId.isEmpty) return null;
+    for (final floor in diningFloors) {
+      if (floor.id == floorId) return floor;
+    }
+    return null;
+  }
+
+  DiningTableDefinition? _findDiningTableDefinitionById(String? tableId) {
+    if (tableId == null || tableId.isEmpty) return null;
+    for (final table in diningTableDefinitions) {
+      if (table.id == tableId) return table;
+    }
+    return null;
+  }
+
+  String _floorLabel(String floorId) =>
+      _findDiningFloorById(floorId)?.label ?? 'Dining';
+
+  void _reserveOrderNumber(int orderNumber) {
+    if (orderNumber >= _nextOrderNumberSeed) {
+      _nextOrderNumberSeed = orderNumber + 1;
+    }
+  }
+
+  void _assignFinalOrderNumber() {
+    _reserveOrderNumber(currentOrderNumber);
+  }
+
+  String _ensureOrderReference() {
+    if (currentOrderReference.isNotEmpty) return currentOrderReference;
+    currentOrderReference = _generateOrderReference();
+    return currentOrderReference;
+  }
+
+  String _generateOrderReference() {
+    _referenceSequence++;
+    final timestamp = DateTime.now().millisecondsSinceEpoch
+        .remainder(100000000)
+        .toString()
+        .padLeft(8, '0');
+    final sequence = _referenceSequence.toString().padLeft(2, '0');
+    return 'REF-$timestamp$sequence';
+  }
+
+  void _syncActiveDiningTableInMemory() {
+    if (selectedOrderType != OrderType.dineIn || activeDiningTableId == null) {
+      return;
+    }
+
+    final session = _buildActiveDiningTableSession();
+    final updated = List<DiningTableSession>.from(diningTableSessions)
+      ..removeWhere((entry) => entry.tableId == activeDiningTableId);
+
+    if (session != null) {
+      updated.insert(0, session);
+    }
+
+    diningTableSessions = updated;
+  }
+
+  Future<void> _persistActiveDiningTableSession() async {
+    if (selectedOrderType != OrderType.dineIn || activeDiningTableId == null) {
+      return;
+    }
+
+    final tableId = activeDiningTableId!;
+    final session = _buildActiveDiningTableSession();
+    final existing = diningSessionFor(tableId);
+
+    try {
+      if (session == null) {
+        if (existing == null) return;
+        await _orderStorage.clearDiningTable(tableId);
+      } else {
+        await _orderStorage.saveDiningTableSession(session);
+      }
+    } catch (error) {
+      debugPrint('Failed to persist dining table $tableId: $error');
+    }
+  }
+
+  DiningTableSession? _buildActiveDiningTableSession({
+    OrderSnapshot? paidSnapshot,
+  }) {
+    final tableId = activeDiningTableId;
+    final definition = activeDiningTableDefinition;
+
+    if (tableId == null || definition == null) return null;
+
+    final now = DateTime.now();
+    final existing = diningSessionFor(tableId);
+
+    if (paidSnapshot != null) {
+      return DiningTableSession(
+        tableId: tableId,
+        floorId: definition.floorId,
+        status: DiningTableStatus.paid,
+        orderNumber: paidSnapshot.orderNumber,
+        orderReference: currentOrderReference,
+        updatedAt: now,
+        occupiedAt: existing?.occupiedAt ?? now,
+        paidAt: now,
+        draft: null,
+        paidSnapshot: paidSnapshot,
+      );
+    }
+
+    if (_cart.isEmpty) return null;
+
+    return DiningTableSession(
+      tableId: tableId,
+      floorId: definition.floorId,
+      status: DiningTableStatus.occupied,
+      orderNumber: null,
+      orderReference: _ensureOrderReference(),
+      updatedAt: now,
+      occupiedAt: existing?.occupiedAt ?? now,
+      paidAt: null,
+      draft: createDraft(),
+      paidSnapshot: null,
+    );
+  }
+
+  Future<void> _markActiveDiningTablePaid(
+    OrderSnapshot completedSnapshot,
+  ) async {
+    final paidSession = _buildActiveDiningTableSession(
+      paidSnapshot: completedSnapshot,
+    );
+    if (paidSession == null) return;
+
+    diningTableSessions = <DiningTableSession>[
+      paidSession,
+      ...diningTableSessions.where(
+        (session) => session.tableId != paidSession.tableId,
+      ),
+    ];
+
+    try {
+      await _orderStorage.saveDiningTableSession(paidSession);
+    } catch (error) {
+      debugPrint('Failed to mark dining table as paid: $error');
+    }
+  }
+
+  void _resetForNextOrder({
+    required bool advanceOrderNumber,
+    OrderType nextOrderType = OrderType.quickOrder,
+    int? forceOrderNumber,
+    bool clearActiveDiningTable = false,
+    String note = '',
+  }) {
+    _cart.clear();
+    paymentStatus = 'Waiting';
+    selectedPaymentMethod = 'Cash';
+    lastPaymentMessage = '';
+    displayNote = note;
+    paymentOverlayTitle = '';
+    customerReferenceNumber = '';
+    currentOrderReference = '';
+    isProcessingPayment = false;
+    productSearchQuery = '';
+    discount = const DiscountConfiguration();
+    splitCount = 1;
+    _splitPayments.clear();
+    _activePaymentBaseOverride = null;
+    selectedOrderType = nextOrderType;
+    if (clearActiveDiningTable) {
+      activeDiningTableId = null;
+      diningTableSearchQuery = '';
+    }
+    _clearPaymentLaunchOverlay();
+    recentProductId = '';
+    orderUpdateNonce = 0;
+    _resetCharityRoundUp();
+    if (forceOrderNumber != null) {
+      currentOrderNumber = forceOrderNumber;
+    } else if (advanceOrderNumber) {
+      currentOrderNumber = _nextOrderNumberSeed;
+      _nextOrderNumberSeed++;
+    }
+    _broadcast();
+  }
+
+  double _snapshotItemCancellationAmount(
+    OrderSnapshot snapshot,
+    Map<String, dynamic> item,
+  ) {
+    final lineTotal = (item['lineTotal'] as num?)?.toDouble() ?? 0;
+    if (lineTotal <= 0) return 0;
+
+    final rawTotal = snapshot.rawSubtotal <= 0
+        ? snapshot.items.fold<double>(
+            0,
+            (sum, entry) =>
+                sum + ((entry['lineTotal'] as num?)?.toDouble() ?? 0),
+          )
+        : snapshot.rawSubtotal;
+
+    if (rawTotal <= 0) return _roundMoney(lineTotal);
+    return _roundMoney(snapshot.payableTotal * (lineTotal / rawTotal));
   }
 
   double _roundMoney(double value) => double.parse(value.toStringAsFixed(3));

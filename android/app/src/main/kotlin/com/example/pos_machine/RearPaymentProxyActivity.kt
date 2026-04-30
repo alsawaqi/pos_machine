@@ -237,7 +237,7 @@ class RearPaymentProxyActivity : Activity() {
     }
 
     private fun deliverAndFinish(payload: String) {
-        MosambeeBridge.completeFromRearProxy(payload)
+        MosambeeBridge.completeFromProxy(payload)
         finish()
         overridePendingTransition(0, 0)
     }

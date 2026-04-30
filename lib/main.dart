@@ -59,7 +59,7 @@ class CustomerDisplayApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: const CustomerDisplayScreen(),
+      home: const _FullscreenShell(child: CustomerDisplayScreen()),
     );
   }
 }

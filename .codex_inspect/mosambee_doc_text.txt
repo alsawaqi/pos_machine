@@ -1,0 +1,1078 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Intent Integration document
+Version 1.16
+
+Table of Contents
+ TOC \h \u \z \t "Heading 1,1,Heading 2,2,Heading 3,3,"Version History 3 HYPERLINK \l "_30j0zll" 
+Purpose 4 HYPERLINK \l "_1fob9te" 
+High-Level Integration Summary: 4 HYPERLINK \l "_3znysh7" 
+Detail Integration: 6 HYPERLINK \l "_2et92p0" 
+1.  PAGEREF _tyjcwt \h App Login 6
+2.  PAGEREF _1t3h5sf \h Environment audit check 7
+3.  PAGEREF _4d34og8 \h Payment Initiation 8
+4.  PAGEREF _2s8eyo1 \h Previous Transactions 9
+5.  PAGEREF _17dp8vu \h Void Transaction 10
+6.  PAGEREF _3rdcrjn \h Refund Transaction 11
+7.  PAGEREF _26in1rg \h Preauth Transaction 12
+8.  PAGEREF _lnxbz9 \h SaleComplete Transaction 13
+9.  PAGEREF _35nkun2 \h Batch Settle 14
+8.  PAGEREF _1ksv4uv \h Mosambee Receipt Response 14
+9.  PAGEREF _44sinio \h Environment Response Codes 15
+10.  PAGEREF _2jxsxqh \h Application Update Check 19
+11.  PAGEREF _z337ya \h Application Details Check 20
+12.  PAGEREF _3j2qqm3 \h Additional parameters 21
+13.  PAGEREF _1y810tw \h Frequently Asked Questions 22
+
+
+Version History
+Version
+Purpose
+Author
+Reviewer
+Date
+1
+Initial version
+Narayan B
+Hari Krishna
+12-Aug-20
+1.1
+Initial version
+Narayan B
+Hari Krishna
+26-Aug-20
+1.2
+Added Environment audit and Application update - Check APIs
+Narayan B
+Hari Krishna
+29-Sep-20
+1.3
+Added the missing package details
+Narayan B
+Hari Krishna
+07-Oct-20
+1.4
+New API added for App version fetch
+Narayan B
+Hari Krishna
+30-Oct-20
+1.5
+Added additional Response codes
+Narayan B
+Hari Krishna
+06-Nov-20
+1.6
+Custom dynamic parameter details in bill number
+Narayan B
+Hari Krishna
+13-Nov-20
+1.7
+Addition of Void, Refund, List and Settlement APIs
+Narayan B
+Hari Krishna
+15-Apr-21
+1.8
+App Update API key name change
+Narayan B
+Hari Krishna
+10 May,2022
+1.9
+Added intent integration flow
+Narayan B
+Hari Krishna
+20 May,2022
+1.1
+Added Password token mechanism
+Narayan B
+Hari Krishna
+24 June,2022
+1.11
+Improvements  in Password tokenization
+Narayan B
+Hari Krishna
+04 July,2022
+1.11a
+SPOCB13/CPOCB13 error code added
+Narayan B
+Hari Krishna
+20 Aug,2022
+1.12
+AES256 mechanism added for password token
+Narayan B
+Hari Krishna
+5 Sep,2022
+1.13
+Random Initial Vector Added
+Narayan B
+Hari Krishna
+29-Sep-22
+1.13a
+ISO Error code and description added
+Narayan B
+Hari Krishna
+11-Oct-22
+1.13b
+Error code added for “Transaction canceled by user”
+Narayan B
+Hari Krishna
+20-Oct-22
+1.14
+Added “Security Guidelines”
+Narayan B
+Hari Krishna
+12-Feb-23
+1.15
+Added Preauth Transaction
+Narayan B
+Hari Krishna
+18-Apr-23
+1.16
+Data type changed to String to Avoid Confusion
+Narayan B
+Hari Krishna
+21-Jun-24
+
+
+
+Purpose
+
+The purpose of the document is to provide a technical reference to the development team to develop payment initiation with Mosambee App using an intent API mechanism for the android platform.
+
+Mosambee App is compiled for a target version: Android API version 32 to support the as per the PCI security guidelines.
+
+Security Guidelines:
+
+With intent integration, partner app and softPOS are completely segmented and partner has no compliance implication.
+
+However, below are a few guidelines to be followed:
+Strict NDA is required.
+Maintain the confidentiality of the documentation, and integration kit and restrict the circulation to any external and internal stakeholder, who isn’t intended to use it. 
+Any breach of confidentiality should be reported to Mosambee immediately.
+Mosambee encourages the structuring and following of the SDLC policy.
+Application to be released to Mosambee integration team for QA sign-off with respect to payment integration.
+
+Payment application will be maintained compliance by Mosambee and partner to support, as required.
+
+
+High-Level Integration Summary:
+
+364490195580
+
+
+
+
+
+Quick Process:
+Merchant application to check whether Mosambee application is installed. If app is installed, it will invoke the app otherwise it will go to google play app install.
+
+Merchant application will call Mosambee login API from intent to generate the session key.
+Merchant Application will call Mosambee payment API with parameters like amount, mobile number(Optional), description(optional) and session key(mandatory).
+
+Mosambee application will give transaction result in response, post completing the transaction.
+
+ 
+ 
+ 
+ 
+
+
+Detail Integration:
+
+Below is the overview of the Intent integration API:
+
+130810196215
+
+App Login
+Invoke Mosambee App for Login with the below attributes. On successful login, session id is created and provided in the response.
+
+* Please note that it is mandatory to do a login API request before every transaction request.
+
+Input Parameters:
+Attributes
+Details 
+Mandatory
+Username
+Username assigned for the merchant user Password token generated using the shared
+Yes
+Password
+Algorithm and encrypted under the public key shared
+Yes
+Partner Id
+Partner Id assigned for the merchant user
+Conditional
+
+
+Intent Calling Code:
+Intent mosambeeIntent = new Intent(); mosambeeIntent.setPackage(<package_name>); mosambeeIntent.setAction("com.mosambee.softpos.login"); Bundle bundle = new Bundle();
+
+
+bundle.putString("userName", userName); 
+bundle.putString("password", password); 
+bundle.putString("partnerId", partnerId); 
+startActivityForResult(mosambeeIntent, ActivityLoginRequestCode);
+
+Get Result in onActivityResult:
+@Override
+
+protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+super.onActivityResult(requestCode, resultCode, data);
+if (requestCode == ActivityLoginRequestCode && data != null) { Toast.makeText(this, data.getStringExtra("sessionId"),
+Toast.LENGTH_SHORT).show();
+}
+}
+
+Password token Generation:
+
+Merchant App has to generate the password token following the below steps:
+Generate the Hash of Pin using the SHA256 algorithm as Component 1
+Generate the hash of Username using SHA256 algorithm as Component 2
+Apply XOR in between the Component 1 and Component 2 to generate the Password token.
+Password token generated will now be sent encrypted under the AES256 key shared by Mosambee concatenated with Initial Vector used for encryption.
+
+Algorithms to be used:
+AES 256
+SHA 256
+
+Password hash Representation:
+1402080153035
+
+Note: Mosambee will guide to implement the mechanism or provide a separate AAR package which would offline generate the encrypted password tokens using the input as PIN, username, public key
+
+Environment audit check
+
+Below are the API details with the request parameters for the initiation of App environment precheck, if intend to perform without initiating the payment transaction.
+
+622300177800
+
+
+ATTRIBUTES DETAILS MANDATORY
+
+
+
+
+
+
+
+
+Session id Unique session id given by mosambee app
+ during login 
+
+Yes
+
+
+
+
+
+Intent Calling Code:
+Intent mosambeeIntent = new Intent(); mosambeeIntent.setPackage(<package_name>); mosambeeIntent.setAction("com.mosambee.softpos.healthcheck"); Bundle bundle = new Bundle();
+bundle.putString("sessionId", sessionId); startActivityForResult(mosambeeIntent, ActivityPreEnvironmentCheck);
+
+Get Result in onActivityResult:
+@Override
+protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+super.onActivityResult(requestCode, resultCode, data);
+if (requestCode == ActivityPreEnvironmentCheck && data != null) {
+Toast.makeText(this, data.getStringExtra("responseCode"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("description"), Toast.LENGTH_SHORT).show(); Toast.LENGTH_SHORT).show();
+}
+}
+Please refer to the error code and the description from section #5
+
+If found good to continue with the transaction, the error code mentioned below will be sent. SPOCT00/CPOCT00: Success, No issue with the setup.
+
+
+
+Payment Initiation
+
+Below are the API details with the request parameters for the initiation of Payment transaction.
+
+Input Parameters:
+Attributes
+Details 
+Mandatory
+Amount
+Total amount of Transaction
+Yes
+Session id
+
+Unique session id given by mosambee app during login
+
+Yes
+Mobile number
+
+User mobile number to sent transaction receipt.
+No
+Description
+Transaction Description
+No
+
+
+Intent Calling Code:
+Intent mosambeeIntent = new Intent(); mosambeeIntent.setPackage(<package_name>); mosambeeIntent.setAction("com.mosambee.softpos.payment"); Bundle bundle = new Bundle();
+bundle.putString("sessionId", sessionId); bundle.putString("amount", amount); bundle.putString("mobNo", mobileNumber); bundle.putString("description", description);
+startActivityForResult(mosambeeIntent, ActivityPaymentRequestCode);
+ 
+Get Result in onActivityResult:
+@Override
+protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+super.onActivityResult(requestCode, resultCode, data);
+if (requestCode == ActivityPaymentRequestCode && data != null) {
+Toast.makeText(this, data.getStringExtra("receiptResponse"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("responseCode"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("paymentResponseCode"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("paymentDescription"),
+Toast.LENGTH_SHORT).show();
+}
+}
+
+
+Note: Any value other than 00 or 0 in the PaymentResponseCode, is a failure of the transaction. Failure description will be provided in paymentDescription
+
+
+Previous Transactions
+
+Below are the API details with the request parameters for the previous transactions.
+
+Input Parameters:
+
+
+Attributes
+Details 
+Mandatory
+Amount
+Total amount of Transaction
+Yes
+Session id
+
+Unique session id given by Mosambee app during login
+
+Yes
+Count
+
+Number of Transactions to retrieve
+Yes
+TxnType
+
+Transaction type to be retrieved
+Card Transaction
+Card not present Transaction
+All Transactions
+Yes
+TxnStatus
+
+To retrieve success or all transactions 0 - All transactions
+Success Transactions
+
+
+Yes
+
+
+
+
+
+
+
+
+
+
+Intent Calling Code:
+Intent mosambeeIntent = new Intent(); mosambeeIntent.setPackage(<package_name>); mosambeeIntent.setAction("com.mosambee.softpos.lasttransactions"); 
+Bundle  bundle = new Bundle();
+bundle.putString("sessionId", sessionId); bundle.putString("count", count); bundle.putString("txnType", txnType);
+bundle.putString("txnStatus", txnStatus);
+startActivityForResult(mosambeeIntent, ActivityLastTransactionsRequestCode);
+
+Get Result in onActivityResult:
+@Override
+protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+super.onActivityResult(requestCode, resultCode, data);
+if (requestCode == ActivityLastTransactionsRequestCode && data != null) { Toast.makeText(this, data.getStringExtra("responseCode"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("description"), Toast.LENGTH_SHORT).show();
+
+}
+}
+
+Void Transaction
+
+Below are the API details with the request parameters for the initiation of void transaction. Void can only be initiated for the transactions within the current batch.
+190500152400
+
+
+ATTRIBUTES DETAILS MANDATORY
+19050088900
+
+
+Transaction Id Transaction Id Yes
+
+
+Session id Unique session id given by mosambee app during login
+
+Yes
+
+
+
+Intent Calling Code:
+Intent mosambeeIntent = new Intent(); mosambeeIntent.setPackage(<package_name>); mosambeeIntent.setAction("com.mosambee.softpos.void"); 
+Bundle bundle = new Bundle();
+bundle.putString("sessionId", sessionId); bundle.putString("transactionId", transactionId); startActivityForResult(mosambeeIntent, ActivityVoidRequestCode);
+
+Get Result in onActivityResult:
+@Override
+protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+super.onActivityResult(requestCode, resultCode, data);
+if (requestCode == ActivityVoidRequestCode && data != null) {
+Toast.makeText(this, data.getStringExtra("responseCode"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("description"),
+Toast.LENGTH_SHORT).show();
+}
+}
+
+Refund Transaction
+
+Below are the API details with the request parameters for the initiation of Refund transaction.
+190500153035
+
+
+ATTRIBUTES DETAILS MANDATORY
+
+
+
+Amount Total amount of Transaction Yes190500241300
+
+
+Session id Unique session id given by mosambee app
+during login
+
+Yes
+
+
+
+
+Mobile number User mobile number to send transaction receipt No190500266700
+
+
+Description Transaction Description No
+
+
+
+
+TransactionId Transaction Id of the previous transaction
+which is to be refund
+
+Yes
+
+
+
+
+
+
+Intent Calling Code:
+Intent mosambeeIntent = new Intent(); mosambeeIntent.setPackage(<package_name>); mosambeeIntent.setAction("com.mosambee.softpos.refund"); 
+Bundle bundle = new Bundle();
+bundle.putString("sessionId", sessionId); bundle.putString("amount", amount); bundle.putString("mobNo", mobileNumber); bundle.putString("description", description); bundle.putString("transactionId", transactionId); startActivityForResult(mosambeeIntent, ActivityRefundRequestCode);
+
+Get Result in onActivityResult:
+@Override
+protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+super.onActivityResult(requestCode, resultCode, data);
+if (requestCode == ActivityRefundRequestCode && data != null) {
+Toast.makeText(this, data.getStringExtra("receiptResponse"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("responseCode"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("paymentResponseCode"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("paymentDescription"),
+Toast.LENGTH_SHORT).show();
+}
+}
+
+Note: Any value other than 00 or 0 in the PaymentResponseCode, is a failure of the transaction. Failure description will be provided in paymentDescription
+
+
+
+
+
+
+
+
+
+
+
+
+
+Preauth Transaction
+
+Below are the API details with the request parameters for the initiation of Refund transaction.
+190500153035
+
+
+ATTRIBUTES DETAILS MANDATORY
+
+
+
+Amount Total amount of Transaction Yes190500241300
+
+
+Session id Unique session id given by mosambee app
+during login
+
+Yes
+
+
+
+
+Mobile number User mobile number to send transaction receipt No190500266700
+
+
+Description Transaction Description No
+
+
+
+
+TransactionId Transaction Id of the previous transaction
+which is to be refund
+
+Yes
+
+
+
+
+
+
+Intent Calling Code:
+Intent mosambeeIntent = new Intent(); mosambeeIntent.setPackage(<package_name>); mosambeeIntent.setAction("com.mosambee.softpos.preauth"); Bundle bundle = new Bundle();
+bundle.putString("sessionId", sessionId); bundle.putString("amount", amount); bundle.putString("mobNo", mobileNumber); bundle.putString("description", description); bundle.putString("transactionId", transactionId); startActivityForResult(mosambeeIntent, ActivityPreauthRequestCode);
+
+Get Result in onActivityResult:
+@Override
+protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+super.onActivityResult(requestCode, resultCode, data);
+if (requestCode == ActivityPreauthRequestCode && data != null) {
+Toast.makeText(this, data.getStringExtra("receiptResponse"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("responseCode"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("paymentResponseCode"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("paymentDescription"),
+Toast.LENGTH_SHORT).show();
+}
+}
+
+Note: Any value other than 00 or 0 in the PaymentResponseCode, is a failure of the transaction. Failure description will be provided in paymentDescription
+
+
+
+
+
+
+
+
+
+
+
+
+
+SaleComplete Transaction
+
+Below are the API details with the request parameters for the initiation of void transaction. Void can only be initiated for the transactions within the current batch.
+190500152400
+
+
+ATTRIBUTES DETAILS MANDATORY
+19050088900
+
+
+Transaction Id Transaction Id Yes
+
+
+
+
+Session id Unique session id is given by the Mosambee app during login
+
+Yes
+
+
+
+
+Amount Amount Yes
+
+
+
+
+
+
+Intent Calling Code:
+Intent mosambeeIntent = new Intent(); mosambeeIntent.setPackage(<package_name>); mosambeeIntent.setAction("com.mosambee.softpos.salecomplete"); Bundle bundle = new Bundle();
+bundle.putString("sessionId", sessionId); bundle.putString("transactionId", transactionId); 
+bundle.putString("amount", amount); startActivityForResult(mosambeeIntent, ActivitySaleCompleteRequestCode);
+
+Get Result in onActivityResult:
+@Override
+protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+super.onActivityResult(requestCode, resultCode, data);
+if (requestCode == ActivitySaleCompleteRequestCode && data != null) {
+Toast.makeText(this, data.getStringExtra("responseCode"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("description"),
+Toast.LENGTH_SHORT).show();
+}
+}
+
+Batch Settle
+
+Below are the API details with the request parameters for the initiation of batch Settlement.
+
+
+
+Attributes
+Details 
+Mandatory
+Session id
+
+Unique session id given by mosambee app during login
+
+Yes
+
+Intent Calling Code:
+Intent mosambeeIntent = new Intent(); mosambeeIntent.setPackage(<package_name>); mosambeeIntent.setAction("com.mosambee.softpos.settlement"); 
+Bundle bundle = new Bundle();
+bundle.putString("sessionId", sessionId);
+startActivityForResult(mosambeeIntent, ActivitySettlementRequestCode);
+
+Get Result in onActivityResult:
+@Override
+protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+super.onActivityResult(requestCode, resultCode, data);
+if (requestCode == ActivitySettlementRequestCode && data != null) {
+Toast.makeText(this, data.getStringExtra("responseCode"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("description"),Toast.LENGTH_SHORT).show();
+}
+}
+
+Mosambee Receipt Response
+
+A Json format string as mentioned below will be provided in the response under receiptResponse. Please note that there might additional exists additional parameters in addition to the below mentioned which may not be in the chargeslip display.
+Sample format:
+{"businessName":"HDFC UAT Merchant","billNumber":"NA","receivingInstitutionCode":"NA","applicationId":"","address1"
+:"Sagar Tech Plaza","address2":"400072","tvr":"","terminalId":"65656565","amount":"1.47","time":"15:20: 00","merchantId":"ABC12345","longitude":"72.88592700","deviceId":2603,"tipOption":"0"," responseCode":"NA","appLabel":"","invoiceNumber":"000661","cardType":"VISA","cid":"N
+A","sessionId":"NA","9F12":"NA","appVersion":"NA","9F11":"NA","acquirerName":"HDFC
+","tgTransactionID":"NA","latitude":"19.10214200","issuerCTI":"","result":"success","transa
+ctionId":"269439","tsi":"","creditDebitCardType":"DC","date":"01-11- 2018","isPinVerified":false,"currency":"INR","statusCode":"7","tipAmount":"0.00","batchNu mber":"000037","firstName":"9136011220","transactionStatus":"Approved or completed successfully","cardHolderName":"DHAVAL HARKHANI ","expiryDate":"**\/**","approvalCode":"549552","transactionMode":"SWIPE","message":" NA","9F06":"NA","transactionType":1,"stan":"000809","retrievalReferenceNumber":"000000 000661","ac":"NA","cardNumber":"433662XXXXXX5819"}
+
+
+Environment Response Codes
+
+Below is the list of error code and the description for the environment responses expected sent in responseCode. These codes represent the state and condition of the device environment.
+Response code 0 is success, where in the environment validation is meeting the required conditions and the transaction will continue further.
+
+Transaction response and the receipt format are explained above.
+
+Error code and their description:
+
+0: Success, No issue with the setup.
+SPOCT01/CPOCT01: Device Rooted : Change the device and use an unrooted device/mobile SPOCT02/CPOCT02: Secure Mode: Change the device and use an unrooted device/mobile SPOCT03/CPOCT03: SELinux Enforcing : Change the device and use an unrooted device/mobile SPOCT04/CPOCT04: Adb Enabled: Turn off the developer mode from device settings SPOCT05/CPOCT05: Super User Exist: Change the device, use unrooted device/mobile SPOCT06/CPOCT06: Emulator: Don’t use emulator. use a physical device/mobile SPOCT07/CPOCT07: Accessibility Enabled: Turn accessibility off from device settings SPOCT08/CPOCT08: Talk Back Enabled: Turn talkback off from device settings SPOCT09/CPOCT09: Remote Screen Sharing: Turn off screen sharing tool
+SPOCT10/CPOCT10: Mic is ON: Turn off mic and/or apps running behind while using the mic SPOCT11/CPOCT11: Camera Enabled: Turn off camera app and/or apps running behind while using the camera
+SPOCB01/CPOCB01: Application is side loaded (System baseline Error code) : Download app from google play store
+SPOCB02/CPOCB02: NFC is not available/enabled.
+SPOCB03/CPOCB03: Android Version not supported (System baseline Error code): Use Android 8 or above
+SPOCB04/CPOCB04: Firmware not updated (System baseline Error code):Use latest firmware SPOCB05/CPOCB05: Permissions not granted.
+SPOCB06/CPOCB06: Input Parameters missing SPOCB07/CPOCB07: Provisioning Failed. Please do health check. SPOCB08/CPOCB08: Enablement Failed. Please do health check. SPOCB09/CPOCB09: System Message for Signing Failure.
+SPOCB10/CPOCB10: NFC Timeout
+SPOCB11/CPOCB11: Automate to perform a login and redo API call SPOCB12/CPOCB12: Transaction Timeout. Reversal will be initiated SPOCB13/CPOCB13: Change password request. Configuration Error.
+SPOCB14/CPOCB14: Device not registered.
+SPOCB15/CPOCB15: Transaction cancelled by user.
+
+Please note that in case of login session expiry or payment call without an login will result to the error code: 99. Automate to perform a login and redo the payment API call.
+ISO Error code and Descriptions -
+
+
+Error Code
+Description
+00
+Approved or completed successfully
+01
+Refer to card issuer
+02
+Refer to card issuers special conditions
+03
+Invalid merchant
+04
+Pick-up
+05
+Do not honor
+06
+Error
+07
+Pick-up card, special conditions
+08
+Honor with identification
+09
+Request in progress
+10
+Approved for partial amount
+11
+Approved (VIP)
+12
+Invalid transaction
+13
+Invalid amount
+14
+Invalid card number (no such number)
+15
+No such issuer
+16
+Approved, update track 3
+17
+Customer cancellation, reversal (unsupported)
+18
+Customer dispute, chargeback (future)
+19
+Re-enter transaction
+20
+Invalid response
+21
+No action taken, reversal (unsupported)
+22
+Suspected malfunction, reversal (unsupported)
+23
+Unacceptable transaction fee
+24
+File update not supported by receiver (only in 03xx)
+25
+Unable to locate record on file (only in 03xx)
+26
+Duplicate file update record, no action (only in 03xx)
+27
+File update field edit error (only in 03xx)
+28
+File update record locked out (only in 03xx)
+29
+File update not successful, contact acquirer (only in 03xx)
+30
+Format error
+31
+Bank not supported by switch
+32
+Completed partially, reversal (unsupported)
+33
+Expired card, pick-up
+34
+Suspected fraud, pick-up
+35
+Card acceptor contact acquirer, pick-up
+36
+Restricted card, pick-up
+37
+Card acceptor call acquirer security, pick-up
+38
+Allowable PIN tries exceeded, pick-up
+39
+No credit account
+40
+Requested function not supported
+41
+Lost card, pick-up
+42
+No universal account
+43
+Stolen card, pick-up
+44
+No investment account
+51
+Insufficient funds
+52
+No checking account
+53
+No savings account
+54
+Expired card
+55
+Incorrect PIN
+56
+No card record
+57
+Transaction not permitted to cardholder
+58
+Transaction not permitted to terminal (may also be a chargeback)
+59
+Suspected fraud
+60
+Card acceptor contact acquirer
+61
+Exceeds withdrawal amount limit
+62
+Restricted card
+63
+Security violation (may also be a chargeback)
+64
+Original amount incorrect, reversal (unsupported)
+65
+Exceeds withdrawal frequency limit
+66
+Card acceptor call acquirer security
+67
+Hard capture, pick-up
+68
+Response received too late, reversal (unsupported)
+75
+Allowable number of PIN tries exceeded
+76
+Key synchronization error
+77
+Reserved for private use
+78
+Customer not eligible for POS (Star SM)
+79
+Invalid digital signature
+80
+Stale dated transaction (Star SM)
+81
+Issuer requested standin
+82
+Count exceeds limit — not relevant to MPQR
+83
+Reserved for private use
+84
+Time limit for pre-authorization reached — not relevant to MPQR
+85
+Issuer has no reason to decline the transaction (Account Verification)
+86
+Cannot verify PIN — not relevant to MPQR
+87
+Check already posted
+88
+Information not on file
+89
+Card verification value (CVV) verification failed (no pickup)
+90
+Cutoff is in progress
+91
+Issuer or switch is inoperative
+92
+Financial institution or intermediate network unknown for routing
+93
+Transaction cannot be completed, violation of law
+94
+Duplication transaction
+95
+Reconcile error
+96
+System malfunction
+
+
+
+
+127000215900127000215900
+
+
+Application Update Check
+
+Below are the API details to check, if there is an update of the app is available in the playstore.
+
+Intent Calling Code:
+Intent mosambeeIntent = new Intent(); mosambeeIntent.setPackage(<package_name>);
+mosambeeIntent.setAction("com.mosambee.softpos.appupdate"); 
+startActivityForResult(mosambeeIntent,
+ActivityAppUpdateRequestCode);
+
+Get Result in onActivityResult:
+
+@Override
+
+protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+
+super.onActivityResult(requestCode, resultCode, data);
+if (requestCode == ActivityAppUpdateRequestCode && data != null) { Toast.makeText(this, data.getStringExtra("isUpdateAvailable"),
+
+Toast.LENGTH_SHORT).show();
+}
+}
+469900127000
+
+
+Response Update Available Update Not Available
+
+
+
+isUpdateAvalilable 1 0457200216535
+
+
+Application Details Check
+
+Intent Calling Code:
+Intent mosambeeIntent = new Intent(); mosambeeIntent.setPackage(<package_name>); mosambeeIntent.setAction("com.mosambee.softpos.details"); startActivityForResult(mosambeeIntent, ActivityAppDetailsRequestCode);
+
+Get Result in onActivityResult:
+
+@Override
+
+protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+
+super.onActivityResult(requestCode, resultCode, data);
+if (requestCode == ActivityAppDetailsRequestCode && data != null) { Toast.makeText(this, data.getStringExtra("appVersion"), Toast.LENGTH_SHORT).show();
+Toast.makeText(this, data.getStringExtra("backendVersion"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("kcv"), Toast.LENGTH_SHORT).show(); Toast.makeText(this, data.getStringExtra("description"), Toast.LENGTH_SHORT).show();
+}
+}
+
+Response
+Example Response
+appversion
+1.2.002
+backendversion
+1.0.0.2
+kcv
+IFDJHOGUEOTIRSGHUTRGTURIGHTU
+description
+NA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Additional parameters
+
+Additional data like QR metadata is sent in a bill number using colon as separator (“:”). If no, additional parameters, apart from the description in the Payment request: "billNumber": "Test Description",
+If additional parameters are sent either in the app or by the host. In this case, Paytm host will send the QR string(as saleQrCodeMetadata) which will be packed in the billNumber, as referred in the example below:
+
+"billNumber": "Test Description:\"saleQrCodeMetadata\": \"http://m.p- y.tm/edcposqa?tid=12345689&mid=INTERNAL30020749789883&acquirementId=4261112128001 10168509721887635&receiptId=541e38574d3091d4f9a09121c0afpgperfeos1&dir=EOS20200\"",
+
+This parameter is available in both the Payment and receipt response.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Frequently Asked Questions
+
+What is the duration of login session.
+
+Mosambee being an intent app. It will be available in the background and will be only invoked when the payment activity is necessary and is highly advised to perform a login before any activity. However, Environment audit check API can be called with or without login activity.
+
+How we can get the partner ID which is mentioned in the login part.
+
+We will be sharing the partner ID, key and the common PIN
+
+Where can I send my order id.
+
+You can use the description parameter to send the order id.
+
+All these permissions seem to be mandatory for integration to work, right ? 
+
+
+
+Camera - To avoid capturing the card while tapping behind the camera
+
+Files and media - for application logs
+
+Phone - To see if there is an active call at the time of the transaction. This is a PCI requirement
+Microphone - to avoid understanding the activity in progress. Google Android is having accessibility capable to support the special disabled. This is applicable in the case of Phone
+
+Location - for a SoftPOS, it is required to understand the location operation, as per the PCI, and acquiring guidelines
+
+Data is checked before performing every transaction and will not be stored. However, location collected is stored and tagged along with the transaction
+
+
+
+How do I check whether the mobile is compliant with security requirements 
+
+Implement healthcheck activity defined under Section 2 i.e. Environment audit check
+
+We are getting error – System Message For signing failure
+
+You need to login first then do a health checkup.
+
+Is apple Pay and Google pay is supported.
+
+Yes. Both are supported. However, cannot be tested in the test environment, as test setup cannot identify the token generated.
+
+
+Regarding the transaction receipt. Is there a regulation about it that it has to be printed by default, upon request or what.
+
+Contactless transactions are , which is called as Tap n go. It is not mandatory. However, if customer needs it then it has to be provided in some form i.e. receipt.
+
+
+Regarding the username and password. Can we prompt the user to enter them from our application directly and persist them in DB for future use.
+
+You may either map the username with your application user credentials in a one to one mapping or ask the user to enter the username.
+
+However, password is an enterprise salt PIN and can be maintained in the backend. Random password is generated with the mechanism shared and sent in login activity.
+
+We are getting EMV offline declined error while using a credit card that we have.
+
+We may get EMV offline declined error for few BIN in test environment as these BIN not available in test environment, please try with the other card.
+
+There is indefinite number of Intent being invoked, we have inspected, the lock being fired when an intent comes and keeps it executing endlessly.
+
+Intent is not implemented properly, please check once again.
+
+Can we implement the batch settlement functionality.
+
+Mosambee supports both manual and auto settlement. However, the settlement type is based on the acquiring partner. Our integration team will guide you whether you can integrate the batch settlement or not needed.
+
+
+How we can generate a receipt for transactions?
+
+In the payment transaction response, you will get it under receiptResponse in JSON format, you can refer Mosambee Receipt Response.
+
+Is it mandatory to Print Merchant Receipt and Customer Receipt?
+
+You can provide an option to print a receipt if asked by customer.
+
+Do we need to do the scheme certifications.
+
+Please check with your acquiring partner. You can also reach out to our Project management team for additional help on SPOC assigned to you
+
+Is the solution compliant to PCI standards.
+
+Solution is certified for PCI CPoC and scheme certifications for Tap on Phone with PIN from Visa, Mastercard & Amex. 
+PCI MPoC is currently in draft mode. Expected release of PCI MPoC guidelines by Dec’2023.
+While we ensure that there is no impact on the API Interface level. If any as such, we only expect that these will be minimal.
+
+

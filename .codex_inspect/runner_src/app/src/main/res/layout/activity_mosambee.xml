@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layout_marginBottom="20dp">
+
+   <LinearLayout
+       android:layout_width="match_parent"
+       android:layout_height="match_parent"
+       android:orientation="vertical"
+       android:layout_margin="5dp"
+       tools:context=".MainActivity">
+
+      <EditText
+          android:layout_margin="10dp"
+          android:id="@+id/eTuserId"
+          android:hint="@string/user_id"
+          android:layout_marginTop="5dp"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content" />
+
+      <EditText
+          android:id="@+id/eTPass"
+          android:hint="@string/password"
+android:layout_margin="10dp"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content" />
+
+
+
+      <Button
+          android:text="@string/init_api_mosambee"
+
+          android:layout_marginTop="30dp"
+android:layout_margin="10dp"
+          android:background="@drawable/mybutton"
+          android:textColor="@android:color/black"
+          android:onClick="bTinitApi"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          tools:ignore="OnClick" />
+
+
+
+
+      <EditText
+          android:id="@+id/eTAmount"
+          android:layout_marginTop="30dp"
+          android:hint="Amount"
+          android:layout_margin="10dp"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content" />
+
+
+
+      <EditText
+          android:id="@+id/eTCheckStatusId"
+          android:layout_marginTop="30dp"
+          android:hint="Check Status Id"
+          android:layout_margin="10dp"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content" />
+
+
+      <Button
+          android:text="@string/pay_using_mosambee"
+          android:layout_weight="1"
+
+          android:layout_margin="10dp"
+          android:layout_marginTop="30dp"
+          android:background="@drawable/mybutton"
+          android:textColor="@android:color/black"
+          android:onClick="pay"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          tools:ignore="OnClick" />
+
+
+
+
+
+
+
+
+
+
+      <EditText
+          android:id="@+id/eTTxnId"
+          android:layout_margin="10dp"
+          android:layout_marginTop="30dp"
+          android:hint="Transaction Id"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content" />
+
+      <Button
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_weight="1"
+          android:layout_margin="10dp"
+          android:layout_marginTop="30dp"
+          android:background="@drawable/mybutton"
+          android:onClick="payVoid"
+          android:text="VOID"
+          android:textColor="@android:color/black"
+
+          tools:ignore="OnClick" />
+
+
+
+
+
+      <Button
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="30dp"
+          android:background="@drawable/mybutton"
+          android:onClick="payLastTransactions"
+          android:text="Last Transactions"
+          android:textColor="@android:color/white"
+          android:visibility="gone"
+          tools:ignore="OnClick" />
+
+
+
+      <!--      <Button-->
+      <!--          android:layout_width="match_parent"-->
+      <!--          android:layout_height="wrap_content"-->
+      <!--          android:layout_marginTop="30dp"-->
+      <!--          android:background="@color/colorPrimary"-->
+      <!--          android:onClick="getDetails"-->
+      <!--          android:text="@string/get_app_details"-->
+      <!--          android:textColor="@android:color/white"-->
+      <!--          tools:ignore="OnClick" />-->
+
+
+<!--      <Button-->
+<!--          android:layout_width="match_parent"-->
+<!--          android:layout_height="wrap_content"-->
+<!--          android:layout_marginTop="30dp"-->
+<!--          android:background="@color/colorPrimary"-->
+<!--          android:onClick="getLastReceipt"-->
+<!--          android:text="@string/get_last_receipt"-->
+<!--          android:textColor="@android:color/white"-->
+<!--          tools:ignore="OnClick" />-->
+
+
+
+      <LinearLayout
+          android:weightSum="2"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:orientation="horizontal">
+         <Button
+             android:text="@string/health_check_mosambee"
+             android:layout_weight="1"
+             android:layout_margin="10dp"
+             android:layout_marginTop="30dp"
+             android:background="@drawable/mybutton"
+             android:textColor="@android:color/black"
+             android:onClick="healthCheck"
+             android:layout_width="match_parent"
+             android:layout_height="wrap_content"
+             tools:ignore="OnClick" />
+
+         <Button
+             android:layout_weight="1"
+             android:layout_margin="10dp"
+             android:text="@string/get_app_details_mosambee"
+             android:layout_marginTop="30dp"
+             android:background="@drawable/mybutton"
+             android:textColor="@android:color/black"
+             android:onClick="getDetails"
+             android:layout_width="match_parent"
+             android:layout_height="wrap_content"
+             tools:ignore="OnClick" />
+
+      </LinearLayout>
+
+
+   </LinearLayout>
+
+</ScrollView>

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../models/pos_models.dart';
 import '../services/sunmi_receipt_service.dart';
+import '../widgets/animated_feedback_widgets.dart';
 
 class CustomerDisplayScreen extends StatefulWidget {
   const CustomerDisplayScreen({super.key});
@@ -27,6 +28,8 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
 
   OrderSnapshot order = OrderSnapshot.initial();
   bool _sendingCustomerDecision = false;
+  int _touchTestTapCount = 0;
+  String _lastTouchTestMessage = 'Touch test idle';
 
   @override
   void initState() {
@@ -86,6 +89,11 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
           SafeArea(
             child: Padding(padding: const EdgeInsets.all(28), child: content),
           ),
+          Positioned(
+            top: 22,
+            right: 22,
+            child: SafeArea(child: _buildTouchTestChip()),
+          ),
           if (_showLoadingOverlay) _buildLoadingOverlay(),
         ],
       ),
@@ -98,20 +106,37 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   bool get _showCharityPrompt => order.showCharityRoundUpPrompt;
   bool get _showLoadingOverlay =>
       _sendingCustomerDecision || order.showPaymentLaunchOverlay;
+  String get _loadingOverlayTitle => _sendingCustomerDecision
+      ? 'Processing Selection'
+      : order.paymentOverlayTitle.isEmpty
+      ? 'Preparing Payment'
+      : order.paymentOverlayTitle;
+  String get _loadingOverlayMessage {
+    if (_sendingCustomerDecision) {
+      return 'Please wait while we confirm your choice and open the payment terminal.';
+    }
+
+    return order.note.isEmpty
+        ? 'Please wait while the payment terminal is opening.'
+        : order.note;
+  }
 
   bool get _isPaid => order.paymentStatus == 'Paid';
+  double get _charityBaseAmount => order.activePaymentBaseTotal > 0
+      ? order.activePaymentBaseTotal
+      : order.total;
   double get _headlineAmount {
     if (_showCharityPrompt) {
       return order.charityRoundUpTotal > 0
           ? order.charityRoundUpTotal
-          : order.total;
+          : _charityBaseAmount;
     }
 
     if (_showTapToPayPrompt) {
-      return order.payableTotal > 0 ? order.payableTotal : order.total;
+      return order.payableTotal > 0 ? order.payableTotal : _charityBaseAmount;
     }
 
-    return order.total;
+    return _charityBaseAmount;
   }
 
   Widget _buildOrderLayout() {
@@ -166,48 +191,56 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxHeight < 720;
-        final bodyGap = compact ? 16.0 : 24.0;
-        final footerGap = compact ? 14.0 : 20.0;
+        final bodyGap = compact ? 12.0 : 18.0;
 
         return Column(
           children: [
-            _buildHeader(),
+            _buildHeader(compact: true, showPaymentMethod: false),
             SizedBox(height: bodyGap),
             Expanded(child: _buildCharityPromptCard()),
-            SizedBox(height: footerGap),
-            _buildCharityPromptFooter(),
           ],
         );
       },
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader({bool compact = false, bool showPaymentMethod = true}) {
+    final padding = compact
+        ? const EdgeInsets.symmetric(horizontal: 22, vertical: 14)
+        : const EdgeInsets.symmetric(horizontal: 26, vertical: 20);
+    final titleSize = compact ? 24.0 : 30.0;
+    final subtitleSize = compact ? 13.0 : 15.0;
+    final spacing = compact ? 10.0 : 12.0;
+
     return _customerGlass(
-      padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 20),
+      padding: padding,
       child: Row(
         children: [
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'MITHQAL 2.0',
                 style: TextStyle(
-                  fontSize: 30,
+                  fontSize: titleSize,
                   fontWeight: FontWeight.w900,
                   color: _headline,
                   letterSpacing: 0.4,
                 ),
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: compact ? 4 : 6),
               Text(
                 _isPaid
                     ? 'Payment completed successfully'
+                    : _showCharityPrompt
+                    ? 'Review the optional charity round-up before payment'
                     : order.items.isEmpty
                     ? 'Your items and total will appear here'
-                    : '${order.items.length} item lines in the current order',
-                style: const TextStyle(
-                  fontSize: 15,
+                    : order.diningTableName.trim().isEmpty
+                    ? '${order.items.length} item lines in the current order'
+                    : 'Table ${order.diningTableName.trim()} | ${order.items.length} item lines in the current order',
+                style: TextStyle(
+                  fontSize: subtitleSize,
                   fontWeight: FontWeight.w600,
                   color: _body,
                 ),
@@ -220,12 +253,14 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
             active: order.paymentStatus != 'Waiting',
             success: _isPaid,
           ),
-          const SizedBox(width: 12),
-          _StatusPill(
-            label: order.paymentMethod,
-            active: true,
-            icon: Icons.payments_outlined,
-          ),
+          if (showPaymentMethod) ...[
+            SizedBox(width: spacing),
+            _StatusPill(
+              label: order.paymentMethod,
+              active: true,
+              icon: Icons.payments_outlined,
+            ),
+          ],
         ],
       ),
     );
@@ -628,6 +663,10 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                             const SizedBox(height: 10),
                         itemBuilder: (context, index) {
                           final item = order.items[index];
+                          final pulseNonce =
+                              order.recentProductId == item['id']?.toString()
+                              ? order.orderUpdateNonce
+                              : 0;
                           return AnimatedSwitcher(
                             duration: const Duration(milliseconds: 280),
                             switchInCurve: Curves.easeOutBack,
@@ -645,9 +684,11 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                             },
                             child: _DisplayItemCard(
                               key: ValueKey(
-                                '${item['name']}_${item['qty']}_${item['lineTotal']}',
+                                '${item['name']}_${item['qty']}_${item['lineTotal']}_${item['detailLines']}_${item['notes']}_$pulseNonce',
                               ),
                               item: item,
+                              highlighted: pulseNonce > 0,
+                              pulseNonce: pulseNonce,
                             ),
                           );
                         },
@@ -704,222 +745,287 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   }
 
   Widget _buildTapPromptCard() {
-    return _customerGlass(
-      padding: const EdgeInsets.all(30),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 11,
-            child: Container(
-              padding: const EdgeInsets.all(28),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFFEEF9FC).withValues(alpha: 0.96),
-                    Colors.white.withValues(alpha: 0.78),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.96)),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x14000000),
-                    blurRadius: 24,
-                    offset: Offset(0, 14),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 92,
-                        height: 92,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFFBEECF4), Color(0xFFEAF9FC)],
-                          ),
-                          shape: BoxShape.circle,
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x12000000),
-                              blurRadius: 18,
-                              offset: Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.contactless_rounded,
-                          size: 48,
-                          color: _accentDeep,
-                        ),
+    final amountToPay = order.payableTotal > 0
+        ? order.payableTotal
+        : _charityBaseAmount;
+    final showsCharityTotal =
+        order.charityRoundUpAccepted && order.charityRoundUpAmount > 0.0001;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxHeight < 420;
+        final outerPadding = compact ? 18.0 : 30.0;
+        final panelPadding = compact ? 18.0 : 28.0;
+        final panelRadius = compact ? 24.0 : 30.0;
+        final cardGap = compact ? 18.0 : 24.0;
+        final heroGap = compact ? 16.0 : 26.0;
+        final iconBox = compact ? 70.0 : 92.0;
+        final iconSize = compact ? 38.0 : 48.0;
+        final titleSize = compact ? 28.0 : 40.0;
+        final subtitleSize = compact ? 14.0 : 17.0;
+        final infoTitleSize = compact ? 18.0 : 22.0;
+        final infoBodySize = compact ? 14.0 : 16.0;
+        final chipSpacing = compact ? 10.0 : 12.0;
+        final nfcBox = compact ? 78.0 : 96.0;
+        final nfcIcon = compact ? 40.0 : 48.0;
+        final amountLabelSize = compact ? 13.0 : 15.0;
+        final amountSize = compact ? 34.0 : 40.0;
+        final captionSize = compact ? 12.0 : 13.0;
+        final tapBodySize = compact ? 14.0 : 16.0;
+
+        return _customerGlass(
+          padding: EdgeInsets.all(outerPadding),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 11,
+                child: Container(
+                  padding: EdgeInsets.all(panelPadding),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        const Color(0xFFEEF9FC).withValues(alpha: 0.96),
+                        Colors.white.withValues(alpha: 0.78),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(panelRadius),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.96),
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x14000000),
+                        blurRadius: 24,
+                        offset: Offset(0, 14),
                       ),
-                      const SizedBox(width: 22),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Tap Here To Pay',
-                              style: TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.w900,
-                                color: _headline,
-                                letterSpacing: -0.8,
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: iconBox,
+                            height: iconBox,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [Color(0xFFBEECF4), Color(0xFFEAF9FC)],
+                              ),
+                              shape: BoxShape.circle,
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x12000000),
+                                  blurRadius: 18,
+                                  offset: Offset(0, 10),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              Icons.contactless_rounded,
+                              size: iconSize,
+                              color: _accentDeep,
+                            ),
+                          ),
+                          SizedBox(width: compact ? 16 : 22),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Tap Here To Pay',
+                                  style: TextStyle(
+                                    fontSize: titleSize,
+                                    fontWeight: FontWeight.w900,
+                                    color: _headline,
+                                    letterSpacing: -0.8,
+                                  ),
+                                ),
+                                SizedBox(height: compact ? 6 : 8),
+                                Text(
+                                  'Your payment is ready. Please tap your card or phone on the customer-facing NFC area.',
+                                  style: TextStyle(
+                                    fontSize: subtitleSize,
+                                    height: 1.4,
+                                    fontWeight: FontWeight.w600,
+                                    color: _body,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: heroGap),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Container(
+                            padding: EdgeInsets.all(compact ? 16 : 22),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.76),
+                              borderRadius: BorderRadius.circular(
+                                compact ? 22 : 26,
+                              ),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.96),
                               ),
                             ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Your payment is ready. Please tap your card or phone on the customer-facing NFC area.',
-                              style: TextStyle(
-                                fontSize: 17,
-                                height: 1.45,
-                                fontWeight: FontWeight.w600,
-                                color: _body,
-                              ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Ready for contactless payment',
+                                        style: TextStyle(
+                                          fontSize: infoTitleSize,
+                                          fontWeight: FontWeight.w800,
+                                          color: _headline,
+                                        ),
+                                      ),
+                                      SizedBox(height: compact ? 10 : 12),
+                                      Text(
+                                        order.note.isEmpty
+                                            ? 'Hold the card, phone, or wearable near the rear NFC area until the terminal confirms the transaction.'
+                                            : order.note,
+                                        style: TextStyle(
+                                          fontSize: infoBodySize,
+                                          height: 1.45,
+                                          fontWeight: FontWeight.w600,
+                                          color: _body,
+                                        ),
+                                      ),
+                                      SizedBox(height: compact ? 14 : 20),
+                                      Wrap(
+                                        spacing: chipSpacing,
+                                        runSpacing: chipSpacing,
+                                        children: const [
+                                          _TapHintChip(
+                                            icon: Icons.credit_card_rounded,
+                                            label: 'Card',
+                                          ),
+                                          _TapHintChip(
+                                            icon: Icons.phone_android_rounded,
+                                            label: 'Phone',
+                                          ),
+                                          _TapHintChip(
+                                            icon: Icons.watch_rounded,
+                                            label: 'Wearable',
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 26),
-                  Container(
-                    padding: const EdgeInsets.all(22),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.76),
-                      borderRadius: BorderRadius.circular(26),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.96),
-                      ),
+                ),
+              ),
+              SizedBox(width: cardGap),
+              Expanded(
+                flex: 7,
+                child: Container(
+                  height: double.infinity,
+                  padding: EdgeInsets.all(compact ? 20 : 28),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF1587A6), Color(0xFF0C667F)],
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Ready for contactless payment',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                  color: _headline,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                order.note.isEmpty
-                                    ? 'Hold the card, phone, or wearable near the rear NFC area until the terminal confirms the transaction.'
-                                    : order.note,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  height: 1.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: _body,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              Wrap(
-                                spacing: 12,
-                                runSpacing: 12,
-                                children: const [
-                                  _TapHintChip(
-                                    icon: Icons.credit_card_rounded,
-                                    label: 'Card',
-                                  ),
-                                  _TapHintChip(
-                                    icon: Icons.phone_android_rounded,
-                                    label: 'Phone',
-                                  ),
-                                  _TapHintChip(
-                                    icon: Icons.watch_rounded,
-                                    label: 'Wearable',
-                                  ),
-                                ],
-                              ),
-                            ],
+                    borderRadius: BorderRadius.circular(panelRadius),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.24),
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x19000000),
+                        blurRadius: 26,
+                        offset: Offset(0, 14),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: nfcBox,
+                        height: nfcBox,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.14),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.nfc_rounded,
+                          size: nfcIcon,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(height: compact ? 16 : 20),
+                      Text(
+                        'Total to pay',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: amountLabelSize,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white.withValues(alpha: 0.86),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        SunmiReceiptService.money(amountToPay),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: amountSize,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          letterSpacing: -0.8,
+                        ),
+                      ),
+                      SizedBox(height: compact ? 10 : 12),
+                      if (showsCharityTotal) ...[
+                        Text(
+                          'Includes ${SunmiReceiptService.money(order.charityRoundUpAmount)} charity round-up.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: captionSize,
+                            height: 1.35,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white.withValues(alpha: 0.82),
                           ),
                         ),
+                        SizedBox(height: compact ? 10 : 12),
                       ],
-                    ),
+                      Text(
+                        'Present your card, phone, or wearable to continue the payment.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: tapBodySize,
+                          height: 1.45,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.90),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 24),
-          Expanded(
-            flex: 7,
-            child: Container(
-              height: double.infinity,
-              padding: const EdgeInsets.all(28),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF1587A6), Color(0xFF0C667F)],
                 ),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.24)),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x19000000),
-                    blurRadius: 26,
-                    offset: Offset(0, 14),
-                  ),
-                ],
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 96,
-                    height: 96,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.14),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.nfc_rounded,
-                      size: 48,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    SunmiReceiptService.money(order.total),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 40,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      letterSpacing: -0.8,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Present your card, phone, or wearable to continue the payment.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 16,
-                      height: 1.5,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withValues(alpha: 0.90),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -959,240 +1065,417 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
 
   Widget _buildCharityPromptCard() {
     return _customerGlass(
-      padding: const EdgeInsets.all(30),
+      padding: const EdgeInsets.all(18),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxHeight < 420;
+          final compact =
+              constraints.maxHeight < 500 || constraints.maxWidth < 980;
+          final dense =
+              !compact &&
+              (constraints.maxHeight < 620 || constraints.maxWidth < 1160);
+          final compactControls = compact || dense;
+          final outerPadding = compact ? 12.0 : (dense ? 16.0 : 22.0);
+          final titleSize = compact ? 23.0 : (dense ? 28.0 : 34.0);
+          final bodySize = compact ? 12.5 : (dense ? 14.0 : 17.0);
+          final iconBox = compact ? 48.0 : (dense ? 58.0 : 72.0);
+          final iconSize = compact ? 22.0 : (dense ? 27.0 : 34.0);
+          final spacing = compact ? 8.0 : (dense ? 12.0 : 16.0);
+          final summaryPadding = compact ? 12.0 : (dense ? 14.0 : 18.0);
+          final summaryGap = compact ? 10.0 : (dense ? 12.0 : 14.0);
+          final actionHeight = compact ? 74.0 : (dense ? 84.0 : 100.0);
 
-          return Row(
-            children: [
-              Expanded(
-                flex: 11,
-                child: Container(
-                  padding: EdgeInsets.all(compact ? 22 : 28),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        const Color(0xFFF6F6E9).withValues(alpha: 0.96),
-                        Colors.white.withValues(alpha: 0.82),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.96),
-                    ),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x14000000),
-                        blurRadius: 24,
-                        offset: Offset(0, 14),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFFF6F6E9).withValues(alpha: 0.96),
+                  Colors.white.withValues(alpha: 0.90),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.96)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 24,
+                  offset: Offset(0, 14),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(outerPadding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: iconBox,
+                                height: iconBox,
+                                decoration: const BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Color(0xFFF2DCA6),
+                                      Color(0xFFF8F0CF),
+                                    ],
+                                  ),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.volunteer_activism_rounded,
+                                  size: iconSize,
+                                  color: const Color(0xFF9F6C00),
+                                ),
+                              ),
+                              SizedBox(width: compact ? 12 : 18),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Round Up For Charity?',
+                                      style: TextStyle(
+                                        fontSize: titleSize,
+                                        fontWeight: FontWeight.w900,
+                                        color: _headline,
+                                        letterSpacing: -0.8,
+                                      ),
+                                    ),
+                                    SizedBox(height: compact ? 4 : 6),
+                                    Text(
+                                      'Would you like to round your payment to the next whole OMR? Only the extra amount will be donated to charity.',
+                                      maxLines: compact ? 3 : (dense ? 2 : 3),
+                                      overflow: TextOverflow.fade,
+                                      style: TextStyle(
+                                        fontSize: bodySize,
+                                        height: compact ? 1.25 : 1.35,
+                                        fontWeight: FontWeight.w600,
+                                        color: _body,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: spacing),
                           Container(
-                            width: compact ? 80 : 92,
-                            height: compact ? 80 : 92,
-                            decoration: const BoxDecoration(
+                            padding: EdgeInsets.all(summaryPadding),
+                            decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
-                                colors: [Color(0xFFF2DCA6), Color(0xFFF8F0CF)],
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.94),
+                                  const Color(
+                                    0xFFFFFCF2,
+                                  ).withValues(alpha: 0.96),
+                                ],
                               ),
-                              shape: BoxShape.circle,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.92),
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x12000000),
+                                  blurRadius: 20,
+                                  offset: Offset(0, 12),
+                                ),
+                              ],
                             ),
-                            child: Icon(
-                              Icons.volunteer_activism_rounded,
-                              size: compact ? 38 : 44,
-                              color: const Color(0xFF9F6C00),
-                            ),
-                          ),
-                          const SizedBox(width: 22),
-                          const Expanded(
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Text(
-                                  'Round Up For Charity?',
-                                  style: TextStyle(
-                                    fontSize: 38,
-                                    fontWeight: FontWeight.w900,
-                                    color: _headline,
-                                    letterSpacing: -0.8,
+                                Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: compact
+                                        ? 10
+                                        : (dense ? 12 : 14),
+                                    vertical: compact ? 8 : (dense ? 10 : 12),
+                                  ),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        Color(0xFFFFF4CF),
+                                        Color(0xFFFFFBEE),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.95,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: compact ? 30 : (dense ? 34 : 40),
+                                        height: compact
+                                            ? 30
+                                            : (dense ? 34 : 40),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFFE9A8),
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          Icons.favorite_rounded,
+                                          size: compact
+                                              ? 16
+                                              : (dense ? 18 : 20),
+                                          color: const Color(0xFFAD7300),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: compact ? 8 : (dense ? 10 : 12),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          'A small round-up can make a meaningful donation while keeping your payment simple.',
+                                          style: TextStyle(
+                                            fontSize: compact
+                                                ? 10.5
+                                                : (dense ? 12.0 : 13.0),
+                                            height: 1.35,
+                                            fontWeight: FontWeight.w700,
+                                            color: const Color(0xFF6E5200),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                SizedBox(height: 8),
-                                Text(
-                                  'You can round your payment to the next whole OMR, and the extra amount will be donated to charity.',
-                                  style: TextStyle(
-                                    fontSize: 17,
-                                    height: 1.45,
-                                    fontWeight: FontWeight.w600,
-                                    color: _body,
-                                  ),
+                                SizedBox(height: summaryGap),
+                                LayoutBuilder(
+                                  builder: (context, summaryConstraints) {
+                                    final stacked =
+                                        summaryConstraints.maxWidth < 700;
+
+                                    final tiles = [
+                                      _CharityBreakdownTile(
+                                        label: 'Order Total',
+                                        caption: 'Current order amount',
+                                        amount: _charityBaseAmount,
+                                        icon: Icons.receipt_long_rounded,
+                                        accent: const Color(0xFF0C6782),
+                                        gradientColors: const [
+                                          Color(0xFFD9F1F8),
+                                          Color(0xFFF2FBFD),
+                                        ],
+                                        compact: compact,
+                                        dense: dense,
+                                      ),
+                                      _CharityBreakdownTile(
+                                        label: 'Round Up',
+                                        caption: 'Extra donation amount',
+                                        amount: order.charityRoundUpAmount,
+                                        icon: Icons.volunteer_activism_rounded,
+                                        accent: const Color(0xFFAC7600),
+                                        gradientColors: const [
+                                          Color(0xFFFFE9C2),
+                                          Color(0xFFFFF7E5),
+                                        ],
+                                        compact: compact,
+                                        dense: dense,
+                                      ),
+                                      _CharityBreakdownTile(
+                                        label: 'New Total',
+                                        caption: 'Final amount to pay',
+                                        amount: order.charityRoundUpTotal > 0
+                                            ? order.charityRoundUpTotal
+                                            : _charityBaseAmount,
+                                        icon: Icons.payments_rounded,
+                                        accent: const Color(0xFF2B8E64),
+                                        gradientColors: const [
+                                          Color(0xFFDDF2E5),
+                                          Color(0xFFF2FBF6),
+                                        ],
+                                        spotlight: true,
+                                        compact: compact,
+                                        dense: dense,
+                                      ),
+                                    ];
+
+                                    if (stacked) {
+                                      return Column(
+                                        children: [
+                                          for (
+                                            var index = 0;
+                                            index < tiles.length;
+                                            index++
+                                          ) ...[
+                                            if (index > 0)
+                                              SizedBox(
+                                                height: compact ? 10 : 12,
+                                              ),
+                                            tiles[index],
+                                          ],
+                                        ],
+                                      );
+                                    }
+
+                                    return Row(
+                                      children: [
+                                        Expanded(child: tiles[0]),
+                                        const SizedBox(width: 12),
+                                        Expanded(child: tiles[1]),
+                                        const SizedBox(width: 12),
+                                        Expanded(child: tiles[2]),
+                                      ],
+                                    );
+                                  },
                                 ),
                               ],
                             ),
                           ),
                         ],
                       ),
-                      SizedBox(height: compact ? 18 : 24),
-                      Expanded(
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: _CharityAmountCard(
-                                title: 'Order Total',
-                                amount: order.total,
-                                tint: const Color(0xFFE8F8FC),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _CharityAmountCard(
-                                title: 'Charity Round Up',
-                                amount: order.charityRoundUpAmount,
-                                tint: const Color(0xFFFBECC5),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _CharityAmountCard(
-                                title: 'New Total',
-                                amount: order.charityRoundUpTotal > 0
-                                    ? order.charityRoundUpTotal
-                                    : order.total,
-                                tint: const Color(0xFFDDF5EA),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(height: compact ? 16 : 22),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _CustomerDecisionButton(
-                              label: 'No, keep original total',
-                              filled: false,
-                              busy: _sendingCustomerDecision,
-                              onTap: () => _sendCharityDecision(false),
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: _CustomerDecisionButton(
-                              label: 'Yes, round up for charity',
-                              filled: true,
-                              busy: _sendingCustomerDecision,
-                              onTap: () => _sendCharityDecision(true),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                flex: 7,
-                child: Container(
-                  height: double.infinity,
-                  padding: EdgeInsets.all(compact ? 22 : 28),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFFF0C34C), Color(0xFFDBA92B)],
                     ),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.26),
+                  ),
+                  SizedBox(height: compact ? 10 : (dense ? 12 : 14)),
+                  SizedBox(
+                    height: actionHeight,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: _CustomerDecisionButton(
+                            title: 'No',
+                            subtitle: compactControls
+                                ? 'Keep original total'
+                                : 'Pay the original order total',
+                            icon: Icons.payments_outlined,
+                            filled: false,
+                            busy: _sendingCustomerDecision,
+                            compact: compact,
+                            dense: dense,
+                            onTap: () => _sendCharityDecision(false),
+                          ),
+                        ),
+                        SizedBox(width: compact ? 12 : (dense ? 14 : 16)),
+                        Expanded(
+                          child: _CustomerDecisionButton(
+                            title: 'Yes',
+                            subtitle: compactControls
+                                ? 'Round up to donate'
+                                : 'Round up and donate the extra amount',
+                            icon: Icons.favorite_rounded,
+                            filled: true,
+                            busy: _sendingCustomerDecision,
+                            compact: compact,
+                            dense: dense,
+                            onTap: () => _sendCharityDecision(true),
+                          ),
+                        ),
+                      ],
                     ),
-                    borderRadius: BorderRadius.circular(30),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x19000000),
-                        blurRadius: 26,
-                        offset: Offset(0, 14),
-                      ),
-                    ],
                   ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: compact ? 84 : 96,
-                        height: compact ? 84 : 96,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.18),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.favorite_rounded,
-                          size: compact ? 40 : 46,
-                          color: Colors.white,
-                        ),
-                      ),
-                      SizedBox(height: compact ? 16 : 20),
-                      Text(
-                        SunmiReceiptService.money(order.charityRoundUpAmount),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: compact ? 30 : 40,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: -0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'will go to charity if you choose to round up your payment.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: compact ? 15 : 16,
-                          height: 1.5,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white.withValues(alpha: 0.92),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                ],
               ),
-            ],
+            ),
           );
         },
       ),
     );
   }
 
-  Widget _buildCharityPromptFooter() {
-    return _customerGlass(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-      child: const Row(
-        children: [
-          _FooterBadge(icon: Icons.volunteer_activism_rounded, success: false),
-          SizedBox(width: 16),
-          Expanded(
-            child: Text(
-              'The round-up donation is optional. If you choose yes, only the extra amount above the order total will be donated to charity.',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: _headline,
-              ),
+  Widget _buildTouchTestChip() {
+    final hasPassed = _touchTestTapCount > 0;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _runTouchTest,
+        borderRadius: BorderRadius.circular(22),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: hasPassed
+                  ? const [Color(0xFF2B8E64), Color(0xFF236E4F)]
+                  : const [Color(0xFF0D7B99), Color(0xFF0A5C72)],
             ),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x22000000),
+                blurRadius: 18,
+                offset: Offset(0, 10),
+              ),
+            ],
           ),
-        ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                hasPassed ? Icons.touch_app_rounded : Icons.ads_click_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    hasPassed ? 'Touch OK x$_touchTestTapCount' : 'Touch Test',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    hasPassed ? _lastTouchTestMessage : 'Tap here to verify',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withValues(alpha: 0.92),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  Future<void> _runTouchTest() async {
+    final nextCount = _touchTestTapCount + 1;
+    final now = TimeOfDay.now();
+    final formattedTime =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final message = 'Rear touch detected at $formattedTime (#$nextCount)';
+
+    setState(() {
+      _touchTestTapCount = nextCount;
+      _lastTouchTestMessage = message;
+    });
+
+    await _sendCustomerEvent(message);
   }
 
   Future<void> _sendCharityDecision(bool accepted) async {
@@ -1201,6 +1484,9 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
     setState(() {
       _sendingCustomerDecision = true;
     });
+
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
 
     try {
       debugPrint(
@@ -1211,6 +1497,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
           await _rearDisplayChannel.invokeMethod<bool>('customerEvent', {
             'type': 'charity_round_up_response',
             'accepted': accepted,
+            'promptId': order.charityRoundUpPromptId,
           }) ??
           false;
 
@@ -1236,80 +1523,49 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
     }
   }
 
+  Future<void> _sendCustomerEvent(String message) async {
+    try {
+      await _rearDisplayChannel.invokeMethod<bool>('customerEvent', {
+        'type': 'customer_event',
+        'message': message,
+      });
+    } catch (error) {
+      debugPrint('CustomerDisplayScreen failed to send customer event: $error');
+    }
+  }
+
   Widget _buildLoadingOverlay() {
     return Positioned.fill(
-      child: IgnorePointer(
+      child: AbsorbPointer(
+        absorbing: true,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: const Color(0xFF0A1F28).withValues(alpha: 0.16),
+            color: const Color(0xFF0A1F28).withValues(alpha: 0.24),
           ),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
             child: Center(
-              child: Container(
-                width: 360,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 28,
-                  vertical: 26,
-                ),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.88),
-                      const Color(0xFFF4FBFD).withValues(alpha: 0.84),
-                    ],
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.symmetric(horizontal: 28),
+                  child: ProfessionalProcessingCard(
+                    title: _loadingOverlayTitle,
+                    message: _loadingOverlayMessage,
+                    badge: _sendingCustomerDecision
+                        ? 'UPDATING CHOICE'
+                        : 'SECURE CARD PAYMENT',
+                    icon: _sendingCustomerDecision
+                        ? Icons.volunteer_activism_rounded
+                        : Icons.credit_card_rounded,
+                    accent: _sendingCustomerDecision
+                        ? const Color(0xFFAD7300)
+                        : _accentDeep,
+                    accentGlow: _sendingCustomerDecision
+                        ? const Color(0xFFF0BC53)
+                        : const Color(0xFF1498B9),
                   ),
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.96),
-                  ),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x19000000),
-                      blurRadius: 32,
-                      offset: Offset(0, 20),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 58,
-                      height: 58,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 4.8,
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          _accentDeep,
-                        ),
-                        backgroundColor: const Color(0xFFE3F4F8),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Preparing Payment',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        color: _headline,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      order.note.isEmpty
-                          ? 'Please wait while the payment terminal is opening.'
-                          : order.note,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        height: 1.45,
-                        color: _body,
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ),
@@ -1684,29 +1940,70 @@ class _TapHintChip extends StatelessWidget {
 
 class _DisplayItemCard extends StatelessWidget {
   final Map<String, dynamic> item;
+  final bool highlighted;
+  final int pulseNonce;
 
-  const _DisplayItemCard({super.key, required this.item});
+  const _DisplayItemCard({
+    super.key,
+    required this.item,
+    this.highlighted = false,
+    this.pulseNonce = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
     final imageAsset = item['imageAsset']?.toString();
     final qty = (item['qty'] as num?)?.toInt() ?? 0;
     final total = (item['lineTotal'] as num?)?.toDouble() ?? 0;
+    final detailLines = ((item['detailLines'] as List?) ?? const [])
+        .map((line) => line.toString())
+        .where((line) => line.isNotEmpty)
+        .toList();
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.78),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.96)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x10000000),
-            blurRadius: 16,
-            offset: Offset(0, 10),
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('customer-pulse-${item['id']}_$pulseNonce'),
+      tween: Tween<double>(begin: highlighted ? 1 : 0, end: 0),
+      duration: const Duration(milliseconds: 620),
+      curve: Curves.easeOutCubic,
+      builder: (context, pulse, child) {
+        return Transform.scale(
+          scale: 1 + (pulse * 0.014),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Color.lerp(
+                Colors.white.withValues(alpha: 0.78),
+                const Color(0xFFF2FDFF),
+                pulse * 0.76,
+              ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Color.lerp(
+                  Colors.white.withValues(alpha: 0.96),
+                  const Color(0xFF86DCEC),
+                  pulse,
+                )!,
+              ),
+              boxShadow: [
+                const BoxShadow(
+                  color: Color(0x10000000),
+                  blurRadius: 16,
+                  offset: Offset(0, 10),
+                ),
+                if (pulse > 0.001)
+                  BoxShadow(
+                    color: const Color(
+                      0x2658CAE2,
+                    ).withValues(alpha: 0.14 + (pulse * 0.18)),
+                    blurRadius: 20 + (pulse * 12),
+                    offset: const Offset(0, 12),
+                  ),
+              ],
+            ),
+            child: child,
           ),
-        ],
-      ),
+        );
+      },
       child: Row(
         children: [
           ClipRRect(
@@ -1747,6 +2044,25 @@ class _DisplayItemCard extends StatelessWidget {
                     color: _CustomerDisplayScreenState._body,
                   ),
                 ),
+                if (detailLines.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  ...detailLines.map(
+                    (detail) => Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Text(
+                        detail,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          height: 1.3,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF6A7E8D),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1843,157 +2159,425 @@ class _CustomerEmptyState extends StatelessWidget {
   }
 }
 
-class _CharityAmountCard extends StatelessWidget {
-  final String title;
+class _CharityBreakdownTile extends StatefulWidget {
+  final String label;
+  final String caption;
   final double amount;
-  final Color tint;
+  final IconData icon;
+  final Color accent;
+  final List<Color> gradientColors;
+  final bool spotlight;
+  final bool compact;
+  final bool dense;
 
-  const _CharityAmountCard({
-    required this.title,
+  const _CharityBreakdownTile({
+    required this.label,
+    required this.caption,
     required this.amount,
-    required this.tint,
+    required this.icon,
+    required this.accent,
+    required this.gradientColors,
+    this.spotlight = false,
+    this.compact = false,
+    this.dense = false,
   });
 
   @override
+  State<_CharityBreakdownTile> createState() => _CharityBreakdownTileState();
+}
+
+class _CharityBreakdownTileState extends State<_CharityBreakdownTile>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _pulseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _configurePulse();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CharityBreakdownTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.spotlight != widget.spotlight) {
+      _configurePulse();
+    }
+  }
+
+  void _configurePulse() {
+    if (widget.spotlight) {
+      _pulseController ??= AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 1800),
+      )..repeat(reverse: true);
+      return;
+    }
+
+    _pulseController?.dispose();
+    _pulseController = null;
+  }
+
+  @override
+  void dispose() {
+    _pulseController?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: tint,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.96)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: _CustomerDisplayScreenState._body,
+    final animation = _pulseController ?? const AlwaysStoppedAnimation(0.0);
+    final labelSize = widget.compact ? 12.0 : (widget.dense ? 13.0 : 14.0);
+    final amountSize = widget.compact ? 21.0 : (widget.dense ? 24.0 : 28.0);
+    final captionSize = widget.compact ? 11.0 : (widget.dense ? 11.5 : 12.5);
+    final badgeSize = widget.compact ? 36.0 : (widget.dense ? 40.0 : 46.0);
+    final badgeIconSize = widget.compact ? 19.0 : (widget.dense ? 21.0 : 24.0);
+    final padding = widget.compact ? 14.0 : (widget.dense ? 16.0 : 18.0);
+    final radius = widget.compact ? 22.0 : (widget.dense ? 24.0 : 26.0);
+
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final pulse = animation.value;
+        final scale = widget.spotlight ? 1 + (pulse * 0.01) : 1.0;
+        final glowOpacity = widget.spotlight ? 0.10 + (pulse * 0.06) : 0.05;
+        final glowBlur = widget.spotlight ? 18.0 + (pulse * 4) : 12.0;
+        final minHeight = widget.compact
+            ? 110.0
+            : (widget.dense ? 124.0 : 142.0);
+
+        return Transform.scale(
+          scale: scale,
+          child: Container(
+            constraints: BoxConstraints(minHeight: minHeight),
+            padding: EdgeInsets.all(padding),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: widget.gradientColors,
+              ),
+              borderRadius: BorderRadius.circular(radius),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.96)),
+              boxShadow: [
+                BoxShadow(
+                  color: widget.accent.withValues(alpha: glowOpacity),
+                  blurRadius: glowBlur,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                Positioned(
+                  top: -18,
+                  right: -10,
+                  child: IgnorePointer(
+                    child: Container(
+                      width: widget.compact ? 64 : (widget.dense ? 72.0 : 82.0),
+                      height: widget.compact
+                          ? 64
+                          : (widget.dense ? 72.0 : 82.0),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: widget.accent.withValues(
+                              alpha: widget.spotlight
+                                  ? 0.10 + (pulse * 0.08)
+                                  : 0.05,
+                            ),
+                            blurRadius: widget.compact
+                                ? 26.0
+                                : (widget.dense ? 32.0 : 40.0),
+                            spreadRadius: widget.compact
+                                ? 2.0
+                                : (widget.dense ? 4.0 : 6.0),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: badgeSize,
+                          height: badgeSize,
+                          decoration: BoxDecoration(
+                            color: widget.accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Icon(
+                            widget.icon,
+                            size: badgeIconSize,
+                            color: widget.accent,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (widget.spotlight)
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: widget.compact
+                                  ? 8
+                                  : (widget.dense ? 9.0 : 10.0),
+                              vertical: widget.compact
+                                  ? 5
+                                  : (widget.dense ? 5.5 : 6.0),
+                            ),
+                            decoration: BoxDecoration(
+                              color: widget.accent.withValues(alpha: 0.10),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: widget.accent.withValues(alpha: 0.18),
+                              ),
+                            ),
+                            child: Text(
+                              'FINAL',
+                              style: TextStyle(
+                                fontSize: widget.compact
+                                    ? 9
+                                    : (widget.dense ? 9.5 : 10.0),
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.1,
+                                color: widget.accent,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    SizedBox(
+                      height: widget.compact
+                          ? 12
+                          : (widget.dense ? 14.0 : 16.0),
+                    ),
+                    Text(
+                      widget.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: labelSize,
+                        fontWeight: FontWeight.w800,
+                        color: widget.accent.withValues(alpha: 0.92),
+                      ),
+                    ),
+                    SizedBox(height: widget.compact ? 6 : 8),
+                    TweenAnimationBuilder<double>(
+                      tween: Tween<double>(end: widget.amount),
+                      duration: const Duration(milliseconds: 520),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, value, _) {
+                        return Text(
+                          SunmiReceiptService.money(value),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: amountSize,
+                            fontWeight: FontWeight.w900,
+                            color: widget.accent,
+                            letterSpacing: -0.6,
+                          ),
+                        );
+                      },
+                    ),
+                    SizedBox(height: widget.compact ? 4 : 6),
+                    Text(
+                      widget.caption,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: captionSize,
+                        height: 1.35,
+                        fontWeight: FontWeight.w700,
+                        color: _CustomerDisplayScreenState._body,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            SunmiReceiptService.money(amount),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: _CustomerDisplayScreenState._headline,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
 class _CustomerDecisionButton extends StatelessWidget {
-  final String label;
+  final String title;
+  final String subtitle;
+  final IconData icon;
   final bool filled;
   final bool busy;
+  final bool compact;
+  final bool dense;
   final VoidCallback onTap;
 
   const _CustomerDecisionButton({
-    required this.label,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
     required this.filled,
     required this.busy,
+    this.compact = false,
+    this.dense = false,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: busy ? null : onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-        decoration: BoxDecoration(
-          gradient: filled
-              ? const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF0B7F9E), Color(0xFF0C5F78)],
-                )
-              : null,
-          color: filled ? null : Colors.white.withValues(alpha: 0.82),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: filled
-                ? Colors.white.withValues(alpha: 0.24)
-                : Colors.white.withValues(alpha: 0.96),
+    final titleColor = filled
+        ? Colors.white
+        : _CustomerDisplayScreenState._headline;
+    final subtitleColor = filled
+        ? Colors.white.withValues(alpha: 0.88)
+        : _CustomerDisplayScreenState._body;
+    final iconBackground = filled
+        ? Colors.white.withValues(alpha: 0.18)
+        : const Color(0xFFEAF8FC);
+    final iconColor = filled
+        ? Colors.white
+        : _CustomerDisplayScreenState._accentDeep;
+    final minHeight = compact ? 62.0 : (dense ? 86.0 : 112.0);
+    final horizontalPadding = compact ? 14.0 : (dense ? 18.0 : 22.0);
+    final verticalPadding = compact ? 8.0 : (dense ? 14.0 : 20.0);
+    final iconBoxSize = compact ? 30.0 : (dense ? 42.0 : 54.0);
+    final iconSize = compact ? 18.0 : (dense ? 22.0 : 28.0);
+    final titleSize = compact ? 16.0 : (dense ? 20.0 : 26.0);
+    final subtitleSize = compact ? 12.5 : (dense ? 13.5 : 15.0);
+    final subtitleHeight = compact ? 1.2 : (dense ? 1.25 : 1.35);
+    final indicatorSize = compact ? 20.0 : (dense ? 22.0 : 24.0);
+    final arrowSize = compact ? 24.0 : (dense ? 26.0 : 28.0);
+
+    return Opacity(
+      opacity: busy ? 0.94 : 1,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: busy ? null : onTap,
+          borderRadius: BorderRadius.circular(26),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            constraints: BoxConstraints(minHeight: minHeight),
+            padding: EdgeInsets.symmetric(
+              horizontal: horizontalPadding,
+              vertical: verticalPadding,
+            ),
+            decoration: BoxDecoration(
+              gradient: filled
+                  ? const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF0B7F9E), Color(0xFF0C5F78)],
+                    )
+                  : LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.92),
+                        const Color(0xFFF3FBFD).withValues(alpha: 0.88),
+                      ],
+                    ),
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(
+                color: filled
+                    ? Colors.white.withValues(alpha: 0.24)
+                    : Colors.white.withValues(alpha: 0.96),
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 20,
+                  offset: Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: iconBoxSize,
+                  height: iconBoxSize,
+                  decoration: BoxDecoration(
+                    color: iconBackground,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Icon(icon, color: iconColor, size: iconSize),
+                ),
+                SizedBox(width: compact ? 10 : 16),
+                Expanded(
+                  child: compact
+                      ? Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: titleSize,
+                            fontWeight: FontWeight.w900,
+                            color: titleColor,
+                          ),
+                        )
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: TextStyle(
+                                fontSize: titleSize,
+                                fontWeight: FontWeight.w900,
+                                color: titleColor,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: subtitleSize,
+                                fontWeight: FontWeight.w700,
+                                height: subtitleHeight,
+                                color: subtitleColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+                SizedBox(width: compact ? 6 : 12),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: busy
+                      ? SizedBox(
+                          key: const ValueKey('busy'),
+                          width: indicatorSize,
+                          height: indicatorSize,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.6,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              filled
+                                  ? Colors.white
+                                  : _CustomerDisplayScreenState._accentDeep,
+                            ),
+                            backgroundColor: filled
+                                ? Colors.white.withValues(alpha: 0.20)
+                                : const Color(0xFFD6EEF5),
+                          ),
+                        )
+                      : Icon(
+                          key: const ValueKey('arrow'),
+                          Icons.arrow_forward_rounded,
+                          color: filled
+                              ? Colors.white
+                              : _CustomerDisplayScreenState._accentDeep,
+                          size: arrowSize,
+                        ),
+                ),
+              ],
+            ),
           ),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (busy)
-              Padding(
-                padding: const EdgeInsets.only(right: 10),
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      filled
-                          ? Colors.white
-                          : _CustomerDisplayScreenState._accentDeep,
-                    ),
-                  ),
-                ),
-              ),
-            Expanded(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: filled
-                      ? Colors.white
-                      : _CustomerDisplayScreenState._headline,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FooterBadge extends StatelessWidget {
-  final IconData icon;
-  final bool success;
-
-  const _FooterBadge({required this.icon, required this.success});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: success
-              ? const [Color(0xFFDDF5EA), Color(0xFFF7FBF8)]
-              : const [Color(0xFFE7F8FC), Color(0xFFF8FCFD)],
-        ),
-        shape: BoxShape.circle,
-      ),
-      child: Icon(
-        icon,
-        color: success
-            ? _CustomerDisplayScreenState._success
-            : _CustomerDisplayScreenState._accentDeep,
       ),
     );
   }

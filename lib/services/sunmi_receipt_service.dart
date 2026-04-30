@@ -13,6 +13,8 @@ class SunmiReceiptService {
   }
 
   static Future<void> printReceipt(OrderSnapshot order) async {
+    final orderType = OrderTypeLabel.fromStorage(order.orderType).label;
+
     await SunmiPrinter.printText(
       'MITHQAL 2.0',
       style: SunmiTextStyle(
@@ -23,9 +25,23 @@ class SunmiReceiptService {
     );
 
     await SunmiPrinter.printText(
-      'Quick Order Receipt',
+      '$orderType Receipt',
       style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.CENTER),
     );
+    await SunmiPrinter.printText(
+      'Order #${order.orderNumber}',
+      style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.CENTER),
+    );
+    if (order.diningTableName.trim().isNotEmpty) {
+      final floorLabel = order.diningFloorLabel.trim();
+      final tableLabel = floorLabel.isEmpty
+          ? 'Table ${order.diningTableName.trim()}'
+          : 'Table ${order.diningTableName.trim()} | $floorLabel';
+      await SunmiPrinter.printText(
+        tableLabel,
+        style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
+      );
+    }
 
     await SunmiPrinter.lineWrap(1);
     await SunmiPrinter.printText('--------------------------------');
@@ -38,21 +54,53 @@ class SunmiReceiptService {
     }
 
     await SunmiPrinter.printText('--------------------------------');
+    if (order.discountAmount > 0) {
+      await SunmiPrinter.printText(
+        row(
+          order.discountLabel.isEmpty ? 'Discount' : order.discountLabel,
+          '-${money(order.discountAmount)}',
+        ),
+      );
+    }
     await SunmiPrinter.printText(row('Subtotal', money(order.subtotal)));
     await SunmiPrinter.printText(row('Tax (5%)', money(order.tax)));
     await SunmiPrinter.printText(
       row('TOTAL', money(order.total)),
       style: SunmiTextStyle(bold: true),
     );
-    if (order.charityRoundUpAccepted && order.charityRoundUpAmount > 0) {
+    if (order.splitCount > 1) {
+      final splitBaseTotal = order.splitPayments.isEmpty
+          ? order.activePaymentBaseTotal
+          : order.splitPaymentsBaseTotal;
+      await SunmiPrinter.printText(
+        row('Split Bill (${order.splitCount})', money(splitBaseTotal)),
+      );
+    }
+    if (order.splitPayments.isNotEmpty) {
+      await SunmiPrinter.printText('Split Payments');
+      for (final payment in order.splitPayments) {
+        await SunmiPrinter.printText(
+          row(
+            '  Guest ${payment.splitIndex} ${payment.paymentMethod}',
+            money(payment.paidAmount),
+          ),
+        );
+        if (payment.charityRoundUpAccepted &&
+            payment.charityRoundUpAmount > 0) {
+          await SunmiPrinter.printText(
+            row('    Charity Round Up', money(payment.charityRoundUpAmount)),
+          );
+        }
+      }
+    } else if (order.charityRoundUpAccepted && order.charityRoundUpAmount > 0) {
       await SunmiPrinter.printText(
         row('Charity Round Up', money(order.charityRoundUpAmount)),
       );
-      await SunmiPrinter.printText(
-        row('AMOUNT PAID', money(order.payableTotal)),
-        style: SunmiTextStyle(bold: true),
-      );
     }
+    await SunmiPrinter.printText(
+      row('AMOUNT PAID', money(order.payableTotal)),
+      style: SunmiTextStyle(bold: true),
+    );
 
     await SunmiPrinter.lineWrap(1);
     await SunmiPrinter.printText(
@@ -63,6 +111,12 @@ class SunmiReceiptService {
       'Method: ${order.paymentMethod}',
       style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
     );
+    if (order.customerReferenceNumber.trim().isNotEmpty) {
+      await SunmiPrinter.printText(
+        'Customer: ${order.customerReferenceNumber.trim()}',
+        style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
+      );
+    }
 
     await SunmiPrinter.lineWrap(1);
     await SunmiPrinter.printQRCode(
