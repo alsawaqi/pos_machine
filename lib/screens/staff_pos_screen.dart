@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/pos_models.dart';
 import '../services/manager_authorization_service.dart';
@@ -57,6 +58,11 @@ const _customizationGroups = <_ModifierGroupDefinition>[
   ),
 ];
 
+const bool _staffVisualEffectsEnabled = bool.fromEnvironment(
+  'POS_ENABLE_VISUAL_EFFECTS',
+  defaultValue: false,
+);
+
 String _formatStorageDateTime(DateTime value) {
   const months = [
     'Jan',
@@ -90,9 +96,10 @@ class StaffPosScreen extends StatefulWidget {
 class _StaffPosScreenState extends State<StaffPosScreen> {
   late final PosController controller;
   late final TextEditingController _customerNumberController;
+  late final ValueNotifier<DateTime> _clockNow;
+  late final ScrollController _currentOrderScrollController;
   final ManagerAuthorizationService _managerAuthorization =
       ManagerAuthorizationService();
-  late DateTime _now;
   Timer? _clockTimer;
   Timer? _popupTimer;
   bool _showPaymentPage = false;
@@ -137,12 +144,10 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
     super.initState();
     controller = PosController();
     _customerNumberController = TextEditingController();
-    _now = DateTime.now();
+    _clockNow = ValueNotifier<DateTime>(DateTime.now());
+    _currentOrderScrollController = ScrollController();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() {
-        _now = DateTime.now();
-      });
+      _clockNow.value = DateTime.now();
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -155,6 +160,8 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
   void dispose() {
     _clockTimer?.cancel();
     _popupTimer?.cancel();
+    _clockNow.dispose();
+    _currentOrderScrollController.dispose();
     _customerNumberController.dispose();
     unawaited(controller.shutdown());
     controller.dispose();
@@ -170,7 +177,9 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
           backgroundColor: const Color(0xFF12232B),
           body: Stack(
             children: [
-              Positioned.fill(child: _BackgroundScene()),
+              const Positioned.fill(
+                child: RepaintBoundary(child: _BackgroundScene()),
+              ),
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -253,7 +262,7 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
 
   String _formatOccupancyDuration(DateTime? value) {
     if (value == null) return '0m';
-    final difference = _now.difference(value);
+    final difference = _clockNow.value.difference(value);
     if (difference.inHours >= 1) {
       final hours = difference.inHours;
       final minutes = difference.inMinutes.remainder(60);
@@ -2402,39 +2411,7 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
   }
 
   Widget _buildTimeBlock() {
-    return SizedBox(
-      width: 132,
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerRight,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              _formatTime(_now),
-              maxLines: 1,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              _formatDate(_now),
-              maxLines: 1,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xE1FFFFFF),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return _ClockBlock(nowListenable: _clockNow);
   }
 
   Widget _buildProfileBlock() {
@@ -2454,22 +2431,16 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
                 child: SizedBox(
                   width: 30,
                   height: 30,
-                  child: Image.asset(
-                    'assets/images/staff_avatar.png',
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return DecoratedBox(
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Color(0xFFE6EBF0), Color(0xFFC7D2DA)],
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.person_rounded,
-                          color: Color(0xFF5A6772),
-                        ),
-                      );
-                    },
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFFE6EBF0), Color(0xFFC7D2DA)],
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.person_rounded,
+                      color: Color(0xFF5A6772),
+                    ),
                   ),
                 ),
               ),
@@ -2576,8 +2547,11 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
             child: controller.cart.isEmpty
                 ? const _EmptyOrderState()
                 : Scrollbar(
+                    controller: _currentOrderScrollController,
                     thumbVisibility: controller.cart.length > 3,
                     child: ListView.separated(
+                      controller: _currentOrderScrollController,
+                      primary: false,
                       itemCount: controller.cart.length,
                       physics: const BouncingScrollPhysics(),
                       separatorBuilder: (_, index) =>
@@ -2978,6 +2952,68 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
       ],
     );
   }
+}
+
+class _StaffPopupMessage {
+  final int id;
+  final String title;
+  final String message;
+  final FeedbackTone tone;
+
+  const _StaffPopupMessage({
+    required this.id,
+    required this.title,
+    required this.message,
+    required this.tone,
+  });
+}
+
+class _ClockBlock extends StatelessWidget {
+  final ValueListenable<DateTime> nowListenable;
+
+  const _ClockBlock({required this.nowListenable});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 132,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerRight,
+        child: ValueListenableBuilder<DateTime>(
+          valueListenable: nowListenable,
+          builder: (context, now, _) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _formatTime(now),
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _formatDate(now),
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xE1FFFFFF),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
 
   String _formatTime(DateTime value) {
     final hour = value.hour == 0
@@ -3009,20 +3045,6 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
   }
 }
 
-class _StaffPopupMessage {
-  final int id;
-  final String title;
-  final String message;
-  final FeedbackTone tone;
-
-  const _StaffPopupMessage({
-    required this.id,
-    required this.title,
-    required this.message,
-    required this.tone,
-  });
-}
-
 class _NavItemData {
   final String title;
   final IconData icon;
@@ -3031,33 +3053,36 @@ class _NavItemData {
 }
 
 class _BackgroundScene extends StatelessWidget {
+  const _BackgroundScene();
+
   @override
   Widget build(BuildContext context) {
+    final image = Image.asset(
+      'assets/images/front_pos_background.jpg',
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF182830), Color(0xFF2B3132), Color(0xFF6A5444)],
+            ),
+          ),
+        );
+      },
+    );
+
     return Stack(
       fit: StackFit.expand,
       children: [
-        ImageFiltered(
-          imageFilter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-          child: Image.asset(
-            'assets/images/front_pos_background.jpg',
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return DecoratedBox(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFF182830),
-                      Color(0xFF2B3132),
-                      Color(0xFF6A5444),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
+        if (_staffVisualEffectsEnabled)
+          ImageFiltered(
+            imageFilter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+            child: image,
+          )
+        else
+          image,
         DecoratedBox(
           decoration: BoxDecoration(
             gradient: RadialGradient(
@@ -3265,37 +3290,40 @@ class _OrderItemCard extends StatelessWidget {
     return TweenAnimationBuilder<double>(
       key: ValueKey('cart-pulse-${item.mergeSignature}-$pulseNonce'),
       tween: Tween<double>(begin: highlighted ? 1 : 0, end: 0),
-      duration: const Duration(milliseconds: 620),
+      duration: _staffVisualEffectsEnabled
+          ? const Duration(milliseconds: 620)
+          : Duration.zero,
       curve: Curves.easeOutCubic,
       builder: (context, pulse, child) {
+        final effectPulse = _staffVisualEffectsEnabled ? pulse : 0.0;
         return Transform.scale(
-          scale: 1 + (pulse * 0.016),
+          scale: 1 + (effectPulse * 0.016),
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Color.lerp(
                 Colors.white.withValues(alpha: 0.74),
                 const Color(0xFFF2FDFF),
-                pulse * 0.72,
+                effectPulse * 0.72,
               ),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: Color.lerp(
                   Colors.white.withValues(alpha: 0.72),
                   const Color(0xFF88E0F2),
-                  pulse,
+                  effectPulse,
                 )!,
-                width: 1.2 + (pulse * 0.4),
+                width: 1.2 + (effectPulse * 0.4),
               ),
               boxShadow: [
                 ..._softShadow,
-                if (pulse > 0.001)
+                if (effectPulse > 0.001)
                   BoxShadow(
                     color: const Color(
                       0x2E58CAE2,
-                    ).withValues(alpha: 0.22 + (pulse * 0.16)),
-                    blurRadius: 18 + (pulse * 14),
-                    spreadRadius: pulse * 1.5,
+                    ).withValues(alpha: 0.22 + (effectPulse * 0.16)),
+                    blurRadius: 18 + (effectPulse * 14),
+                    spreadRadius: effectPulse * 1.5,
                     offset: const Offset(0, 10),
                   ),
               ],
@@ -4182,6 +4210,8 @@ class _CategoryCardState extends State<_CategoryCard>
   }
 
   void _handleTapDown(TapDownDetails details) {
+    if (!_staffVisualEffectsEnabled) return;
+
     setState(() {
       _tapPosition = details.localPosition;
     });
@@ -4217,144 +4247,152 @@ class _CategoryCardState extends State<_CategoryCard>
                 borderRadius: BorderRadius.circular(22),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(22),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(
-                      sigmaX: 10 + (overlayTint * 7),
-                      sigmaY: 10 + (overlayTint * 7),
-                    ),
-                    child: Stack(
-                      children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 220),
-                          height: 70,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: widget.selected
-                                  ? const [
-                                      Color(0xA293EEFF),
-                                      Color(0x967DDCF6),
-                                      Color(0x8A54AFBB),
-                                    ]
-                                  : [
-                                      Colors.white.withValues(alpha: 0.22),
-                                      Colors.white.withValues(alpha: 0.14),
-                                    ],
-                            ),
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(
-                              color: Color.lerp(
-                                Colors.white.withValues(alpha: 0.32),
-                                Colors.white.withValues(alpha: 0.72),
-                                overlayTint.clamp(0.0, 1.0),
-                              )!,
-                              width: 1.2 + (overlayTint * 0.45),
-                            ),
-                            boxShadow: [
-                              const BoxShadow(
-                                color: Color(0x18FFFFFF),
-                                blurRadius: 3,
-                                offset: Offset(0, 1),
-                              ),
-                              const BoxShadow(
-                                color: Color(0x16000000),
-                                blurRadius: 18,
-                                offset: Offset(0, 10),
-                              ),
-                              if (overlayTint > 0.001)
-                                BoxShadow(
-                                  color: const Color(0x455CCFEE).withValues(
-                                    alpha: 0.08 + (overlayTint * 0.18),
-                                  ),
-                                  blurRadius: 18 + (overlayTint * 18),
-                                  offset: const Offset(0, 8),
-                                ),
-                            ],
-                          ),
-                          child: child,
-                        ),
-                        if (rippleT > 0.001) ...[
-                          _LiquidGlassRipple(
-                            center: _tapPosition,
-                            progress: rippleT,
-                            diameter: lerpDouble(
-                              26,
-                              constraints.maxWidth * 0.9,
-                              rippleT,
-                            )!,
-                            fillOpacity: 0.18,
-                            ringOpacity: 0.26,
-                          ),
-                          _LiquidGlassRipple(
-                            center: _tapPosition,
-                            progress: delayedRippleT,
-                            diameter: lerpDouble(
-                              16,
-                              constraints.maxWidth * 1.26,
-                              delayedRippleT,
-                            )!,
-                            fillOpacity: 0.08,
-                            ringOpacity: 0.20,
-                          ),
-                          _LiquidGlassRipple(
-                            center: _tapPosition,
-                            progress: tertiaryRippleT,
-                            diameter: lerpDouble(
-                              14,
-                              constraints.maxWidth * 1.48,
-                              tertiaryRippleT,
-                            )!,
-                            fillOpacity: 0.0,
-                            ringOpacity: 0.14,
-                          ),
-                        ],
-                        if (overlayTint > 0.001) ...[
-                          Positioned(
-                            left: 10,
-                            top: -8,
-                            child: IgnorePointer(
-                              child: Opacity(
-                                opacity: 0.32 + (selectedT * 0.16),
-                                child: Container(
-                                  width: 92,
-                                  height: 42,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        Colors.white.withValues(alpha: 0.78),
-                                        Colors.white.withValues(alpha: 0.06),
+                  child: Builder(
+                    builder: (context) {
+                      final surface = Stack(
+                        children: [
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 220),
+                            height: 70,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: widget.selected
+                                    ? const [
+                                        Color(0xA293EEFF),
+                                        Color(0x967DDCF6),
+                                        Color(0x8A54AFBB),
+                                      ]
+                                    : [
+                                        Colors.white.withValues(alpha: 0.22),
+                                        Colors.white.withValues(alpha: 0.14),
                                       ],
+                              ),
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(
+                                color: Color.lerp(
+                                  Colors.white.withValues(alpha: 0.32),
+                                  Colors.white.withValues(alpha: 0.72),
+                                  overlayTint.clamp(0.0, 1.0),
+                                )!,
+                                width: 1.2 + (overlayTint * 0.45),
+                              ),
+                              boxShadow: [
+                                const BoxShadow(
+                                  color: Color(0x18FFFFFF),
+                                  blurRadius: 3,
+                                  offset: Offset(0, 1),
+                                ),
+                                const BoxShadow(
+                                  color: Color(0x16000000),
+                                  blurRadius: 18,
+                                  offset: Offset(0, 10),
+                                ),
+                                if (overlayTint > 0.001)
+                                  BoxShadow(
+                                    color: const Color(0x455CCFEE).withValues(
+                                      alpha: 0.08 + (overlayTint * 0.18),
                                     ),
-                                    borderRadius: BorderRadius.circular(24),
+                                    blurRadius: 18 + (overlayTint * 18),
+                                    offset: const Offset(0, 8),
+                                  ),
+                              ],
+                            ),
+                            child: child,
+                          ),
+                          if (rippleT > 0.001) ...[
+                            _LiquidGlassRipple(
+                              center: _tapPosition,
+                              progress: rippleT,
+                              diameter: lerpDouble(
+                                26,
+                                constraints.maxWidth * 0.9,
+                                rippleT,
+                              )!,
+                              fillOpacity: 0.18,
+                              ringOpacity: 0.26,
+                            ),
+                            _LiquidGlassRipple(
+                              center: _tapPosition,
+                              progress: delayedRippleT,
+                              diameter: lerpDouble(
+                                16,
+                                constraints.maxWidth * 1.26,
+                                delayedRippleT,
+                              )!,
+                              fillOpacity: 0.08,
+                              ringOpacity: 0.20,
+                            ),
+                            _LiquidGlassRipple(
+                              center: _tapPosition,
+                              progress: tertiaryRippleT,
+                              diameter: lerpDouble(
+                                14,
+                                constraints.maxWidth * 1.48,
+                                tertiaryRippleT,
+                              )!,
+                              fillOpacity: 0.0,
+                              ringOpacity: 0.14,
+                            ),
+                          ],
+                          if (overlayTint > 0.001) ...[
+                            Positioned(
+                              left: 10,
+                              top: -8,
+                              child: IgnorePointer(
+                                child: Opacity(
+                                  opacity: 0.32 + (selectedT * 0.16),
+                                  child: Container(
+                                    width: 92,
+                                    height: 42,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Colors.white.withValues(alpha: 0.78),
+                                          Colors.white.withValues(alpha: 0.06),
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(24),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                          Positioned(
-                            right: -8,
-                            bottom: -18,
-                            child: IgnorePointer(
-                              child: Opacity(
-                                opacity: 0.16 + (overlayTint * 0.16),
-                                child: Container(
-                                  width: 110,
-                                  height: 54,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFBFF5FF),
-                                    borderRadius: BorderRadius.circular(28),
+                            Positioned(
+                              right: -8,
+                              bottom: -18,
+                              child: IgnorePointer(
+                                child: Opacity(
+                                  opacity: 0.16 + (overlayTint * 0.16),
+                                  child: Container(
+                                    width: 110,
+                                    height: 54,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFBFF5FF),
+                                      borderRadius: BorderRadius.circular(28),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
+                          ],
                         ],
-                      ],
-                    ),
+                      );
+
+                      if (!_staffVisualEffectsEnabled) return surface;
+
+                      return BackdropFilter(
+                        filter: ImageFilter.blur(
+                          sigmaX: 10 + (overlayTint * 7),
+                          sigmaY: 10 + (overlayTint * 7),
+                        ),
+                        child: surface,
+                      );
+                    },
                   ),
                 ),
               ),
@@ -4645,10 +4683,13 @@ class _ProductListTile extends StatelessWidget {
     return TweenAnimationBuilder<double>(
       key: ValueKey('product-list-pulse-${product.id}-$pulseNonce'),
       tween: Tween<double>(begin: highlighted ? 1 : 0, end: 0),
-      duration: const Duration(milliseconds: 560),
+      duration: _staffVisualEffectsEnabled
+          ? const Duration(milliseconds: 560)
+          : Duration.zero,
       curve: Curves.easeOutCubic,
       builder: (context, pulse, child) {
-        return Transform.scale(scale: 1 + (pulse * 0.018), child: child);
+        final effectPulse = _staffVisualEffectsEnabled ? pulse : 0.0;
+        return Transform.scale(scale: 1 + (effectPulse * 0.018), child: child);
       },
       child: InkWell(
         onTap: onAdd,
@@ -4769,11 +4810,14 @@ class _ProductTile extends StatelessWidget {
     return TweenAnimationBuilder<double>(
       key: ValueKey('product-pulse-${product.id}-$pulseNonce'),
       tween: Tween<double>(begin: highlighted ? 1 : 0, end: 0),
-      duration: const Duration(milliseconds: 560),
+      duration: _staffVisualEffectsEnabled
+          ? const Duration(milliseconds: 560)
+          : Duration.zero,
       curve: Curves.easeOutCubic,
       builder: (context, pulse, child) {
+        final effectPulse = _staffVisualEffectsEnabled ? pulse : 0.0;
         return Transform.scale(
-          scale: 1 + (pulse * 0.026),
+          scale: 1 + (effectPulse * 0.026),
           child: InkWell(
             onTap: onAdd,
             borderRadius: BorderRadius.circular(24),
@@ -4783,16 +4827,16 @@ class _ProductTile extends StatelessWidget {
                 color: Color.lerp(
                   Colors.white.withValues(alpha: 0.84),
                   const Color(0xFFF5FEFF),
-                  pulse * 0.82,
+                  effectPulse * 0.82,
                 ),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
                   color: Color.lerp(
                     Colors.white.withValues(alpha: 0.90),
                     const Color(0xFF97E5F4),
-                    pulse,
+                    effectPulse,
                   )!,
-                  width: 1.2 + (pulse * 0.4),
+                  width: 1.2 + (effectPulse * 0.4),
                 ),
                 boxShadow: [
                   const BoxShadow(
@@ -4805,12 +4849,12 @@ class _ProductTile extends StatelessWidget {
                     blurRadius: 22,
                     offset: Offset(0, 12),
                   ),
-                  if (pulse > 0.001)
+                  if (effectPulse > 0.001)
                     BoxShadow(
                       color: const Color(
                         0x2258CAE2,
-                      ).withValues(alpha: 0.08 + (pulse * 0.18)),
-                      blurRadius: 24 + (pulse * 16),
+                      ).withValues(alpha: 0.08 + (effectPulse * 0.18)),
+                      blurRadius: 24 + (effectPulse * 16),
                       offset: const Offset(0, 12),
                     ),
                 ],
@@ -7978,22 +8022,26 @@ Widget _glassPanel({
   Color tint = const Color(0x66FFFFFF),
   Gradient? gradient,
 }) {
+  final panel = Container(
+    height: height,
+    padding: padding,
+    decoration: BoxDecoration(
+      color: gradient == null ? tint : null,
+      gradient: gradient,
+      borderRadius: BorderRadius.circular(28),
+      border: Border.all(color: Colors.white.withValues(alpha: 0.32)),
+      boxShadow: _softShadow,
+    ),
+    child: child,
+  );
+
+  if (!_staffVisualEffectsEnabled) return panel;
+
   return ClipRRect(
     borderRadius: BorderRadius.circular(28),
     child: BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-      child: Container(
-        height: height,
-        padding: padding,
-        decoration: BoxDecoration(
-          color: gradient == null ? tint : null,
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.32)),
-          boxShadow: _softShadow,
-        ),
-        child: child,
-      ),
+      child: panel,
     ),
   );
 }

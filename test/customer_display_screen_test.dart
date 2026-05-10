@@ -308,6 +308,93 @@ void main() {
       expect(find.text('Notes: Less sugar'), findsOneWidget);
     },
   );
+
+  testWidgets('customer display defaults to low-cost rendering effects', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const MaterialApp(home: CustomerDisplayScreen()));
+    await tester.pump();
+
+    await _sendOrderSnapshot({
+      'items': <Map<String, dynamic>>[
+        {
+          'id': 'item_1',
+          'name': 'Item 1',
+          'qty': 1,
+          'lineTotal': 1.000,
+          'imageAsset': null,
+          'detailLines': <String>[],
+          'notes': '',
+        },
+      ],
+      'subtotal': 1.000,
+      'tax': 0.050,
+      'total': 1.050,
+      'payableTotal': 1.050,
+      'paymentStatus': 'Waiting',
+      'paymentMethod': 'Cash',
+      'note': '',
+      'showCharityRoundUpPrompt': false,
+      'showPaymentLaunchOverlay': false,
+      'charityRoundUpAccepted': false,
+      'charityRoundUpAmount': 0.000,
+      'charityRoundUpTotal': 0.000,
+    });
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(BackdropFilter), findsNothing);
+  });
+
+  testWidgets(
+    'customer display accepts more than four order items',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(const MaterialApp(home: CustomerDisplayScreen()));
+      await tester.pump();
+
+      final items = List.generate(5, (index) {
+        return <String, dynamic>{
+          'id': 'item_$index',
+          'name': 'Item ${index + 1}',
+          'qty': 1,
+          'lineTotal': 1.000,
+          'imageAsset': null,
+          'detailLines': <String>[],
+          'notes': '',
+        };
+      });
+
+      await _sendOrderSnapshot({
+        'items': items,
+        'subtotal': 5.000,
+        'tax': 0.250,
+        'total': 5.250,
+        'payableTotal': 5.250,
+        'paymentStatus': 'Waiting',
+        'paymentMethod': 'Cash',
+        'note': '',
+        'showCharityRoundUpPrompt': false,
+        'showPaymentLaunchOverlay': false,
+        'charityRoundUpAccepted': false,
+        'charityRoundUpAmount': 0.000,
+        'charityRoundUpTotal': 0.000,
+      });
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('5 item lines in the current order'), findsOneWidget);
+    },
+  );
 }
 
 Future<void> _sendOrderSnapshot(Map<String, dynamic> snapshot) async {

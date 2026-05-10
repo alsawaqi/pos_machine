@@ -38,6 +38,24 @@ void main() {
     expect(find.text('Order History'), findsOneWidget);
   });
 
+  testWidgets('staff POS defaults to low-cost rendering effects', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({'terminal_id': 'TERM-1001'});
+
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const StaffApp());
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(find.byType(ImageFiltered), findsNothing);
+  });
+
   testWidgets('payment page opens from process to pay', (
     WidgetTester tester,
   ) async {
@@ -63,6 +81,34 @@ void main() {
     expect(find.text('Cash'), findsOneWidget);
     expect(find.text('Card'), findsOneWidget);
     expect(find.text('Cancel'), findsOneWidget);
+  });
+
+  testWidgets('current order accepts more than three visible items', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({'terminal_id': 'TERM-1001'});
+
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const StaffApp());
+    await tester.pumpAndSettle();
+
+    for (final productName in const [
+      'Espresso',
+      'Cappuccino',
+      'Latte',
+      'Americano',
+    ]) {
+      await tester.tap(find.text(productName));
+      await tester.pumpAndSettle();
+    }
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('(4)'), findsOneWidget);
+    expect(find.text('AMERICANO'), findsOneWidget);
   });
 
   testWidgets('empty payment attempt shows animated popup warning', (

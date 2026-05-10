@@ -10,6 +10,13 @@ import '../services/presentation_service.dart';
 import '../services/sunmi_receipt_service.dart';
 
 class PosController extends ChangeNotifier {
+  static const Duration _rearDisplaySyncDebounceDuration = Duration(
+    milliseconds: 250,
+  );
+  static const Duration _diningTablePersistDebounceDuration = Duration(
+    milliseconds: 120,
+  );
+
   final PresentationService _presentation = PresentationService.instance;
   final MosambeePaymentService _paymentBridge = MosambeePaymentService();
   final OrderStorageService _orderStorage;
@@ -250,6 +257,12 @@ class PosController extends ChangeNotifier {
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   bool _isDisposed = false;
   Completer<bool?>? _charityRoundUpCompleter;
+  Timer? _rearDisplaySyncTimer;
+  bool _rearDisplaySyncInFlight = false;
+  bool _rearDisplaySyncPending = false;
+  bool _restoreRearDisplayAfterPayment = false;
+  Timer? _diningTablePersistTimer;
+  Future<void> _diningTablePersistQueue = Future<void>.value();
   int _activeCharityRoundUpPromptId = 0;
   bool _charityPromptCanceled = false;
   int _referenceSequence = 0;
@@ -498,13 +511,37 @@ class PosController extends ChangeNotifier {
 
   Future<void> syncRearDisplay() async {
     if (!_presentationEnabled) return;
+    if (_rearDisplaySyncInFlight) {
+      _rearDisplaySyncPending = true;
+      return;
+    }
 
+    _rearDisplaySyncInFlight = true;
     try {
-      await _presentation.sendOrder(snapshot());
-    } on MissingPluginException {
-      _presentationEnabled = false;
-    } catch (_) {
-      _presentationEnabled = false;
+      do {
+        _rearDisplaySyncPending = false;
+        try {
+          await _presentation.sendOrder(snapshot());
+        } on MissingPluginException {
+          _presentationEnabled = false;
+          _rearDisplaySyncPending = false;
+        } catch (_) {
+          _presentationEnabled = false;
+          _rearDisplaySyncPending = false;
+        }
+
+        if (_rearDisplaySyncPending &&
+            !_isDisposed &&
+            _presentationEnabled &&
+            rearDisplayOpened) {
+          await Future<void>.delayed(_rearDisplaySyncDebounceDuration);
+        }
+      } while (_rearDisplaySyncPending &&
+          !_isDisposed &&
+          _presentationEnabled &&
+          rearDisplayOpened);
+    } finally {
+      _rearDisplaySyncInFlight = false;
     }
   }
 
@@ -730,7 +767,7 @@ class PosController extends ChangeNotifier {
   Future<void> returnToDiningFloorPlan() async {
     if (selectedOrderType != OrderType.dineIn) return;
 
-    await _persistActiveDiningTableSession();
+    await _flushActiveDiningTablePersistence();
     _resetForNextOrder(
       advanceOrderNumber: false,
       nextOrderType: OrderType.dineIn,
@@ -743,6 +780,7 @@ class PosController extends ChangeNotifier {
     final tableId = activeDiningTableId;
     if (tableId == null) return;
 
+    _cancelPendingDiningTablePersistence();
     await _orderStorage.clearDiningTable(tableId);
     diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
       ..removeWhere((session) => session.tableId == tableId);
@@ -755,6 +793,10 @@ class PosController extends ChangeNotifier {
   }
 
   Future<void> clearDiningTableById(String tableId) async {
+    if (activeDiningTableId == tableId) {
+      _cancelPendingDiningTablePersistence();
+    }
+
     await _orderStorage.clearDiningTable(tableId);
     diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
       ..removeWhere((session) => session.tableId == tableId);
@@ -800,6 +842,7 @@ class PosController extends ChangeNotifier {
     } catch (_) {}
 
     rearDisplayOpened = false;
+    _restoreRearDisplayAfterPayment = false;
     _notifySafely();
   }
 
@@ -1098,6 +1141,7 @@ class PosController extends ChangeNotifier {
       _clearPaymentLaunchOverlay();
       isProcessingPayment = false;
       _broadcast();
+      await _restoreRearDisplayAfterPaymentIfNeeded();
     }
   }
 
@@ -1226,6 +1270,7 @@ class PosController extends ChangeNotifier {
       _clearPaymentLaunchOverlay();
       isProcessingPayment = false;
       _broadcast();
+      await _restoreRearDisplayAfterPaymentIfNeeded();
     }
   }
 
@@ -1348,14 +1393,84 @@ class PosController extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
+    _rearDisplaySyncTimer?.cancel();
+    _rearDisplaySyncPending = false;
+    _diningTablePersistTimer?.cancel();
     super.dispose();
   }
 
   void _broadcast() {
     _syncActiveDiningTableInMemory();
-    unawaited(_persistActiveDiningTableSession());
+    _scheduleActiveDiningTablePersistence();
     _notifySafely();
-    unawaited(syncRearDisplay());
+    _scheduleRearDisplaySync();
+  }
+
+  void _scheduleActiveDiningTablePersistence() {
+    if (selectedOrderType != OrderType.dineIn || activeDiningTableId == null) {
+      return;
+    }
+
+    _diningTablePersistTimer?.cancel();
+    _diningTablePersistTimer = Timer(_diningTablePersistDebounceDuration, () {
+      _diningTablePersistTimer = null;
+      unawaited(_queueActiveDiningTablePersistence());
+    });
+  }
+
+  Future<void> _flushActiveDiningTablePersistence() async {
+    if (selectedOrderType != OrderType.dineIn || activeDiningTableId == null) {
+      _cancelPendingDiningTablePersistence();
+      return;
+    }
+
+    _diningTablePersistTimer?.cancel();
+    _diningTablePersistTimer = null;
+    await _queueActiveDiningTablePersistence();
+  }
+
+  Future<void> _queueActiveDiningTablePersistence() {
+    final operation = _diningTablePersistQueue.then(
+      (_) => _persistActiveDiningTableSession(),
+    );
+    _diningTablePersistQueue = operation.catchError((_) {});
+    return operation;
+  }
+
+  void _cancelPendingDiningTablePersistence() {
+    _diningTablePersistTimer?.cancel();
+    _diningTablePersistTimer = null;
+  }
+
+  void _scheduleRearDisplaySync() {
+    if (!_presentationEnabled) return;
+    if (!rearDisplayOpened) return;
+
+    _rearDisplaySyncPending = true;
+    _rearDisplaySyncTimer?.cancel();
+    _rearDisplaySyncTimer = Timer(_rearDisplaySyncDebounceDuration, () {
+      _rearDisplaySyncTimer = null;
+      unawaited(syncRearDisplay());
+    });
+  }
+
+  void _handoffRearDisplayToPayment() {
+    if (!rearDisplayOpened) return;
+
+    _restoreRearDisplayAfterPayment = true;
+    rearDisplayOpened = false;
+    _rearDisplaySyncTimer?.cancel();
+    _rearDisplaySyncTimer = null;
+    _rearDisplaySyncPending = false;
+  }
+
+  Future<void> _restoreRearDisplayAfterPaymentIfNeeded() async {
+    if (!_restoreRearDisplayAfterPayment) return;
+    _restoreRearDisplayAfterPayment = false;
+
+    if (_isDisposed || !_presentationEnabled) return;
+
+    await openRearDisplay();
   }
 
   Future<bool?> _promptForCharityRoundUp() async {
@@ -1485,6 +1600,10 @@ class PosController extends ChangeNotifier {
     debugPrint(
       'PosController received Mosambee launch event: $stage on $surface.',
     );
+
+    if (surface == 'rear') {
+      _handoffRearDisplayToPayment();
+    }
 
     paymentStatus = 'Processing payment';
     _showPaymentLaunchOverlay(
@@ -1660,6 +1779,9 @@ class PosController extends ChangeNotifier {
   Future<void> _markActiveDiningTablePaid(
     OrderSnapshot completedSnapshot,
   ) async {
+    _cancelPendingDiningTablePersistence();
+    await _diningTablePersistQueue;
+
     final paidSession = _buildActiveDiningTableSession(
       paidSnapshot: completedSnapshot,
     );
@@ -1702,6 +1824,7 @@ class PosController extends ChangeNotifier {
     _activePaymentBaseOverride = null;
     selectedOrderType = nextOrderType;
     if (clearActiveDiningTable) {
+      _cancelPendingDiningTablePersistence();
       activeDiningTableId = null;
       diningTableSearchQuery = '';
     }

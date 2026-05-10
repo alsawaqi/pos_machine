@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,6 +16,7 @@ const _androidOnly = TargetPlatformVariant(<TargetPlatform>{
 
 class _FakeOrderStorageService implements OrderStorageService {
   int _nextOrderNumber = 1450;
+  int saveDiningTableSessionCalls = 0;
   final List<OrderHistoryRecord> _history = <OrderHistoryRecord>[];
   final List<HeldOrderRecord> _held = <HeldOrderRecord>[];
   final List<DiningTableSession> _dining = <DiningTableSession>[];
@@ -21,6 +24,7 @@ class _FakeOrderStorageService implements OrderStorageService {
   @override
   Future<void> clearAllData() async {
     _nextOrderNumber = 1450;
+    saveDiningTableSessionCalls = 0;
     _history.clear();
     _held.clear();
     _dining.clear();
@@ -97,6 +101,7 @@ class _FakeOrderStorageService implements OrderStorageService {
 
   @override
   Future<void> saveDiningTableSession(DiningTableSession session) async {
+    saveDiningTableSessionCalls++;
     _dining.removeWhere((record) => record.tableId == session.tableId);
     _dining.insert(0, session);
     if (session.orderNumber != null &&
@@ -120,11 +125,30 @@ Future<void> _sendCustomerDecision({required bool accepted}) async {
       );
 }
 
+Future<void> _sendPaymentLaunchState({
+  required String stage,
+  required String surface,
+}) async {
+  await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .handlePlatformMessage(
+        _paymentChannel.name,
+        _codec.encodeMethodCall(
+          MethodCall('paymentLaunchState', {
+            'stage': stage,
+            'surface': surface,
+          }),
+        ),
+        (_) {},
+      );
+}
+
+const _paymentChannel = MethodChannel('com.example.mosambee');
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const hostChannel = MethodChannel('pos_machine/rear_display_host');
-  const paymentChannel = MethodChannel('com.example.mosambee');
+  const paymentChannel = _paymentChannel;
   const printerChannel = MethodChannel('sunmi_printer_plus');
 
   late _FakeOrderStorageService fakeStorage;
@@ -305,6 +329,81 @@ void main() {
     variant: _androidOnly,
   );
 
+  testWidgets('rapid dine-in product taps coalesce table draft persistence', (
+    tester,
+  ) async {
+    final controller = PosController(orderStorage: fakeStorage);
+    addTearDown(controller.dispose);
+
+    await controller.init();
+    await controller.openDiningTable('main_t1');
+
+    for (var index = 0; index < 20; index++) {
+      controller.addProduct(controller.allProducts.first);
+    }
+
+    expect(controller.cart.single.qty, 20);
+    expect(fakeStorage.saveDiningTableSessionCalls, 0);
+
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump();
+
+    expect(fakeStorage.saveDiningTableSessionCalls, 1);
+    expect(fakeStorage._dining.single.draft!.items.single.qty, 20);
+  });
+
+  testWidgets(
+    'rear display syncs never overlap when product taps are rapid',
+    (tester) async {
+      final firstTransferCompleter = Completer<void>();
+      var transferCalls = 0;
+      var inFlightTransfers = 0;
+      var maxInFlightTransfers = 0;
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(hostChannel, (call) async {
+            if (call.method != 'transferDataToRear') return true;
+
+            transferCalls++;
+            inFlightTransfers++;
+            if (inFlightTransfers > maxInFlightTransfers) {
+              maxInFlightTransfers = inFlightTransfers;
+            }
+
+            if (transferCalls == 1) {
+              await firstTransferCompleter.future;
+            }
+
+            inFlightTransfers--;
+            return true;
+          });
+
+      final controller = PosController(orderStorage: fakeStorage);
+      controller.rearDisplayOpened = true;
+      addTearDown(controller.dispose);
+
+      controller.addProduct(controller.allProducts[0]);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(transferCalls, 1);
+
+      for (var index = 1; index < 12; index++) {
+        controller.addProduct(
+          controller.allProducts[index % controller.allProducts.length],
+        );
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(maxInFlightTransfers, 1);
+
+      firstTransferCompleter.complete();
+      await tester.pump(const Duration(milliseconds: 600));
+
+      expect(maxInFlightTransfers, 1);
+      expect(transferCalls, 2);
+    },
+    variant: _androidOnly,
+  );
+
   testWidgets(
     'accepting the charity round-up launches payment with the rounded total',
     (tester) async {
@@ -428,10 +527,11 @@ void main() {
   );
 
   testWidgets(
-    'credit card payment keeps the rear display open around Mosambee',
+    'credit card payment temporarily hands the rear display to Mosambee',
     (tester) async {
       var openRearDisplayCalls = 0;
       var hideRearDisplayCalls = 0;
+      final paymentCompleter = Completer<String>();
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(hostChannel, (call) async {
@@ -470,7 +570,11 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(paymentChannel, (call) async {
             if (call.method == 'loginAndPay') {
-              return '{"status":"success","message":"Payment approved."}';
+              await _sendPaymentLaunchState(
+                stage: 'login_started',
+                surface: 'rear',
+              );
+              return paymentCompleter.future;
             }
             return null;
           });
@@ -494,12 +598,21 @@ void main() {
       expect(controller.showCharityRoundUpPrompt, isTrue);
 
       controller.confirmCharityRoundUp(true);
+      await tester.pump(const Duration(milliseconds: 800));
+
+      expect(controller.rearDisplayOpened, isFalse);
+      expect(hideRearDisplayCalls, 0);
+      expect(openRearDisplayCalls, 1);
+
+      paymentCompleter.complete(
+        '{"status":"success","message":"Payment approved."}',
+      );
       await tester.pump(const Duration(milliseconds: 1800));
 
       final message = await paymentFuture;
       expect(message, contains('Payment approved.'));
       expect(hideRearDisplayCalls, 0);
-      expect(openRearDisplayCalls, 1);
+      expect(openRearDisplayCalls, 2);
       expect(controller.rearDisplayOpened, isTrue);
     },
     variant: _androidOnly,

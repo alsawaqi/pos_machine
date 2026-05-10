@@ -13,7 +13,6 @@ import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
-import io.flutter.plugins.GeneratedPluginRegistrant
 
 object RearDisplayHost {
     const val HOST_CHANNEL = "pos_machine/rear_display_host"
@@ -132,13 +131,23 @@ object RearDisplayHost {
 
     fun hasActiveRearDisplay(): Boolean = activePresentation != null
 
-    fun startActivityOnRearDisplay(intent: Intent): Boolean {
+    fun startActivityOnRearDisplay(
+        intent: Intent,
+        hidePresentationAfterLaunch: Boolean = false,
+    ): Boolean {
         val presentation = activePresentation ?: return false
 
         return try {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             presentation.context.startActivity(intent)
             Log.i(TAG, "Started activity from rear presentation context")
+            if (hidePresentationAfterLaunch) {
+                activeDisplayId = null
+                activeEngineId = null
+                activePresentation?.dismiss()
+                activePresentation = null
+                Log.i(TAG, "Dismissed rear presentation while payment activity is active")
+            }
             true
         } catch (error: Exception) {
             Log.e(TAG, "Unable to start activity from rear presentation context", error)
@@ -152,7 +161,6 @@ object RearDisplayHost {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, REAR_CHANNEL)
             .invokeMethod("updateOrder", arguments)
-        Log.i(TAG, "Transferred data to rear display engineId=$engineId")
 
         return true
     }
@@ -179,7 +187,6 @@ object RearDisplayHost {
         flutterLoader.ensureInitializationComplete(appContext, null)
 
         val flutterEngine = FlutterEngine(appContext)
-        GeneratedPluginRegistrant.registerWith(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, REAR_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {

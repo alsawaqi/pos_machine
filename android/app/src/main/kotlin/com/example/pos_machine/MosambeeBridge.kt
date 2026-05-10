@@ -120,10 +120,11 @@ object MosambeeBridge {
                 TAG,
                 "Starting Mosambee login package=$packageName userName=$userName partnerIdPresent=${partnerId.isNotEmpty()}",
             )
-            launchSurface = startForResultOnPreferredDisplay(
+            launchSurface = startPaymentFlowOnPreferredDisplay(
                 activity = activity,
                 intent = loginIntent,
                 requestCode = LOGIN_REQUEST_CODE,
+                passwordToken = passwordToken,
             )
             notifyLaunchState(stage = "login_started", surface = launchSurface)
             Log.i(TAG, "Started Mosambee login on $launchSurface display")
@@ -244,10 +245,11 @@ object MosambeeBridge {
                 TAG,
                 "Starting Mosambee payment amount=$amount mobNoPresent=${mobNo.isNotEmpty()} descriptionPresent=${description.isNotEmpty()}",
             )
-            launchSurface = startForResultOnPreferredDisplay(
+            launchSurface = startPaymentFlowOnPreferredDisplay(
                 activity = activity,
                 intent = paymentIntent,
                 requestCode = PAYMENT_REQUEST_CODE,
+                passwordToken = "",
             )
             notifyLaunchState(stage = "payment_started", surface = launchSurface)
             Log.i(TAG, "Started Mosambee payment on $launchSurface display")
@@ -326,13 +328,63 @@ object MosambeeBridge {
         )
     }
 
-    private fun startForResultOnPreferredDisplay(
+    private fun startPaymentFlowOnPreferredDisplay(
         activity: Activity,
         intent: Intent,
         requestCode: Int,
+        passwordToken: String,
     ): String {
+        if (requestCode == LOGIN_REQUEST_CODE && RearDisplayHost.hasActiveRearDisplay()) {
+            val rearIntent = buildRearPaymentProxyIntent(activity, passwordToken)
+            if (
+                RearDisplayHost.startActivityOnRearDisplay(
+                    rearIntent,
+                    hidePresentationAfterLaunch = true,
+                )
+            ) {
+                return "rear"
+            }
+
+            Log.w(TAG, "Rear payment launch failed; falling back to front display")
+        }
+
         activity.startActivityForResult(intent, requestCode)
         return "front"
+    }
+
+    private fun buildRearPaymentProxyIntent(
+        activity: Activity,
+        passwordToken: String,
+    ): Intent {
+        val args = paymentRequestData.orEmpty()
+
+        return Intent(activity, RearPaymentProxyActivity::class.java).apply {
+            putExtra(
+                RearPaymentProxyActivity.EXTRA_PACKAGE_NAME,
+                args["packageName"]?.toString()?.trim().orEmpty(),
+            )
+            putExtra(
+                RearPaymentProxyActivity.EXTRA_USER_NAME,
+                args["userName"]?.toString()?.trim().orEmpty(),
+            )
+            putExtra(
+                RearPaymentProxyActivity.EXTRA_PARTNER_ID,
+                args["partnerId"]?.toString()?.trim().orEmpty(),
+            )
+            putExtra(RearPaymentProxyActivity.EXTRA_PASSWORD, passwordToken)
+            putExtra(
+                RearPaymentProxyActivity.EXTRA_AMOUNT,
+                args["amount"]?.toString()?.trim().orEmpty(),
+            )
+            putExtra(
+                RearPaymentProxyActivity.EXTRA_MOB_NO,
+                args["mobNo"]?.toString()?.trim().orEmpty(),
+            )
+            putExtra(
+                RearPaymentProxyActivity.EXTRA_DESCRIPTION,
+                args["description"]?.toString()?.trim().orEmpty(),
+            )
+        }
     }
 
     private fun deliverAndReset(payload: String) {

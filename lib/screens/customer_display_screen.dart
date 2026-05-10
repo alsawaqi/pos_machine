@@ -7,6 +7,11 @@ import '../models/pos_models.dart';
 import '../services/sunmi_receipt_service.dart';
 import '../widgets/animated_feedback_widgets.dart';
 
+const bool _customerVisualEffectsEnabled = bool.fromEnvironment(
+  'POS_ENABLE_VISUAL_EFFECTS',
+  defaultValue: false,
+);
+
 class CustomerDisplayScreen extends StatefulWidget {
   const CustomerDisplayScreen({super.key});
 
@@ -30,10 +35,12 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   bool _sendingCustomerDecision = false;
   int _touchTestTapCount = 0;
   String _lastTouchTestMessage = 'Touch test idle';
+  late final ScrollController _orderItemsScrollController;
 
   @override
   void initState() {
     super.initState();
+    _orderItemsScrollController = ScrollController();
     debugPrint('CustomerDisplayScreen initialized.');
 
     _rearDisplayChannel.setMethodCallHandler((call) async {
@@ -41,7 +48,6 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
 
       final data = call.arguments;
       if (data is Map && data['type'] == 'order_snapshot') {
-        debugPrint('CustomerDisplayScreen received order snapshot.');
         setState(() {
           order = OrderSnapshot.fromMap(Map<String, dynamic>.from(data));
           if (!order.showCharityRoundUpPrompt) {
@@ -55,6 +61,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   @override
   void dispose() {
     _rearDisplayChannel.setMethodCallHandler(null);
+    _orderItemsScrollController.dispose();
     super.dispose();
   }
 
@@ -636,7 +643,9 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
           const SizedBox(height: 18),
           Expanded(
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 260),
+              duration: _customerVisualEffectsEnabled
+                  ? const Duration(milliseconds: 260)
+                  : Duration.zero,
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
               transitionBuilder: (child, animation) {
@@ -654,9 +663,12 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
               child: order.items.isEmpty
                   ? const _CustomerEmptyState(key: ValueKey('empty-order'))
                   : Scrollbar(
-                      key: ValueKey('order-items-${order.items.length}'),
+                      key: const ValueKey('order-items'),
+                      controller: _orderItemsScrollController,
                       thumbVisibility: order.items.length > 4,
                       child: ListView.separated(
+                        controller: _orderItemsScrollController,
+                        primary: false,
                         physics: const BouncingScrollPhysics(),
                         itemCount: order.items.length,
                         separatorBuilder: (_, index) =>
@@ -668,7 +680,9 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                               ? order.orderUpdateNonce
                               : 0;
                           return AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 280),
+                            duration: _customerVisualEffectsEnabled
+                                ? const Duration(milliseconds: 280)
+                                : Duration.zero,
                             switchInCurve: Curves.easeOutBack,
                             transitionBuilder: (child, animation) {
                               return FadeTransition(
@@ -1963,25 +1977,28 @@ class _DisplayItemCard extends StatelessWidget {
     return TweenAnimationBuilder<double>(
       key: ValueKey('customer-pulse-${item['id']}_$pulseNonce'),
       tween: Tween<double>(begin: highlighted ? 1 : 0, end: 0),
-      duration: const Duration(milliseconds: 620),
+      duration: _customerVisualEffectsEnabled
+          ? const Duration(milliseconds: 620)
+          : Duration.zero,
       curve: Curves.easeOutCubic,
       builder: (context, pulse, child) {
+        final effectPulse = _customerVisualEffectsEnabled ? pulse : 0.0;
         return Transform.scale(
-          scale: 1 + (pulse * 0.014),
+          scale: 1 + (effectPulse * 0.014),
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Color.lerp(
                 Colors.white.withValues(alpha: 0.78),
                 const Color(0xFFF2FDFF),
-                pulse * 0.76,
+                effectPulse * 0.76,
               ),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: Color.lerp(
                   Colors.white.withValues(alpha: 0.96),
                   const Color(0xFF86DCEC),
-                  pulse,
+                  effectPulse,
                 )!,
               ),
               boxShadow: [
@@ -1990,12 +2007,12 @@ class _DisplayItemCard extends StatelessWidget {
                   blurRadius: 16,
                   offset: Offset(0, 10),
                 ),
-                if (pulse > 0.001)
+                if (effectPulse > 0.001)
                   BoxShadow(
                     color: const Color(
                       0x2658CAE2,
-                    ).withValues(alpha: 0.14 + (pulse * 0.18)),
-                    blurRadius: 20 + (pulse * 12),
+                    ).withValues(alpha: 0.14 + (effectPulse * 0.18)),
+                    blurRadius: 20 + (effectPulse * 12),
                     offset: const Offset(0, 12),
                   ),
               ],
@@ -2587,38 +2604,42 @@ Widget _customerGlass({
   required Widget child,
   EdgeInsetsGeometry padding = EdgeInsets.zero,
 }) {
+  final panel = Container(
+    padding: padding,
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white.withValues(alpha: 0.78),
+          Colors.white.withValues(alpha: 0.58),
+        ],
+      ),
+      borderRadius: BorderRadius.circular(32),
+      border: Border.all(color: _CustomerDisplayScreenState._panelBorder),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x14000000),
+          blurRadius: 28,
+          offset: Offset(0, 16),
+        ),
+        BoxShadow(
+          color: Color(0x18FFFFFF),
+          blurRadius: 4,
+          offset: Offset(0, 1),
+        ),
+      ],
+    ),
+    child: child,
+  );
+
+  if (!_customerVisualEffectsEnabled) return panel;
+
   return ClipRRect(
     borderRadius: BorderRadius.circular(32),
     child: BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-      child: Container(
-        padding: padding,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.white.withValues(alpha: 0.78),
-              Colors.white.withValues(alpha: 0.58),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: _CustomerDisplayScreenState._panelBorder),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x14000000),
-              blurRadius: 28,
-              offset: Offset(0, 16),
-            ),
-            BoxShadow(
-              color: Color(0x18FFFFFF),
-              blurRadius: 4,
-              offset: Offset(0, 1),
-            ),
-          ],
-        ),
-        child: child,
-      ),
+      child: panel,
     ),
   );
 }

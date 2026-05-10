@@ -298,9 +298,7 @@ class LocalOrderStorageService implements OrderStorageService {
       orderNumber:
           (row['order_number'] as num?)?.toInt() ?? snapshot.orderNumber,
       orderType: OrderTypeLabel.fromStorage(row['order_type']?.toString()),
-      createdAt:
-          DateTime.tryParse(row['created_at']?.toString() ?? '') ??
-          DateTime.now(),
+      createdAt: _parseStoredDate(row['created_at']) ?? DateTime.now(),
       snapshot: snapshot,
     );
   }
@@ -314,8 +312,7 @@ class LocalOrderStorageService implements OrderStorageService {
       orderReference:
           row['order_reference']?.toString() ?? draft.orderReference,
       orderType: OrderTypeLabel.fromStorage(row['order_type']?.toString()),
-      heldAt:
-          DateTime.tryParse(row['held_at']?.toString() ?? '') ?? DateTime.now(),
+      heldAt: _parseStoredDate(row['held_at']) ?? DateTime.now(),
       draft: draft,
     );
   }
@@ -336,11 +333,9 @@ class LocalOrderStorageService implements OrderStorageService {
       orderNumber: (row['order_number'] as num?)?.toInt(),
       orderReference:
           row['order_reference']?.toString() ?? draft?.orderReference ?? '',
-      updatedAt:
-          DateTime.tryParse(row['updated_at']?.toString() ?? '') ??
-          DateTime.now(),
-      occupiedAt: DateTime.tryParse(row['occupied_at']?.toString() ?? ''),
-      paidAt: DateTime.tryParse(row['paid_at']?.toString() ?? ''),
+      updatedAt: _parseStoredDate(row['updated_at']) ?? DateTime.now(),
+      occupiedAt: _parseStoredDate(row['occupied_at']),
+      paidAt: _parseStoredDate(row['paid_at']),
       draft: draft,
       paidSnapshot: paidSnapshot,
     );
@@ -350,11 +345,24 @@ class LocalOrderStorageService implements OrderStorageService {
     if (value is Map<String, dynamic>) return value;
     if (value is Map) return Map<String, dynamic>.from(value);
     if (value is String && value.isNotEmpty) {
-      final decoded = jsonDecode(value);
-      if (decoded is Map<String, dynamic>) return decoded;
-      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {
+        return const <String, dynamic>{};
+      }
     }
     return const <String, dynamic>{};
+  }
+
+  DateTime? _parseStoredDate(Object? value) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty || text.toLowerCase() == 'null') {
+      return null;
+    }
+
+    return DateTime.tryParse(text);
   }
 
   String _storageKey(String value) {
