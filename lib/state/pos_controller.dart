@@ -246,6 +246,7 @@ class PosController extends ChangeNotifier {
   String displayNote = '';
   String paymentOverlayTitle = '';
   String customerReferenceNumber = '';
+  String vehiclePlateNumber = '';
   bool rearDisplayOpened = false;
   bool isProcessingPayment = false;
   bool isLoadingStorage = false;
@@ -676,6 +677,13 @@ class PosController extends ChangeNotifier {
 
   void setCustomerReferenceNumber(String value) {
     customerReferenceNumber = value.replaceAll(RegExp(r'\D'), '').trim();
+    _broadcast();
+  }
+
+  void setVehiclePlateNumber(String value) {
+    // Plates are alphanumeric; store the canonical uppercased form (the server
+    // matches plates uppercased).
+    vehiclePlateNumber = value.trim().toUpperCase();
     _broadcast();
   }
 
@@ -1881,6 +1889,7 @@ class PosController extends ChangeNotifier {
     displayNote = note;
     paymentOverlayTitle = '';
     customerReferenceNumber = '';
+    vehiclePlateNumber = '';
     currentOrderReference = '';
     isProcessingPayment = false;
     productSearchQuery = '';

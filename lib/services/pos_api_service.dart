@@ -88,6 +88,23 @@ class PosApiService {
     return body.dataMap;
   }
 
+  /// POST /device/customers — register a customer (find-or-create on phone) and,
+  /// when given, attach a vehicle plate for drive-thru lookup. Returns the
+  /// customer's server id, or null if the response had none.
+  Future<int?> saveCustomer({
+    required String name,
+    required String phone,
+    String? plateNumber,
+  }) async {
+    final body = await _send(() => _dio.post('/device/customers', data: {
+          'name': name,
+          'phone': phone,
+          'plate_number': ?plateNumber,
+        }));
+    final customer = body.dataMap['customer'];
+    return customer is Map ? (customer['id'] as num?)?.toInt() : null;
+  }
+
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------

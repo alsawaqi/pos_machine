@@ -199,6 +199,44 @@ void main() {
       expect((lines.first as Map)['product_id'], 42);
     });
 
+    test('customer id + vehicle plate ride on the order', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 1.0, 'lineTotal': 1.0},
+        ],
+        rawSubtotal: 1.0,
+        total: 1.0,
+      );
+
+      final payload = buildOrderSyncPayload(
+        snap,
+        customerId: 88,
+        plateNumber: '  A12345  ',
+        newUuid: _seqUuid(),
+      );
+      final order =
+          (payload.events[0]['payload'] as Map)['order'] as Map<String, dynamic>;
+      expect(order['customer_id'], 88);
+      expect(order['plate_number'], 'A12345'); // trimmed
+    });
+
+    test('null customer / blank plate are omitted from the order', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 1.0, 'lineTotal': 1.0},
+        ],
+        rawSubtotal: 1.0,
+        total: 1.0,
+      );
+
+      final payload =
+          buildOrderSyncPayload(snap, plateNumber: '   ', newUuid: _seqUuid());
+      final order =
+          (payload.events[0]['payload'] as Map)['order'] as Map<String, dynamic>;
+      expect(order.containsKey('customer_id'), isFalse);
+      expect(order.containsKey('plate_number'), isFalse);
+    });
+
     test('helpers map enums + money correctly', () {
       expect(mapOrderType('dine_in'), 'dine_in');
       expect(mapOrderType('to_go'), 'to_go');

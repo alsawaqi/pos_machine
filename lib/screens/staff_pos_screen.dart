@@ -100,6 +100,7 @@ class StaffPosScreen extends ConsumerStatefulWidget {
 class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   late final PosController controller;
   late final TextEditingController _customerNumberController;
+  late final TextEditingController _vehiclePlateController;
   late final ValueNotifier<DateTime> _clockNow;
   late final ScrollController _currentOrderScrollController;
   final ManagerAuthorizationService _managerAuthorization =
@@ -151,6 +152,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller = PosController();
     controller.onOrderCompleted = _handleOrderCompleted;
     _customerNumberController = TextEditingController();
+    _vehiclePlateController = TextEditingController();
     _clockNow = ValueNotifier<DateTime>(DateTime.now());
     _currentOrderScrollController = ScrollController();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -207,6 +209,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// then enqueues to the durable outbox, which persists the order before any
   /// network I/O and retries it on the next reconnect.
   Future<void> _handleOrderCompleted(OrderSnapshot snapshot) async {
+    // Capture the customer inputs SYNCHRONOUSLY — the controller resets them
+    // shortly after this callback fires, so reading them post-await would race.
+    final phone = controller.customerReferenceNumber.trim();
+    final plate = controller.vehiclePlateNumber.trim();
+
     double? lat;
     double? lng;
     try {
@@ -230,6 +237,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (!mounted) return;
     final staffId = ref.read(sessionServiceProvider).staff?.id;
     final tableId = int.tryParse(snapshot.diningTableId);
+
+    // Resolve the customer (find-or-create on phone, + register the plate).
+    // Best-effort: offline, the order still saves — the plate rides on the
+    // order itself, only the customer LINK is deferred.
+    int? customerId;
+    if (phone.isNotEmpty) {
+      try {
+        customerId = await ref.read(apiServiceProvider).saveCustomer(
+              name: phone, // no separate name field at the POS; phone is the key
+              phone: phone,
+              plateNumber: plate.isEmpty ? null : plate,
+            );
+      } catch (_) {
+        // leave customerId null; the order is not blocked on this
+      }
+    }
+
     try {
       await ref.read(orderSyncRepositoryProvider).enqueue(
             snapshot,
@@ -237,6 +261,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             lng: lng,
             staffId: staffId,
             tableId: tableId,
+            customerId: customerId,
+            plateNumber: plate.isEmpty ? null : plate,
           );
     } catch (_) {
       // The outbox persists the order before any network call, so it is queued
@@ -251,6 +277,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _clockNow.dispose();
     _currentOrderScrollController.dispose();
     _customerNumberController.dispose();
+    _vehiclePlateController.dispose();
     unawaited(controller.shutdown());
     controller.dispose();
     _catalogSub?.close();
@@ -635,6 +662,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       _cashTenderInput = '';
     });
     _customerNumberController.text = controller.customerReferenceNumber;
+    _vehiclePlateController.text = controller.vehiclePlateNumber;
   }
 
   Future<void> _submitCardPayment() async {
@@ -1098,6 +1126,26 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       _customerNumberController.text = value;
     });
     controller.setCustomerReferenceNumber(value);
+  }
+
+  Future<void> _openVehiclePlateKeyboard() async {
+    final value = await showDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => _InAppKeyboardDialog(
+        title: 'Vehicle Plate',
+        initialValue: _vehiclePlateController.text,
+        hintText: 'Enter the car plate number',
+      ),
+    );
+
+    if (value == null) return;
+
+    final plate = value.trim().toUpperCase();
+    setState(() {
+      _vehiclePlateController.text = plate;
+    });
+    controller.setVehiclePlateNumber(plate);
   }
 
   Future<void> _openDiningSearchKeyboard() async {
@@ -1820,6 +1868,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           const SizedBox(height: 16),
           _buildCustomerReferenceField(),
           const SizedBox(height: 16),
+          _buildVehiclePlateField(),
+          const SizedBox(height: 16),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
@@ -1935,6 +1985,62 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 ),
                 const SizedBox(width: 8),
                 const Icon(Icons.dialpad_rounded, color: Color(0xFF4B5C67)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVehiclePlateField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Vehicle Plate (Optional)',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF192831),
+          ),
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          key: const ValueKey('payment-vehicle-plate'),
+          onTap: _openVehiclePlateKeyboard,
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.84),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFDCE8EC)),
+              boxShadow: _softShadow,
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.directions_car_outlined,
+                    color: Color(0xFF70818E)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _vehiclePlateController.text.isEmpty
+                        ? 'Add a vehicle plate for drive-thru'
+                        : _vehiclePlateController.text,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: _vehiclePlateController.text.isEmpty
+                          ? const Color(0xFF91A0AB)
+                          : const Color(0xFF22323B),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.keyboard_alt_outlined,
+                    color: Color(0xFF4B5C67)),
               ],
             ),
           ),

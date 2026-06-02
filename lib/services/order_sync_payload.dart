@@ -69,6 +69,8 @@ OrderSyncPayload buildOrderSyncPayload(
   double? lng,
   int? staffId,
   int? tableId,
+  int? customerId,
+  String? plateNumber,
   DateTime? now,
   String Function()? newUuid,
 }) {
@@ -80,6 +82,10 @@ OrderSyncPayload buildOrderSyncPayload(
   if (lat != null && lng != null) {
     gps = {'lat': lat, 'lng': lng};
   }
+
+  final plate = (plateNumber != null && plateNumber.trim().isNotEmpty)
+      ? plateNumber.trim()
+      : null;
 
   // ---- lines (+ add-ons) ----
   final lines = <Map<String, dynamic>>[];
@@ -135,6 +141,8 @@ OrderSyncPayload buildOrderSyncPayload(
     'gps': ?gps,
     'staff_id': ?staffId,
     'table_id': ?tableId,
+    'customer_id': ?customerId,
+    'plate_number': ?plate,
     if (snapshot.note.trim().isNotEmpty) 'note': snapshot.note.trim(),
   };
 
