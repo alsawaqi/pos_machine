@@ -19,8 +19,8 @@ class SessionState {
   final bool isConfigured;
   final int? companyId;
   final int? branchId;
-  final String? kioskId; // device identity, entered once at setup
-  final String? terminalId; // bank terminal, FETCHED from config (Soft POS)
+  final String? kioskId; // fetched at activation (layer 1)
+  final String? terminalId; // fetched at activation + refreshed from config (Soft POS)
   final StaffSessionData? staff;
 
   bool get hasStaff => staff != null;
@@ -28,12 +28,12 @@ class SessionState {
   static const empty = SessionState();
 }
 
-/// Persists the device token (secure) + non-sensitive session bits (prefs), and
+/// Persists the device token (secure) + the layer-1 device identity (prefs), and
 /// keeps the token in memory so the API client can read it synchronously.
 ///
-/// The device identity is the **kiosk ID** (paired once with an activation
-/// token at install). The **terminal ID** is never entered — it's fetched from
-/// the config bundle and stored here for the Soft POS / Mosambee payment call.
+/// Layer 1 = the device exchanges a single admin code for a device token + its
+/// kiosk ID + terminal ID; that data PERSISTS (staff logout never clears it —
+/// only a 401/revoke does). Layer 2 = the staff PIN session.
 class SessionService {
   SessionService(this._secure, this._prefs);
 
@@ -82,11 +82,17 @@ class SessionService {
         staff: staff,
       );
 
-  /// Store the result of a successful device pairing (kiosk ID → device token).
-  Future<void> savePairing(PairResult result, String kioskId) async {
+  /// Store a successful device activation: device token + kiosk ID + terminal ID
+  /// + company/branch. Layer-1 data that PERSISTS (only [clearForRePair] removes it).
+  Future<void> saveActivation(PairResult result) async {
     _deviceToken = result.deviceToken;
     await _secure.write(key: _kDeviceToken, value: result.deviceToken);
-    await _prefs.setString(_kKioskId, kioskId);
+    if (result.kioskId != null) {
+      await _prefs.setString(_kKioskId, result.kioskId!);
+    }
+    if (result.terminalId != null) {
+      await _prefs.setString(_kTerminalId, result.terminalId!);
+    }
     if (result.companyId != null) {
       await _prefs.setInt(_kCompanyId, result.companyId!);
     }
@@ -95,8 +101,7 @@ class SessionService {
     }
   }
 
-  /// The device's bank terminal ID, fetched from the config bundle meta (used by
-  /// the Soft POS / Mosambee payment call later). Never entered on the device.
+  /// Refresh the terminal ID from the config bundle meta (kept in sync).
   Future<void> saveTerminalId(String? terminalId) async {
     if (terminalId == null || terminalId.isEmpty) return;
     await _prefs.setString(_kTerminalId, terminalId);
@@ -106,19 +111,20 @@ class SessionService {
     await _prefs.setString(_kStaff, jsonEncode(staff.toJson()));
   }
 
-  /// Staff logout (keeps the device paired).
+  /// Staff logout (layer 2 only — keeps the device activated).
   Future<void> clearStaff() async {
     await _prefs.remove(_kStaff);
   }
 
-  /// Full reset back to device setup (e.g. on a 401 / revoked device). Keeps the
-  /// last kiosk ID so the setup screen can pre-fill it on re-pair.
+  /// Full reset back to device setup (only on a 401 / revoked device). Clears
+  /// the layer-1 identity too, so the device must be re-activated with a new code.
   Future<void> clearForRePair() async {
     _deviceToken = null;
     await _secure.delete(key: _kDeviceToken);
     await _prefs.remove(_kStaff);
     await _prefs.remove(_kCompanyId);
     await _prefs.remove(_kBranchId);
+    await _prefs.remove(_kKioskId);
     await _prefs.remove(_kTerminalId);
   }
 }

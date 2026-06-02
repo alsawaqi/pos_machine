@@ -4,11 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
 
-/// One-time device setup (admin/installer): enter the device's kiosk ID + the
-/// one-time activation token issued in the admin portal. The app pairs (→ device
-/// token) and binds the device to its branch. After this, staff only ever enter
-/// their PIN; the branch catalog + the device's terminal ID are fetched from the
-/// config (the terminal ID is never typed here).
+/// Layer 1 (one-time, admin): enter the single activation code generated in the
+/// admin portal for this device. The app activates → stores the device token +
+/// kiosk ID + terminal ID (for the Soft POS) → and moves on to the staff PIN.
+/// Done once by the admin/installer before the machine is handed to the merchant.
 class DeviceSetupScreen extends ConsumerStatefulWidget {
   const DeviceSetupScreen({super.key});
 
@@ -17,32 +16,20 @@ class DeviceSetupScreen extends ConsumerStatefulWidget {
 }
 
 class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
-  final _kioskController = TextEditingController();
-  final _tokenController = TextEditingController();
+  final _codeController = TextEditingController();
   bool _busy = false;
   String? _error;
 
   @override
-  void initState() {
-    super.initState();
-    final existing = ref.read(sessionServiceProvider).kioskId;
-    if (existing != null && existing.isNotEmpty) {
-      _kioskController.text = existing;
-    }
-  }
-
-  @override
   void dispose() {
-    _kioskController.dispose();
-    _tokenController.dispose();
+    _codeController.dispose();
     super.dispose();
   }
 
-  Future<void> _pair() async {
-    final kiosk = _kioskController.text.trim();
-    final token = _tokenController.text.trim();
-    if (kiosk.isEmpty || token.isEmpty) {
-      setState(() => _error = 'Enter both the kiosk ID and the activation token.');
+  Future<void> _activate() async {
+    final code = _codeController.text.trim();
+    if (code.isEmpty) {
+      setState(() => _error = 'Enter the activation code from the admin portal.');
       return;
     }
     setState(() {
@@ -50,10 +37,8 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
       _error = null;
     });
     try {
-      final result = await ref
-          .read(apiServiceProvider)
-          .pairDevice(kioskId: kiosk, activationToken: token);
-      await ref.read(sessionControllerProvider.notifier).savePairing(result, kiosk);
+      final result = await ref.read(apiServiceProvider).activateDevice(code: code);
+      await ref.read(sessionControllerProvider.notifier).saveActivation(result);
       // The startup gate rebuilds into the staff PIN login automatically.
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -90,14 +75,33 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Enter the kiosk ID and the one-time activation token issued in the admin portal. You only do this once.',
+                  'Enter the activation code generated for this device in the admin portal. You only do this once.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white60, fontSize: 14),
                 ),
                 const SizedBox(height: 28),
-                _field(_kioskController, 'Kiosk ID'),
-                const SizedBox(height: 16),
-                _field(_tokenController, 'Activation token'),
+                TextField(
+                  controller: _codeController,
+                  style: const TextStyle(color: Colors.white),
+                  textInputAction: TextInputAction.done,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  onSubmitted: (_) => _busy ? null : _activate(),
+                  decoration: InputDecoration(
+                    labelText: 'Activation code',
+                    labelStyle: const TextStyle(color: Colors.white60),
+                    filled: true,
+                    fillColor: const Color(0xFF1B3540),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Colors.white24),
+                    ),
+                  ),
+                ),
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   Text(
@@ -109,7 +113,7 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
                 SizedBox(
                   height: 56,
                   child: FilledButton(
-                    onPressed: _busy ? null : _pair,
+                    onPressed: _busy ? null : _activate,
                     child: _busy
                         ? const SizedBox(
                             height: 24,
@@ -122,27 +126,6 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _field(TextEditingController controller, String label) {
-    return TextField(
-      controller: controller,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: Colors.white60),
-        filled: true,
-        fillColor: const Color(0xFF1B3540),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.white24),
         ),
       ),
     );

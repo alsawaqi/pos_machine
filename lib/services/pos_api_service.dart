@@ -42,15 +42,12 @@ class PosApiService {
   // Endpoints
   // ---------------------------------------------------------------------------
 
-  /// POST /auth/device/pair — one-time device setup: the device pairs with its
-  /// kiosk ID + a one-time activation token and receives a device token.
-  Future<PairResult> pairDevice({
-    required String kioskId,
-    required String activationToken,
-  }) async {
-    final body = await _send(() => _dio.post('/auth/device/pair', data: {
-          'kiosk_id': kioskId,
-          'activation_token': activationToken,
+  /// POST /auth/device/activate — one-time device setup: the device exchanges
+  /// the single admin-generated activation code for a device token + its kiosk
+  /// ID + terminal ID.
+  Future<PairResult> activateDevice({required String code}) async {
+    final body = await _send(() => _dio.post('/auth/device/activate', data: {
+          'code': code,
         }));
     return PairResult.fromJson(body.dataMap);
   }

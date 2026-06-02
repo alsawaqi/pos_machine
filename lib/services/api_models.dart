@@ -1,15 +1,17 @@
 // Plain DTOs for the auth responses from pos_api. The config bundle itself is
 // handled as a raw Map and mapped in config_mapper.dart.
 
-/// Result of POST /auth/device/pair — the device pairs with its kiosk ID + a
-/// one-time activation token and receives a long-lived device token. (The bank
-/// terminal ID is NOT here — it is fetched from the config bundle meta.)
+/// Result of POST /auth/device/activate — the device exchanges the single
+/// admin-generated activation code for a device token, plus its kiosk ID and
+/// bank terminal ID (both stored at layer 1 for the Soft POS / Mosambee).
 class PairResult {
   const PairResult({
     required this.deviceToken,
     this.deviceUuid,
     this.companyId,
     this.branchId,
+    this.kioskId,
+    this.terminalId,
     this.deviceName,
   });
 
@@ -17,6 +19,8 @@ class PairResult {
   final String? deviceUuid;
   final int? companyId;
   final int? branchId;
+  final String? kioskId;
+  final String? terminalId;
   final String? deviceName;
 
   factory PairResult.fromJson(Map<String, dynamic> json) {
@@ -26,6 +30,8 @@ class PairResult {
       deviceUuid: device?['uuid'] as String?,
       companyId: (device?['company_id'] as num?)?.toInt(),
       branchId: (device?['branch_id'] as num?)?.toInt(),
+      kioskId: device?['kiosk_id'] as String?,
+      terminalId: device?['terminal_id'] as String?,
       deviceName: device?['name'] as String?,
     );
   }

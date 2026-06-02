@@ -2453,64 +2453,101 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildProfileBlock() {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 168),
-      child: Container(
-        height: 46,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: _chipDecoration(selected: false),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ClipOval(
-                child: SizedBox(
-                  width: 30,
-                  height: 30,
-                  child: DecoratedBox(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFFE6EBF0), Color(0xFFC7D2DA)],
+    final staff = ref.read(sessionControllerProvider).staff;
+    final name = (staff?.name.isNotEmpty ?? false) ? staff!.name : 'Staff';
+    final position = staff?.position ?? '';
+    final positionLabel = position.isEmpty
+        ? ''
+        : '  ${position[0].toUpperCase()}${position.substring(1)}';
+    return InkWell(
+      onTap: _confirmLogout,
+      borderRadius: BorderRadius.circular(16),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 196),
+        child: Container(
+          height: 46,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: _chipDecoration(selected: false),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipOval(
+                  child: SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Color(0xFFE6EBF0), Color(0xFFC7D2DA)],
+                        ),
                       ),
-                    ),
-                    child: const Icon(
-                      Icons.person_rounded,
-                      color: Color(0xFF5A6772),
+                      child: const Icon(
+                        Icons.person_rounded,
+                        color: Color(0xFF5A6772),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              const Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: 'Ahmad',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF21262C),
+                const SizedBox(width: 10),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: name,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF21262C),
+                        ),
                       ),
-                    ),
-                    TextSpan(
-                      text: '  Manager',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF5B6770),
+                      TextSpan(
+                        text: positionLabel,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF5B6770),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                  maxLines: 1,
                 ),
-                maxLines: 1,
-              ),
-            ],
+                const SizedBox(width: 8),
+                const Icon(Icons.logout, size: 16, color: Color(0xFF5B6770)),
+              ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _confirmLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text(
+          'You will return to the staff PIN screen. The device stays set up.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref.read(sessionControllerProvider.notifier).logoutStaff();
+    }
   }
 
   Widget _buildCurrentOrderPanel() {
