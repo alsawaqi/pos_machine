@@ -3,11 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
+import 'qr_scanner_screen.dart';
 
-/// Layer 1 (one-time, admin): enter the single activation code generated in the
-/// admin portal for this device. The app activates → stores the device token +
-/// kiosk ID + terminal ID (for the Soft POS) → and moves on to the staff PIN.
-/// Done once by the admin/installer before the machine is handed to the merchant.
+/// Layer 1 (one-time, admin): scan OR type the single activation code generated
+/// in the admin portal for this device. The app activates → stores the device
+/// token + kiosk ID + terminal ID (for the Soft POS) → and moves on to the staff
+/// PIN. Done once by the admin/installer before the machine is handed over.
 class DeviceSetupScreen extends ConsumerStatefulWidget {
   const DeviceSetupScreen({super.key});
 
@@ -49,6 +50,15 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
     }
   }
 
+  Future<void> _scan() async {
+    final code = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+    );
+    if (!mounted || code == null || code.trim().isEmpty) return;
+    _codeController.text = code.trim();
+    await _activate();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -75,11 +85,34 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Enter the activation code generated for this device in the admin portal. You only do this once.',
+                  'Scan or enter the activation code generated for this device in the admin portal. You only do this once.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white60, fontSize: 14),
                 ),
                 const SizedBox(height: 28),
+                SizedBox(
+                  height: 56,
+                  child: FilledButton.icon(
+                    onPressed: _busy ? null : _scan,
+                    icon: const Icon(Icons.qr_code_scanner),
+                    label: const Text('Scan QR code'),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    const Expanded(child: Divider(color: Colors.white24)),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'or enter it manually',
+                        style: TextStyle(color: Colors.white38, fontSize: 12),
+                      ),
+                    ),
+                    const Expanded(child: Divider(color: Colors.white24)),
+                  ],
+                ),
+                const SizedBox(height: 20),
                 TextField(
                   controller: _codeController,
                   style: const TextStyle(color: Colors.white),
@@ -109,11 +142,15 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
                     style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 14),
                   ),
                 ],
-                const SizedBox(height: 28),
+                const SizedBox(height: 20),
                 SizedBox(
                   height: 56,
-                  child: FilledButton(
+                  child: OutlinedButton(
                     onPressed: _busy ? null : _activate,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Colors.white24),
+                    ),
                     child: _busy
                         ? const SizedBox(
                             height: 24,
