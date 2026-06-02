@@ -174,6 +174,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             floors: catalog.floors,
             tables: catalog.tables,
             taxes: catalog.taxes,
+            addonGroups: catalog.addonGroups,
           );
         }
       },
@@ -1303,11 +1304,45 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     };
   }
 
+  /// Resolve the modifier groups for a product: the add-on groups the merchant
+  /// assigned to it (from the API config). Falls back to the bundled sample
+  /// groups only when no company add-ons are loaded at all (demo / offline seed)
+  /// so the dialog still demonstrates customization; a product with a live
+  /// catalog but no assigned add-ons simply shows the notes field.
+  List<_ModifierGroupDefinition> _resolveModifierGroups(Product product) {
+    final apiGroups = controller.addonGroupsForProduct(product);
+    if (apiGroups.isNotEmpty) {
+      var step = 0;
+      return apiGroups.map((group) {
+        step++;
+        return _ModifierGroupDefinition(
+          step: step,
+          title: group.name,
+          multiSelect: group.multiSelect,
+          options: group.options
+              .map((option) => _ModifierOptionDefinition(
+                    id: option.id.toString(),
+                    label: option.label,
+                    price: option.priceDelta,
+                  ))
+              .toList(),
+        );
+      }).toList();
+    }
+    if (controller.addonGroups.isEmpty) {
+      return _customizationGroups;
+    }
+    return const <_ModifierGroupDefinition>[];
+  }
+
   Future<void> _openCustomizeDialog(CartItem item) async {
     final result = await showDialog<_CartItemCustomizationResult>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => _CustomizeCartItemDialog(item: item),
+      builder: (context) => _CustomizeCartItemDialog(
+        item: item,
+        groups: _resolveModifierGroups(item.product),
+      ),
     );
 
     if (!mounted || result == null) return;
@@ -3690,8 +3725,9 @@ class _CartItemCustomizationResult {
 
 class _CustomizeCartItemDialog extends StatefulWidget {
   final CartItem item;
+  final List<_ModifierGroupDefinition> groups;
 
-  const _CustomizeCartItemDialog({required this.item});
+  const _CustomizeCartItemDialog({required this.item, required this.groups});
 
   @override
   State<_CustomizeCartItemDialog> createState() =>
@@ -3707,14 +3743,14 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
     super.initState();
     _notesController = TextEditingController(text: widget.item.normalizedNotes);
     _selectedByGroup = <String, Set<String>>{
-      for (final group in _customizationGroups)
+      for (final group in widget.groups)
         group.title: widget.item
             .modifiersForGroup(group.title)
             .map((modifier) => modifier.id)
             .toSet(),
     };
 
-    for (final group in _customizationGroups) {
+    for (final group in widget.groups) {
       if (group.requiredSelection && _selectedByGroup[group.title]!.isEmpty) {
         _selectedByGroup[group.title]!.add(group.options.first.id);
       }
@@ -3730,7 +3766,7 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
   List<CartItemModifier> get _selectedModifiers {
     final modifiers = <CartItemModifier>[];
 
-    for (final group in _customizationGroups) {
+    for (final group in widget.groups) {
       final selectedIds = _selectedByGroup[group.title] ?? const <String>{};
       for (final option in group.options) {
         if (!selectedIds.contains(option.id)) continue;
@@ -3748,7 +3784,7 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
     return modifiers;
   }
 
-  bool get _canSubmit => _customizationGroups.every((group) {
+  bool get _canSubmit => widget.groups.every((group) {
     if (!group.requiredSelection) return true;
     return (_selectedByGroup[group.title] ?? const <String>{}).isNotEmpty;
   });
@@ -3873,7 +3909,7 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (final group in _customizationGroups) ...[
+                      for (final group in widget.groups) ...[
                         _CustomizeGroupSection(
                           group: group,
                           selectedIds:

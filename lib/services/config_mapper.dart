@@ -11,6 +11,7 @@ class CatalogSnapshot {
     required this.floors,
     required this.tables,
     required this.taxes,
+    this.addonGroups = const <AddonGroup>[],
   });
 
   final List<String> categories;
@@ -18,6 +19,8 @@ class CatalogSnapshot {
   final List<DiningFloor> floors;
   final List<DiningTableDefinition> tables;
   final List<CompanyTax> taxes;
+  // Company add-on groups (each with its options); products reference them by id.
+  final List<AddonGroup> addonGroups;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -63,6 +66,18 @@ class ConfigMapper {
           .toList() ??
       const [];
 
+  static List<int> _intList(Object? v) =>
+      (v as List?)?.map((e) => (e as num?)?.toInt()).whereType<int>().toList() ??
+      const [];
+
+  static List<int> _idsFromCsv(String csv) => csv.isEmpty
+      ? const []
+      : csv
+          .split(',')
+          .map((s) => int.tryParse(s.trim()))
+          .whereType<int>()
+          .toList();
+
   /// API `data` map → Drift companions for AppDatabase.replaceConfig.
   static ParsedConfig parse(Map<String, dynamic> data, {DateTime? now}) {
     final meta = (data['meta'] as Map?)?.cast<String, dynamic>() ?? const {};
@@ -99,6 +114,7 @@ class ConfigMapper {
               branchStockQty: Value(_dbl(p['branch_stock_qty'])),
               imageUrl: Value(_strN(p['image_url'])),
               status: Value(_strN(p['status'])),
+              addonGroupIds: Value(_intList(p['addon_group_ids']).join(',')),
             ))
         .toList();
 
@@ -189,8 +205,10 @@ class ConfigMapper {
     List<ProductRow> prods,
     List<FloorRow> floors,
     List<TableRow> tables,
-    List<TaxRow> taxes,
-  ) {
+    List<TaxRow> taxes, [
+    List<AddonGroupRow> addonGroupRows = const [],
+    List<AddonRow> addonRows = const [],
+  ]) {
     final sortedCats = [...cats]
       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
     final idToName = {for (final c in sortedCats) c.id: c.name};
@@ -201,6 +219,7 @@ class ConfigMapper {
               name: p.name,
               category: idToName[p.categoryId] ?? '',
               price: p.basePriceBaisas / 1000.0,
+              addonGroupIds: _idsFromCsv(p.addonGroupIds),
             ))
         .toList();
 
@@ -258,12 +277,37 @@ class ConfigMapper {
         .map((t) => CompanyTax(name: t.name, nameAr: t.nameAr, ratePercent: t.ratePercent))
         .toList();
 
+    // Add-on groups (company set) + their options; baisas → OMR. Options keep
+    // their cached/inserted order (API display_order). Inactive/archived rows
+    // are dropped so they never show on the modifier sheet.
+    final optionsByGroup = <int, List<AddonOption>>{};
+    for (final a in addonRows) {
+      if (a.status == 'inactive' || a.status == 'archived') continue;
+      (optionsByGroup[a.addOnGroupId] ??= <AddonOption>[]).add(AddonOption(
+        id: a.id,
+        label: a.name,
+        labelAr: a.nameAr,
+        priceDelta: a.priceDeltaBaisas / 1000.0,
+      ));
+    }
+    final addonGroups = addonGroupRows
+        .where((g) => g.status != 'inactive' && g.status != 'archived')
+        .map((g) => AddonGroup(
+              id: g.id,
+              name: g.name,
+              nameAr: g.nameAr,
+              multiSelect: (g.selectionMode ?? 'single') == 'multiple',
+              options: optionsByGroup[g.id] ?? const <AddonOption>[],
+            ))
+        .toList();
+
     return CatalogSnapshot(
       categories: sortedCats.map((c) => c.name).toList(),
       products: products,
       floors: floorDefs,
       tables: tableDefs,
       taxes: companyTaxes,
+      addonGroups: addonGroups,
     );
   }
 }

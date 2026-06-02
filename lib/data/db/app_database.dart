@@ -28,7 +28,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -46,6 +46,10 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(posTables, posTables.positionY);
             await m.addColumn(posTables, posTables.width);
             await m.addColumn(posTables, posTables.height);
+          }
+          if (from < 4) {
+            // v4 added per-product add-on group ids (the modifier sheet).
+            await m.addColumn(products, products.addonGroupIds);
           }
         },
       );
@@ -66,6 +70,10 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<List<TableRow>> watchTables() =>
       (select(posTables)..orderBy([(t) => OrderingTerm(expression: t.displayOrder)])).watch();
+
+  Stream<List<AddonGroupRow>> watchAddonGroups() => select(addonGroups).watch();
+
+  Stream<List<AddonRow>> watchAddons() => select(addons).watch();
 
   Stream<List<TaxRow>> watchTaxes() =>
       (select(taxCache)..orderBy([(t) => OrderingTerm(expression: t.id)])).watch();

@@ -160,6 +160,40 @@ List<TaxLineAmount> taxLinesFor(double subtotal) => activeCompanyTaxes
 double taxTotalFor(double subtotal) =>
     _roundTax(taxLinesFor(subtotal).fold<double>(0, (s, l) => s + l.amount));
 
+/// One selectable add-on within a group (e.g. "Oat milk", "Extra shot"), with
+/// the price it adds to the line. Maps from the API `addons` (price in OMR,
+/// converted from baisas at the catalog boundary).
+class AddonOption {
+  const AddonOption({
+    required this.id,
+    required this.label,
+    this.labelAr,
+    required this.priceDelta,
+  });
+  final int id;
+  final String label;
+  final String? labelAr;
+  final double priceDelta; // OMR added to the line when selected
+}
+
+/// A product's add-on group (e.g. "Size", "Milk", "Extras"), assigned per
+/// product in the merchant portal and fetched in the device config. [multiSelect]
+/// mirrors the API `selection_mode` ('multiple' vs 'single').
+class AddonGroup {
+  const AddonGroup({
+    required this.id,
+    required this.name,
+    this.nameAr,
+    required this.multiSelect,
+    required this.options,
+  });
+  final int id;
+  final String name;
+  final String? nameAr;
+  final bool multiSelect;
+  final List<AddonOption> options;
+}
+
 class Product {
   final String id;
   final String name;
@@ -167,6 +201,9 @@ class Product {
   final double price;
   final String? imageAsset;
   final bool lowStock;
+  // Add-on group ids assigned to this product (from the API `addon_group_ids`),
+  // resolved to AddonGroups for the modifier sheet. Empty = no add-ons.
+  final List<int> addonGroupIds;
 
   const Product({
     required this.id,
@@ -175,6 +212,7 @@ class Product {
     required this.price,
     this.imageAsset,
     this.lowStock = false,
+    this.addonGroupIds = const <int>[],
   });
 
   factory Product.fromMap(Map<String, dynamic> map) {
@@ -188,6 +226,10 @@ class Product {
           0,
       imageAsset: map['imageAsset']?.toString(),
       lowStock: map['lowStock'] == true,
+      addonGroupIds: ((map['addonGroupIds'] as List?) ?? const [])
+          .map((e) => (e as num?)?.toInt())
+          .whereType<int>()
+          .toList(),
     );
   }
 
@@ -199,6 +241,7 @@ class Product {
       'price': price,
       'imageAsset': imageAsset,
       'lowStock': lowStock,
+      'addonGroupIds': addonGroupIds,
     };
   }
 }

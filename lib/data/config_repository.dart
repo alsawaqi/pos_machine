@@ -49,11 +49,15 @@ class ConfigRepository {
     var floors = <FloorRow>[];
     var tables = <TableRow>[];
     var taxes = <TaxRow>[];
+    var addonGroups = <AddonGroupRow>[];
+    var addons = <AddonRow>[];
     var seenCats = false, seenProds = false, seenFloors = false, seenTables = false, seenTaxes = false;
 
     void emit() {
       if (seenCats && seenProds && seenFloors && seenTables && seenTaxes) {
-        controller.add(ConfigMapper.toCatalog(branch, cats, prods, floors, tables, taxes));
+        controller.add(ConfigMapper.toCatalog(
+          branch, cats, prods, floors, tables, taxes, addonGroups, addons,
+        ));
       }
     }
 
@@ -85,6 +89,14 @@ class ConfigRepository {
       _db.watchTaxes().listen((v) {
         taxes = v;
         seenTaxes = true;
+        emit();
+      }),
+      _db.watchAddonGroups().listen((v) {
+        addonGroups = v;
+        emit();
+      }),
+      _db.watchAddons().listen((v) {
+        addons = v;
         emit();
       }),
     ];

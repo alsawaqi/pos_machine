@@ -51,6 +51,10 @@ class Products extends Table {
   RealColumn get branchStockQty => real().nullable()();
   TextColumn get imageUrl => text().nullable()();
   TextColumn get status => text().nullable()();
+  // Comma-separated add-on group ids assigned to this product (from the API
+  // `addon_group_ids`), resolved against AddonGroups/Addons to build the
+  // product's modifier sheet. Empty = no add-ons.
+  TextColumn get addonGroupIds => text().withDefault(const Constant(''))();
 
   @override
   Set<Column> get primaryKey => {id};

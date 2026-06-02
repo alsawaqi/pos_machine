@@ -212,6 +212,10 @@ class PosController extends ChangeNotifier {
     ),
   ];
 
+  /// Company add-on groups (each with its options) from the API config, set in
+  /// [applyCatalog]. Products reference them by id (see [addonGroupsForProduct]).
+  List<AddonGroup> addonGroups = const <AddonGroup>[];
+
   final List<CartItem> _cart = [];
   List<CartItem> get cart => List.unmodifiable(_cart);
 
@@ -316,11 +320,13 @@ class PosController extends ChangeNotifier {
     required List<DiningFloor> floors,
     required List<DiningTableDefinition> tables,
     List<CompanyTax> taxes = const <CompanyTax>[],
+    List<AddonGroup> addonGroups = const <AddonGroup>[],
   }) {
     this.categories = categories;
     allProducts = products;
     diningFloors = floors;
     diningTableDefinitions = tables;
+    this.addonGroups = addonGroups;
     // Company taxes drive the cart tax lines + total. Stored in the shared
     // source so the persisted / printed order agrees with the live cart.
     activeCompanyTaxes = taxes;
@@ -333,6 +339,26 @@ class PosController extends ChangeNotifier {
       selectedDiningFloorId = floors.first.id;
     }
     _notifySafely();
+  }
+
+  /// The add-on groups assigned to [product], resolved against the company set.
+  /// Looks the product up in the live catalog by id first, so a cart line
+  /// restored from storage (whose Product copy may predate the catalog) still
+  /// resolves its add-ons. Empty when the product has none or no catalog loaded.
+  List<AddonGroup> addonGroupsForProduct(Product product) {
+    if (addonGroups.isEmpty) return const <AddonGroup>[];
+    final live = allProducts.firstWhere(
+      (p) => p.id == product.id,
+      orElse: () => product,
+    );
+    final ids =
+        live.addonGroupIds.isNotEmpty ? live.addonGroupIds : product.addonGroupIds;
+    if (ids.isEmpty) return const <AddonGroup>[];
+    final byId = {for (final g in addonGroups) g.id: g};
+    return [
+      for (final id in ids)
+        if (byId.containsKey(id)) byId[id]!,
+    ];
   }
 
   List<Product> get visibleProducts {

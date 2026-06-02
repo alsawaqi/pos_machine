@@ -948,6 +948,18 @@ class $ProductsTable extends Products
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _addonGroupIdsMeta = const VerificationMeta(
+    'addonGroupIds',
+  );
+  @override
+  late final GeneratedColumn<String> addonGroupIds = GeneratedColumn<String>(
+    'addon_group_ids',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -958,6 +970,7 @@ class $ProductsTable extends Products
     branchStockQty,
     imageUrl,
     status,
+    addonGroupIds,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1022,6 +1035,15 @@ class $ProductsTable extends Products
         status.isAcceptableOrUnknown(data['status']!, _statusMeta),
       );
     }
+    if (data.containsKey('addon_group_ids')) {
+      context.handle(
+        _addonGroupIdsMeta,
+        addonGroupIds.isAcceptableOrUnknown(
+          data['addon_group_ids']!,
+          _addonGroupIdsMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1063,6 +1085,10 @@ class $ProductsTable extends Products
         DriftSqlType.string,
         data['${effectivePrefix}status'],
       ),
+      addonGroupIds: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}addon_group_ids'],
+      )!,
     );
   }
 
@@ -1081,6 +1107,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
   final double? branchStockQty;
   final String? imageUrl;
   final String? status;
+  final String addonGroupIds;
   const ProductRow({
     required this.id,
     required this.name,
@@ -1090,6 +1117,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     this.branchStockQty,
     this.imageUrl,
     this.status,
+    required this.addonGroupIds,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1112,6 +1140,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     if (!nullToAbsent || status != null) {
       map['status'] = Variable<String>(status);
     }
+    map['addon_group_ids'] = Variable<String>(addonGroupIds);
     return map;
   }
 
@@ -1135,6 +1164,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       status: status == null && nullToAbsent
           ? const Value.absent()
           : Value(status),
+      addonGroupIds: Value(addonGroupIds),
     );
   }
 
@@ -1152,6 +1182,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       branchStockQty: serializer.fromJson<double?>(json['branchStockQty']),
       imageUrl: serializer.fromJson<String?>(json['imageUrl']),
       status: serializer.fromJson<String?>(json['status']),
+      addonGroupIds: serializer.fromJson<String>(json['addonGroupIds']),
     );
   }
   @override
@@ -1166,6 +1197,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       'branchStockQty': serializer.toJson<double?>(branchStockQty),
       'imageUrl': serializer.toJson<String?>(imageUrl),
       'status': serializer.toJson<String?>(status),
+      'addonGroupIds': serializer.toJson<String>(addonGroupIds),
     };
   }
 
@@ -1178,6 +1210,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     Value<double?> branchStockQty = const Value.absent(),
     Value<String?> imageUrl = const Value.absent(),
     Value<String?> status = const Value.absent(),
+    String? addonGroupIds,
   }) => ProductRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -1189,6 +1222,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
         : this.branchStockQty,
     imageUrl: imageUrl.present ? imageUrl.value : this.imageUrl,
     status: status.present ? status.value : this.status,
+    addonGroupIds: addonGroupIds ?? this.addonGroupIds,
   );
   ProductRow copyWithCompanion(ProductsCompanion data) {
     return ProductRow(
@@ -1206,6 +1240,9 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           : this.branchStockQty,
       imageUrl: data.imageUrl.present ? data.imageUrl.value : this.imageUrl,
       status: data.status.present ? data.status.value : this.status,
+      addonGroupIds: data.addonGroupIds.present
+          ? data.addonGroupIds.value
+          : this.addonGroupIds,
     );
   }
 
@@ -1219,7 +1256,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           ..write('basePriceBaisas: $basePriceBaisas, ')
           ..write('branchStockQty: $branchStockQty, ')
           ..write('imageUrl: $imageUrl, ')
-          ..write('status: $status')
+          ..write('status: $status, ')
+          ..write('addonGroupIds: $addonGroupIds')
           ..write(')'))
         .toString();
   }
@@ -1234,6 +1272,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     branchStockQty,
     imageUrl,
     status,
+    addonGroupIds,
   );
   @override
   bool operator ==(Object other) =>
@@ -1246,7 +1285,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           other.basePriceBaisas == this.basePriceBaisas &&
           other.branchStockQty == this.branchStockQty &&
           other.imageUrl == this.imageUrl &&
-          other.status == this.status);
+          other.status == this.status &&
+          other.addonGroupIds == this.addonGroupIds);
 }
 
 class ProductsCompanion extends UpdateCompanion<ProductRow> {
@@ -1258,6 +1298,7 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
   final Value<double?> branchStockQty;
   final Value<String?> imageUrl;
   final Value<String?> status;
+  final Value<String> addonGroupIds;
   const ProductsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -1267,6 +1308,7 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     this.branchStockQty = const Value.absent(),
     this.imageUrl = const Value.absent(),
     this.status = const Value.absent(),
+    this.addonGroupIds = const Value.absent(),
   });
   ProductsCompanion.insert({
     this.id = const Value.absent(),
@@ -1277,6 +1319,7 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     this.branchStockQty = const Value.absent(),
     this.imageUrl = const Value.absent(),
     this.status = const Value.absent(),
+    this.addonGroupIds = const Value.absent(),
   });
   static Insertable<ProductRow> custom({
     Expression<int>? id,
@@ -1287,6 +1330,7 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     Expression<double>? branchStockQty,
     Expression<String>? imageUrl,
     Expression<String>? status,
+    Expression<String>? addonGroupIds,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1297,6 +1341,7 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
       if (branchStockQty != null) 'branch_stock_qty': branchStockQty,
       if (imageUrl != null) 'image_url': imageUrl,
       if (status != null) 'status': status,
+      if (addonGroupIds != null) 'addon_group_ids': addonGroupIds,
     });
   }
 
@@ -1309,6 +1354,7 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     Value<double?>? branchStockQty,
     Value<String?>? imageUrl,
     Value<String?>? status,
+    Value<String>? addonGroupIds,
   }) {
     return ProductsCompanion(
       id: id ?? this.id,
@@ -1319,6 +1365,7 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
       branchStockQty: branchStockQty ?? this.branchStockQty,
       imageUrl: imageUrl ?? this.imageUrl,
       status: status ?? this.status,
+      addonGroupIds: addonGroupIds ?? this.addonGroupIds,
     );
   }
 
@@ -1349,6 +1396,9 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
+    if (addonGroupIds.present) {
+      map['addon_group_ids'] = Variable<String>(addonGroupIds.value);
+    }
     return map;
   }
 
@@ -1362,7 +1412,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
           ..write('basePriceBaisas: $basePriceBaisas, ')
           ..write('branchStockQty: $branchStockQty, ')
           ..write('imageUrl: $imageUrl, ')
-          ..write('status: $status')
+          ..write('status: $status, ')
+          ..write('addonGroupIds: $addonGroupIds')
           ..write(')'))
         .toString();
   }
@@ -4319,6 +4370,7 @@ typedef $$ProductsTableCreateCompanionBuilder =
       Value<double?> branchStockQty,
       Value<String?> imageUrl,
       Value<String?> status,
+      Value<String> addonGroupIds,
     });
 typedef $$ProductsTableUpdateCompanionBuilder =
     ProductsCompanion Function({
@@ -4330,6 +4382,7 @@ typedef $$ProductsTableUpdateCompanionBuilder =
       Value<double?> branchStockQty,
       Value<String?> imageUrl,
       Value<String?> status,
+      Value<String> addonGroupIds,
     });
 
 class $$ProductsTableFilterComposer
@@ -4378,6 +4431,11 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<String> get status => $composableBuilder(
     column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get addonGroupIds => $composableBuilder(
+    column: $table.addonGroupIds,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4430,6 +4488,11 @@ class $$ProductsTableOrderingComposer
     column: $table.status,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get addonGroupIds => $composableBuilder(
+    column: $table.addonGroupIds,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ProductsTableAnnotationComposer
@@ -4470,6 +4533,11 @@ class $$ProductsTableAnnotationComposer
 
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get addonGroupIds => $composableBuilder(
+    column: $table.addonGroupIds,
+    builder: (column) => column,
+  );
 }
 
 class $$ProductsTableTableManager
@@ -4511,6 +4579,7 @@ class $$ProductsTableTableManager
                 Value<double?> branchStockQty = const Value.absent(),
                 Value<String?> imageUrl = const Value.absent(),
                 Value<String?> status = const Value.absent(),
+                Value<String> addonGroupIds = const Value.absent(),
               }) => ProductsCompanion(
                 id: id,
                 name: name,
@@ -4520,6 +4589,7 @@ class $$ProductsTableTableManager
                 branchStockQty: branchStockQty,
                 imageUrl: imageUrl,
                 status: status,
+                addonGroupIds: addonGroupIds,
               ),
           createCompanionCallback:
               ({
@@ -4531,6 +4601,7 @@ class $$ProductsTableTableManager
                 Value<double?> branchStockQty = const Value.absent(),
                 Value<String?> imageUrl = const Value.absent(),
                 Value<String?> status = const Value.absent(),
+                Value<String> addonGroupIds = const Value.absent(),
               }) => ProductsCompanion.insert(
                 id: id,
                 name: name,
@@ -4540,6 +4611,7 @@ class $$ProductsTableTableManager
                 branchStockQty: branchStockQty,
                 imageUrl: imageUrl,
                 status: status,
+                addonGroupIds: addonGroupIds,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
