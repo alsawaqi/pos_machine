@@ -101,6 +101,53 @@ class DiningTableDefinition {
   });
 }
 
+/// A company tax fetched from the API config (name + percentage). Applied on
+/// top of the order subtotal (exclusive).
+class CompanyTax {
+  const CompanyTax({required this.name, this.nameAr, required this.ratePercent});
+  final String name;
+  final String? nameAr;
+  final double ratePercent; // 5.0 == 5%
+}
+
+/// A computed tax line for an order: the tax + the OMR amount it adds.
+class TaxLineAmount {
+  const TaxLineAmount({
+    required this.name,
+    required this.ratePercent,
+    required this.amount,
+  });
+  final String name;
+  final double ratePercent;
+  final double amount;
+
+  /// "5" for 5.0, "7.5" for 7.5 — used in the cart/receipt label, e.g. "VAT (5%)".
+  String get rateLabel => ratePercent == ratePercent.roundToDouble()
+      ? ratePercent.toStringAsFixed(0)
+      : ratePercent.toString();
+}
+
+/// Company taxes currently in effect, set from the API config at staff login
+/// (PosController.applyCatalog). A single shared source so the live cart and the
+/// persisted / printed order totals agree. Empty => no tax (no implicit 5%).
+List<CompanyTax> activeCompanyTaxes = const <CompanyTax>[];
+
+double _roundTax(double v) => double.parse(v.toStringAsFixed(3));
+
+/// Per-tax amounts for [subtotal] — each active company rate applied to the
+/// subtotal (exclusive), rounded to 3 decimals (baisas precision).
+List<TaxLineAmount> taxLinesFor(double subtotal) => activeCompanyTaxes
+    .map((t) => TaxLineAmount(
+          name: t.name,
+          ratePercent: t.ratePercent,
+          amount: _roundTax(subtotal * t.ratePercent / 100),
+        ))
+    .toList(growable: false);
+
+/// Summed tax for [subtotal] across all active company taxes.
+double taxTotalFor(double subtotal) =>
+    _roundTax(taxLinesFor(subtotal).fold<double>(0, (s, l) => s + l.amount));
+
 class Product {
   final String id;
   final String name;
@@ -481,7 +528,10 @@ class OrderSessionDraft {
     (rawSubtotal - discountAmount).clamp(0.0, double.infinity).toDouble(),
   );
 
-  double get tax => _roundStoredMoney(subtotal * 0.05);
+  double get tax => taxTotalFor(subtotal);
+
+  /// Per-tax breakdown for the cart / receipt (one line per active company tax).
+  List<TaxLineAmount> get taxLines => taxLinesFor(subtotal);
 
   double get total => _roundStoredMoney(subtotal + tax);
 

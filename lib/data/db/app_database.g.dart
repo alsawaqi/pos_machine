@@ -2957,6 +2957,300 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
   }
 }
 
+class $TaxCacheTable extends TaxCache with TableInfo<$TaxCacheTable, TaxRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TaxCacheTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _nameArMeta = const VerificationMeta('nameAr');
+  @override
+  late final GeneratedColumn<String> nameAr = GeneratedColumn<String>(
+    'name_ar',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _ratePercentMeta = const VerificationMeta(
+    'ratePercent',
+  );
+  @override
+  late final GeneratedColumn<double> ratePercent = GeneratedColumn<double>(
+    'rate_percent',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, nameAr, ratePercent];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'tax_cache';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<TaxRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('name_ar')) {
+      context.handle(
+        _nameArMeta,
+        nameAr.isAcceptableOrUnknown(data['name_ar']!, _nameArMeta),
+      );
+    }
+    if (data.containsKey('rate_percent')) {
+      context.handle(
+        _ratePercentMeta,
+        ratePercent.isAcceptableOrUnknown(
+          data['rate_percent']!,
+          _ratePercentMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  TaxRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TaxRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      nameAr: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name_ar'],
+      ),
+      ratePercent: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}rate_percent'],
+      )!,
+    );
+  }
+
+  @override
+  $TaxCacheTable createAlias(String alias) {
+    return $TaxCacheTable(attachedDatabase, alias);
+  }
+}
+
+class TaxRow extends DataClass implements Insertable<TaxRow> {
+  final int id;
+  final String name;
+  final String? nameAr;
+  final double ratePercent;
+  const TaxRow({
+    required this.id,
+    required this.name,
+    this.nameAr,
+    required this.ratePercent,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || nameAr != null) {
+      map['name_ar'] = Variable<String>(nameAr);
+    }
+    map['rate_percent'] = Variable<double>(ratePercent);
+    return map;
+  }
+
+  TaxCacheCompanion toCompanion(bool nullToAbsent) {
+    return TaxCacheCompanion(
+      id: Value(id),
+      name: Value(name),
+      nameAr: nameAr == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nameAr),
+      ratePercent: Value(ratePercent),
+    );
+  }
+
+  factory TaxRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TaxRow(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      nameAr: serializer.fromJson<String?>(json['nameAr']),
+      ratePercent: serializer.fromJson<double>(json['ratePercent']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'nameAr': serializer.toJson<String?>(nameAr),
+      'ratePercent': serializer.toJson<double>(ratePercent),
+    };
+  }
+
+  TaxRow copyWith({
+    int? id,
+    String? name,
+    Value<String?> nameAr = const Value.absent(),
+    double? ratePercent,
+  }) => TaxRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    nameAr: nameAr.present ? nameAr.value : this.nameAr,
+    ratePercent: ratePercent ?? this.ratePercent,
+  );
+  TaxRow copyWithCompanion(TaxCacheCompanion data) {
+    return TaxRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      nameAr: data.nameAr.present ? data.nameAr.value : this.nameAr,
+      ratePercent: data.ratePercent.present
+          ? data.ratePercent.value
+          : this.ratePercent,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TaxRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('nameAr: $nameAr, ')
+          ..write('ratePercent: $ratePercent')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, nameAr, ratePercent);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TaxRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.nameAr == this.nameAr &&
+          other.ratePercent == this.ratePercent);
+}
+
+class TaxCacheCompanion extends UpdateCompanion<TaxRow> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String?> nameAr;
+  final Value<double> ratePercent;
+  const TaxCacheCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.nameAr = const Value.absent(),
+    this.ratePercent = const Value.absent(),
+  });
+  TaxCacheCompanion.insert({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.nameAr = const Value.absent(),
+    this.ratePercent = const Value.absent(),
+  });
+  static Insertable<TaxRow> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? nameAr,
+    Expression<double>? ratePercent,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (nameAr != null) 'name_ar': nameAr,
+      if (ratePercent != null) 'rate_percent': ratePercent,
+    });
+  }
+
+  TaxCacheCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<String?>? nameAr,
+    Value<double>? ratePercent,
+  }) {
+    return TaxCacheCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      nameAr: nameAr ?? this.nameAr,
+      ratePercent: ratePercent ?? this.ratePercent,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (nameAr.present) {
+      map['name_ar'] = Variable<String>(nameAr.value);
+    }
+    if (ratePercent.present) {
+      map['rate_percent'] = Variable<double>(ratePercent.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TaxCacheCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('nameAr: $nameAr, ')
+          ..write('ratePercent: $ratePercent')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncMetaTable extends SyncMeta
     with TableInfo<$SyncMetaTable, SyncMetaRow> {
   @override
@@ -3349,6 +3643,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PosTablesTable posTables = $PosTablesTable(this);
   late final $AddonGroupsTable addonGroups = $AddonGroupsTable(this);
   late final $AddonsTable addons = $AddonsTable(this);
+  late final $TaxCacheTable taxCache = $TaxCacheTable(this);
   late final $SyncMetaTable syncMeta = $SyncMetaTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -3362,6 +3657,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     posTables,
     addonGroups,
     addons,
+    taxCache,
     syncMeta,
   ];
 }
@@ -4914,6 +5210,177 @@ typedef $$AddonsTableProcessedTableManager =
       AddonRow,
       PrefetchHooks Function()
     >;
+typedef $$TaxCacheTableCreateCompanionBuilder =
+    TaxCacheCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> nameAr,
+      Value<double> ratePercent,
+    });
+typedef $$TaxCacheTableUpdateCompanionBuilder =
+    TaxCacheCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> nameAr,
+      Value<double> ratePercent,
+    });
+
+class $$TaxCacheTableFilterComposer
+    extends Composer<_$AppDatabase, $TaxCacheTable> {
+  $$TaxCacheTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get nameAr => $composableBuilder(
+    column: $table.nameAr,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get ratePercent => $composableBuilder(
+    column: $table.ratePercent,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$TaxCacheTableOrderingComposer
+    extends Composer<_$AppDatabase, $TaxCacheTable> {
+  $$TaxCacheTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get nameAr => $composableBuilder(
+    column: $table.nameAr,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get ratePercent => $composableBuilder(
+    column: $table.ratePercent,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$TaxCacheTableAnnotationComposer
+    extends Composer<_$AppDatabase, $TaxCacheTable> {
+  $$TaxCacheTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get nameAr =>
+      $composableBuilder(column: $table.nameAr, builder: (column) => column);
+
+  GeneratedColumn<double> get ratePercent => $composableBuilder(
+    column: $table.ratePercent,
+    builder: (column) => column,
+  );
+}
+
+class $$TaxCacheTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $TaxCacheTable,
+          TaxRow,
+          $$TaxCacheTableFilterComposer,
+          $$TaxCacheTableOrderingComposer,
+          $$TaxCacheTableAnnotationComposer,
+          $$TaxCacheTableCreateCompanionBuilder,
+          $$TaxCacheTableUpdateCompanionBuilder,
+          (TaxRow, BaseReferences<_$AppDatabase, $TaxCacheTable, TaxRow>),
+          TaxRow,
+          PrefetchHooks Function()
+        > {
+  $$TaxCacheTableTableManager(_$AppDatabase db, $TaxCacheTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TaxCacheTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TaxCacheTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TaxCacheTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> nameAr = const Value.absent(),
+                Value<double> ratePercent = const Value.absent(),
+              }) => TaxCacheCompanion(
+                id: id,
+                name: name,
+                nameAr: nameAr,
+                ratePercent: ratePercent,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> nameAr = const Value.absent(),
+                Value<double> ratePercent = const Value.absent(),
+              }) => TaxCacheCompanion.insert(
+                id: id,
+                name: name,
+                nameAr: nameAr,
+                ratePercent: ratePercent,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$TaxCacheTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $TaxCacheTable,
+      TaxRow,
+      $$TaxCacheTableFilterComposer,
+      $$TaxCacheTableOrderingComposer,
+      $$TaxCacheTableAnnotationComposer,
+      $$TaxCacheTableCreateCompanionBuilder,
+      $$TaxCacheTableUpdateCompanionBuilder,
+      (TaxRow, BaseReferences<_$AppDatabase, $TaxCacheTable, TaxRow>),
+      TaxRow,
+      PrefetchHooks Function()
+    >;
 typedef $$SyncMetaTableCreateCompanionBuilder =
     SyncMetaCompanion Function({
       Value<int> id,
@@ -5127,6 +5594,8 @@ class $AppDatabaseManager {
       $$AddonGroupsTableTableManager(_db, _db.addonGroups);
   $$AddonsTableTableManager get addons =>
       $$AddonsTableTableManager(_db, _db.addons);
+  $$TaxCacheTableTableManager get taxCache =>
+      $$TaxCacheTableTableManager(_db, _db.taxCache);
   $$SyncMetaTableTableManager get syncMeta =>
       $$SyncMetaTableTableManager(_db, _db.syncMeta);
 }

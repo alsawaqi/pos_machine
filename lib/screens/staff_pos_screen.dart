@@ -173,6 +173,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             products: catalog.products,
             floors: catalog.floors,
             tables: catalog.tables,
+            taxes: catalog.taxes,
           );
         }
       },
@@ -1753,8 +1754,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 ],
                 const SizedBox(height: 10),
                 _paymentTotalRow('Net Subtotal', controller.subtotal),
-                const SizedBox(height: 10),
-                _paymentTotalRow('Tax (5%)', controller.tax),
+                for (final t in controller.taxLines) ...[
+                  const SizedBox(height: 10),
+                  _paymentTotalRow('${t.name} (${t.rateLabel}%)', t.amount),
+                ],
                 if (controller.splitCount > 1) ...[
                   const SizedBox(height: 10),
                   _paymentTotalRow(
@@ -2687,8 +2690,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 ],
                 const SizedBox(height: 6),
                 _summaryRow('Net Subtotal', controller.subtotal),
-                const SizedBox(height: 6),
-                _summaryRow('Tax (5%)', controller.tax),
+                for (final t in controller.taxLines) ...[
+                  const SizedBox(height: 6),
+                  _summaryRow('${t.name} (${t.rateLabel}%)', t.amount),
+                ],
                 if (controller.splitCount > 1) ...[
                   const SizedBox(height: 6),
                   _summaryRow(

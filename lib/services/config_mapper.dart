@@ -10,12 +10,14 @@ class CatalogSnapshot {
     required this.products,
     required this.floors,
     required this.tables,
+    required this.taxes,
   });
 
   final List<String> categories;
   final List<Product> products;
   final List<DiningFloor> floors;
   final List<DiningTableDefinition> tables;
+  final List<CompanyTax> taxes;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -28,6 +30,7 @@ class ParsedConfig {
     required this.tables,
     required this.addonGroups,
     required this.addons,
+    required this.taxes,
     required this.meta,
   });
 
@@ -38,6 +41,7 @@ class ParsedConfig {
   final List<PosTablesCompanion> tables;
   final List<AddonGroupsCompanion> addonGroups;
   final List<AddonsCompanion> addons;
+  final List<TaxCacheCompanion> taxes;
   final SyncMetaCompanion meta;
 }
 
@@ -144,6 +148,15 @@ class ConfigMapper {
       }
     }
 
+    final taxes = _list(data['taxes'])
+        .map((t) => TaxCacheCompanion(
+              id: Value(_int(t['id']) ?? 0),
+              name: Value(_str(t['name'])),
+              nameAr: Value(_strN(t['name_ar'])),
+              ratePercent: Value(_dbl(t['rate_percent']) ?? 0),
+            ))
+        .toList();
+
     final metaCompanion = SyncMetaCompanion(
       id: const Value(1),
       companyId: Value(_int(meta['company_id']) ?? _int(branchMap?['company_id'])),
@@ -160,6 +173,7 @@ class ConfigMapper {
       tables: tables,
       addonGroups: addonGroups,
       addons: addons,
+      taxes: taxes,
       meta: metaCompanion,
     );
   }
@@ -171,6 +185,7 @@ class ConfigMapper {
     List<ProductRow> prods,
     List<FloorRow> floors,
     List<TableRow> tables,
+    List<TaxRow> taxes,
   ) {
     final sortedCats = [...cats]
       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
@@ -203,11 +218,16 @@ class ConfigMapper {
             ))
         .toList();
 
+    final companyTaxes = ([...taxes]..sort((a, b) => a.id.compareTo(b.id)))
+        .map((t) => CompanyTax(name: t.name, nameAr: t.nameAr, ratePercent: t.ratePercent))
+        .toList();
+
     return CatalogSnapshot(
       categories: sortedCats.map((c) => c.name).toList(),
       products: products,
       floors: floorDefs,
       tables: tableDefs,
+      taxes: companyTaxes,
     );
   }
 }

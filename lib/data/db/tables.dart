@@ -123,3 +123,17 @@ class SyncMeta extends Table {
   @override
   Set<Column> get primaryKey => {id};
 }
+
+// Company-level taxes (the active set) from the config bundle. Applied on top of
+// the order subtotal (exclusive), shown as one cart/receipt line each. `rate` is
+// a PERCENTAGE (5.0 = 5%) — not money, so it's a real, not baisas.
+@DataClassName('TaxRow')
+class TaxCache extends Table {
+  IntColumn get id => integer()();
+  TextColumn get name => text().withDefault(const Constant(''))();
+  TextColumn get nameAr => text().nullable()();
+  RealColumn get ratePercent => real().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}

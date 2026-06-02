@@ -17,6 +17,7 @@ part 'app_database.g.dart';
     PosTables,
     AddonGroups,
     Addons,
+    TaxCache,
     SyncMeta,
   ],
 )
@@ -27,7 +28,19 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          // v2 added the company-taxes cache. Config is re-fetched + fully
+          // replaced on every login, so creating the table is enough.
+          if (from < 2) {
+            await m.createTable(taxCache);
+          }
+        },
+      );
 
   // ---------------------------------------------------------------------------
   // Reads / streams (consumed by the catalog bridge → PosController)
@@ -45,6 +58,12 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<List<TableRow>> watchTables() =>
       (select(posTables)..orderBy([(t) => OrderingTerm(expression: t.displayOrder)])).watch();
+
+  Stream<List<TaxRow>> watchTaxes() =>
+      (select(taxCache)..orderBy([(t) => OrderingTerm(expression: t.id)])).watch();
+
+  Future<List<TaxRow>> getTaxes() =>
+      (select(taxCache)..orderBy([(t) => OrderingTerm(expression: t.id)])).get();
 
   Future<SyncMetaRow?> getSyncMeta() =>
       (select(syncMeta)..where((m) => m.id.equals(1))).getSingleOrNull();
@@ -66,6 +85,7 @@ class AppDatabase extends _$AppDatabase {
     required List<PosTablesCompanion> tableRows,
     required List<AddonGroupsCompanion> addonGroupRows,
     required List<AddonsCompanion> addonRows,
+    required List<TaxCacheCompanion> taxRows,
     required SyncMetaCompanion meta,
   }) {
     return transaction(() async {
@@ -76,6 +96,7 @@ class AppDatabase extends _$AppDatabase {
       await delete(posTables).go();
       await delete(addonGroups).go();
       await delete(addons).go();
+      await delete(taxCache).go();
 
       await into(branchCache).insert(branch);
       await batch((b) {
@@ -85,6 +106,7 @@ class AppDatabase extends _$AppDatabase {
         b.insertAll(posTables, tableRows);
         b.insertAll(addonGroups, addonGroupRows);
         b.insertAll(addons, addonRows);
+        b.insertAll(taxCache, taxRows);
       });
       await into(syncMeta).insertOnConflictUpdate(meta);
     });

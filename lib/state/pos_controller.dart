@@ -315,11 +315,15 @@ class PosController extends ChangeNotifier {
     required List<Product> products,
     required List<DiningFloor> floors,
     required List<DiningTableDefinition> tables,
+    List<CompanyTax> taxes = const <CompanyTax>[],
   }) {
     this.categories = categories;
     allProducts = products;
     diningFloors = floors;
     diningTableDefinitions = tables;
+    // Company taxes drive the cart tax lines + total. Stored in the shared
+    // source so the persisted / printed order agrees with the live cart.
+    activeCompanyTaxes = taxes;
 
     // Keep the current selections valid against the new catalog.
     if (categories.isNotEmpty && !categories.contains(selectedCategory)) {
@@ -391,7 +395,10 @@ class PosController extends ChangeNotifier {
     (rawSubtotal - discountAmount).clamp(0.0, double.infinity).toDouble(),
   );
 
-  double get tax => _roundMoney(subtotal * 0.05);
+  /// Per-tax breakdown (one line per active company tax) for the cart + receipt.
+  List<TaxLineAmount> get taxLines => taxLinesFor(subtotal);
+
+  double get tax => taxTotalFor(subtotal);
 
   double get total => _roundMoney(subtotal + tax);
 

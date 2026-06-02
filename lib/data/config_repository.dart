@@ -28,6 +28,7 @@ class ConfigRepository {
       tableRows: parsed.tables,
       addonGroupRows: parsed.addonGroups,
       addonRows: parsed.addons,
+      taxRows: parsed.taxes,
       meta: parsed.meta,
     );
     await _session.saveTerminalId(config.terminalId);
@@ -47,11 +48,12 @@ class ConfigRepository {
     var prods = <ProductRow>[];
     var floors = <FloorRow>[];
     var tables = <TableRow>[];
-    var seenCats = false, seenProds = false, seenFloors = false, seenTables = false;
+    var taxes = <TaxRow>[];
+    var seenCats = false, seenProds = false, seenFloors = false, seenTables = false, seenTaxes = false;
 
     void emit() {
-      if (seenCats && seenProds && seenFloors && seenTables) {
-        controller.add(ConfigMapper.toCatalog(branch, cats, prods, floors, tables));
+      if (seenCats && seenProds && seenFloors && seenTables && seenTaxes) {
+        controller.add(ConfigMapper.toCatalog(branch, cats, prods, floors, tables, taxes));
       }
     }
 
@@ -78,6 +80,11 @@ class ConfigRepository {
       _db.watchTables().listen((v) {
         tables = v;
         seenTables = true;
+        emit();
+      }),
+      _db.watchTaxes().listen((v) {
+        taxes = v;
+        seenTaxes = true;
         emit();
       }),
     ];
