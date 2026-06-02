@@ -5980,32 +5980,14 @@ class _DiningTableCard extends StatelessWidget {
                   children: [
                     FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            table.name,
-                            style: TextStyle(
-                              height: 0.95,
-                              fontSize: 34,
-                              fontWeight: FontWeight.w900,
-                              color: statusColor,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 3),
-                            child: Text(
-                              '(${table.sizeLabel})',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w900,
-                                color: statusColor.withValues(alpha: 0.8),
-                              ),
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        table.name,
+                        style: TextStyle(
+                          height: 0.95,
+                          fontSize: 34,
+                          fontWeight: FontWeight.w900,
+                          color: statusColor,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 14),
