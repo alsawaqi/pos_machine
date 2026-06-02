@@ -42,16 +42,13 @@ class PosApiService {
   // Endpoints
   // ---------------------------------------------------------------------------
 
-  /// POST /auth/device/pair — one-time device pairing.
-  Future<PairResult> pairDevice({
-    required String kioskId,
-    required String activationToken,
-  }) async {
-    final body = await _send(() => _dio.post('/auth/device/pair', data: {
-          'kiosk_id': kioskId,
-          'activation_token': activationToken,
+  /// POST /auth/device/claim — identify this device by its admin-assigned
+  /// terminal ID and receive a long-lived device token (replaces pairing).
+  Future<ClaimResult> claimDevice({required String terminalId}) async {
+    final body = await _send(() => _dio.post('/auth/device/claim', data: {
+          'terminal_id': terminalId,
         }));
-    return PairResult.fromJson(body.dataMap);
+    return ClaimResult.fromJson(body.dataMap);
   }
 
   /// POST /auth/pos/login — staff PIN login (Bearer device token).

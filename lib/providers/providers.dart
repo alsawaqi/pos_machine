@@ -40,8 +40,8 @@ class SessionController extends Notifier<SessionState> {
   @override
   SessionState build() => _svc.snapshot();
 
-  Future<void> savePairing(PairResult result, String kioskId) async {
-    await _svc.savePairing(result, kioskId);
+  Future<void> saveClaim(ClaimResult result) async {
+    await _svc.saveClaim(result);
     state = _svc.snapshot();
   }
 

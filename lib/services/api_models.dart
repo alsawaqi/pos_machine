@@ -1,12 +1,15 @@
 // Plain DTOs for the auth responses from pos_api. The config bundle itself is
 // handled as a raw Map and mapped in config_mapper.dart.
 
-class PairResult {
-  const PairResult({
+/// Result of POST /auth/device/claim — the device identifies itself by its
+/// admin-assigned terminal ID and receives a long-lived device token.
+class ClaimResult {
+  const ClaimResult({
     required this.deviceToken,
     this.deviceUuid,
     this.companyId,
     this.branchId,
+    this.terminalId,
     this.deviceName,
   });
 
@@ -14,15 +17,17 @@ class PairResult {
   final String? deviceUuid;
   final int? companyId;
   final int? branchId;
+  final String? terminalId;
   final String? deviceName;
 
-  factory PairResult.fromJson(Map<String, dynamic> json) {
+  factory ClaimResult.fromJson(Map<String, dynamic> json) {
     final device = json['device'] as Map<String, dynamic>?;
-    return PairResult(
+    return ClaimResult(
       deviceToken: json['device_token'] as String,
       deviceUuid: device?['uuid'] as String?,
       companyId: (device?['company_id'] as num?)?.toInt(),
       branchId: (device?['branch_id'] as num?)?.toInt(),
+      terminalId: device?['terminal_id'] as String?,
       deviceName: device?['name'] as String?,
     );
   }
@@ -61,7 +66,6 @@ class StaffSessionData {
 
   factory StaffSessionData.fromStored(Map<String, dynamic> json) => StaffSessionData.fromJson(json);
 
-  /// A manager may perform manager-only POS actions. The blueprint's POS staff
-  /// guard uses position/role names; treat anything containing "manager" as one.
+  /// A manager may perform manager-only POS actions.
   bool get isManager => (position ?? '').toLowerCase().contains('manager');
 }

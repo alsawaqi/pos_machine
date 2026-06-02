@@ -4,42 +4,40 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
 
-/// One-time device pairing: kiosk ID + activation token → device token.
-/// (Supersedes the old terminal-id-only TerminalSetupScreen.)
-class PairingScreen extends ConsumerStatefulWidget {
-  const PairingScreen({super.key});
+/// One-time device setup: the installer/admin enters the terminal ID assigned
+/// to this device's branch. The app claims the device (→ device token) and
+/// binds it to that branch. After this, staff only ever enter their PIN.
+class DeviceSetupScreen extends ConsumerStatefulWidget {
+  const DeviceSetupScreen({super.key});
 
   @override
-  ConsumerState<PairingScreen> createState() => _PairingScreenState();
+  ConsumerState<DeviceSetupScreen> createState() => _DeviceSetupScreenState();
 }
 
-class _PairingScreenState extends ConsumerState<PairingScreen> {
-  final _kioskController = TextEditingController();
-  final _tokenController = TextEditingController();
+class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
+  final _terminalController = TextEditingController();
   bool _busy = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    final existingKiosk = ref.read(sessionServiceProvider).kioskId;
-    if (existingKiosk != null && existingKiosk.isNotEmpty) {
-      _kioskController.text = existingKiosk;
+    final existing = ref.read(sessionServiceProvider).terminalId;
+    if (existing != null && existing.isNotEmpty) {
+      _terminalController.text = existing;
     }
   }
 
   @override
   void dispose() {
-    _kioskController.dispose();
-    _tokenController.dispose();
+    _terminalController.dispose();
     super.dispose();
   }
 
-  Future<void> _pair() async {
-    final kiosk = _kioskController.text.trim();
-    final token = _tokenController.text.trim();
-    if (kiosk.isEmpty || token.isEmpty) {
-      setState(() => _error = 'Enter both the kiosk ID and the activation token.');
+  Future<void> _claim() async {
+    final terminalId = _terminalController.text.trim();
+    if (terminalId.isEmpty) {
+      setState(() => _error = 'Enter the terminal ID assigned to this device.');
       return;
     }
     setState(() {
@@ -47,15 +45,14 @@ class _PairingScreenState extends ConsumerState<PairingScreen> {
       _error = null;
     });
     try {
-      final result = await ref
-          .read(apiServiceProvider)
-          .pairDevice(kioskId: kiosk, activationToken: token);
-      await ref.read(sessionControllerProvider.notifier).savePairing(result, kiosk);
-      // The startup gate rebuilds into the PIN login screen automatically.
+      final result =
+          await ref.read(apiServiceProvider).claimDevice(terminalId: terminalId);
+      await ref.read(sessionControllerProvider.notifier).saveClaim(result);
+      // The startup gate rebuilds into the staff PIN login automatically.
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
-      if (mounted) setState(() => _error = 'Pairing failed. Please try again.');
+      if (mounted) setState(() => _error = 'Device setup failed. Please try again.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -77,7 +74,7 @@ class _PairingScreenState extends ConsumerState<PairingScreen> {
                 const Icon(Icons.point_of_sale, size: 64, color: Colors.white70),
                 const SizedBox(height: 16),
                 const Text(
-                  'Pair this device',
+                  'Set up this device',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white,
@@ -87,14 +84,31 @@ class _PairingScreenState extends ConsumerState<PairingScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Enter the kiosk ID and the one-time activation token issued in the admin portal.',
+                  "Enter the terminal ID the admin assigned to this device's branch. You only do this once.",
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white60, fontSize: 14),
                 ),
                 const SizedBox(height: 28),
-                _field(_kioskController, 'Kiosk ID'),
-                const SizedBox(height: 16),
-                _field(_tokenController, 'Activation token'),
+                TextField(
+                  controller: _terminalController,
+                  style: const TextStyle(color: Colors.white),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _busy ? null : _claim(),
+                  decoration: InputDecoration(
+                    labelText: 'Terminal ID',
+                    labelStyle: const TextStyle(color: Colors.white60),
+                    filled: true,
+                    fillColor: const Color(0xFF1B3540),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Colors.white24),
+                    ),
+                  ),
+                ),
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   Text(
@@ -106,40 +120,19 @@ class _PairingScreenState extends ConsumerState<PairingScreen> {
                 SizedBox(
                   height: 56,
                   child: FilledButton(
-                    onPressed: _busy ? null : _pair,
+                    onPressed: _busy ? null : _claim,
                     child: _busy
                         ? const SizedBox(
                             height: 24,
                             width: 24,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Pair device'),
+                        : const Text('Continue'),
                   ),
                 ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _field(TextEditingController controller, String label) {
-    return TextField(
-      controller: controller,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: Colors.white60),
-        filled: true,
-        fillColor: const Color(0xFF1B3540),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.white24),
         ),
       ),
     );
