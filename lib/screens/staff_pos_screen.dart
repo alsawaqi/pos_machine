@@ -347,15 +347,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Widget _buildDineInFloorPlanSurface(double _) => _buildDineInFloorPlanPanel();
 
   Widget _buildDineInFloorPlanPanel() {
-    // Search-filtered tables (used to highlight matches); the canvas itself
-    // renders every table on the floor so the layout stays intact.
     final tables = controller.visibleDiningTables;
-    final floorTables = controller.diningTableDefinitions
-        .where((t) => t.floorId == controller.selectedDiningFloorId)
-        .toList()
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-    final query = controller.diningTableSearchQuery.trim().toLowerCase();
-    final matchIds = query.isEmpty ? null : tables.map((t) => t.id).toSet();
 
     return Container(
       decoration: BoxDecoration(
@@ -494,40 +486,76 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(30, 30, 30, 26),
-              child: floorTables.isEmpty
+              child: tables.isEmpty
                   ? _StorageEmptyState(
                       icon: Icons.table_restaurant_rounded,
                       title: 'No tables found',
-                      message: 'This floor is ready for dine-in service.',
+                      message: controller.diningTableSearchQuery.isEmpty
+                          ? 'This floor is ready for dine-in service.'
+                          : 'No table or ticket matched your search.',
                     )
                   : LayoutBuilder(
                       builder: (context, constraints) {
-                        // Render the planner layout ~3x bigger than fit-to-width
-                        // (much larger, easier-to-read + tap tables) and let staff
-                        // scroll around it in both directions. Positions + sizes
-                        // scale together, so the planner layout stays faithful.
-                        const planW = 1200.0;
-                        const planH = 800.0;
-                        const zoom = 3.0;
-                        final scale = (constraints.maxWidth / planW) * zoom;
-                        final canvasW = planW * scale;
-                        final canvasH = planH * scale;
+                        final crossAxisCount = constraints.maxWidth < 980
+                            ? 2
+                            : 3;
+                        // 3 columns of ~405-wide cards (incl. 28px gaps) to
+                        // match the floor-plan card spec on the 15-inch screen.
+                        final maxGridWidth = crossAxisCount == 3
+                            ? (constraints.maxWidth < 1271.0
+                                  ? constraints.maxWidth
+                                  : 1271.0)
+                            : constraints.maxWidth;
 
-                        return SingleChildScrollView(
-                          scrollDirection: Axis.vertical,
-                          physics: const BouncingScrollPhysics(),
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            physics: const BouncingScrollPhysics(),
-                            child: SizedBox(
-                              width: canvasW,
-                              height: canvasH,
-                              child: Stack(
-                                children: [
-                                  for (final t in floorTables)
-                                    _floorPlanTile(t, scale, matchIds),
-                                ],
-                              ),
+                        return Align(
+                          alignment: Alignment.topCenter,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: maxGridWidth),
+                            child: GridView.builder(
+                              padding: EdgeInsets.zero,
+                              physics: const BouncingScrollPhysics(),
+                              itemCount: tables.length,
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: crossAxisCount,
+                                    crossAxisSpacing: 28,
+                                    mainAxisSpacing: 26,
+                                    childAspectRatio: 2.0,
+                                  ),
+                              itemBuilder: (context, index) {
+                                final table = tables[index];
+                                final session = controller.diningSessionFor(
+                                  table.id,
+                                );
+                                final status =
+                                    session?.status ??
+                                    DiningTableStatus.available;
+
+                                return _DiningTableCard(
+                                  table: table,
+                                  session: session,
+                                  status: status,
+                                  durationLabel: _formatOccupancyDuration(
+                                    session?.occupiedAt,
+                                  ),
+                                  onTap: () async {
+                                    if (status == DiningTableStatus.paid &&
+                                        session != null) {
+                                      await _openPaidDiningTableDialog(
+                                        table,
+                                        session,
+                                      );
+                                      return;
+                                    }
+
+                                    await controller.openDiningTable(table.id);
+                                    if (!mounted) return;
+                                    setState(() {
+                                      _showPaymentPage = false;
+                                    });
+                                  },
+                                );
+                              },
                             ),
                           ),
                         );
@@ -536,46 +564,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  /// One table on the dine-in floor-plan canvas: positioned + sized from the
-  /// planner coordinates (scaled), dimmed when a search excludes it, tapping
-  /// reuses the existing seat/resume/paid flow.
-  Widget _floorPlanTile(
-    DiningTableDefinition table,
-    double scale,
-    Set<String>? matchIds,
-  ) {
-    final session = controller.diningSessionFor(table.id);
-    final status = session?.status ?? DiningTableStatus.available;
-    final dimmed = matchIds != null && !matchIds.contains(table.id);
-    return Positioned(
-      left: table.positionX * scale,
-      top: table.positionY * scale,
-      width: table.width * scale,
-      height: table.height * scale,
-      child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 180),
-        opacity: dimmed ? 0.25 : 1,
-        child: _FloorPlanTable(
-          table: table,
-          session: session,
-          status: status,
-          durationLabel: _formatOccupancyDuration(session?.occupiedAt),
-          onTap: () async {
-            if (status == DiningTableStatus.paid && session != null) {
-              await _openPaidDiningTableDialog(table, session);
-              return;
-            }
-            await controller.openDiningTable(table.id);
-            if (!mounted) return;
-            setState(() {
-              _showPaymentPage = false;
-            });
-          },
-        ),
       ),
     );
   }
@@ -5810,18 +5798,14 @@ class _DiningLegendDot extends StatelessWidget {
   }
 }
 
-/// A single table drawn on the dine-in floor plan, mirroring the merchant
-/// planner: the caller positions + sizes it; this paints the shape
-/// ([table.shape]) and the free / occupied / paid status, with the name + seats
-/// (or the running total when occupied).
-class _FloorPlanTable extends StatelessWidget {
+class _DiningTableCard extends StatelessWidget {
   final DiningTableDefinition table;
   final DiningTableSession? session;
   final DiningTableStatus status;
   final String durationLabel;
   final VoidCallback onTap;
 
-  const _FloorPlanTable({
+  const _DiningTableCard({
     required this.table,
     required this.session,
     required this.status,
@@ -5832,64 +5816,244 @@ class _FloorPlanTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = switch (status) {
-      DiningTableStatus.available => const Color(0xFF20D362),
-      DiningTableStatus.occupied => const Color(0xFFFF7A1A),
-      DiningTableStatus.paid => const Color(0xFF2B8E64),
+      DiningTableStatus.available => const Color(0xFF218947),
+      DiningTableStatus.occupied => const Color(0xFFC9470F),
+      DiningTableStatus.paid => const Color(0xFF277C4E),
     };
-    final fill = switch (status) {
-      DiningTableStatus.available => Colors.white,
-      DiningTableStatus.occupied => const Color(0xFFFFF4EA),
-      DiningTableStatus.paid => const Color(0xFFEAF7EF),
+    final ticketColor = switch (status) {
+      DiningTableStatus.available => const Color(0xFFDAF4E4),
+      DiningTableStatus.occupied => const Color(0xFFFF7C22),
+      DiningTableStatus.paid => const Color(0xFF3C8A57),
     };
-    final occupied = status != DiningTableStatus.available && session != null;
-    final secondary = occupied
-        ? '${session!.total.toStringAsFixed(3)} · $durationLabel'
-        : '${table.seats} seats';
+    final background = switch (status) {
+      DiningTableStatus.available => const [
+        Color(0xFFFFFFFF),
+        Color(0xFFFAFDFC),
+      ],
+      DiningTableStatus.occupied => const [
+        Color(0xFFF7FFF6),
+        Color(0xFFF7FCF4),
+      ],
+      DiningTableStatus.paid => const [Color(0xFFF2FBF3), Color(0xFFEAF7EC)],
+    };
+    final hasTicket = status != DiningTableStatus.available && session != null;
 
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
-      child: Container(
-        decoration: ShapeDecoration(
-          color: fill,
-          shape: _shapeBorder(table.shape, statusColor),
-          shadows: [
+      borderRadius: BorderRadius.circular(32),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: EdgeInsets.zero,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: background,
+          ),
+          borderRadius: BorderRadius.circular(32),
+          border: Border.all(
+            color: status == DiningTableStatus.available
+                ? const Color(0xFFE8EEF0)
+                : statusColor.withValues(alpha: 0.2),
+            width: 2,
+          ),
+          boxShadow: [
             BoxShadow(
               color: const Color(0xFF7896A8).withValues(alpha: 0.18),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
+              blurRadius: 20,
+              offset: const Offset(0, 12),
             ),
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.7),
+              blurRadius: 1,
+              offset: const Offset(0, 1),
+            ),
+            if (status == DiningTableStatus.occupied)
+              BoxShadow(
+                color: const Color(0xFFFF8A2C).withValues(alpha: 0.1),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
           ],
         ),
-        padding: const EdgeInsets.all(6),
-        alignment: Alignment.center,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
+        child: Stack(
           children: [
-            Flexible(
-              child: FittedBox(
-                child: Text(
-                  table.name,
-                  maxLines: 1,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF17252C),
+            if (hasTicket)
+              Positioned(
+                top: 0,
+                left: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 13,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: ticketColor,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(28),
+                      bottomRight: Radius.circular(13),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.receipt_long_rounded,
+                        size: 11,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        status == DiningTableStatus.paid
+                            ? 'Ticket #${session!.orderNumber ?? '-'}'
+                            : 'Ref ${session!.orderReference}',
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 2),
-            Flexible(
-              child: FittedBox(
-                child: Text(
-                  secondary,
-                  maxLines: 1,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: statusColor,
+            if (status == DiningTableStatus.occupied)
+              Positioned(
+                top: 17,
+                right: 17,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF7A1A),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFF7A1A).withValues(alpha: 0.42),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
+                ),
+              ),
+            Center(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20, hasTicket ? 24 : 18, 20, 18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            table.name,
+                            style: TextStyle(
+                              height: 0.95,
+                              fontSize: 34,
+                              fontWeight: FontWeight.w900,
+                              color: statusColor,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 3),
+                            child: Text(
+                              '(${table.sizeLabel})',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                                color: statusColor.withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    if (status == DiningTableStatus.available)
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        alignment: WrapAlignment.center,
+                        children: [
+                          _TinyInfoBadge(
+                            icon: Icons.people_alt_outlined,
+                            label: 'Seats ${table.seats}',
+                          ),
+                          _StatusCapsule(
+                            label: 'AVAILABLE',
+                            color: const Color(0xFFD8F9E7),
+                            foreground: const Color(0xFF218947),
+                          ),
+                        ],
+                      )
+                    else if (status == DiningTableStatus.occupied &&
+                        session != null)
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          _TinyInfoBadge(
+                            label: SunmiReceiptService.money(session!.total),
+                            strong: true,
+                            foreground: const Color(0xFF9E3410),
+                          ),
+                          _TinyInfoBadge(
+                            icon: Icons.schedule_rounded,
+                            label: durationLabel,
+                            tint: const Color(0xFFFFE0C5),
+                            foreground: const Color(0xFF9E4F11),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 15,
+                            color: const Color(0xFFF4B178),
+                          ),
+                          const Text(
+                            'OCCUPIED',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFFEA6614),
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 22,
+                            height: 22,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFDDF5E6),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.check_rounded,
+                              size: 15,
+                              color: Color(0xFF247246),
+                            ),
+                          ),
+                          const SizedBox(width: 9),
+                          const Text(
+                            'PAID / CLEAR',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF247246),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -5898,24 +6062,83 @@ class _FloorPlanTable extends StatelessWidget {
       ),
     );
   }
+}
 
-  ShapeBorder _shapeBorder(String shape, Color color) {
-    final side = BorderSide(color: color, width: 2);
-    switch (shape) {
-      case 'round':
-      case 'oval':
-        return StadiumBorder(side: side);
-      case 'counter':
-        return RoundedRectangleBorder(
-          side: side,
-          borderRadius: BorderRadius.circular(4),
-        );
-      default: // square, rectangle
-        return RoundedRectangleBorder(
-          side: side,
-          borderRadius: BorderRadius.circular(10),
-        );
-    }
+class _TinyInfoBadge extends StatelessWidget {
+  final IconData? icon;
+  final String label;
+  final bool strong;
+  final Color? tint;
+  final Color? foreground;
+
+  const _TinyInfoBadge({
+    this.icon,
+    required this.label,
+    this.strong = false,
+    this.tint,
+    this.foreground,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = foreground ?? const Color(0xFF485B66);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: tint ?? Colors.white.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFDCE8ED)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 13, color: color),
+            const SizedBox(width: 5),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: strong ? FontWeight.w900 : FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusCapsule extends StatelessWidget {
+  final String label;
+  final Color color;
+  final Color foreground;
+
+  const _StatusCapsule({
+    required this.label,
+    required this.color,
+    required this.foreground,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: foreground.withValues(alpha: 0.14)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+          color: foreground,
+        ),
+      ),
+    );
   }
 }
 
