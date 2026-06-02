@@ -502,28 +502,32 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     )
                   : LayoutBuilder(
                       builder: (context, constraints) {
-                        // Render the planner layout at the SAME size the merchant
-                        // portal uses: fill the available WIDTH (tables at their
-                        // natural planner size, not shrunk to fit the height) and
-                        // scroll vertically when the plan is taller than the view.
+                        // Render the planner layout ~3x bigger than fit-to-width
+                        // (much larger, easier-to-read + tap tables) and let staff
+                        // scroll around it in both directions. Positions + sizes
+                        // scale together, so the planner layout stays faithful.
                         const planW = 1200.0;
                         const planH = 800.0;
-                        final scale = constraints.maxWidth / planW;
+                        const zoom = 3.0;
+                        final scale = (constraints.maxWidth / planW) * zoom;
+                        final canvasW = planW * scale;
                         final canvasH = planH * scale;
 
                         return SingleChildScrollView(
                           scrollDirection: Axis.vertical,
                           physics: const BouncingScrollPhysics(),
-                          child: SizedBox(
-                            width: constraints.maxWidth,
-                            height: canvasH < constraints.maxHeight
-                                ? constraints.maxHeight
-                                : canvasH,
-                            child: Stack(
-                              children: [
-                                for (final t in floorTables)
-                                  _floorPlanTile(t, scale, matchIds),
-                              ],
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            child: SizedBox(
+                              width: canvasW,
+                              height: canvasH,
+                              child: Stack(
+                                children: [
+                                  for (final t in floorTables)
+                                    _floorPlanTile(t, scale, matchIds),
+                                ],
+                              ),
                             ),
                           ),
                         );
