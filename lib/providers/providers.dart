@@ -40,8 +40,8 @@ class SessionController extends Notifier<SessionState> {
   @override
   SessionState build() => _svc.snapshot();
 
-  Future<void> saveClaim(ClaimResult result) async {
-    await _svc.saveClaim(result);
+  Future<void> savePairing(PairResult result, String kioskId) async {
+    await _svc.savePairing(result, kioskId);
     state = _svc.snapshot();
   }
 
@@ -79,6 +79,7 @@ final configRepositoryProvider = Provider<ConfigRepository>(
   (ref) => ConfigRepository(
     ref.read(apiServiceProvider),
     ref.read(appDatabaseProvider),
+    ref.read(sessionServiceProvider),
   ),
 );
 

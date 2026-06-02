@@ -1,15 +1,15 @@
 // Plain DTOs for the auth responses from pos_api. The config bundle itself is
 // handled as a raw Map and mapped in config_mapper.dart.
 
-/// Result of POST /auth/device/claim — the device identifies itself by its
-/// admin-assigned terminal ID and receives a long-lived device token.
-class ClaimResult {
-  const ClaimResult({
+/// Result of POST /auth/device/pair — the device pairs with its kiosk ID + a
+/// one-time activation token and receives a long-lived device token. (The bank
+/// terminal ID is NOT here — it is fetched from the config bundle meta.)
+class PairResult {
+  const PairResult({
     required this.deviceToken,
     this.deviceUuid,
     this.companyId,
     this.branchId,
-    this.terminalId,
     this.deviceName,
   });
 
@@ -17,17 +17,15 @@ class ClaimResult {
   final String? deviceUuid;
   final int? companyId;
   final int? branchId;
-  final String? terminalId;
   final String? deviceName;
 
-  factory ClaimResult.fromJson(Map<String, dynamic> json) {
+  factory PairResult.fromJson(Map<String, dynamic> json) {
     final device = json['device'] as Map<String, dynamic>?;
-    return ClaimResult(
+    return PairResult(
       deviceToken: json['device_token'] as String,
       deviceUuid: device?['uuid'] as String?,
       companyId: (device?['company_id'] as num?)?.toInt(),
       branchId: (device?['branch_id'] as num?)?.toInt(),
-      terminalId: device?['terminal_id'] as String?,
       deviceName: device?['name'] as String?,
     );
   }

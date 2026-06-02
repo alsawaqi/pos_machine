@@ -42,13 +42,17 @@ class PosApiService {
   // Endpoints
   // ---------------------------------------------------------------------------
 
-  /// POST /auth/device/claim — identify this device by its admin-assigned
-  /// terminal ID and receive a long-lived device token (replaces pairing).
-  Future<ClaimResult> claimDevice({required String terminalId}) async {
-    final body = await _send(() => _dio.post('/auth/device/claim', data: {
-          'terminal_id': terminalId,
+  /// POST /auth/device/pair — one-time device setup: the device pairs with its
+  /// kiosk ID + a one-time activation token and receives a device token.
+  Future<PairResult> pairDevice({
+    required String kioskId,
+    required String activationToken,
+  }) async {
+    final body = await _send(() => _dio.post('/auth/device/pair', data: {
+          'kiosk_id': kioskId,
+          'activation_token': activationToken,
         }));
-    return ClaimResult.fromJson(body.dataMap);
+    return PairResult.fromJson(body.dataMap);
   }
 
   /// POST /auth/pos/login — staff PIN login (Bearer device token).
@@ -58,10 +62,11 @@ class PosApiService {
     return StaffSessionData.fromJson(staff);
   }
 
-  /// GET /device/config — full branch-scoped config bundle (raw `data` map).
-  Future<Map<String, dynamic>> fetchConfig() async {
+  /// GET /device/config — full branch-scoped config bundle. Returns the raw
+  /// `data` map plus the device's terminal_id from `meta` (for the Soft POS).
+  Future<({Map<String, dynamic> data, String? terminalId})> fetchConfig() async {
     final body = await _send(() => _dio.get('/device/config'));
-    return body.dataMap;
+    return (data: body.dataMap, terminalId: body.metaMap['terminal_id'] as String?);
   }
 
   // ---------------------------------------------------------------------------
@@ -127,6 +132,8 @@ class _Envelope {
   final Map<String, dynamic> body;
   Map<String, dynamic> get dataMap =>
       (body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+  Map<String, dynamic> get metaMap =>
+      (body['meta'] as Map?)?.cast<String, dynamic>() ?? const {};
 }
 
 class ApiException implements Exception {

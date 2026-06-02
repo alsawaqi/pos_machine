@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
 
-/// One-time device setup: the installer/admin enters the terminal ID assigned
-/// to this device's branch. The app claims the device (→ device token) and
-/// binds it to that branch. After this, staff only ever enter their PIN.
+/// One-time device setup (admin/installer): enter the device's kiosk ID + the
+/// one-time activation token issued in the admin portal. The app pairs (→ device
+/// token) and binds the device to its branch. After this, staff only ever enter
+/// their PIN; the branch catalog + the device's terminal ID are fetched from the
+/// config (the terminal ID is never typed here).
 class DeviceSetupScreen extends ConsumerStatefulWidget {
   const DeviceSetupScreen({super.key});
 
@@ -15,29 +17,32 @@ class DeviceSetupScreen extends ConsumerStatefulWidget {
 }
 
 class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
-  final _terminalController = TextEditingController();
+  final _kioskController = TextEditingController();
+  final _tokenController = TextEditingController();
   bool _busy = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    final existing = ref.read(sessionServiceProvider).terminalId;
+    final existing = ref.read(sessionServiceProvider).kioskId;
     if (existing != null && existing.isNotEmpty) {
-      _terminalController.text = existing;
+      _kioskController.text = existing;
     }
   }
 
   @override
   void dispose() {
-    _terminalController.dispose();
+    _kioskController.dispose();
+    _tokenController.dispose();
     super.dispose();
   }
 
-  Future<void> _claim() async {
-    final terminalId = _terminalController.text.trim();
-    if (terminalId.isEmpty) {
-      setState(() => _error = 'Enter the terminal ID assigned to this device.');
+  Future<void> _pair() async {
+    final kiosk = _kioskController.text.trim();
+    final token = _tokenController.text.trim();
+    if (kiosk.isEmpty || token.isEmpty) {
+      setState(() => _error = 'Enter both the kiosk ID and the activation token.');
       return;
     }
     setState(() {
@@ -45,9 +50,10 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
       _error = null;
     });
     try {
-      final result =
-          await ref.read(apiServiceProvider).claimDevice(terminalId: terminalId);
-      await ref.read(sessionControllerProvider.notifier).saveClaim(result);
+      final result = await ref
+          .read(apiServiceProvider)
+          .pairDevice(kioskId: kiosk, activationToken: token);
+      await ref.read(sessionControllerProvider.notifier).savePairing(result, kiosk);
       // The startup gate rebuilds into the staff PIN login automatically.
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -84,31 +90,14 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  "Enter the terminal ID the admin assigned to this device's branch. You only do this once.",
+                  'Enter the kiosk ID and the one-time activation token issued in the admin portal. You only do this once.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white60, fontSize: 14),
                 ),
                 const SizedBox(height: 28),
-                TextField(
-                  controller: _terminalController,
-                  style: const TextStyle(color: Colors.white),
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _busy ? null : _claim(),
-                  decoration: InputDecoration(
-                    labelText: 'Terminal ID',
-                    labelStyle: const TextStyle(color: Colors.white60),
-                    filled: true,
-                    fillColor: const Color(0xFF1B3540),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Colors.white24),
-                    ),
-                  ),
-                ),
+                _field(_kioskController, 'Kiosk ID'),
+                const SizedBox(height: 16),
+                _field(_tokenController, 'Activation token'),
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   Text(
@@ -120,7 +109,7 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
                 SizedBox(
                   height: 56,
                   child: FilledButton(
-                    onPressed: _busy ? null : _claim,
+                    onPressed: _busy ? null : _pair,
                     child: _busy
                         ? const SizedBox(
                             height: 24,
@@ -133,6 +122,27 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _field(TextEditingController controller, String label) {
+    return TextField(
+      controller: controller,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white60),
+        filled: true,
+        fillColor: const Color(0xFF1B3540),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.white24),
         ),
       ),
     );

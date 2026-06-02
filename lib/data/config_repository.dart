@@ -2,21 +2,24 @@ import 'dart:async';
 
 import '../services/config_mapper.dart';
 import '../services/pos_api_service.dart';
+import '../services/session_service.dart';
 import 'db/app_database.dart';
 
 /// Fetches the branch config from pos_api, caches it in Drift, and exposes the
 /// cached catalog as a stream. Drift is the single source of truth, so the UI
 /// renders identically online or offline.
 class ConfigRepository {
-  ConfigRepository(this._api, this._db);
+  ConfigRepository(this._api, this._db, this._session);
 
   final PosApiService _api;
   final AppDatabase _db;
+  final SessionService _session;
 
-  /// Online refresh: pull `/device/config` and replace the cache atomically.
+  /// Online refresh: pull `/device/config`, replace the cache atomically, and
+  /// persist the device's terminal ID (from meta) for the Soft POS.
   Future<void> fetchAndCache() async {
-    final data = await _api.fetchConfig();
-    final parsed = ConfigMapper.parse(data);
+    final config = await _api.fetchConfig();
+    final parsed = ConfigMapper.parse(config.data);
     await _db.replaceConfig(
       branch: parsed.branch,
       categoryRows: parsed.categories,
@@ -27,6 +30,7 @@ class ConfigRepository {
       addonRows: parsed.addons,
       meta: parsed.meta,
     );
+    await _session.saveTerminalId(config.terminalId);
   }
 
   Future<bool> hasCachedConfig() => _db.hasCachedConfig();
