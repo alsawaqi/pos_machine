@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
@@ -51,6 +52,20 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
   }
 
   Future<void> _scan() async {
+    // Ask for camera access up front so we don't open a black scanner screen
+    // if it's denied.
+    final status = await Permission.camera.request();
+    if (!mounted) return;
+    if (!status.isGranted) {
+      setState(() => _error = status.isPermanentlyDenied
+          ? 'Camera access is blocked. Enable it in Settings to scan the code (or enter it manually).'
+          : 'Camera permission is needed to scan the QR code (or enter it manually).');
+      if (status.isPermanentlyDenied) {
+        await openAppSettings();
+      }
+      return;
+    }
+
     final code = await Navigator.of(context).push<String>(
       MaterialPageRoute(builder: (_) => const QrScannerScreen()),
     );
