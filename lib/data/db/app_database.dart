@@ -28,16 +28,24 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
         onUpgrade: (m, from, to) async {
-          // v2 added the company-taxes cache. Config is re-fetched + fully
-          // replaced on every login, so creating the table is enough.
+          // The cache is re-fetched + fully replaced on every login, so these
+          // upgrades are purely additive.
           if (from < 2) {
+            // v2 added the company-taxes cache.
             await m.createTable(taxCache);
+          }
+          if (from < 3) {
+            // v3 added floor-plan layout columns to the tables cache.
+            await m.addColumn(posTables, posTables.positionX);
+            await m.addColumn(posTables, posTables.positionY);
+            await m.addColumn(posTables, posTables.width);
+            await m.addColumn(posTables, posTables.height);
           }
         },
       );

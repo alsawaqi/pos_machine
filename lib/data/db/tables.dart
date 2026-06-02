@@ -74,6 +74,12 @@ class PosTables extends Table {
   IntColumn get floorId => integer()();
   TextColumn get label => text().withDefault(const Constant(''))();
   IntColumn get seats => integer().withDefault(const Constant(0))();
+  // Floor-plan layout from the merchant planner (px in a 1200x800 canvas).
+  // Nullable: null position = not placed yet; null size = use the shape default.
+  IntColumn get positionX => integer().nullable()();
+  IntColumn get positionY => integer().nullable()();
+  IntColumn get width => integer().nullable()();
+  IntColumn get height => integer().nullable()();
   TextColumn get shape => text().nullable()();
   IntColumn get displayOrder => integer().withDefault(const Constant(0))();
   TextColumn get status => text().nullable()();

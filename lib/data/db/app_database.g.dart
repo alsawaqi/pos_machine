@@ -1759,6 +1759,46 @@ class $PosTablesTable extends PosTables
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _positionXMeta = const VerificationMeta(
+    'positionX',
+  );
+  @override
+  late final GeneratedColumn<int> positionX = GeneratedColumn<int>(
+    'position_x',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _positionYMeta = const VerificationMeta(
+    'positionY',
+  );
+  @override
+  late final GeneratedColumn<int> positionY = GeneratedColumn<int>(
+    'position_y',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _widthMeta = const VerificationMeta('width');
+  @override
+  late final GeneratedColumn<int> width = GeneratedColumn<int>(
+    'width',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _heightMeta = const VerificationMeta('height');
+  @override
+  late final GeneratedColumn<int> height = GeneratedColumn<int>(
+    'height',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _shapeMeta = const VerificationMeta('shape');
   @override
   late final GeneratedColumn<String> shape = GeneratedColumn<String>(
@@ -1795,6 +1835,10 @@ class $PosTablesTable extends PosTables
     floorId,
     label,
     seats,
+    positionX,
+    positionY,
+    width,
+    height,
     shape,
     displayOrder,
     status,
@@ -1832,6 +1876,30 @@ class $PosTablesTable extends PosTables
       context.handle(
         _seatsMeta,
         seats.isAcceptableOrUnknown(data['seats']!, _seatsMeta),
+      );
+    }
+    if (data.containsKey('position_x')) {
+      context.handle(
+        _positionXMeta,
+        positionX.isAcceptableOrUnknown(data['position_x']!, _positionXMeta),
+      );
+    }
+    if (data.containsKey('position_y')) {
+      context.handle(
+        _positionYMeta,
+        positionY.isAcceptableOrUnknown(data['position_y']!, _positionYMeta),
+      );
+    }
+    if (data.containsKey('width')) {
+      context.handle(
+        _widthMeta,
+        width.isAcceptableOrUnknown(data['width']!, _widthMeta),
+      );
+    }
+    if (data.containsKey('height')) {
+      context.handle(
+        _heightMeta,
+        height.isAcceptableOrUnknown(data['height']!, _heightMeta),
       );
     }
     if (data.containsKey('shape')) {
@@ -1880,6 +1948,22 @@ class $PosTablesTable extends PosTables
         DriftSqlType.int,
         data['${effectivePrefix}seats'],
       )!,
+      positionX: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position_x'],
+      ),
+      positionY: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position_y'],
+      ),
+      width: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}width'],
+      ),
+      height: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}height'],
+      ),
       shape: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}shape'],
@@ -1906,6 +1990,10 @@ class TableRow extends DataClass implements Insertable<TableRow> {
   final int floorId;
   final String label;
   final int seats;
+  final int? positionX;
+  final int? positionY;
+  final int? width;
+  final int? height;
   final String? shape;
   final int displayOrder;
   final String? status;
@@ -1914,6 +2002,10 @@ class TableRow extends DataClass implements Insertable<TableRow> {
     required this.floorId,
     required this.label,
     required this.seats,
+    this.positionX,
+    this.positionY,
+    this.width,
+    this.height,
     this.shape,
     required this.displayOrder,
     this.status,
@@ -1925,6 +2017,18 @@ class TableRow extends DataClass implements Insertable<TableRow> {
     map['floor_id'] = Variable<int>(floorId);
     map['label'] = Variable<String>(label);
     map['seats'] = Variable<int>(seats);
+    if (!nullToAbsent || positionX != null) {
+      map['position_x'] = Variable<int>(positionX);
+    }
+    if (!nullToAbsent || positionY != null) {
+      map['position_y'] = Variable<int>(positionY);
+    }
+    if (!nullToAbsent || width != null) {
+      map['width'] = Variable<int>(width);
+    }
+    if (!nullToAbsent || height != null) {
+      map['height'] = Variable<int>(height);
+    }
     if (!nullToAbsent || shape != null) {
       map['shape'] = Variable<String>(shape);
     }
@@ -1941,6 +2045,18 @@ class TableRow extends DataClass implements Insertable<TableRow> {
       floorId: Value(floorId),
       label: Value(label),
       seats: Value(seats),
+      positionX: positionX == null && nullToAbsent
+          ? const Value.absent()
+          : Value(positionX),
+      positionY: positionY == null && nullToAbsent
+          ? const Value.absent()
+          : Value(positionY),
+      width: width == null && nullToAbsent
+          ? const Value.absent()
+          : Value(width),
+      height: height == null && nullToAbsent
+          ? const Value.absent()
+          : Value(height),
       shape: shape == null && nullToAbsent
           ? const Value.absent()
           : Value(shape),
@@ -1961,6 +2077,10 @@ class TableRow extends DataClass implements Insertable<TableRow> {
       floorId: serializer.fromJson<int>(json['floorId']),
       label: serializer.fromJson<String>(json['label']),
       seats: serializer.fromJson<int>(json['seats']),
+      positionX: serializer.fromJson<int?>(json['positionX']),
+      positionY: serializer.fromJson<int?>(json['positionY']),
+      width: serializer.fromJson<int?>(json['width']),
+      height: serializer.fromJson<int?>(json['height']),
       shape: serializer.fromJson<String?>(json['shape']),
       displayOrder: serializer.fromJson<int>(json['displayOrder']),
       status: serializer.fromJson<String?>(json['status']),
@@ -1974,6 +2094,10 @@ class TableRow extends DataClass implements Insertable<TableRow> {
       'floorId': serializer.toJson<int>(floorId),
       'label': serializer.toJson<String>(label),
       'seats': serializer.toJson<int>(seats),
+      'positionX': serializer.toJson<int?>(positionX),
+      'positionY': serializer.toJson<int?>(positionY),
+      'width': serializer.toJson<int?>(width),
+      'height': serializer.toJson<int?>(height),
       'shape': serializer.toJson<String?>(shape),
       'displayOrder': serializer.toJson<int>(displayOrder),
       'status': serializer.toJson<String?>(status),
@@ -1985,6 +2109,10 @@ class TableRow extends DataClass implements Insertable<TableRow> {
     int? floorId,
     String? label,
     int? seats,
+    Value<int?> positionX = const Value.absent(),
+    Value<int?> positionY = const Value.absent(),
+    Value<int?> width = const Value.absent(),
+    Value<int?> height = const Value.absent(),
     Value<String?> shape = const Value.absent(),
     int? displayOrder,
     Value<String?> status = const Value.absent(),
@@ -1993,6 +2121,10 @@ class TableRow extends DataClass implements Insertable<TableRow> {
     floorId: floorId ?? this.floorId,
     label: label ?? this.label,
     seats: seats ?? this.seats,
+    positionX: positionX.present ? positionX.value : this.positionX,
+    positionY: positionY.present ? positionY.value : this.positionY,
+    width: width.present ? width.value : this.width,
+    height: height.present ? height.value : this.height,
     shape: shape.present ? shape.value : this.shape,
     displayOrder: displayOrder ?? this.displayOrder,
     status: status.present ? status.value : this.status,
@@ -2003,6 +2135,10 @@ class TableRow extends DataClass implements Insertable<TableRow> {
       floorId: data.floorId.present ? data.floorId.value : this.floorId,
       label: data.label.present ? data.label.value : this.label,
       seats: data.seats.present ? data.seats.value : this.seats,
+      positionX: data.positionX.present ? data.positionX.value : this.positionX,
+      positionY: data.positionY.present ? data.positionY.value : this.positionY,
+      width: data.width.present ? data.width.value : this.width,
+      height: data.height.present ? data.height.value : this.height,
       shape: data.shape.present ? data.shape.value : this.shape,
       displayOrder: data.displayOrder.present
           ? data.displayOrder.value
@@ -2018,6 +2154,10 @@ class TableRow extends DataClass implements Insertable<TableRow> {
           ..write('floorId: $floorId, ')
           ..write('label: $label, ')
           ..write('seats: $seats, ')
+          ..write('positionX: $positionX, ')
+          ..write('positionY: $positionY, ')
+          ..write('width: $width, ')
+          ..write('height: $height, ')
           ..write('shape: $shape, ')
           ..write('displayOrder: $displayOrder, ')
           ..write('status: $status')
@@ -2026,8 +2166,19 @@ class TableRow extends DataClass implements Insertable<TableRow> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, floorId, label, seats, shape, displayOrder, status);
+  int get hashCode => Object.hash(
+    id,
+    floorId,
+    label,
+    seats,
+    positionX,
+    positionY,
+    width,
+    height,
+    shape,
+    displayOrder,
+    status,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2036,6 +2187,10 @@ class TableRow extends DataClass implements Insertable<TableRow> {
           other.floorId == this.floorId &&
           other.label == this.label &&
           other.seats == this.seats &&
+          other.positionX == this.positionX &&
+          other.positionY == this.positionY &&
+          other.width == this.width &&
+          other.height == this.height &&
           other.shape == this.shape &&
           other.displayOrder == this.displayOrder &&
           other.status == this.status);
@@ -2046,6 +2201,10 @@ class PosTablesCompanion extends UpdateCompanion<TableRow> {
   final Value<int> floorId;
   final Value<String> label;
   final Value<int> seats;
+  final Value<int?> positionX;
+  final Value<int?> positionY;
+  final Value<int?> width;
+  final Value<int?> height;
   final Value<String?> shape;
   final Value<int> displayOrder;
   final Value<String?> status;
@@ -2054,6 +2213,10 @@ class PosTablesCompanion extends UpdateCompanion<TableRow> {
     this.floorId = const Value.absent(),
     this.label = const Value.absent(),
     this.seats = const Value.absent(),
+    this.positionX = const Value.absent(),
+    this.positionY = const Value.absent(),
+    this.width = const Value.absent(),
+    this.height = const Value.absent(),
     this.shape = const Value.absent(),
     this.displayOrder = const Value.absent(),
     this.status = const Value.absent(),
@@ -2063,6 +2226,10 @@ class PosTablesCompanion extends UpdateCompanion<TableRow> {
     required int floorId,
     this.label = const Value.absent(),
     this.seats = const Value.absent(),
+    this.positionX = const Value.absent(),
+    this.positionY = const Value.absent(),
+    this.width = const Value.absent(),
+    this.height = const Value.absent(),
     this.shape = const Value.absent(),
     this.displayOrder = const Value.absent(),
     this.status = const Value.absent(),
@@ -2072,6 +2239,10 @@ class PosTablesCompanion extends UpdateCompanion<TableRow> {
     Expression<int>? floorId,
     Expression<String>? label,
     Expression<int>? seats,
+    Expression<int>? positionX,
+    Expression<int>? positionY,
+    Expression<int>? width,
+    Expression<int>? height,
     Expression<String>? shape,
     Expression<int>? displayOrder,
     Expression<String>? status,
@@ -2081,6 +2252,10 @@ class PosTablesCompanion extends UpdateCompanion<TableRow> {
       if (floorId != null) 'floor_id': floorId,
       if (label != null) 'label': label,
       if (seats != null) 'seats': seats,
+      if (positionX != null) 'position_x': positionX,
+      if (positionY != null) 'position_y': positionY,
+      if (width != null) 'width': width,
+      if (height != null) 'height': height,
       if (shape != null) 'shape': shape,
       if (displayOrder != null) 'display_order': displayOrder,
       if (status != null) 'status': status,
@@ -2092,6 +2267,10 @@ class PosTablesCompanion extends UpdateCompanion<TableRow> {
     Value<int>? floorId,
     Value<String>? label,
     Value<int>? seats,
+    Value<int?>? positionX,
+    Value<int?>? positionY,
+    Value<int?>? width,
+    Value<int?>? height,
     Value<String?>? shape,
     Value<int>? displayOrder,
     Value<String?>? status,
@@ -2101,6 +2280,10 @@ class PosTablesCompanion extends UpdateCompanion<TableRow> {
       floorId: floorId ?? this.floorId,
       label: label ?? this.label,
       seats: seats ?? this.seats,
+      positionX: positionX ?? this.positionX,
+      positionY: positionY ?? this.positionY,
+      width: width ?? this.width,
+      height: height ?? this.height,
       shape: shape ?? this.shape,
       displayOrder: displayOrder ?? this.displayOrder,
       status: status ?? this.status,
@@ -2122,6 +2305,18 @@ class PosTablesCompanion extends UpdateCompanion<TableRow> {
     if (seats.present) {
       map['seats'] = Variable<int>(seats.value);
     }
+    if (positionX.present) {
+      map['position_x'] = Variable<int>(positionX.value);
+    }
+    if (positionY.present) {
+      map['position_y'] = Variable<int>(positionY.value);
+    }
+    if (width.present) {
+      map['width'] = Variable<int>(width.value);
+    }
+    if (height.present) {
+      map['height'] = Variable<int>(height.value);
+    }
     if (shape.present) {
       map['shape'] = Variable<String>(shape.value);
     }
@@ -2141,6 +2336,10 @@ class PosTablesCompanion extends UpdateCompanion<TableRow> {
           ..write('floorId: $floorId, ')
           ..write('label: $label, ')
           ..write('seats: $seats, ')
+          ..write('positionX: $positionX, ')
+          ..write('positionY: $positionY, ')
+          ..write('width: $width, ')
+          ..write('height: $height, ')
           ..write('shape: $shape, ')
           ..write('displayOrder: $displayOrder, ')
           ..write('status: $status')
@@ -4560,6 +4759,10 @@ typedef $$PosTablesTableCreateCompanionBuilder =
       required int floorId,
       Value<String> label,
       Value<int> seats,
+      Value<int?> positionX,
+      Value<int?> positionY,
+      Value<int?> width,
+      Value<int?> height,
       Value<String?> shape,
       Value<int> displayOrder,
       Value<String?> status,
@@ -4570,6 +4773,10 @@ typedef $$PosTablesTableUpdateCompanionBuilder =
       Value<int> floorId,
       Value<String> label,
       Value<int> seats,
+      Value<int?> positionX,
+      Value<int?> positionY,
+      Value<int?> width,
+      Value<int?> height,
       Value<String?> shape,
       Value<int> displayOrder,
       Value<String?> status,
@@ -4601,6 +4808,26 @@ class $$PosTablesTableFilterComposer
 
   ColumnFilters<int> get seats => $composableBuilder(
     column: $table.seats,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get positionX => $composableBuilder(
+    column: $table.positionX,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get positionY => $composableBuilder(
+    column: $table.positionY,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get width => $composableBuilder(
+    column: $table.width,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get height => $composableBuilder(
+    column: $table.height,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4649,6 +4876,26 @@ class $$PosTablesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get positionX => $composableBuilder(
+    column: $table.positionX,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get positionY => $composableBuilder(
+    column: $table.positionY,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get width => $composableBuilder(
+    column: $table.width,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get height => $composableBuilder(
+    column: $table.height,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get shape => $composableBuilder(
     column: $table.shape,
     builder: (column) => ColumnOrderings(column),
@@ -4685,6 +4932,18 @@ class $$PosTablesTableAnnotationComposer
 
   GeneratedColumn<int> get seats =>
       $composableBuilder(column: $table.seats, builder: (column) => column);
+
+  GeneratedColumn<int> get positionX =>
+      $composableBuilder(column: $table.positionX, builder: (column) => column);
+
+  GeneratedColumn<int> get positionY =>
+      $composableBuilder(column: $table.positionY, builder: (column) => column);
+
+  GeneratedColumn<int> get width =>
+      $composableBuilder(column: $table.width, builder: (column) => column);
+
+  GeneratedColumn<int> get height =>
+      $composableBuilder(column: $table.height, builder: (column) => column);
 
   GeneratedColumn<String> get shape =>
       $composableBuilder(column: $table.shape, builder: (column) => column);
@@ -4730,6 +4989,10 @@ class $$PosTablesTableTableManager
                 Value<int> floorId = const Value.absent(),
                 Value<String> label = const Value.absent(),
                 Value<int> seats = const Value.absent(),
+                Value<int?> positionX = const Value.absent(),
+                Value<int?> positionY = const Value.absent(),
+                Value<int?> width = const Value.absent(),
+                Value<int?> height = const Value.absent(),
                 Value<String?> shape = const Value.absent(),
                 Value<int> displayOrder = const Value.absent(),
                 Value<String?> status = const Value.absent(),
@@ -4738,6 +5001,10 @@ class $$PosTablesTableTableManager
                 floorId: floorId,
                 label: label,
                 seats: seats,
+                positionX: positionX,
+                positionY: positionY,
+                width: width,
+                height: height,
                 shape: shape,
                 displayOrder: displayOrder,
                 status: status,
@@ -4748,6 +5015,10 @@ class $$PosTablesTableTableManager
                 required int floorId,
                 Value<String> label = const Value.absent(),
                 Value<int> seats = const Value.absent(),
+                Value<int?> positionX = const Value.absent(),
+                Value<int?> positionY = const Value.absent(),
+                Value<int?> width = const Value.absent(),
+                Value<int?> height = const Value.absent(),
                 Value<String?> shape = const Value.absent(),
                 Value<int> displayOrder = const Value.absent(),
                 Value<String?> status = const Value.absent(),
@@ -4756,6 +5027,10 @@ class $$PosTablesTableTableManager
                 floorId: floorId,
                 label: label,
                 seats: seats,
+                positionX: positionX,
+                positionY: positionY,
+                width: width,
+                height: height,
                 shape: shape,
                 displayOrder: displayOrder,
                 status: status,

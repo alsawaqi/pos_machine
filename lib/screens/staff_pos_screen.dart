@@ -347,7 +347,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Widget _buildDineInFloorPlanSurface(double _) => _buildDineInFloorPlanPanel();
 
   Widget _buildDineInFloorPlanPanel() {
+    // Search-filtered tables (used to highlight matches); the canvas itself
+    // renders every table on the floor so the layout stays intact.
     final tables = controller.visibleDiningTables;
+    final floorTables = controller.diningTableDefinitions
+        .where((t) => t.floorId == controller.selectedDiningFloorId)
+        .toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final query = controller.diningTableSearchQuery.trim().toLowerCase();
+    final matchIds = query.isEmpty ? null : tables.map((t) => t.id).toSet();
 
     return Container(
       decoration: BoxDecoration(
@@ -486,72 +494,32 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(30, 30, 30, 26),
-              child: tables.isEmpty
+              child: floorTables.isEmpty
                   ? _StorageEmptyState(
                       icon: Icons.table_restaurant_rounded,
                       title: 'No tables found',
-                      message: controller.diningTableSearchQuery.isEmpty
-                          ? 'This floor is ready for dine-in service.'
-                          : 'No table or ticket matched your search.',
+                      message: 'This floor is ready for dine-in service.',
                     )
                   : LayoutBuilder(
                       builder: (context, constraints) {
-                        final crossAxisCount = constraints.maxWidth < 980
-                            ? 2
-                            : 3;
-                        final maxGridWidth = crossAxisCount == 3
-                            ? 1128.0
-                            : constraints.maxWidth;
+                        // Fit the merchant planner's fixed 1200x800 layout into
+                        // the available area (letterbox, aspect preserved) so the
+                        // POS mirrors the floor plan 1:1 on the Sunmi screen.
+                        const planW = 1200.0;
+                        const planH = 800.0;
+                        final sw = constraints.maxWidth / planW;
+                        final sh = constraints.maxHeight / planH;
+                        final scale = sw < sh ? sw : sh;
 
-                        return Align(
-                          alignment: Alignment.topCenter,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(maxWidth: maxGridWidth),
-                            child: GridView.builder(
-                              padding: EdgeInsets.zero,
-                              physics: const BouncingScrollPhysics(),
-                              itemCount: tables.length,
-                              gridDelegate:
-                                  SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: crossAxisCount,
-                                    crossAxisSpacing: 28,
-                                    mainAxisSpacing: 26,
-                                    childAspectRatio: 2.05,
-                                  ),
-                              itemBuilder: (context, index) {
-                                final table = tables[index];
-                                final session = controller.diningSessionFor(
-                                  table.id,
-                                );
-                                final status =
-                                    session?.status ??
-                                    DiningTableStatus.available;
-
-                                return _DiningTableCard(
-                                  table: table,
-                                  session: session,
-                                  status: status,
-                                  durationLabel: _formatOccupancyDuration(
-                                    session?.occupiedAt,
-                                  ),
-                                  onTap: () async {
-                                    if (status == DiningTableStatus.paid &&
-                                        session != null) {
-                                      await _openPaidDiningTableDialog(
-                                        table,
-                                        session,
-                                      );
-                                      return;
-                                    }
-
-                                    await controller.openDiningTable(table.id);
-                                    if (!mounted) return;
-                                    setState(() {
-                                      _showPaymentPage = false;
-                                    });
-                                  },
-                                );
-                              },
+                        return Center(
+                          child: SizedBox(
+                            width: planW * scale,
+                            height: planH * scale,
+                            child: Stack(
+                              children: [
+                                for (final t in floorTables)
+                                  _floorPlanTile(t, scale, matchIds),
+                              ],
                             ),
                           ),
                         );
@@ -560,6 +528,46 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// One table on the dine-in floor-plan canvas: positioned + sized from the
+  /// planner coordinates (scaled), dimmed when a search excludes it, tapping
+  /// reuses the existing seat/resume/paid flow.
+  Widget _floorPlanTile(
+    DiningTableDefinition table,
+    double scale,
+    Set<String>? matchIds,
+  ) {
+    final session = controller.diningSessionFor(table.id);
+    final status = session?.status ?? DiningTableStatus.available;
+    final dimmed = matchIds != null && !matchIds.contains(table.id);
+    return Positioned(
+      left: table.positionX * scale,
+      top: table.positionY * scale,
+      width: table.width * scale,
+      height: table.height * scale,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: dimmed ? 0.25 : 1,
+        child: _FloorPlanTable(
+          table: table,
+          session: session,
+          status: status,
+          durationLabel: _formatOccupancyDuration(session?.occupiedAt),
+          onTap: () async {
+            if (status == DiningTableStatus.paid && session != null) {
+              await _openPaidDiningTableDialog(table, session);
+              return;
+            }
+            await controller.openDiningTable(table.id);
+            if (!mounted) return;
+            setState(() {
+              _showPaymentPage = false;
+            });
+          },
+        ),
       ),
     );
   }
@@ -5794,6 +5802,118 @@ class _DiningLegendDot extends StatelessWidget {
   }
 }
 
+/// A single table drawn on the dine-in floor plan, mirroring the merchant
+/// planner: the caller positions + sizes it; this paints the shape
+/// ([table.shape]) and the free / occupied / paid status, with the name + seats
+/// (or the running total when occupied).
+class _FloorPlanTable extends StatelessWidget {
+  final DiningTableDefinition table;
+  final DiningTableSession? session;
+  final DiningTableStatus status;
+  final String durationLabel;
+  final VoidCallback onTap;
+
+  const _FloorPlanTable({
+    required this.table,
+    required this.session,
+    required this.status,
+    required this.durationLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = switch (status) {
+      DiningTableStatus.available => const Color(0xFF20D362),
+      DiningTableStatus.occupied => const Color(0xFFFF7A1A),
+      DiningTableStatus.paid => const Color(0xFF2B8E64),
+    };
+    final fill = switch (status) {
+      DiningTableStatus.available => Colors.white,
+      DiningTableStatus.occupied => const Color(0xFFFFF4EA),
+      DiningTableStatus.paid => const Color(0xFFEAF7EF),
+    };
+    final occupied = status != DiningTableStatus.available && session != null;
+    final secondary = occupied
+        ? '${session!.total.toStringAsFixed(3)} · $durationLabel'
+        : '${table.seats} seats';
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: ShapeDecoration(
+          color: fill,
+          shape: _shapeBorder(table.shape, statusColor),
+          shadows: [
+            BoxShadow(
+              color: const Color(0xFF7896A8).withValues(alpha: 0.18),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(6),
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: FittedBox(
+                child: Text(
+                  table.name,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF17252C),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 2),
+            Flexible(
+              child: FittedBox(
+                child: Text(
+                  secondary,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  ShapeBorder _shapeBorder(String shape, Color color) {
+    final side = BorderSide(color: color, width: 2);
+    switch (shape) {
+      case 'round':
+      case 'oval':
+        return StadiumBorder(side: side);
+      case 'counter':
+        return RoundedRectangleBorder(
+          side: side,
+          borderRadius: BorderRadius.circular(4),
+        );
+      default: // square, rectangle
+        return RoundedRectangleBorder(
+          side: side,
+          borderRadius: BorderRadius.circular(10),
+        );
+    }
+  }
+}
+
+// Legacy dine-in card (grid view), superseded by the positioned floor-plan
+// `_FloorPlanTable`. Retained briefly; slated for removal in a cleanup pass.
+// ignore: unused_element
 class _DiningTableCard extends StatelessWidget {
   final DiningTableDefinition table;
   final DiningTableSession? session;

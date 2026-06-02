@@ -90,6 +90,13 @@ class DiningTableDefinition {
   final String sizeLabel;
   final int seats;
   final int sortOrder;
+  // Floor-plan layout, mirrored from the merchant planner (px in a 1200x800
+  // canvas). Defaults keep older call sites working.
+  final String shape;
+  final double positionX;
+  final double positionY;
+  final double width;
+  final double height;
 
   const DiningTableDefinition({
     required this.id,
@@ -98,6 +105,11 @@ class DiningTableDefinition {
     required this.sizeLabel,
     required this.seats,
     required this.sortOrder,
+    this.shape = 'square',
+    this.positionX = 0,
+    this.positionY = 0,
+    this.width = 80,
+    this.height = 80,
   });
 }
 

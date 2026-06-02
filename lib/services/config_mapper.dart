@@ -118,6 +118,10 @@ class ConfigMapper {
               floorId: Value(_int(t['floor_id']) ?? 0),
               label: Value(_str(t['label'])),
               seats: Value(_int(t['seats']) ?? 0),
+              positionX: Value(_int(t['position_x'])),
+              positionY: Value(_int(t['position_y'])),
+              width: Value(_int(t['width'])),
+              height: Value(_int(t['height'])),
               shape: Value(_strN(t['shape'])),
               displayOrder: Value(_int(t['display_order']) ?? 0),
               status: Value(_strN(t['status'])),
@@ -205,17 +209,49 @@ class ConfigMapper {
         .map((f) => DiningFloor(id: f.id.toString(), label: f.name))
         .toList();
 
+    // Planner shape default sizes (mirror pos_merchant FloorPlanner SHAPE_DEFAULTS)
+    // + auto-arrange for tables not yet placed (mirror the planner: 6-col grid,
+    // start (40,40), step 140), so every table still appears on the POS.
+    const shapeW = {'round': 80.0, 'square': 80.0, 'rectangle': 120.0, 'oval': 100.0, 'counter': 160.0};
+    const shapeH = {'round': 80.0, 'square': 80.0, 'rectangle': 60.0, 'oval': 70.0, 'counter': 40.0};
+    const autoStart = 40.0, autoStep = 140.0, autoCols = 6;
+    final autoIndexByFloor = <int, int>{};
+
     final tableDefs = ([...tables]
           ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder)))
-        .map((t) => DiningTableDefinition(
-              id: t.id.toString(),
-              floorId: t.floorId.toString(),
-              name: t.label,
-              sizeLabel:
-                  (t.shape == null || t.shape!.isEmpty) ? 'Standard' : t.shape!,
-              seats: t.seats,
-              sortOrder: t.displayOrder,
-            ))
+        .map((t) {
+          final shape =
+              (t.shape == null || t.shape!.isEmpty) ? 'square' : t.shape!;
+          final w = t.width?.toDouble() ?? shapeW[shape] ?? 80.0;
+          final h = t.height?.toDouble() ?? shapeH[shape] ?? 80.0;
+          double x;
+          double y;
+          if (t.positionX != null && t.positionY != null) {
+            x = t.positionX!.toDouble();
+            y = t.positionY!.toDouble();
+          } else {
+            final i = autoIndexByFloor.update(
+              t.floorId,
+              (v) => v + 1,
+              ifAbsent: () => 0,
+            );
+            x = autoStart + (i % autoCols) * autoStep;
+            y = autoStart + (i ~/ autoCols) * autoStep;
+          }
+          return DiningTableDefinition(
+            id: t.id.toString(),
+            floorId: t.floorId.toString(),
+            name: t.label,
+            sizeLabel: shape,
+            seats: t.seats,
+            sortOrder: t.displayOrder,
+            shape: shape,
+            positionX: x,
+            positionY: y,
+            width: w,
+            height: h,
+          );
+        })
         .toList();
 
     final companyTaxes = ([...taxes]..sort((a, b) => a.id.compareTo(b.id)))
