@@ -103,7 +103,18 @@ final connectivityProvider = StreamProvider<bool>((ref) async* {
 /// Fails closed: no fix / no permission ⇒ locked. If the branch has no fence
 /// configured, ordering is allowed (the server enforces nothing there).
 final geofenceProvider = StreamProvider<GeofenceStatus>((ref) async* {
-  final branch = await ref.read(configRepositoryProvider).getBranch();
+  final repo = ref.read(configRepositoryProvider);
+  // Pull the latest branch fence (radius / lat / lng) from the server first, so
+  // edits made by the admin in pos_admin take effect on the device. Without this
+  // the device keeps whatever was cached at login and never sees the change.
+  // Re-runs on every Retry (the gate invalidates this provider). Offline or
+  // transient failures fall back to the cached branch.
+  try {
+    await repo.fetchAndCache();
+  } catch (_) {
+    // keep going with the cached branch
+  }
+  final branch = await repo.getBranch();
   if (branch == null || branch.latitude == null || branch.longitude == null) {
     yield const GeofenceStatus(FenceState.disabled);
     return;

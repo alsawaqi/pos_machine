@@ -94,6 +94,7 @@ class _Lock extends ConsumerWidget {
       return 'This device is outside the permitted branch area.';
     }
     return 'You are about ${s.distanceM!.round()} m from the branch '
-        '(allowed within ${s.radiusM.round()} m). Move closer to continue.';
+        '(allowed within ${s.radiusM.round()} m). Move closer, or tap Retry to '
+        'pull the latest branch location/radius set by the admin.';
   }
 }
