@@ -960,6 +960,28 @@ class $ProductsTable extends Products
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _deliveryPriceBaisasMeta =
+      const VerificationMeta('deliveryPriceBaisas');
+  @override
+  late final GeneratedColumn<int> deliveryPriceBaisas = GeneratedColumn<int>(
+    'delivery_price_baisas',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deliveryPricesJsonMeta =
+      const VerificationMeta('deliveryPricesJson');
+  @override
+  late final GeneratedColumn<String> deliveryPricesJson =
+      GeneratedColumn<String>(
+        'delivery_prices_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('{}'),
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -971,6 +993,8 @@ class $ProductsTable extends Products
     imageUrl,
     status,
     addonGroupIds,
+    deliveryPriceBaisas,
+    deliveryPricesJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1044,6 +1068,24 @@ class $ProductsTable extends Products
         ),
       );
     }
+    if (data.containsKey('delivery_price_baisas')) {
+      context.handle(
+        _deliveryPriceBaisasMeta,
+        deliveryPriceBaisas.isAcceptableOrUnknown(
+          data['delivery_price_baisas']!,
+          _deliveryPriceBaisasMeta,
+        ),
+      );
+    }
+    if (data.containsKey('delivery_prices_json')) {
+      context.handle(
+        _deliveryPricesJsonMeta,
+        deliveryPricesJson.isAcceptableOrUnknown(
+          data['delivery_prices_json']!,
+          _deliveryPricesJsonMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1089,6 +1131,14 @@ class $ProductsTable extends Products
         DriftSqlType.string,
         data['${effectivePrefix}addon_group_ids'],
       )!,
+      deliveryPriceBaisas: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}delivery_price_baisas'],
+      ),
+      deliveryPricesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}delivery_prices_json'],
+      )!,
     );
   }
 
@@ -1108,6 +1158,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
   final String? imageUrl;
   final String? status;
   final String addonGroupIds;
+  final int? deliveryPriceBaisas;
+  final String deliveryPricesJson;
   const ProductRow({
     required this.id,
     required this.name,
@@ -1118,6 +1170,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     this.imageUrl,
     this.status,
     required this.addonGroupIds,
+    this.deliveryPriceBaisas,
+    required this.deliveryPricesJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1141,6 +1195,10 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       map['status'] = Variable<String>(status);
     }
     map['addon_group_ids'] = Variable<String>(addonGroupIds);
+    if (!nullToAbsent || deliveryPriceBaisas != null) {
+      map['delivery_price_baisas'] = Variable<int>(deliveryPriceBaisas);
+    }
+    map['delivery_prices_json'] = Variable<String>(deliveryPricesJson);
     return map;
   }
 
@@ -1165,6 +1223,10 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           ? const Value.absent()
           : Value(status),
       addonGroupIds: Value(addonGroupIds),
+      deliveryPriceBaisas: deliveryPriceBaisas == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deliveryPriceBaisas),
+      deliveryPricesJson: Value(deliveryPricesJson),
     );
   }
 
@@ -1183,6 +1245,12 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       imageUrl: serializer.fromJson<String?>(json['imageUrl']),
       status: serializer.fromJson<String?>(json['status']),
       addonGroupIds: serializer.fromJson<String>(json['addonGroupIds']),
+      deliveryPriceBaisas: serializer.fromJson<int?>(
+        json['deliveryPriceBaisas'],
+      ),
+      deliveryPricesJson: serializer.fromJson<String>(
+        json['deliveryPricesJson'],
+      ),
     );
   }
   @override
@@ -1198,6 +1266,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       'imageUrl': serializer.toJson<String?>(imageUrl),
       'status': serializer.toJson<String?>(status),
       'addonGroupIds': serializer.toJson<String>(addonGroupIds),
+      'deliveryPriceBaisas': serializer.toJson<int?>(deliveryPriceBaisas),
+      'deliveryPricesJson': serializer.toJson<String>(deliveryPricesJson),
     };
   }
 
@@ -1211,6 +1281,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     Value<String?> imageUrl = const Value.absent(),
     Value<String?> status = const Value.absent(),
     String? addonGroupIds,
+    Value<int?> deliveryPriceBaisas = const Value.absent(),
+    String? deliveryPricesJson,
   }) => ProductRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -1223,6 +1295,10 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     imageUrl: imageUrl.present ? imageUrl.value : this.imageUrl,
     status: status.present ? status.value : this.status,
     addonGroupIds: addonGroupIds ?? this.addonGroupIds,
+    deliveryPriceBaisas: deliveryPriceBaisas.present
+        ? deliveryPriceBaisas.value
+        : this.deliveryPriceBaisas,
+    deliveryPricesJson: deliveryPricesJson ?? this.deliveryPricesJson,
   );
   ProductRow copyWithCompanion(ProductsCompanion data) {
     return ProductRow(
@@ -1243,6 +1319,12 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       addonGroupIds: data.addonGroupIds.present
           ? data.addonGroupIds.value
           : this.addonGroupIds,
+      deliveryPriceBaisas: data.deliveryPriceBaisas.present
+          ? data.deliveryPriceBaisas.value
+          : this.deliveryPriceBaisas,
+      deliveryPricesJson: data.deliveryPricesJson.present
+          ? data.deliveryPricesJson.value
+          : this.deliveryPricesJson,
     );
   }
 
@@ -1257,7 +1339,9 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           ..write('branchStockQty: $branchStockQty, ')
           ..write('imageUrl: $imageUrl, ')
           ..write('status: $status, ')
-          ..write('addonGroupIds: $addonGroupIds')
+          ..write('addonGroupIds: $addonGroupIds, ')
+          ..write('deliveryPriceBaisas: $deliveryPriceBaisas, ')
+          ..write('deliveryPricesJson: $deliveryPricesJson')
           ..write(')'))
         .toString();
   }
@@ -1273,6 +1357,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     imageUrl,
     status,
     addonGroupIds,
+    deliveryPriceBaisas,
+    deliveryPricesJson,
   );
   @override
   bool operator ==(Object other) =>
@@ -1286,7 +1372,9 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           other.branchStockQty == this.branchStockQty &&
           other.imageUrl == this.imageUrl &&
           other.status == this.status &&
-          other.addonGroupIds == this.addonGroupIds);
+          other.addonGroupIds == this.addonGroupIds &&
+          other.deliveryPriceBaisas == this.deliveryPriceBaisas &&
+          other.deliveryPricesJson == this.deliveryPricesJson);
 }
 
 class ProductsCompanion extends UpdateCompanion<ProductRow> {
@@ -1299,6 +1387,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
   final Value<String?> imageUrl;
   final Value<String?> status;
   final Value<String> addonGroupIds;
+  final Value<int?> deliveryPriceBaisas;
+  final Value<String> deliveryPricesJson;
   const ProductsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -1309,6 +1399,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     this.imageUrl = const Value.absent(),
     this.status = const Value.absent(),
     this.addonGroupIds = const Value.absent(),
+    this.deliveryPriceBaisas = const Value.absent(),
+    this.deliveryPricesJson = const Value.absent(),
   });
   ProductsCompanion.insert({
     this.id = const Value.absent(),
@@ -1320,6 +1412,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     this.imageUrl = const Value.absent(),
     this.status = const Value.absent(),
     this.addonGroupIds = const Value.absent(),
+    this.deliveryPriceBaisas = const Value.absent(),
+    this.deliveryPricesJson = const Value.absent(),
   });
   static Insertable<ProductRow> custom({
     Expression<int>? id,
@@ -1331,6 +1425,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     Expression<String>? imageUrl,
     Expression<String>? status,
     Expression<String>? addonGroupIds,
+    Expression<int>? deliveryPriceBaisas,
+    Expression<String>? deliveryPricesJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1342,6 +1438,10 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
       if (imageUrl != null) 'image_url': imageUrl,
       if (status != null) 'status': status,
       if (addonGroupIds != null) 'addon_group_ids': addonGroupIds,
+      if (deliveryPriceBaisas != null)
+        'delivery_price_baisas': deliveryPriceBaisas,
+      if (deliveryPricesJson != null)
+        'delivery_prices_json': deliveryPricesJson,
     });
   }
 
@@ -1355,6 +1455,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     Value<String?>? imageUrl,
     Value<String?>? status,
     Value<String>? addonGroupIds,
+    Value<int?>? deliveryPriceBaisas,
+    Value<String>? deliveryPricesJson,
   }) {
     return ProductsCompanion(
       id: id ?? this.id,
@@ -1366,6 +1468,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
       imageUrl: imageUrl ?? this.imageUrl,
       status: status ?? this.status,
       addonGroupIds: addonGroupIds ?? this.addonGroupIds,
+      deliveryPriceBaisas: deliveryPriceBaisas ?? this.deliveryPriceBaisas,
+      deliveryPricesJson: deliveryPricesJson ?? this.deliveryPricesJson,
     );
   }
 
@@ -1399,6 +1503,12 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     if (addonGroupIds.present) {
       map['addon_group_ids'] = Variable<String>(addonGroupIds.value);
     }
+    if (deliveryPriceBaisas.present) {
+      map['delivery_price_baisas'] = Variable<int>(deliveryPriceBaisas.value);
+    }
+    if (deliveryPricesJson.present) {
+      map['delivery_prices_json'] = Variable<String>(deliveryPricesJson.value);
+    }
     return map;
   }
 
@@ -1413,7 +1523,9 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
           ..write('branchStockQty: $branchStockQty, ')
           ..write('imageUrl: $imageUrl, ')
           ..write('status: $status, ')
-          ..write('addonGroupIds: $addonGroupIds')
+          ..write('addonGroupIds: $addonGroupIds, ')
+          ..write('deliveryPriceBaisas: $deliveryPriceBaisas, ')
+          ..write('deliveryPricesJson: $deliveryPricesJson')
           ..write(')'))
         .toString();
   }
@@ -4360,6 +4472,297 @@ class OrderOutboxCompanion extends UpdateCompanion<OrderOutboxRow> {
   }
 }
 
+class $DeliveryProvidersTable extends DeliveryProviders
+    with TableInfo<$DeliveryProvidersTable, DeliveryProviderRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DeliveryProvidersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<String> color = GeneratedColumn<String>(
+    'color',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, color, sortOrder];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'delivery_providers';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DeliveryProviderRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DeliveryProviderRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DeliveryProviderRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color'],
+      ),
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+    );
+  }
+
+  @override
+  $DeliveryProvidersTable createAlias(String alias) {
+    return $DeliveryProvidersTable(attachedDatabase, alias);
+  }
+}
+
+class DeliveryProviderRow extends DataClass
+    implements Insertable<DeliveryProviderRow> {
+  final int id;
+  final String name;
+  final String? color;
+  final int sortOrder;
+  const DeliveryProviderRow({
+    required this.id,
+    required this.name,
+    this.color,
+    required this.sortOrder,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || color != null) {
+      map['color'] = Variable<String>(color);
+    }
+    map['sort_order'] = Variable<int>(sortOrder);
+    return map;
+  }
+
+  DeliveryProvidersCompanion toCompanion(bool nullToAbsent) {
+    return DeliveryProvidersCompanion(
+      id: Value(id),
+      name: Value(name),
+      color: color == null && nullToAbsent
+          ? const Value.absent()
+          : Value(color),
+      sortOrder: Value(sortOrder),
+    );
+  }
+
+  factory DeliveryProviderRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DeliveryProviderRow(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      color: serializer.fromJson<String?>(json['color']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'color': serializer.toJson<String?>(color),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+    };
+  }
+
+  DeliveryProviderRow copyWith({
+    int? id,
+    String? name,
+    Value<String?> color = const Value.absent(),
+    int? sortOrder,
+  }) => DeliveryProviderRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    color: color.present ? color.value : this.color,
+    sortOrder: sortOrder ?? this.sortOrder,
+  );
+  DeliveryProviderRow copyWithCompanion(DeliveryProvidersCompanion data) {
+    return DeliveryProviderRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      color: data.color.present ? data.color.value : this.color,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeliveryProviderRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('color: $color, ')
+          ..write('sortOrder: $sortOrder')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, color, sortOrder);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DeliveryProviderRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.color == this.color &&
+          other.sortOrder == this.sortOrder);
+}
+
+class DeliveryProvidersCompanion extends UpdateCompanion<DeliveryProviderRow> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String?> color;
+  final Value<int> sortOrder;
+  const DeliveryProvidersCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.color = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+  });
+  DeliveryProvidersCompanion.insert({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.color = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+  });
+  static Insertable<DeliveryProviderRow> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? color,
+    Expression<int>? sortOrder,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (color != null) 'color': color,
+      if (sortOrder != null) 'sort_order': sortOrder,
+    });
+  }
+
+  DeliveryProvidersCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<String?>? color,
+    Value<int>? sortOrder,
+  }) {
+    return DeliveryProvidersCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      color: color ?? this.color,
+      sortOrder: sortOrder ?? this.sortOrder,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<String>(color.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeliveryProvidersCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('color: $color, ')
+          ..write('sortOrder: $sortOrder')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4373,6 +4776,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $TaxCacheTable taxCache = $TaxCacheTable(this);
   late final $SyncMetaTable syncMeta = $SyncMetaTable(this);
   late final $OrderOutboxTable orderOutbox = $OrderOutboxTable(this);
+  late final $DeliveryProvidersTable deliveryProviders =
+      $DeliveryProvidersTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4388,6 +4793,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     taxCache,
     syncMeta,
     orderOutbox,
+    deliveryProviders,
   ];
 }
 
@@ -4850,6 +5256,8 @@ typedef $$ProductsTableCreateCompanionBuilder =
       Value<String?> imageUrl,
       Value<String?> status,
       Value<String> addonGroupIds,
+      Value<int?> deliveryPriceBaisas,
+      Value<String> deliveryPricesJson,
     });
 typedef $$ProductsTableUpdateCompanionBuilder =
     ProductsCompanion Function({
@@ -4862,6 +5270,8 @@ typedef $$ProductsTableUpdateCompanionBuilder =
       Value<String?> imageUrl,
       Value<String?> status,
       Value<String> addonGroupIds,
+      Value<int?> deliveryPriceBaisas,
+      Value<String> deliveryPricesJson,
     });
 
 class $$ProductsTableFilterComposer
@@ -4915,6 +5325,16 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<String> get addonGroupIds => $composableBuilder(
     column: $table.addonGroupIds,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get deliveryPriceBaisas => $composableBuilder(
+    column: $table.deliveryPriceBaisas,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deliveryPricesJson => $composableBuilder(
+    column: $table.deliveryPricesJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4972,6 +5392,16 @@ class $$ProductsTableOrderingComposer
     column: $table.addonGroupIds,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get deliveryPriceBaisas => $composableBuilder(
+    column: $table.deliveryPriceBaisas,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deliveryPricesJson => $composableBuilder(
+    column: $table.deliveryPricesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ProductsTableAnnotationComposer
@@ -5017,6 +5447,16 @@ class $$ProductsTableAnnotationComposer
     column: $table.addonGroupIds,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get deliveryPriceBaisas => $composableBuilder(
+    column: $table.deliveryPriceBaisas,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get deliveryPricesJson => $composableBuilder(
+    column: $table.deliveryPricesJson,
+    builder: (column) => column,
+  );
 }
 
 class $$ProductsTableTableManager
@@ -5059,6 +5499,8 @@ class $$ProductsTableTableManager
                 Value<String?> imageUrl = const Value.absent(),
                 Value<String?> status = const Value.absent(),
                 Value<String> addonGroupIds = const Value.absent(),
+                Value<int?> deliveryPriceBaisas = const Value.absent(),
+                Value<String> deliveryPricesJson = const Value.absent(),
               }) => ProductsCompanion(
                 id: id,
                 name: name,
@@ -5069,6 +5511,8 @@ class $$ProductsTableTableManager
                 imageUrl: imageUrl,
                 status: status,
                 addonGroupIds: addonGroupIds,
+                deliveryPriceBaisas: deliveryPriceBaisas,
+                deliveryPricesJson: deliveryPricesJson,
               ),
           createCompanionCallback:
               ({
@@ -5081,6 +5525,8 @@ class $$ProductsTableTableManager
                 Value<String?> imageUrl = const Value.absent(),
                 Value<String?> status = const Value.absent(),
                 Value<String> addonGroupIds = const Value.absent(),
+                Value<int?> deliveryPriceBaisas = const Value.absent(),
+                Value<String> deliveryPricesJson = const Value.absent(),
               }) => ProductsCompanion.insert(
                 id: id,
                 name: name,
@@ -5091,6 +5537,8 @@ class $$ProductsTableTableManager
                 imageUrl: imageUrl,
                 status: status,
                 addonGroupIds: addonGroupIds,
+                deliveryPriceBaisas: deliveryPriceBaisas,
+                deliveryPricesJson: deliveryPricesJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -6644,6 +7092,194 @@ typedef $$OrderOutboxTableProcessedTableManager =
       OrderOutboxRow,
       PrefetchHooks Function()
     >;
+typedef $$DeliveryProvidersTableCreateCompanionBuilder =
+    DeliveryProvidersCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> color,
+      Value<int> sortOrder,
+    });
+typedef $$DeliveryProvidersTableUpdateCompanionBuilder =
+    DeliveryProvidersCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> color,
+      Value<int> sortOrder,
+    });
+
+class $$DeliveryProvidersTableFilterComposer
+    extends Composer<_$AppDatabase, $DeliveryProvidersTable> {
+  $$DeliveryProvidersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DeliveryProvidersTableOrderingComposer
+    extends Composer<_$AppDatabase, $DeliveryProvidersTable> {
+  $$DeliveryProvidersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DeliveryProvidersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DeliveryProvidersTable> {
+  $$DeliveryProvidersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+}
+
+class $$DeliveryProvidersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DeliveryProvidersTable,
+          DeliveryProviderRow,
+          $$DeliveryProvidersTableFilterComposer,
+          $$DeliveryProvidersTableOrderingComposer,
+          $$DeliveryProvidersTableAnnotationComposer,
+          $$DeliveryProvidersTableCreateCompanionBuilder,
+          $$DeliveryProvidersTableUpdateCompanionBuilder,
+          (
+            DeliveryProviderRow,
+            BaseReferences<
+              _$AppDatabase,
+              $DeliveryProvidersTable,
+              DeliveryProviderRow
+            >,
+          ),
+          DeliveryProviderRow,
+          PrefetchHooks Function()
+        > {
+  $$DeliveryProvidersTableTableManager(
+    _$AppDatabase db,
+    $DeliveryProvidersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DeliveryProvidersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DeliveryProvidersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DeliveryProvidersTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> color = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+              }) => DeliveryProvidersCompanion(
+                id: id,
+                name: name,
+                color: color,
+                sortOrder: sortOrder,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> color = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+              }) => DeliveryProvidersCompanion.insert(
+                id: id,
+                name: name,
+                color: color,
+                sortOrder: sortOrder,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DeliveryProvidersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DeliveryProvidersTable,
+      DeliveryProviderRow,
+      $$DeliveryProvidersTableFilterComposer,
+      $$DeliveryProvidersTableOrderingComposer,
+      $$DeliveryProvidersTableAnnotationComposer,
+      $$DeliveryProvidersTableCreateCompanionBuilder,
+      $$DeliveryProvidersTableUpdateCompanionBuilder,
+      (
+        DeliveryProviderRow,
+        BaseReferences<
+          _$AppDatabase,
+          $DeliveryProvidersTable,
+          DeliveryProviderRow
+        >,
+      ),
+      DeliveryProviderRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6668,4 +7304,6 @@ class $AppDatabaseManager {
       $$SyncMetaTableTableManager(_db, _db.syncMeta);
   $$OrderOutboxTableTableManager get orderOutbox =>
       $$OrderOutboxTableTableManager(_db, _db.orderOutbox);
+  $$DeliveryProvidersTableTableManager get deliveryProviders =>
+      $$DeliveryProvidersTableTableManager(_db, _db.deliveryProviders);
 }

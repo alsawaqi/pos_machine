@@ -20,6 +20,7 @@ part 'app_database.g.dart';
     TaxCache,
     SyncMeta,
     OrderOutbox,
+    DeliveryProviders,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -29,7 +30,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -55,6 +56,12 @@ class AppDatabase extends _$AppDatabase {
           if (from < 5) {
             // v5 added the order push outbox (offline-first order sync).
             await m.createTable(orderOutbox);
+          }
+          if (from < 6) {
+            // v6 added delivery providers + per-product delivery pricing.
+            await m.addColumn(products, products.deliveryPriceBaisas);
+            await m.addColumn(products, products.deliveryPricesJson);
+            await m.createTable(deliveryProviders);
           }
         },
       );
@@ -82,6 +89,9 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<List<TaxRow>> watchTaxes() =>
       (select(taxCache)..orderBy([(t) => OrderingTerm(expression: t.id)])).watch();
+
+  Stream<List<DeliveryProviderRow>> watchDeliveryProviders() =>
+      (select(deliveryProviders)..orderBy([(d) => OrderingTerm(expression: d.sortOrder)])).watch();
 
   Future<List<TaxRow>> getTaxes() =>
       (select(taxCache)..orderBy([(t) => OrderingTerm(expression: t.id)])).get();
@@ -133,6 +143,7 @@ class AppDatabase extends _$AppDatabase {
     required List<AddonGroupsCompanion> addonGroupRows,
     required List<AddonsCompanion> addonRows,
     required List<TaxCacheCompanion> taxRows,
+    required List<DeliveryProvidersCompanion> deliveryProviderRows,
     required SyncMetaCompanion meta,
   }) {
     return transaction(() async {
@@ -144,6 +155,7 @@ class AppDatabase extends _$AppDatabase {
       await delete(addonGroups).go();
       await delete(addons).go();
       await delete(taxCache).go();
+      await delete(deliveryProviders).go();
 
       await into(branchCache).insert(branch);
       await batch((b) {
@@ -154,6 +166,7 @@ class AppDatabase extends _$AppDatabase {
         b.insertAll(addonGroups, addonGroupRows);
         b.insertAll(addons, addonRows);
         b.insertAll(taxCache, taxRows);
+        b.insertAll(deliveryProviders, deliveryProviderRows);
       });
       await into(syncMeta).insertOnConflictUpdate(meta);
     });

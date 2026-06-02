@@ -216,6 +216,16 @@ class PosController extends ChangeNotifier {
   /// [applyCatalog]. Products reference them by id (see [addonGroupsForProduct]).
   List<AddonGroup> addonGroups = const <AddonGroup>[];
 
+  /// Company delivery providers (Talabat, Otlob, …) for the delivery picker.
+  List<DeliveryProvider> deliveryProviders = const <DeliveryProvider>[];
+
+  /// The provider chosen for the current delivery order (null = none picked).
+  int? selectedDeliveryProviderId;
+
+  /// The unmodified catalog (base prices). [allProducts] is this list re-priced
+  /// for the selected provider when the order type is delivery.
+  List<Product> _baseProducts = const <Product>[];
+
   final List<CartItem> _cart = [];
   List<CartItem> get cart => List.unmodifiable(_cart);
 
@@ -328,15 +338,25 @@ class PosController extends ChangeNotifier {
     required List<DiningTableDefinition> tables,
     List<CompanyTax> taxes = const <CompanyTax>[],
     List<AddonGroup> addonGroups = const <AddonGroup>[],
+    List<DeliveryProvider> deliveryProviders = const <DeliveryProvider>[],
   }) {
     this.categories = categories;
-    allProducts = products;
+    _baseProducts = products;
     diningFloors = floors;
     diningTableDefinitions = tables;
     this.addonGroups = addonGroups;
+    this.deliveryProviders = deliveryProviders;
     // Company taxes drive the cart tax lines + total. Stored in the shared
     // source so the persisted / printed order agrees with the live cart.
     activeCompanyTaxes = taxes;
+
+    // Drop a selected provider that no longer exists in the refreshed catalog.
+    if (selectedDeliveryProviderId != null &&
+        !deliveryProviders.any((p) => p.id == selectedDeliveryProviderId)) {
+      selectedDeliveryProviderId = null;
+    }
+    // Publish allProducts (re-priced for the active delivery provider, if any).
+    _applyDeliveryPricing();
 
     // Keep the current selections valid against the new catalog.
     if (categories.isNotEmpty && !categories.contains(selectedCategory)) {
@@ -346,6 +366,55 @@ class PosController extends ChangeNotifier {
       selectedDiningFloorId = floors.first.id;
     }
     _notifySafely();
+  }
+
+  /// The provider chosen for the current delivery order, if any.
+  DeliveryProvider? get selectedDeliveryProvider {
+    final id = selectedDeliveryProviderId;
+    if (id == null) return null;
+    for (final p in deliveryProviders) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  /// Pick a delivery provider — re-prices the menu + cart to that provider.
+  void selectDeliveryProvider(int providerId) {
+    selectedDeliveryProviderId = providerId;
+    _applyDeliveryPricing();
+    _broadcast();
+  }
+
+  /// Recompute [allProducts] (and re-price open cart lines) for the current
+  /// order context: delivery + a chosen provider ⇒ each product's resolved
+  /// delivery price; otherwise the base price.
+  void _applyDeliveryPricing() {
+    final base = _baseProducts.isEmpty ? allProducts : _baseProducts;
+    final pid = selectedDeliveryProviderId;
+    final isDelivery = selectedOrderType == OrderType.delivery && pid != null;
+
+    allProducts = isDelivery
+        ? base.map((p) => p.copyWith(price: p.deliveryPriceFor(pid))).toList()
+        : List<Product>.from(base);
+
+    // Re-price open cart lines from the base catalog by id, so a provider/
+    // order-type change is reflected in items already in the cart.
+    for (var i = 0; i < _cart.length; i++) {
+      final item = _cart[i];
+      final src = base.firstWhere(
+        (p) => p.id == item.product.id,
+        orElse: () => item.product,
+      );
+      final newPrice = isDelivery ? src.deliveryPriceFor(pid) : src.price;
+      if (newPrice != item.product.price) {
+        _cart[i] = CartItem(
+          product: src.copyWith(price: newPrice),
+          qty: item.qty,
+          modifiers: List<CartItemModifier>.from(item.modifiers),
+          notes: item.notes,
+        );
+      }
+    }
   }
 
   /// The add-on groups assigned to [product], resolved against the company set.
@@ -637,6 +706,12 @@ class PosController extends ChangeNotifier {
       activeDiningTableId = null;
       diningTableSearchQuery = '';
     }
+    // Leaving delivery clears the chosen provider; entering it waits for the
+    // cashier to pick one. Either way, re-price the menu + cart accordingly.
+    if (orderType != OrderType.delivery) {
+      selectedDeliveryProviderId = null;
+    }
+    _applyDeliveryPricing();
     _broadcast();
   }
 

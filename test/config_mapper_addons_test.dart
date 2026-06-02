@@ -76,6 +76,7 @@ void main() {
             categoryId: 1,
             basePriceBaisas: 1500,
             addonGroupIds: '5,6',
+            deliveryPricesJson: '{}',
           ),
           const ProductRow(
             id: 11,
@@ -83,6 +84,7 @@ void main() {
             categoryId: 1,
             basePriceBaisas: 500,
             addonGroupIds: '',
+            deliveryPricesJson: '{}',
           ),
         ],
         const <FloorRow>[],

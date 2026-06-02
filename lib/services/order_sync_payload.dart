@@ -71,6 +71,7 @@ OrderSyncPayload buildOrderSyncPayload(
   int? tableId,
   int? customerId,
   String? plateNumber,
+  String? deliveryProviderName,
   DateTime? now,
   String Function()? newUuid,
 }) {
@@ -86,6 +87,15 @@ OrderSyncPayload buildOrderSyncPayload(
   final plate = (plateNumber != null && plateNumber.trim().isNotEmpty)
       ? plateNumber.trim()
       : null;
+
+  // The order note carries the cashier note + the delivery provider (we record
+  // the provider in the note since pos_orders has no provider column yet).
+  final noteParts = <String>[];
+  if (snapshot.note.trim().isNotEmpty) noteParts.add(snapshot.note.trim());
+  if (deliveryProviderName != null && deliveryProviderName.trim().isNotEmpty) {
+    noteParts.add('Delivery via ${deliveryProviderName.trim()}');
+  }
+  final note = noteParts.isEmpty ? null : noteParts.join(' | ');
 
   // ---- lines (+ add-ons) ----
   final lines = <Map<String, dynamic>>[];
@@ -143,7 +153,7 @@ OrderSyncPayload buildOrderSyncPayload(
     'table_id': ?tableId,
     'customer_id': ?customerId,
     'plate_number': ?plate,
-    if (snapshot.note.trim().isNotEmpty) 'note': snapshot.note.trim(),
+    'note': ?note,
   };
 
   // ---- tenders: split into one row each, else a single tender. Sum is forced

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import '../data/db/app_database.dart';
@@ -12,6 +14,7 @@ class CatalogSnapshot {
     required this.tables,
     required this.taxes,
     this.addonGroups = const <AddonGroup>[],
+    this.deliveryProviders = const <DeliveryProvider>[],
   });
 
   final List<String> categories;
@@ -21,6 +24,8 @@ class CatalogSnapshot {
   final List<CompanyTax> taxes;
   // Company add-on groups (each with its options); products reference them by id.
   final List<AddonGroup> addonGroups;
+  // Company delivery providers for the POS provider picker (delivery orders).
+  final List<DeliveryProvider> deliveryProviders;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -34,6 +39,7 @@ class ParsedConfig {
     required this.addonGroups,
     required this.addons,
     required this.taxes,
+    required this.deliveryProviders,
     required this.meta,
   });
 
@@ -45,6 +51,7 @@ class ParsedConfig {
   final List<AddonGroupsCompanion> addonGroups;
   final List<AddonsCompanion> addons;
   final List<TaxCacheCompanion> taxes;
+  final List<DeliveryProvidersCompanion> deliveryProviders;
   final SyncMetaCompanion meta;
 }
 
@@ -77,6 +84,37 @@ class ConfigMapper {
           .map((s) => int.tryParse(s.trim()))
           .whereType<int>()
           .toList();
+
+  /// API per-product `delivery_prices` ([{provider_id, price_baisas}]) → a JSON
+  /// object {providerId: priceBaisas} stored on the product row.
+  static String _deliveryPricesJson(Object? v) {
+    final map = <String, int>{};
+    for (final e in (v as List? ?? const [])) {
+      if (e is! Map) continue;
+      final pid = (e['provider_id'] as num?)?.toInt();
+      final price = (e['price_baisas'] as num?)?.toInt();
+      if (pid != null && price != null) map['$pid'] = price;
+    }
+    return jsonEncode(map);
+  }
+
+  /// Decode the stored {providerId: priceBaisas} JSON → {providerId: OMR}.
+  static Map<int, double> _deliveryOverrides(String json) {
+    if (json.isEmpty || json == '{}') return const {};
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is Map) {
+        final out = <int, double>{};
+        decoded.forEach((k, v) {
+          final pid = int.tryParse('$k');
+          final price = (v as num?)?.toDouble();
+          if (pid != null && price != null) out[pid] = price / 1000.0;
+        });
+        return out;
+      }
+    } catch (_) {}
+    return const {};
+  }
 
   /// API `data` map → Drift companions for AppDatabase.replaceConfig.
   static ParsedConfig parse(Map<String, dynamic> data, {DateTime? now}) {
@@ -115,6 +153,8 @@ class ConfigMapper {
               imageUrl: Value(_strN(p['image_url'])),
               status: Value(_strN(p['status'])),
               addonGroupIds: Value(_intList(p['addon_group_ids']).join(',')),
+              deliveryPriceBaisas: Value(_int(p['delivery_price_baisas'])),
+              deliveryPricesJson: Value(_deliveryPricesJson(p['delivery_prices'])),
             ))
         .toList();
 
@@ -177,6 +217,15 @@ class ConfigMapper {
             ))
         .toList();
 
+    final deliveryProviders = _list(data['delivery_providers'])
+        .map((d) => DeliveryProvidersCompanion(
+              id: Value(_int(d['id']) ?? 0),
+              name: Value(_str(d['name'])),
+              color: Value(_strN(d['color'])),
+              sortOrder: Value(_int(d['sort_order']) ?? 0),
+            ))
+        .toList();
+
     final metaCompanion = SyncMetaCompanion(
       id: const Value(1),
       companyId: Value(_int(meta['company_id']) ?? _int(branchMap?['company_id'])),
@@ -194,6 +243,7 @@ class ConfigMapper {
       addonGroups: addonGroups,
       addons: addons,
       taxes: taxes,
+      deliveryProviders: deliveryProviders,
       meta: metaCompanion,
     );
   }
@@ -208,6 +258,7 @@ class ConfigMapper {
     List<TaxRow> taxes, [
     List<AddonGroupRow> addonGroupRows = const [],
     List<AddonRow> addonRows = const [],
+    List<DeliveryProviderRow> deliveryProviderRows = const [],
   ]) {
     final sortedCats = [...cats]
       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
@@ -220,6 +271,10 @@ class ConfigMapper {
               category: idToName[p.categoryId] ?? '',
               price: p.basePriceBaisas / 1000.0,
               addonGroupIds: _idsFromCsv(p.addonGroupIds),
+              deliveryPrice: p.deliveryPriceBaisas != null
+                  ? p.deliveryPriceBaisas! / 1000.0
+                  : null,
+              deliveryPriceByProvider: _deliveryOverrides(p.deliveryPricesJson),
             ))
         .toList();
 
@@ -301,6 +356,16 @@ class ConfigMapper {
             ))
         .toList();
 
+    final deliveryProviderDefs = ([...deliveryProviderRows]
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder)))
+        .map((d) => DeliveryProvider(
+              id: d.id,
+              name: d.name,
+              color: d.color,
+              sortOrder: d.sortOrder,
+            ))
+        .toList();
+
     return CatalogSnapshot(
       categories: sortedCats.map((c) => c.name).toList(),
       products: products,
@@ -308,6 +373,7 @@ class ConfigMapper {
       tables: tableDefs,
       taxes: companyTaxes,
       addonGroups: addonGroups,
+      deliveryProviders: deliveryProviderDefs,
     );
   }
 }

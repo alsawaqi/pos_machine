@@ -209,10 +209,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// then enqueues to the durable outbox, which persists the order before any
   /// network I/O and retries it on the next reconnect.
   Future<void> _handleOrderCompleted(OrderSnapshot snapshot) async {
-    // Capture the customer inputs SYNCHRONOUSLY — the controller resets them
-    // shortly after this callback fires, so reading them post-await would race.
+    // Capture the customer + delivery inputs SYNCHRONOUSLY — the controller
+    // resets them shortly after this callback fires, so reading them post-await
+    // would race.
     final phone = controller.customerReferenceNumber.trim();
     final plate = controller.vehiclePlateNumber.trim();
+    final deliveryProviderName = controller.selectedDeliveryProvider?.name;
 
     double? lat;
     double? lng;
@@ -263,6 +265,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             tableId: tableId,
             customerId: customerId,
             plateNumber: plate.isEmpty ? null : plate,
+            deliveryProviderName: deliveryProviderName,
           );
     } catch (_) {
       // The outbox persists the order before any network call, so it is queued
@@ -1148,6 +1151,36 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.setVehiclePlateNumber(plate);
   }
 
+  Future<void> _handleOrderTypeTap(OrderType type) async {
+    await controller.selectOrderType(type);
+    if (!mounted) return;
+    // Entering delivery: pick the provider first — its prices drive the menu.
+    if (type == OrderType.delivery &&
+        controller.selectedDeliveryProviderId == null) {
+      await _openDeliveryProviderPicker();
+    }
+  }
+
+  Future<void> _openDeliveryProviderPicker() async {
+    final providers = controller.deliveryProviders;
+    if (providers.isEmpty) {
+      _showPlaceholderMessage(
+        'No Delivery Providers',
+        'No delivery providers are set up yet. Add them in the merchant portal.',
+      );
+      return;
+    }
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (context) => _DeliveryProviderPickerDialog(
+        providers: providers,
+        selectedId: controller.selectedDeliveryProviderId,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    controller.selectDeliveryProvider(picked);
+  }
+
   Future<void> _openDiningSearchKeyboard() async {
     final value = await showDialog<String>(
       context: context,
@@ -1866,6 +1899,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ),
           ),
           const SizedBox(height: 16),
+          if (controller.selectedOrderType == OrderType.delivery) ...[
+            _buildDeliveryProviderField(),
+            const SizedBox(height: 16),
+          ],
           _buildCustomerReferenceField(),
           const SizedBox(height: 16),
           _buildVehiclePlateField(),
@@ -2041,6 +2078,62 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 const SizedBox(width: 8),
                 const Icon(Icons.keyboard_alt_outlined,
                     color: Color(0xFF4B5C67)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDeliveryProviderField() {
+    final provider = controller.selectedDeliveryProvider;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Delivery Provider',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF192831),
+          ),
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          key: const ValueKey('payment-delivery-provider'),
+          onTap: () => unawaited(_openDeliveryProviderPicker()),
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.84),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFDCE8EC)),
+              boxShadow: _softShadow,
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.delivery_dining_outlined,
+                    color: Color(0xFF70818E)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    provider == null
+                        ? 'Choose a delivery provider'
+                        : provider.name,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: provider == null
+                          ? const Color(0xFF91A0AB)
+                          : const Color(0xFF22323B),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.expand_more_rounded, color: Color(0xFF4B5C67)),
               ],
             ),
           ),
@@ -2540,7 +2633,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     icon: _orderTypeIcon(entry.value),
                     selected: controller.selectedOrderType == entry.value,
                     onTap: () {
-                      unawaited(controller.selectOrderType(entry.value));
+                      unawaited(_handleOrderTypeTap(entry.value));
                     },
                   ),
                 ),
@@ -7726,6 +7819,145 @@ class _DestructiveActionButton extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeliveryProviderPickerDialog extends StatelessWidget {
+  final List<DeliveryProvider> providers;
+  final int? selectedId;
+
+  const _DeliveryProviderPickerDialog({
+    required this.providers,
+    required this.selectedId,
+  });
+
+  Color _providerColor(DeliveryProvider p) {
+    final hex = p.color;
+    if (hex != null && RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(hex)) {
+      return Color(int.parse('FF${hex.substring(1)}', radix: 16));
+    }
+    return const Color(0xFF1F7A47);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 60),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 620),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFDFEFE),
+            borderRadius: BorderRadius.circular(28),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Choose Delivery Provider',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF17252C),
+                      ),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => Navigator.of(context).pop(),
+                    borderRadius: BorderRadius.circular(18),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3F7F8),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Icon(Icons.close_rounded,
+                          size: 25, color: Color(0xFF52626B)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Product prices update to the selected provider.',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF73828E),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      for (final p in providers)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: InkWell(
+                            key: ValueKey('delivery-provider-${p.id}'),
+                            onTap: () => Navigator.of(context).pop(p.id),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 16),
+                              decoration: BoxDecoration(
+                                color: p.id == selectedId
+                                    ? const Color(0xFFF1FBF4)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: p.id == selectedId
+                                      ? const Color(0xFF2C9255)
+                                      : const Color(0xFFDCE6EA),
+                                  width: p.id == selectedId ? 1.8 : 1.1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 14,
+                                    height: 14,
+                                    decoration: BoxDecoration(
+                                      color: _providerColor(p),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      p.name,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF22323B),
+                                      ),
+                                    ),
+                                  ),
+                                  if (p.id == selectedId)
+                                    const Icon(Icons.check_circle_rounded,
+                                        color: Color(0xFF1F7A47)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

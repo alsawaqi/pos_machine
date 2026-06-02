@@ -194,6 +194,21 @@ class AddonGroup {
   final List<AddonOption> options;
 }
 
+/// A company delivery provider (Talabat, Otlob, …) the cashier picks on a
+/// delivery order. Per-product prices live on [Product.deliveryPriceByProvider].
+class DeliveryProvider {
+  const DeliveryProvider({
+    required this.id,
+    required this.name,
+    this.color,
+    this.sortOrder = 0,
+  });
+  final int id;
+  final String name;
+  final String? color; // optional #RRGGBB UI hint
+  final int sortOrder;
+}
+
 class Product {
   final String id;
   final String name;
@@ -204,6 +219,11 @@ class Product {
   // Add-on group ids assigned to this product (from the API `addon_group_ids`),
   // resolved to AddonGroups for the modifier sheet. Empty = no add-ons.
   final List<int> addonGroupIds;
+  // Delivery pricing (OMR). [deliveryPrice] = in-house delivery default (null =
+  // use [price]); [deliveryPriceByProvider] = per-provider overrides keyed by
+  // provider id. Resolution: override → deliveryPrice → base price.
+  final double? deliveryPrice;
+  final Map<int, double> deliveryPriceByProvider;
 
   const Product({
     required this.id,
@@ -213,7 +233,26 @@ class Product {
     this.imageAsset,
     this.lowStock = false,
     this.addonGroupIds = const <int>[],
+    this.deliveryPrice,
+    this.deliveryPriceByProvider = const <int, double>{},
   });
+
+  /// The unit price to charge on a delivery order for [providerId], following
+  /// the merchant's chain: provider override → in-house delivery price → base.
+  double deliveryPriceFor(int providerId) =>
+      deliveryPriceByProvider[providerId] ?? deliveryPrice ?? price;
+
+  Product copyWith({double? price}) => Product(
+        id: id,
+        name: name,
+        category: category,
+        price: price ?? this.price,
+        imageAsset: imageAsset,
+        lowStock: lowStock,
+        addonGroupIds: addonGroupIds,
+        deliveryPrice: deliveryPrice,
+        deliveryPriceByProvider: deliveryPriceByProvider,
+      );
 
   factory Product.fromMap(Map<String, dynamic> map) {
     return Product(

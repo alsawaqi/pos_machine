@@ -55,6 +55,11 @@ class Products extends Table {
   // `addon_group_ids`), resolved against AddonGroups/Addons to build the
   // product's modifier sheet. Empty = no add-ons.
   TextColumn get addonGroupIds => text().withDefault(const Constant(''))();
+  // In-house delivery price (baisas); null = use base_price for delivery too.
+  IntColumn get deliveryPriceBaisas => integer().nullable()();
+  // Per-delivery-provider price overrides, JSON object {providerId: priceBaisas}.
+  // Resolution on the device: this map[provider] → deliveryPriceBaisas → base.
+  TextColumn get deliveryPricesJson => text().withDefault(const Constant('{}'))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -167,4 +172,18 @@ class OrderOutbox extends Table {
 
   @override
   Set<Column> get primaryKey => {orderUuid};
+}
+
+// Company delivery providers (Talabat, Otlob, …) for the POS provider picker
+// shown on a delivery order. Per-product provider prices live on the product
+// row (Products.deliveryPricesJson). `color` is an optional #RRGGBB UI hint.
+@DataClassName('DeliveryProviderRow')
+class DeliveryProviders extends Table {
+  IntColumn get id => integer()();
+  TextColumn get name => text().withDefault(const Constant(''))();
+  TextColumn get color => text().nullable()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
