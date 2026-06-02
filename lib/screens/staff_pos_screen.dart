@@ -5798,6 +5798,33 @@ class _DiningLegendDot extends StatelessWidget {
   }
 }
 
+/// The dine-in card outline for a table's shape, at the grid-slot size. round
+/// → capsule, oval → ellipse, square/counter/rectangle → rounded rectangles of
+/// decreasing roundness. The `side` carries the status-colored border.
+ShapeBorder _diningCardShape(String shape, BorderSide side) {
+  switch (shape) {
+    case 'oval':
+      return OvalBorder(side: side);
+    case 'round':
+      return StadiumBorder(side: side);
+    case 'square':
+      return RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: side,
+      );
+    case 'counter':
+      return RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: side,
+      );
+    default: // rectangle
+      return RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(32),
+        side: side,
+      );
+  }
+}
+
 class _DiningTableCard extends StatelessWidget {
   final DiningTableDefinition table;
   final DiningTableSession? session;
@@ -5838,26 +5865,34 @@ class _DiningTableCard extends StatelessWidget {
     };
     final hasTicket = status != DiningTableStatus.available && session != null;
 
+    // Same grid-slot size + position, but the card takes the table's SHAPE.
+    // Children clip to it: the centered name + status sit inside every shape;
+    // the corner ticket badge / dot show only on the rectangular shapes.
+    final cardShape = _diningCardShape(
+      table.shape,
+      BorderSide(
+        color: status == DiningTableStatus.available
+            ? const Color(0xFFE8EEF0)
+            : statusColor.withValues(alpha: 0.2),
+        width: 2,
+      ),
+    );
+
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(32),
+      customBorder: cardShape,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         padding: EdgeInsets.zero,
-        decoration: BoxDecoration(
+        clipBehavior: Clip.antiAlias,
+        decoration: ShapeDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: background,
           ),
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(
-            color: status == DiningTableStatus.available
-                ? const Color(0xFFE8EEF0)
-                : statusColor.withValues(alpha: 0.2),
-            width: 2,
-          ),
-          boxShadow: [
+          shape: cardShape,
+          shadows: [
             BoxShadow(
               color: const Color(0xFF7896A8).withValues(alpha: 0.18),
               blurRadius: 20,
