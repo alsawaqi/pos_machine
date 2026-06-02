@@ -2,6 +2,11 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'providers/providers.dart';
+import 'services/session_service.dart';
 import 'screens/staff_startup_gate.dart';
 import 'screens/customer_display_screen.dart';
 
@@ -9,7 +14,21 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _configureKioskMode();
   developer.log('Launching staff display entrypoint.', name: 'POSBootstrap');
-  runApp(const StaffApp());
+
+  final prefs = await SharedPreferences.getInstance();
+  const secureStorage = FlutterSecureStorage();
+  final session = SessionService(secureStorage, prefs);
+  await session.load();
+
+  runApp(
+    ProviderScope(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        sessionServiceProvider.overrideWithValue(session),
+      ],
+      child: const StaffApp(),
+    ),
+  );
 }
 
 @pragma('vm:entry-point')

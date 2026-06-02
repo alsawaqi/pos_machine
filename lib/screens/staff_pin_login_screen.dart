@@ -1,0 +1,185 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../providers/providers.dart';
+import '../services/pos_api_service.dart';
+
+/// Staff PIN login. On success it fetches + caches the branch config (first
+/// login needs network) and then completes the session, which flips the gate
+/// into the POS.
+class StaffPinLoginScreen extends ConsumerStatefulWidget {
+  const StaffPinLoginScreen({super.key});
+
+  @override
+  ConsumerState<StaffPinLoginScreen> createState() => _StaffPinLoginScreenState();
+}
+
+class _StaffPinLoginScreenState extends ConsumerState<StaffPinLoginScreen> {
+  static const int _minLen = 4;
+  static const int _maxLen = 6;
+
+  String _pin = '';
+  bool _busy = false;
+  String? _error;
+
+  void _tap(String digit) {
+    if (_busy || _pin.length >= _maxLen) return;
+    setState(() {
+      _pin += digit;
+      _error = null;
+    });
+  }
+
+  void _backspace() {
+    if (_busy || _pin.isEmpty) return;
+    setState(() => _pin = _pin.substring(0, _pin.length - 1));
+  }
+
+  Future<void> _submit() async {
+    if (_pin.length < _minLen) {
+      setState(() => _error = 'Enter your $_minLen–$_maxLen digit PIN.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final staff = await ref.read(apiServiceProvider).staffLogin(pin: _pin);
+      // First login needs the network: pull the branch config before completing.
+      await ref.read(configRepositoryProvider).fetchAndCache();
+      await ref.read(sessionControllerProvider.notifier).saveStaff(staff);
+      // Gate rebuilds into the POS (behind the geofence gate).
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.message;
+          _pin = '';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = 'Login failed. Please try again.';
+          _pin = '';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF102028),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Staff login',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Enter your PIN to load this branch.',
+                  style: TextStyle(color: Colors.white60, fontSize: 14),
+                ),
+                const SizedBox(height: 24),
+                _dots(),
+                if (_error != null) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    _error!,
+                    style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 14),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                _keypad(),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: 240,
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: _busy ? null : _submit,
+                    child: _busy
+                        ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Login'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _dots() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(_maxLen, (i) {
+        final filled = i < _pin.length;
+        return Container(
+          width: 16,
+          height: 16,
+          margin: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: filled ? Colors.white : Colors.white24,
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _keypad() {
+    const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '<'];
+    return SizedBox(
+      width: 300,
+      child: GridView.count(
+        shrinkWrap: true,
+        crossAxisCount: 3,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        physics: const NeverScrollableScrollPhysics(),
+        children: keys.map((k) {
+          if (k.isEmpty) return const SizedBox.shrink();
+          return Material(
+            color: const Color(0xFF1B3540),
+            borderRadius: BorderRadius.circular(16),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => k == '<' ? _backspace() : _tap(k),
+              child: Center(
+                child: k == '<'
+                    ? const Icon(Icons.backspace_outlined, color: Colors.white70)
+                    : Text(
+                        k,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}

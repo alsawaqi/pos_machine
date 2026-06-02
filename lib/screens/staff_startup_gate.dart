@@ -1,55 +1,32 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../services/local_storage_service.dart';
+import '../providers/providers.dart';
+import 'geofence_gate.dart';
+import 'pairing_screen.dart';
+import 'staff_pin_login_screen.dart';
 import 'staff_pos_screen.dart';
-import 'terminal_setup_screen.dart';
 
-class StaffStartupGate extends StatefulWidget {
+/// Boot stages, decided from the persisted session:
+///   not paired       → PairingScreen          (needs network)
+///   paired, no staff → StaffPinLoginScreen     (first login needs network)
+///   paired + staff   → GeofenceGate(StaffPosScreen)  (works offline from Drift)
+///
+/// A 401 anywhere clears the session (PosApiService.onUnauthorized →
+/// SessionController.clearForRePair), which flips this gate back to pairing.
+class StaffStartupGate extends ConsumerWidget {
   const StaffStartupGate({super.key});
 
   @override
-  State<StaffStartupGate> createState() => _StaffStartupGateState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(sessionControllerProvider);
 
-class _StaffStartupGateState extends State<StaffStartupGate> {
-  bool _loading = true;
-  String? _terminalId;
-
-  @override
-  void initState() {
-    super.initState();
-    _restoreTerminalId();
-  }
-
-  Future<void> _restoreTerminalId() async {
-    final terminalId = await LocalStorageService.getTerminalId();
-    if (!mounted) return;
-    setState(() {
-      _terminalId = terminalId?.trim();
-      _loading = false;
-    });
-  }
-
-  void _handleTerminalSaved(String terminalId) {
-    setState(() {
-      _terminalId = terminalId.trim();
-      _loading = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF102028),
-        body: Center(child: CircularProgressIndicator()),
-      );
+    if (!session.isPaired) {
+      return const PairingScreen();
     }
-
-    if (_terminalId == null || _terminalId!.isEmpty) {
-      return TerminalSetupScreen(onSaved: _handleTerminalSaved);
+    if (!session.hasStaff) {
+      return const StaffPinLoginScreen();
     }
-
-    return const StaffPosScreen();
+    return const GeofenceGate(child: StaffPosScreen());
   }
 }

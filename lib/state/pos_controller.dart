@@ -21,7 +21,7 @@ class PosController extends ChangeNotifier {
   final MosambeePaymentService _paymentBridge = MosambeePaymentService();
   final OrderStorageService _orderStorage;
 
-  final List<String> categories = const [
+  List<String> categories = const [
     'Coffee',
     'Drinks',
     'Food',
@@ -30,7 +30,7 @@ class PosController extends ChangeNotifier {
     'Special',
   ];
 
-  final List<Product> allProducts = const [
+  List<Product> allProducts = const [
     Product(
       id: '1',
       name: 'Espresso',
@@ -83,13 +83,13 @@ class PosController extends ChangeNotifier {
     Product(id: '6', name: 'Brownie', category: 'Dessert', price: 1.600),
   ];
 
-  final List<DiningFloor> diningFloors = const [
+  List<DiningFloor> diningFloors = const [
     DiningFloor(id: 'main_hall', label: 'Main Hall'),
     DiningFloor(id: 'first_floor', label: 'First Floor'),
     DiningFloor(id: 'second_floor', label: 'Second Floor'),
   ];
 
-  final List<DiningTableDefinition> diningTableDefinitions = const [
+  List<DiningTableDefinition> diningTableDefinitions = const [
     DiningTableDefinition(
       id: 'main_t1',
       floorId: 'main_hall',
@@ -304,6 +304,30 @@ class PosController extends ChangeNotifier {
       }
     }
 
+    _notifySafely();
+  }
+
+  /// Replace the in-memory catalog with branch-scoped data fetched from pos_api
+  /// (mapped from the Drift cache). The existing UI reads these lists directly,
+  /// so this bridge is all that is needed — no widget changes.
+  void applyCatalog({
+    required List<String> categories,
+    required List<Product> products,
+    required List<DiningFloor> floors,
+    required List<DiningTableDefinition> tables,
+  }) {
+    this.categories = categories;
+    allProducts = products;
+    diningFloors = floors;
+    diningTableDefinitions = tables;
+
+    // Keep the current selections valid against the new catalog.
+    if (categories.isNotEmpty && !categories.contains(selectedCategory)) {
+      selectedCategory = categories.first;
+    }
+    if (floors.isNotEmpty && !floors.any((f) => f.id == selectedDiningFloorId)) {
+      selectedDiningFloorId = floors.first.id;
+    }
     _notifySafely();
   }
 

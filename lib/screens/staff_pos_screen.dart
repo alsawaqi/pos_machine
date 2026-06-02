@@ -3,11 +3,14 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/pos_models.dart';
 import '../services/manager_authorization_service.dart';
 import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
+import '../providers/providers.dart';
+import '../services/config_mapper.dart';
 
 const _customizationGroups = <_ModifierGroupDefinition>[
   _ModifierGroupDefinition(
@@ -86,14 +89,14 @@ String _formatStorageDateTime(DateTime value) {
   return '${months[value.month - 1]} ${value.day}, ${value.year} | ${hour.toString().padLeft(2, '0')}:$minute $meridiem';
 }
 
-class StaffPosScreen extends StatefulWidget {
+class StaffPosScreen extends ConsumerStatefulWidget {
   const StaffPosScreen({super.key});
 
   @override
-  State<StaffPosScreen> createState() => _StaffPosScreenState();
+  ConsumerState<StaffPosScreen> createState() => _StaffPosScreenState();
 }
 
-class _StaffPosScreenState extends State<StaffPosScreen> {
+class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   late final PosController controller;
   late final TextEditingController _customerNumberController;
   late final ValueNotifier<DateTime> _clockNow;
@@ -106,6 +109,8 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
   String _cashTenderInput = '';
   _StaffPopupMessage? _popupMessage;
   int _popupSeed = 0;
+  ProviderSubscription<AsyncValue<CatalogSnapshot>>? _catalogSub;
+  ProviderSubscription<AsyncValue<bool>>? _connectivitySub;
 
   static const double _designWidth = 1600;
   static const double _designHeight = 900;
@@ -154,6 +159,37 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
       await controller.init();
       await controller.openRearDisplay();
     });
+
+    // Bridge: feed the branch catalog (from the Drift cache, refreshed from
+    // pos_api) into the existing controller. fireImmediately covers the case
+    // where the cache is already populated before this screen mounts.
+    _catalogSub = ref.listenManual(
+      catalogProvider,
+      (previous, next) {
+        final catalog = next.asData?.value;
+        if (catalog != null) {
+          controller.applyCatalog(
+            categories: catalog.categories,
+            products: catalog.products,
+            floors: catalog.floors,
+            tables: catalog.tables,
+          );
+        }
+      },
+      fireImmediately: true,
+    );
+
+    // Back online → refresh the cached config (best effort).
+    _connectivitySub = ref.listenManual(
+      connectivityProvider,
+      (previous, next) {
+        if (next.asData?.value == true) {
+          unawaited(
+            ref.read(configRepositoryProvider).fetchAndCache().catchError((_) {}),
+          );
+        }
+      },
+    );
   }
 
   @override
@@ -165,6 +201,8 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
     _customerNumberController.dispose();
     unawaited(controller.shutdown());
     controller.dispose();
+    _catalogSub?.close();
+    _connectivitySub?.close();
     super.dispose();
   }
 
