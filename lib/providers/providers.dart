@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/config_repository.dart';
 import '../data/db/app_database.dart';
+import '../data/order_sync_repository.dart';
 import '../services/api_models.dart';
 import '../services/config_mapper.dart';
 import '../services/geofence_service.dart';
@@ -80,6 +81,15 @@ final configRepositoryProvider = Provider<ConfigRepository>(
     ref.read(apiServiceProvider),
     ref.read(appDatabaseProvider),
     ref.read(sessionServiceProvider),
+  ),
+);
+
+/// Offline-first order push: enqueues a completed order to the durable outbox
+/// and flushes it to pos_api (now + on reconnect).
+final orderSyncRepositoryProvider = Provider<OrderSyncRepository>(
+  (ref) => OrderSyncRepository(
+    ref.read(apiServiceProvider),
+    ref.read(appDatabaseProvider),
   ),
 );
 

@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import '../models/pos_models.dart';
 import '../services/manager_authorization_service.dart';
 import '../services/sunmi_receipt_service.dart';
@@ -148,6 +149,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   void initState() {
     super.initState();
     controller = PosController();
+    controller.onOrderCompleted = _handleOrderCompleted;
     _customerNumberController = TextEditingController();
     _clockNow = ValueNotifier<DateTime>(DateTime.now());
     _currentOrderScrollController = ScrollController();
@@ -158,6 +160,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await controller.init();
       await controller.openRearDisplay();
+      // Flush any orders queued in a previous session (e.g. completed offline).
+      unawaited(ref.read(orderSyncRepositoryProvider).flush().catchError((_) => 0));
     });
 
     // Bridge: feed the branch catalog (from the Drift cache, refreshed from
@@ -189,9 +193,55 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           unawaited(
             ref.read(configRepositoryProvider).fetchAndCache().catchError((_) {}),
           );
+          // Back online → push any orders queued while offline.
+          unawaited(
+            ref.read(orderSyncRepositoryProvider).flush().catchError((_) => 0),
+          );
         }
       },
     );
+  }
+
+  /// Push a finalized order to pos_api. Captures the device GPS (required at a
+  /// geofenced branch — the server fails closed without it) + the staff id,
+  /// then enqueues to the durable outbox, which persists the order before any
+  /// network I/O and retries it on the next reconnect.
+  Future<void> _handleOrderCompleted(OrderSnapshot snapshot) async {
+    double? lat;
+    double? lng;
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
+      ).timeout(const Duration(seconds: 5));
+      lat = pos.latitude;
+      lng = pos.longitude;
+    } catch (_) {
+      try {
+        final last = await Geolocator.getLastKnownPosition();
+        lat = last?.latitude;
+        lng = last?.longitude;
+      } catch (_) {
+        // No fix available — enqueue without GPS; a fenced branch will reject
+        // it server-side and it stays queued until a fix is obtained.
+      }
+    }
+
+    if (!mounted) return;
+    final staffId = ref.read(sessionServiceProvider).staff?.id;
+    final tableId = int.tryParse(snapshot.diningTableId);
+    try {
+      await ref.read(orderSyncRepositoryProvider).enqueue(
+            snapshot,
+            lat: lat,
+            lng: lng,
+            staffId: staffId,
+            tableId: tableId,
+          );
+    } catch (_) {
+      // The outbox persists the order before any network call, so it is queued
+      // even if this throws; flush() retries on the next reconnect.
+    }
   }
 
   @override

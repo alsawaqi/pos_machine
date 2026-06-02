@@ -76,6 +76,18 @@ class PosApiService {
     return (data: body.dataMap, terminalId: body.metaMap['terminal_id'] as String?);
   }
 
+  /// POST /device/sync/push — push a batch of offline sync events (order.create
+  /// / order.pay / donation.record …). Idempotent on client_event_id, so a
+  /// re-push of the same batch settles exactly once. Returns the `data` map:
+  /// { results: [ per-event ACK {client_event_id, status, duplicate, result} ],
+  ///   summary: {total, accepted, duplicates} }.
+  Future<Map<String, dynamic>> pushSync(List<Map<String, dynamic>> events) async {
+    final body = await _send(
+      () => _dio.post('/device/sync/push', data: {'events': events}),
+    );
+    return body.dataMap;
+  }
+
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------

@@ -147,3 +147,24 @@ class TaxCache extends Table {
   @override
   Set<Column> get primaryKey => {id};
 }
+
+// Durable outbox for completed orders awaiting push to pos_api
+// (POST /device/sync/push). This is the offline-first guarantee: an order is
+// persisted here the moment it completes and re-pushed until the server ACKs
+// it. NOT part of the catalog cache — replaceConfig never touches it. One row
+// per order; [eventsJson] holds the full event batch (order.create / order.pay
+// / donation.record) with STABLE client_event_ids so a re-push settles exactly
+// once. [syncedAt] null = still pending.
+@DataClassName('OrderOutboxRow')
+class OrderOutbox extends Table {
+  TextColumn get orderUuid => text()();
+  TextColumn get eventsJson => text()();
+  IntColumn get orderNumber => integer().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  IntColumn get attempts => integer().withDefault(const Constant(0))();
+  TextColumn get lastError => text().nullable()();
+  DateTimeColumn get syncedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {orderUuid};
+}

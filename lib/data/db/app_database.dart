@@ -19,6 +19,7 @@ part 'app_database.g.dart';
     Addons,
     TaxCache,
     SyncMeta,
+    OrderOutbox,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -28,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -50,6 +51,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 4) {
             // v4 added per-product add-on group ids (the modifier sheet).
             await m.addColumn(products, products.addonGroupIds);
+          }
+          if (from < 5) {
+            // v5 added the order push outbox (offline-first order sync).
+            await m.createTable(orderOutbox);
           }
         },
       );
@@ -83,6 +88,32 @@ class AppDatabase extends _$AppDatabase {
 
   Future<SyncMetaRow?> getSyncMeta() =>
       (select(syncMeta)..where((m) => m.id.equals(1))).getSingleOrNull();
+
+  // ---------------------------------------------------------------------------
+  // Order push outbox (offline-first order sync → /device/sync/push)
+  // ---------------------------------------------------------------------------
+  Future<void> enqueueOutbox(OrderOutboxCompanion row) =>
+      into(orderOutbox).insertOnConflictUpdate(row);
+
+  /// Orders not yet ACKed by the server, oldest first.
+  Future<List<OrderOutboxRow>> pendingOutbox() => (select(orderOutbox)
+        ..where((o) => o.syncedAt.isNull())
+        ..orderBy([(o) => OrderingTerm(expression: o.createdAt)]))
+      .get();
+
+  Stream<List<OrderOutboxRow>> watchPendingOutbox() => (select(orderOutbox)
+        ..where((o) => o.syncedAt.isNull())
+        ..orderBy([(o) => OrderingTerm(expression: o.createdAt)]))
+      .watch();
+
+  Future<void> markOutboxSynced(String orderUuid, DateTime at) =>
+      (update(orderOutbox)..where((o) => o.orderUuid.equals(orderUuid)))
+          .write(OrderOutboxCompanion(syncedAt: Value(at)));
+
+  Future<void> markOutboxAttempt(String orderUuid, int attempts, String? error) =>
+      (update(orderOutbox)..where((o) => o.orderUuid.equals(orderUuid))).write(
+        OrderOutboxCompanion(attempts: Value(attempts), lastError: Value(error)),
+      );
 
   /// True once at least one config sync has populated the cache.
   Future<bool> hasCachedConfig() async {

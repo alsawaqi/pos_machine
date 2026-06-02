@@ -3883,6 +3883,483 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
   }
 }
 
+class $OrderOutboxTable extends OrderOutbox
+    with TableInfo<$OrderOutboxTable, OrderOutboxRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OrderOutboxTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _orderUuidMeta = const VerificationMeta(
+    'orderUuid',
+  );
+  @override
+  late final GeneratedColumn<String> orderUuid = GeneratedColumn<String>(
+    'order_uuid',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _eventsJsonMeta = const VerificationMeta(
+    'eventsJson',
+  );
+  @override
+  late final GeneratedColumn<String> eventsJson = GeneratedColumn<String>(
+    'events_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _orderNumberMeta = const VerificationMeta(
+    'orderNumber',
+  );
+  @override
+  late final GeneratedColumn<int> orderNumber = GeneratedColumn<int>(
+    'order_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _attemptsMeta = const VerificationMeta(
+    'attempts',
+  );
+  @override
+  late final GeneratedColumn<int> attempts = GeneratedColumn<int>(
+    'attempts',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _lastErrorMeta = const VerificationMeta(
+    'lastError',
+  );
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+    'last_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _syncedAtMeta = const VerificationMeta(
+    'syncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+    'synced_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    orderUuid,
+    eventsJson,
+    orderNumber,
+    createdAt,
+    attempts,
+    lastError,
+    syncedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'order_outbox';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OrderOutboxRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('order_uuid')) {
+      context.handle(
+        _orderUuidMeta,
+        orderUuid.isAcceptableOrUnknown(data['order_uuid']!, _orderUuidMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_orderUuidMeta);
+    }
+    if (data.containsKey('events_json')) {
+      context.handle(
+        _eventsJsonMeta,
+        eventsJson.isAcceptableOrUnknown(data['events_json']!, _eventsJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_eventsJsonMeta);
+    }
+    if (data.containsKey('order_number')) {
+      context.handle(
+        _orderNumberMeta,
+        orderNumber.isAcceptableOrUnknown(
+          data['order_number']!,
+          _orderNumberMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('attempts')) {
+      context.handle(
+        _attemptsMeta,
+        attempts.isAcceptableOrUnknown(data['attempts']!, _attemptsMeta),
+      );
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(
+        _lastErrorMeta,
+        lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta),
+      );
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(
+        _syncedAtMeta,
+        syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {orderUuid};
+  @override
+  OrderOutboxRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OrderOutboxRow(
+      orderUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}order_uuid'],
+      )!,
+      eventsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}events_json'],
+      )!,
+      orderNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}order_number'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      attempts: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}attempts'],
+      )!,
+      lastError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_error'],
+      ),
+      syncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}synced_at'],
+      ),
+    );
+  }
+
+  @override
+  $OrderOutboxTable createAlias(String alias) {
+    return $OrderOutboxTable(attachedDatabase, alias);
+  }
+}
+
+class OrderOutboxRow extends DataClass implements Insertable<OrderOutboxRow> {
+  final String orderUuid;
+  final String eventsJson;
+  final int? orderNumber;
+  final DateTime createdAt;
+  final int attempts;
+  final String? lastError;
+  final DateTime? syncedAt;
+  const OrderOutboxRow({
+    required this.orderUuid,
+    required this.eventsJson,
+    this.orderNumber,
+    required this.createdAt,
+    required this.attempts,
+    this.lastError,
+    this.syncedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['order_uuid'] = Variable<String>(orderUuid);
+    map['events_json'] = Variable<String>(eventsJson);
+    if (!nullToAbsent || orderNumber != null) {
+      map['order_number'] = Variable<int>(orderNumber);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['attempts'] = Variable<int>(attempts);
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
+    }
+    if (!nullToAbsent || syncedAt != null) {
+      map['synced_at'] = Variable<DateTime>(syncedAt);
+    }
+    return map;
+  }
+
+  OrderOutboxCompanion toCompanion(bool nullToAbsent) {
+    return OrderOutboxCompanion(
+      orderUuid: Value(orderUuid),
+      eventsJson: Value(eventsJson),
+      orderNumber: orderNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(orderNumber),
+      createdAt: Value(createdAt),
+      attempts: Value(attempts),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
+      syncedAt: syncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncedAt),
+    );
+  }
+
+  factory OrderOutboxRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OrderOutboxRow(
+      orderUuid: serializer.fromJson<String>(json['orderUuid']),
+      eventsJson: serializer.fromJson<String>(json['eventsJson']),
+      orderNumber: serializer.fromJson<int?>(json['orderNumber']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      attempts: serializer.fromJson<int>(json['attempts']),
+      lastError: serializer.fromJson<String?>(json['lastError']),
+      syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'orderUuid': serializer.toJson<String>(orderUuid),
+      'eventsJson': serializer.toJson<String>(eventsJson),
+      'orderNumber': serializer.toJson<int?>(orderNumber),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'attempts': serializer.toJson<int>(attempts),
+      'lastError': serializer.toJson<String?>(lastError),
+      'syncedAt': serializer.toJson<DateTime?>(syncedAt),
+    };
+  }
+
+  OrderOutboxRow copyWith({
+    String? orderUuid,
+    String? eventsJson,
+    Value<int?> orderNumber = const Value.absent(),
+    DateTime? createdAt,
+    int? attempts,
+    Value<String?> lastError = const Value.absent(),
+    Value<DateTime?> syncedAt = const Value.absent(),
+  }) => OrderOutboxRow(
+    orderUuid: orderUuid ?? this.orderUuid,
+    eventsJson: eventsJson ?? this.eventsJson,
+    orderNumber: orderNumber.present ? orderNumber.value : this.orderNumber,
+    createdAt: createdAt ?? this.createdAt,
+    attempts: attempts ?? this.attempts,
+    lastError: lastError.present ? lastError.value : this.lastError,
+    syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
+  );
+  OrderOutboxRow copyWithCompanion(OrderOutboxCompanion data) {
+    return OrderOutboxRow(
+      orderUuid: data.orderUuid.present ? data.orderUuid.value : this.orderUuid,
+      eventsJson: data.eventsJson.present
+          ? data.eventsJson.value
+          : this.eventsJson,
+      orderNumber: data.orderNumber.present
+          ? data.orderNumber.value
+          : this.orderNumber,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      attempts: data.attempts.present ? data.attempts.value : this.attempts,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OrderOutboxRow(')
+          ..write('orderUuid: $orderUuid, ')
+          ..write('eventsJson: $eventsJson, ')
+          ..write('orderNumber: $orderNumber, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('attempts: $attempts, ')
+          ..write('lastError: $lastError, ')
+          ..write('syncedAt: $syncedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    orderUuid,
+    eventsJson,
+    orderNumber,
+    createdAt,
+    attempts,
+    lastError,
+    syncedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OrderOutboxRow &&
+          other.orderUuid == this.orderUuid &&
+          other.eventsJson == this.eventsJson &&
+          other.orderNumber == this.orderNumber &&
+          other.createdAt == this.createdAt &&
+          other.attempts == this.attempts &&
+          other.lastError == this.lastError &&
+          other.syncedAt == this.syncedAt);
+}
+
+class OrderOutboxCompanion extends UpdateCompanion<OrderOutboxRow> {
+  final Value<String> orderUuid;
+  final Value<String> eventsJson;
+  final Value<int?> orderNumber;
+  final Value<DateTime> createdAt;
+  final Value<int> attempts;
+  final Value<String?> lastError;
+  final Value<DateTime?> syncedAt;
+  final Value<int> rowid;
+  const OrderOutboxCompanion({
+    this.orderUuid = const Value.absent(),
+    this.eventsJson = const Value.absent(),
+    this.orderNumber = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.attempts = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  OrderOutboxCompanion.insert({
+    required String orderUuid,
+    required String eventsJson,
+    this.orderNumber = const Value.absent(),
+    required DateTime createdAt,
+    this.attempts = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : orderUuid = Value(orderUuid),
+       eventsJson = Value(eventsJson),
+       createdAt = Value(createdAt);
+  static Insertable<OrderOutboxRow> custom({
+    Expression<String>? orderUuid,
+    Expression<String>? eventsJson,
+    Expression<int>? orderNumber,
+    Expression<DateTime>? createdAt,
+    Expression<int>? attempts,
+    Expression<String>? lastError,
+    Expression<DateTime>? syncedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (orderUuid != null) 'order_uuid': orderUuid,
+      if (eventsJson != null) 'events_json': eventsJson,
+      if (orderNumber != null) 'order_number': orderNumber,
+      if (createdAt != null) 'created_at': createdAt,
+      if (attempts != null) 'attempts': attempts,
+      if (lastError != null) 'last_error': lastError,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  OrderOutboxCompanion copyWith({
+    Value<String>? orderUuid,
+    Value<String>? eventsJson,
+    Value<int?>? orderNumber,
+    Value<DateTime>? createdAt,
+    Value<int>? attempts,
+    Value<String?>? lastError,
+    Value<DateTime?>? syncedAt,
+    Value<int>? rowid,
+  }) {
+    return OrderOutboxCompanion(
+      orderUuid: orderUuid ?? this.orderUuid,
+      eventsJson: eventsJson ?? this.eventsJson,
+      orderNumber: orderNumber ?? this.orderNumber,
+      createdAt: createdAt ?? this.createdAt,
+      attempts: attempts ?? this.attempts,
+      lastError: lastError ?? this.lastError,
+      syncedAt: syncedAt ?? this.syncedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (orderUuid.present) {
+      map['order_uuid'] = Variable<String>(orderUuid.value);
+    }
+    if (eventsJson.present) {
+      map['events_json'] = Variable<String>(eventsJson.value);
+    }
+    if (orderNumber.present) {
+      map['order_number'] = Variable<int>(orderNumber.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (attempts.present) {
+      map['attempts'] = Variable<int>(attempts.value);
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OrderOutboxCompanion(')
+          ..write('orderUuid: $orderUuid, ')
+          ..write('eventsJson: $eventsJson, ')
+          ..write('orderNumber: $orderNumber, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('attempts: $attempts, ')
+          ..write('lastError: $lastError, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3895,6 +4372,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $AddonsTable addons = $AddonsTable(this);
   late final $TaxCacheTable taxCache = $TaxCacheTable(this);
   late final $SyncMetaTable syncMeta = $SyncMetaTable(this);
+  late final $OrderOutboxTable orderOutbox = $OrderOutboxTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3909,6 +4387,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     addons,
     taxCache,
     syncMeta,
+    orderOutbox,
   ];
 }
 
@@ -5923,6 +6402,248 @@ typedef $$SyncMetaTableProcessedTableManager =
       SyncMetaRow,
       PrefetchHooks Function()
     >;
+typedef $$OrderOutboxTableCreateCompanionBuilder =
+    OrderOutboxCompanion Function({
+      required String orderUuid,
+      required String eventsJson,
+      Value<int?> orderNumber,
+      required DateTime createdAt,
+      Value<int> attempts,
+      Value<String?> lastError,
+      Value<DateTime?> syncedAt,
+      Value<int> rowid,
+    });
+typedef $$OrderOutboxTableUpdateCompanionBuilder =
+    OrderOutboxCompanion Function({
+      Value<String> orderUuid,
+      Value<String> eventsJson,
+      Value<int?> orderNumber,
+      Value<DateTime> createdAt,
+      Value<int> attempts,
+      Value<String?> lastError,
+      Value<DateTime?> syncedAt,
+      Value<int> rowid,
+    });
+
+class $$OrderOutboxTableFilterComposer
+    extends Composer<_$AppDatabase, $OrderOutboxTable> {
+  $$OrderOutboxTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get orderUuid => $composableBuilder(
+    column: $table.orderUuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get eventsJson => $composableBuilder(
+    column: $table.eventsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get orderNumber => $composableBuilder(
+    column: $table.orderNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get attempts => $composableBuilder(
+    column: $table.attempts,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$OrderOutboxTableOrderingComposer
+    extends Composer<_$AppDatabase, $OrderOutboxTable> {
+  $$OrderOutboxTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get orderUuid => $composableBuilder(
+    column: $table.orderUuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get eventsJson => $composableBuilder(
+    column: $table.eventsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get orderNumber => $composableBuilder(
+    column: $table.orderNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get attempts => $composableBuilder(
+    column: $table.attempts,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$OrderOutboxTableAnnotationComposer
+    extends Composer<_$AppDatabase, $OrderOutboxTable> {
+  $$OrderOutboxTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get orderUuid =>
+      $composableBuilder(column: $table.orderUuid, builder: (column) => column);
+
+  GeneratedColumn<String> get eventsJson => $composableBuilder(
+    column: $table.eventsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get orderNumber => $composableBuilder(
+    column: $table.orderNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get attempts =>
+      $composableBuilder(column: $table.attempts, builder: (column) => column);
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+}
+
+class $$OrderOutboxTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $OrderOutboxTable,
+          OrderOutboxRow,
+          $$OrderOutboxTableFilterComposer,
+          $$OrderOutboxTableOrderingComposer,
+          $$OrderOutboxTableAnnotationComposer,
+          $$OrderOutboxTableCreateCompanionBuilder,
+          $$OrderOutboxTableUpdateCompanionBuilder,
+          (
+            OrderOutboxRow,
+            BaseReferences<_$AppDatabase, $OrderOutboxTable, OrderOutboxRow>,
+          ),
+          OrderOutboxRow,
+          PrefetchHooks Function()
+        > {
+  $$OrderOutboxTableTableManager(_$AppDatabase db, $OrderOutboxTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$OrderOutboxTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$OrderOutboxTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$OrderOutboxTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> orderUuid = const Value.absent(),
+                Value<String> eventsJson = const Value.absent(),
+                Value<int?> orderNumber = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> attempts = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                Value<DateTime?> syncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OrderOutboxCompanion(
+                orderUuid: orderUuid,
+                eventsJson: eventsJson,
+                orderNumber: orderNumber,
+                createdAt: createdAt,
+                attempts: attempts,
+                lastError: lastError,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String orderUuid,
+                required String eventsJson,
+                Value<int?> orderNumber = const Value.absent(),
+                required DateTime createdAt,
+                Value<int> attempts = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                Value<DateTime?> syncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OrderOutboxCompanion.insert(
+                orderUuid: orderUuid,
+                eventsJson: eventsJson,
+                orderNumber: orderNumber,
+                createdAt: createdAt,
+                attempts: attempts,
+                lastError: lastError,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$OrderOutboxTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $OrderOutboxTable,
+      OrderOutboxRow,
+      $$OrderOutboxTableFilterComposer,
+      $$OrderOutboxTableOrderingComposer,
+      $$OrderOutboxTableAnnotationComposer,
+      $$OrderOutboxTableCreateCompanionBuilder,
+      $$OrderOutboxTableUpdateCompanionBuilder,
+      (
+        OrderOutboxRow,
+        BaseReferences<_$AppDatabase, $OrderOutboxTable, OrderOutboxRow>,
+      ),
+      OrderOutboxRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5945,4 +6666,6 @@ class $AppDatabaseManager {
       $$TaxCacheTableTableManager(_db, _db.taxCache);
   $$SyncMetaTableTableManager get syncMeta =>
       $$SyncMetaTableTableManager(_db, _db.syncMeta);
+  $$OrderOutboxTableTableManager get orderOutbox =>
+      $$OrderOutboxTableTableManager(_db, _db.orderOutbox);
 }

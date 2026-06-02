@@ -257,6 +257,12 @@ class PosController extends ChangeNotifier {
   String recentProductId = '';
   int orderUpdateNonce = 0;
 
+  /// Invoked once with the completed order's snapshot the moment it is finalized
+  /// (after the local save + receipt). The screen wires this to the order-push
+  /// outbox so the order reaches pos_api. Fire-and-forget — it must never block
+  /// or fail order completion.
+  void Function(OrderSnapshot snapshot)? onOrderCompleted;
+
   bool _presentationEnabled =
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   bool _isDisposed = false;
@@ -1398,6 +1404,9 @@ class PosController extends ChangeNotifier {
     final completedSnapshot = snapshot();
     await SunmiReceiptService.printReceipt(completedSnapshot);
     await _saveCompletedOrder(completedSnapshot);
+    // Push the finalized order to pos_api (via the durable outbox). Fire-and-
+    // forget: completion never waits on, or fails because of, the network.
+    onOrderCompleted?.call(completedSnapshot);
     if (isDineInPayment) {
       await _markActiveDiningTablePaid(completedSnapshot);
     }
