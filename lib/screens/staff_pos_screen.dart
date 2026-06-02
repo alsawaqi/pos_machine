@@ -502,19 +502,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     )
                   : LayoutBuilder(
                       builder: (context, constraints) {
-                        // Fit the merchant planner's fixed 1200x800 layout into
-                        // the available area (letterbox, aspect preserved) so the
-                        // POS mirrors the floor plan 1:1 on the Sunmi screen.
+                        // Render the planner layout at the SAME size the merchant
+                        // portal uses: fill the available WIDTH (tables at their
+                        // natural planner size, not shrunk to fit the height) and
+                        // scroll vertically when the plan is taller than the view.
                         const planW = 1200.0;
                         const planH = 800.0;
-                        final sw = constraints.maxWidth / planW;
-                        final sh = constraints.maxHeight / planH;
-                        final scale = sw < sh ? sw : sh;
+                        final scale = constraints.maxWidth / planW;
+                        final canvasH = planH * scale;
 
-                        return Center(
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.vertical,
+                          physics: const BouncingScrollPhysics(),
                           child: SizedBox(
-                            width: planW * scale,
-                            height: planH * scale,
+                            width: constraints.maxWidth,
+                            height: canvasH < constraints.maxHeight
+                                ? constraints.maxHeight
+                                : canvasH,
                             child: Stack(
                               children: [
                                 for (final t in floorTables)
