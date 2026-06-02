@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
@@ -45,7 +46,22 @@ class _StaffPinLoginScreenState extends ConsumerState<StaffPinLoginScreen> {
       _error = null;
     });
     try {
-      final staff = await ref.read(apiServiceProvider).staffLogin(pin: _pin);
+      // Geofence at sign-in (blueprint §9.4): if this device's branch has a
+      // fence, capture the live GPS and send it with the PIN — the server
+      // rejects the login when the device is outside the branch area
+      // (fail-closed). An unfenced branch needs no location.
+      final branch = await ref.read(configRepositoryProvider).getBranch();
+      final fenced = branch?.latitude != null && branch?.longitude != null;
+      ({double? lat, double? lng}) gps = (lat: null, lng: null);
+      if (fenced) {
+        gps = await _currentGps();
+      }
+
+      final staff = await ref.read(apiServiceProvider).staffLogin(
+            pin: _pin,
+            lat: gps.lat,
+            lng: gps.lng,
+          );
       // First login needs the network: pull the branch config before completing.
       await ref.read(configRepositoryProvider).fetchAndCache();
       await ref.read(sessionControllerProvider.notifier).saveStaff(staff);
@@ -66,6 +82,31 @@ class _StaffPinLoginScreenState extends ConsumerState<StaffPinLoginScreen> {
       }
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Best-effort current GPS for the login-time geofence check. Returns nulls
+  /// if location is off / denied / times out; the server then fail-closes for a
+  /// fenced branch, prompting the operator to enable location and retry.
+  Future<({double? lat, double? lng})> _currentGps() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        return (lat: null, lng: null);
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return (lat: null, lng: null);
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      ).timeout(const Duration(seconds: 10));
+      return (lat: pos.latitude, lng: pos.longitude);
+    } catch (_) {
+      return (lat: null, lng: null);
     }
   }
 

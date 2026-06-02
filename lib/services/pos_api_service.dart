@@ -52,9 +52,19 @@ class PosApiService {
     return PairResult.fromJson(body.dataMap);
   }
 
-  /// POST /auth/pos/login — staff PIN login (Bearer device token).
-  Future<StaffSessionData> staffLogin({required String pin}) async {
-    final body = await _send(() => _dio.post('/auth/pos/login', data: {'pin': pin}));
+  /// POST /auth/pos/login — staff PIN login (Bearer device token). [lat]/[lng]
+  /// carry the device's live GPS for the server-side login geofence check; at a
+  /// fenced branch the server rejects the sign-in when they're missing/outside.
+  Future<StaffSessionData> staffLogin({
+    required String pin,
+    double? lat,
+    double? lng,
+  }) async {
+    final body = await _send(() => _dio.post('/auth/pos/login', data: {
+          'pin': pin,
+          'lat': ?lat,
+          'lng': ?lng,
+        }));
     final staff = body.dataMap['staff'] as Map<String, dynamic>;
     return StaffSessionData.fromJson(staff);
   }
