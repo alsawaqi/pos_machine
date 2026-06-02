@@ -102,20 +102,26 @@ class PosApiService {
     final status = resp.statusCode ?? 0;
     final body = resp.data;
 
-    if (status == 401) {
-      onUnauthorized?.call();
-      throw ApiException(
-        message: 'This device is no longer authorized. Please pair it again.',
-        statusCode: 401,
-        code: 'unauthorized',
-      );
-    }
-
     if (body is Map) {
       final map = body.cast<String, dynamic>();
       final errors = map['errors'];
+      // An application-level error (a populated `errors[]`) is a deliberate,
+      // structured rejection — surface it as-is, even at 401. A wrong staff PIN
+      // comes back as 401 { errors: [{ code: 'invalid_pin' }] } and MUST NOT
+      // clear the device pairing (that would wrongly kick the operator back to
+      // the admin's device-setup screen). Likewise a geofence 422. Only a BARE
+      // 401 ({ "message": "Unauthenticated." }, no errors[]) means the device
+      // token itself was rejected → drop back to device setup.
       if (errors is List && errors.isNotEmpty) {
         throw ApiException.fromErrors(errors, status);
+      }
+      if (status == 401) {
+        onUnauthorized?.call();
+        throw ApiException(
+          message: 'This device is no longer authorized. Please set it up again.',
+          statusCode: 401,
+          code: 'unauthorized',
+        );
       }
       if (status >= 200 && status < 300) {
         return _Envelope(map);
@@ -124,6 +130,16 @@ class PosApiService {
       throw ApiException(
         message: 'Request failed (HTTP $status).',
         statusCode: status,
+      );
+    }
+
+    // Non-map body: a 401 here is still a device-token rejection.
+    if (status == 401) {
+      onUnauthorized?.call();
+      throw ApiException(
+        message: 'This device is no longer authorized. Please set it up again.',
+        statusCode: 401,
+        code: 'unauthorized',
       );
     }
 
