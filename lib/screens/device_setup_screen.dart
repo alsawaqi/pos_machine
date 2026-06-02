@@ -41,6 +41,14 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
     try {
       final result = await ref.read(apiServiceProvider).activateDevice(code: code);
       await ref.read(sessionControllerProvider.notifier).saveActivation(result);
+      // Layer 1 immediately pulls this device's branch config from the API —
+      // including the branch latitude / longitude / geofence radius the admin
+      // set for the assigned branch — so the fence is cached and ready to be
+      // compared against live GPS, straight after entering the code. Offline or
+      // transient failures are retried by the PIN login + the geofence gate.
+      try {
+        await ref.read(configRepositoryProvider).fetchAndCache();
+      } catch (_) {}
       // The startup gate rebuilds into the staff PIN login automatically.
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
