@@ -209,6 +209,14 @@ class DeliveryProvider {
   final int sortOrder;
 }
 
+/// One ingredient line of a product's recipe: how much of an ingredient one unit
+/// of the product needs. Drives ingredient-based sold-out on the device.
+class RecipeLine {
+  const RecipeLine({required this.ingredientId, required this.quantity});
+  final int ingredientId;
+  final double quantity;
+}
+
 class Product {
   final String id;
   final String name;
@@ -224,6 +232,12 @@ class Product {
   // provider id. Resolution: override → deliveryPrice → base price.
   final double? deliveryPrice;
   final Map<int, double> deliveryPriceByProvider;
+  // Stock (Phase 7). [stockMode] = unit | ingredient | untracked (null=untracked).
+  // [recipe] = ingredient lines for ingredient-mode availability. [branchStockQty]
+  // = this branch's unit count for unit-mode availability (null = not tracked).
+  final String? stockMode;
+  final List<RecipeLine> recipe;
+  final double? branchStockQty;
 
   const Product({
     required this.id,
@@ -235,6 +249,9 @@ class Product {
     this.addonGroupIds = const <int>[],
     this.deliveryPrice,
     this.deliveryPriceByProvider = const <int, double>{},
+    this.stockMode,
+    this.recipe = const <RecipeLine>[],
+    this.branchStockQty,
   });
 
   /// The unit price to charge on a delivery order for [providerId], following
@@ -252,6 +269,9 @@ class Product {
         addonGroupIds: addonGroupIds,
         deliveryPrice: deliveryPrice,
         deliveryPriceByProvider: deliveryPriceByProvider,
+        stockMode: stockMode,
+        recipe: recipe,
+        branchStockQty: branchStockQty,
       );
 
   factory Product.fromMap(Map<String, dynamic> map) {

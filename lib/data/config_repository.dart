@@ -30,6 +30,7 @@ class ConfigRepository {
       addonRows: parsed.addons,
       taxRows: parsed.taxes,
       deliveryProviderRows: parsed.deliveryProviders,
+      branchIngredientStockRows: parsed.branchIngredientStock,
       meta: parsed.meta,
     );
     await _session.saveTerminalId(config.terminalId);
@@ -53,13 +54,14 @@ class ConfigRepository {
     var addonGroups = <AddonGroupRow>[];
     var addons = <AddonRow>[];
     var deliveryProviders = <DeliveryProviderRow>[];
+    var branchStock = <BranchIngredientStockRow>[];
     var seenCats = false, seenProds = false, seenFloors = false, seenTables = false, seenTaxes = false;
 
     void emit() {
       if (seenCats && seenProds && seenFloors && seenTables && seenTaxes) {
         controller.add(ConfigMapper.toCatalog(
           branch, cats, prods, floors, tables, taxes, addonGroups, addons,
-          deliveryProviders,
+          deliveryProviders, branchStock,
         ));
       }
     }
@@ -104,6 +106,10 @@ class ConfigRepository {
       }),
       _db.watchDeliveryProviders().listen((v) {
         deliveryProviders = v;
+        emit();
+      }),
+      _db.watchBranchIngredientStock().listen((v) {
+        branchStock = v;
         emit();
       }),
     ];

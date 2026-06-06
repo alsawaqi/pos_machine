@@ -222,6 +222,10 @@ class PosController extends ChangeNotifier {
   /// The provider chosen for the current delivery order (null = none picked).
   int? selectedDeliveryProviderId;
 
+  /// This branch's ingredient balances by ingredient id (from the config), for
+  /// ingredient-based sold-out enforcement (see [isOutOfStock]).
+  Map<int, double> ingredientBalances = const <int, double>{};
+
   /// The unmodified catalog (base prices). [allProducts] is this list re-priced
   /// for the selected provider when the order type is delivery.
   List<Product> _baseProducts = const <Product>[];
@@ -339,6 +343,7 @@ class PosController extends ChangeNotifier {
     List<CompanyTax> taxes = const <CompanyTax>[],
     List<AddonGroup> addonGroups = const <AddonGroup>[],
     List<DeliveryProvider> deliveryProviders = const <DeliveryProvider>[],
+    Map<int, double> ingredientBalances = const <int, double>{},
   }) {
     this.categories = categories;
     _baseProducts = products;
@@ -346,6 +351,7 @@ class PosController extends ChangeNotifier {
     diningTableDefinitions = tables;
     this.addonGroups = addonGroups;
     this.deliveryProviders = deliveryProviders;
+    this.ingredientBalances = ingredientBalances;
     // Company taxes drive the cart tax lines + total. Stored in the shared
     // source so the persisted / printed order agrees with the live cart.
     activeCompanyTaxes = taxes;
@@ -435,6 +441,27 @@ class PosController extends ChangeNotifier {
       for (final id in ids)
         if (byId.containsKey(id)) byId[id]!,
     ];
+  }
+
+  /// Whether [product] is sold out at this branch (greyed-out / blocked on the
+  /// POS). Unit products: branch count ≤ 0. Ingredient products: any recipe
+  /// ingredient's branch balance is below what one unit needs. Untracked
+  /// products are always available.
+  bool isOutOfStock(Product product) {
+    switch (product.stockMode) {
+      case 'unit':
+        final qty = product.branchStockQty;
+        return qty != null && qty <= 0;
+      case 'ingredient':
+        for (final line in product.recipe) {
+          if ((ingredientBalances[line.ingredientId] ?? 0) < line.quantity) {
+            return true;
+          }
+        }
+        return false;
+      default:
+        return false;
+    }
   }
 
   List<Product> get visibleProducts {

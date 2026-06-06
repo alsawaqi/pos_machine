@@ -15,6 +15,7 @@ class CatalogSnapshot {
     required this.taxes,
     this.addonGroups = const <AddonGroup>[],
     this.deliveryProviders = const <DeliveryProvider>[],
+    this.ingredientBalances = const <int, double>{},
   });
 
   final List<String> categories;
@@ -26,6 +27,9 @@ class CatalogSnapshot {
   final List<AddonGroup> addonGroups;
   // Company delivery providers for the POS provider picker (delivery orders).
   final List<DeliveryProvider> deliveryProviders;
+  // This branch's ingredient balances by ingredient id; drives ingredient-based
+  // sold-out (a recipe product is out when a needed ingredient runs low).
+  final Map<int, double> ingredientBalances;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -40,6 +44,7 @@ class ParsedConfig {
     required this.addons,
     required this.taxes,
     required this.deliveryProviders,
+    required this.branchIngredientStock,
     required this.meta,
   });
 
@@ -52,6 +57,7 @@ class ParsedConfig {
   final List<AddonsCompanion> addons;
   final List<TaxCacheCompanion> taxes;
   final List<DeliveryProvidersCompanion> deliveryProviders;
+  final List<BranchIngredientStockCompanion> branchIngredientStock;
   final SyncMetaCompanion meta;
 }
 
@@ -116,6 +122,38 @@ class ConfigMapper {
     return const {};
   }
 
+  /// API per-product `recipe` ([{ingredient_id, quantity, unit}]) → compact JSON
+  /// array [{ingredient_id, quantity}] stored on the product row.
+  static String _recipeJson(Object? v) {
+    final out = <Map<String, num>>[];
+    for (final e in (v as List? ?? const [])) {
+      if (e is! Map) continue;
+      final iid = (e['ingredient_id'] as num?)?.toInt();
+      final qty = (e['quantity'] as num?)?.toDouble();
+      if (iid != null && qty != null) out.add({'ingredient_id': iid, 'quantity': qty});
+    }
+    return jsonEncode(out);
+  }
+
+  /// Decode the stored recipe JSON → recipe lines.
+  static List<RecipeLine> _recipeFromJson(String json) {
+    if (json.isEmpty || json == '[]') return const [];
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is List) {
+        return decoded
+            .whereType<Map>()
+            .map((m) => RecipeLine(
+                  ingredientId: (m['ingredient_id'] as num?)?.toInt() ?? 0,
+                  quantity: (m['quantity'] as num?)?.toDouble() ?? 0,
+                ))
+            .where((l) => l.ingredientId != 0)
+            .toList();
+      }
+    } catch (_) {}
+    return const [];
+  }
+
   /// API `data` map → Drift companions for AppDatabase.replaceConfig.
   static ParsedConfig parse(Map<String, dynamic> data, {DateTime? now}) {
     final meta = (data['meta'] as Map?)?.cast<String, dynamic>() ?? const {};
@@ -155,6 +193,8 @@ class ConfigMapper {
               addonGroupIds: Value(_intList(p['addon_group_ids']).join(',')),
               deliveryPriceBaisas: Value(_int(p['delivery_price_baisas'])),
               deliveryPricesJson: Value(_deliveryPricesJson(p['delivery_prices'])),
+              stockMode: Value(_strN(p['stock_mode'])),
+              recipeJson: Value(_recipeJson(p['recipe'])),
             ))
         .toList();
 
@@ -226,6 +266,15 @@ class ConfigMapper {
             ))
         .toList();
 
+    // Per-branch ingredient balances (the device's branch). Drives
+    // ingredient-based product availability.
+    final branchIngredientStock = _list(data['branch_stock'])
+        .map((s) => BranchIngredientStockCompanion(
+              ingredientId: Value(_int(s['ingredient_id']) ?? 0),
+              quantity: Value(_dbl(s['quantity']) ?? 0),
+            ))
+        .toList();
+
     final metaCompanion = SyncMetaCompanion(
       id: const Value(1),
       companyId: Value(_int(meta['company_id']) ?? _int(branchMap?['company_id'])),
@@ -244,6 +293,7 @@ class ConfigMapper {
       addons: addons,
       taxes: taxes,
       deliveryProviders: deliveryProviders,
+      branchIngredientStock: branchIngredientStock,
       meta: metaCompanion,
     );
   }
@@ -259,6 +309,7 @@ class ConfigMapper {
     List<AddonGroupRow> addonGroupRows = const [],
     List<AddonRow> addonRows = const [],
     List<DeliveryProviderRow> deliveryProviderRows = const [],
+    List<BranchIngredientStockRow> branchStockRows = const [],
   ]) {
     final sortedCats = [...cats]
       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
@@ -275,6 +326,9 @@ class ConfigMapper {
                   ? p.deliveryPriceBaisas! / 1000.0
                   : null,
               deliveryPriceByProvider: _deliveryOverrides(p.deliveryPricesJson),
+              stockMode: p.stockMode,
+              recipe: _recipeFromJson(p.recipeJson),
+              branchStockQty: p.branchStockQty,
             ))
         .toList();
 
@@ -366,6 +420,10 @@ class ConfigMapper {
             ))
         .toList();
 
+    final ingredientBalances = <int, double>{
+      for (final s in branchStockRows) s.ingredientId: s.quantity,
+    };
+
     return CatalogSnapshot(
       categories: sortedCats.map((c) => c.name).toList(),
       products: products,
@@ -374,6 +432,7 @@ class ConfigMapper {
       taxes: companyTaxes,
       addonGroups: addonGroups,
       deliveryProviders: deliveryProviderDefs,
+      ingredientBalances: ingredientBalances,
     );
   }
 }

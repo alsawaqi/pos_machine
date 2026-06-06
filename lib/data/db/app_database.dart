@@ -21,6 +21,7 @@ part 'app_database.g.dart';
     SyncMeta,
     OrderOutbox,
     DeliveryProviders,
+    BranchIngredientStock,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -30,7 +31,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -63,6 +64,13 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(products, products.deliveryPricesJson);
             await m.createTable(deliveryProviders);
           }
+          if (from < 7) {
+            // v7 added stock mode + recipe + per-branch ingredient balances
+            // (device sold-out enforcement).
+            await m.addColumn(products, products.stockMode);
+            await m.addColumn(products, products.recipeJson);
+            await m.createTable(branchIngredientStock);
+          }
         },
       );
 
@@ -92,6 +100,9 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<List<DeliveryProviderRow>> watchDeliveryProviders() =>
       (select(deliveryProviders)..orderBy([(d) => OrderingTerm(expression: d.sortOrder)])).watch();
+
+  Stream<List<BranchIngredientStockRow>> watchBranchIngredientStock() =>
+      select(branchIngredientStock).watch();
 
   Future<List<TaxRow>> getTaxes() =>
       (select(taxCache)..orderBy([(t) => OrderingTerm(expression: t.id)])).get();
@@ -144,6 +155,7 @@ class AppDatabase extends _$AppDatabase {
     required List<AddonsCompanion> addonRows,
     required List<TaxCacheCompanion> taxRows,
     required List<DeliveryProvidersCompanion> deliveryProviderRows,
+    required List<BranchIngredientStockCompanion> branchIngredientStockRows,
     required SyncMetaCompanion meta,
   }) {
     return transaction(() async {
@@ -156,6 +168,7 @@ class AppDatabase extends _$AppDatabase {
       await delete(addons).go();
       await delete(taxCache).go();
       await delete(deliveryProviders).go();
+      await delete(branchIngredientStock).go();
 
       await into(branchCache).insert(branch);
       await batch((b) {
@@ -167,6 +180,7 @@ class AppDatabase extends _$AppDatabase {
         b.insertAll(addons, addonRows);
         b.insertAll(taxCache, taxRows);
         b.insertAll(deliveryProviders, deliveryProviderRows);
+        b.insertAll(branchIngredientStock, branchIngredientStockRows);
       });
       await into(syncMeta).insertOnConflictUpdate(meta);
     });

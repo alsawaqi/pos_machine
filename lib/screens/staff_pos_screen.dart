@@ -181,6 +181,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             tables: catalog.tables,
             taxes: catalog.taxes,
             addonGroups: catalog.addonGroups,
+            deliveryProviders: catalog.deliveryProviders,
+            ingredientBalances: catalog.ingredientBalances,
           );
         }
       },
@@ -3189,7 +3191,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 : 0;
                             return _ProductListTile(
                               product: product,
-                              onAdd: () => controller.addProduct(product),
+                              onAdd: () {
+                                if (!controller.isOutOfStock(product)) {
+                                  controller.addProduct(product);
+                                }
+                              },
+                              outOfStock: controller.isOutOfStock(product),
                               highlighted: pulseNonce > 0,
                               pulseNonce: pulseNonce,
                             );
@@ -3214,7 +3221,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                               : 0;
                           return _ProductTile(
                             product: product,
-                            onAdd: () => controller.addProduct(product),
+                            onAdd: () {
+                              if (!controller.isOutOfStock(product)) {
+                                controller.addProduct(product);
+                              }
+                            },
+                            outOfStock: controller.isOutOfStock(product),
                             compact: compact,
                             highlighted: pulseNonce > 0,
                             pulseNonce: pulseNonce,
@@ -5039,12 +5051,14 @@ class _ProductListTile extends StatelessWidget {
   final VoidCallback onAdd;
   final bool highlighted;
   final int pulseNonce;
+  final bool outOfStock;
 
   const _ProductListTile({
     required this.product,
     required this.onAdd,
     this.highlighted = false,
     this.pulseNonce = 0,
+    this.outOfStock = false,
   });
 
   @override
@@ -5061,7 +5075,7 @@ class _ProductListTile extends StatelessWidget {
         return Transform.scale(scale: 1 + (effectPulse * 0.018), child: child);
       },
       child: InkWell(
-        onTap: onAdd,
+        onTap: outOfStock ? null : onAdd,
         borderRadius: BorderRadius.circular(24),
         child: Container(
           padding: const EdgeInsets.all(10),
@@ -5095,6 +5109,25 @@ class _ProductListTile extends StatelessWidget {
                             ),
                           ),
                         ),
+                        if (outOfStock)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFE1E1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Text(
+                              'SOLD OUT',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFFB42318),
+                              ),
+                            ),
+                          ),
                         if (product.lowStock)
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -5157,6 +5190,7 @@ class _ProductTile extends StatelessWidget {
   final bool compact;
   final bool highlighted;
   final int pulseNonce;
+  final bool outOfStock;
 
   const _ProductTile({
     required this.product,
@@ -5164,6 +5198,7 @@ class _ProductTile extends StatelessWidget {
     this.compact = false,
     this.highlighted = false,
     this.pulseNonce = 0,
+    this.outOfStock = false,
   });
 
   @override
@@ -5188,7 +5223,7 @@ class _ProductTile extends StatelessWidget {
         return Transform.scale(
           scale: 1 + (effectPulse * 0.026),
           child: InkWell(
-            onTap: onAdd,
+            onTap: outOfStock ? null : onAdd,
             borderRadius: BorderRadius.circular(24),
             child: Container(
               padding: EdgeInsets.all(outerPadding),
@@ -5243,6 +5278,25 @@ class _ProductTile extends StatelessWidget {
                 width: double.infinity,
                 height: artworkHeight,
               ),
+              if (outOfStock)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Text(
+                      'SOLD OUT',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
+                ),
               if (product.lowStock)
                 Positioned(
                   top: compact ? 6 : 8,

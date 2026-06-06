@@ -60,6 +60,13 @@ class Products extends Table {
   // Per-delivery-provider price overrides, JSON object {providerId: priceBaisas}.
   // Resolution on the device: this map[provider] → deliveryPriceBaisas → base.
   TextColumn get deliveryPricesJson => text().withDefault(const Constant('{}'))();
+  // Phase 7 — stock mode: unit | ingredient | untracked. Drives device sold-out
+  // enforcement (null = untracked).
+  TextColumn get stockMode => text().nullable()();
+  // Recipe ingredient lines, JSON array [{"ingredient_id":N,"quantity":Q}].
+  // An ingredient-mode product is sold out when any line's branch ingredient
+  // balance < its quantity (BranchIngredientStock).
+  TextColumn get recipeJson => text().withDefault(const Constant('[]'))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -186,4 +193,17 @@ class DeliveryProviders extends Table {
 
   @override
   Set<Column> get primaryKey => {id};
+}
+
+// Per-branch INGREDIENT balances (from the config `branch_stock` slice), keyed
+// by ingredient id. Drives ingredient-based product availability: a recipe
+// product is sold out when a needed ingredient's balance here is below the
+// recipe quantity.
+@DataClassName('BranchIngredientStockRow')
+class BranchIngredientStock extends Table {
+  IntColumn get ingredientId => integer()();
+  RealColumn get quantity => real().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {ingredientId};
 }

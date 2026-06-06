@@ -46,6 +46,7 @@ void main() {
             deliveryPriceBaisas: 1800,
             addonGroupIds: '',
             deliveryPricesJson: '{"1":2000}',
+            recipeJson: '[]',
           ),
           const ProductRow(
             id: 11,
@@ -53,6 +54,7 @@ void main() {
             basePriceBaisas: 800,
             addonGroupIds: '',
             deliveryPricesJson: '{}',
+            recipeJson: '[]',
           ),
         ],
         const <FloorRow>[],

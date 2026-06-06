@@ -982,6 +982,29 @@ class $ProductsTable extends Products
         requiredDuringInsert: false,
         defaultValue: const Constant('{}'),
       );
+  static const VerificationMeta _stockModeMeta = const VerificationMeta(
+    'stockMode',
+  );
+  @override
+  late final GeneratedColumn<String> stockMode = GeneratedColumn<String>(
+    'stock_mode',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _recipeJsonMeta = const VerificationMeta(
+    'recipeJson',
+  );
+  @override
+  late final GeneratedColumn<String> recipeJson = GeneratedColumn<String>(
+    'recipe_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -995,6 +1018,8 @@ class $ProductsTable extends Products
     addonGroupIds,
     deliveryPriceBaisas,
     deliveryPricesJson,
+    stockMode,
+    recipeJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1086,6 +1111,18 @@ class $ProductsTable extends Products
         ),
       );
     }
+    if (data.containsKey('stock_mode')) {
+      context.handle(
+        _stockModeMeta,
+        stockMode.isAcceptableOrUnknown(data['stock_mode']!, _stockModeMeta),
+      );
+    }
+    if (data.containsKey('recipe_json')) {
+      context.handle(
+        _recipeJsonMeta,
+        recipeJson.isAcceptableOrUnknown(data['recipe_json']!, _recipeJsonMeta),
+      );
+    }
     return context;
   }
 
@@ -1139,6 +1176,14 @@ class $ProductsTable extends Products
         DriftSqlType.string,
         data['${effectivePrefix}delivery_prices_json'],
       )!,
+      stockMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}stock_mode'],
+      ),
+      recipeJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}recipe_json'],
+      )!,
     );
   }
 
@@ -1160,6 +1205,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
   final String addonGroupIds;
   final int? deliveryPriceBaisas;
   final String deliveryPricesJson;
+  final String? stockMode;
+  final String recipeJson;
   const ProductRow({
     required this.id,
     required this.name,
@@ -1172,6 +1219,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     required this.addonGroupIds,
     this.deliveryPriceBaisas,
     required this.deliveryPricesJson,
+    this.stockMode,
+    required this.recipeJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1199,6 +1248,10 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       map['delivery_price_baisas'] = Variable<int>(deliveryPriceBaisas);
     }
     map['delivery_prices_json'] = Variable<String>(deliveryPricesJson);
+    if (!nullToAbsent || stockMode != null) {
+      map['stock_mode'] = Variable<String>(stockMode);
+    }
+    map['recipe_json'] = Variable<String>(recipeJson);
     return map;
   }
 
@@ -1227,6 +1280,10 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           ? const Value.absent()
           : Value(deliveryPriceBaisas),
       deliveryPricesJson: Value(deliveryPricesJson),
+      stockMode: stockMode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(stockMode),
+      recipeJson: Value(recipeJson),
     );
   }
 
@@ -1251,6 +1308,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       deliveryPricesJson: serializer.fromJson<String>(
         json['deliveryPricesJson'],
       ),
+      stockMode: serializer.fromJson<String?>(json['stockMode']),
+      recipeJson: serializer.fromJson<String>(json['recipeJson']),
     );
   }
   @override
@@ -1268,6 +1327,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       'addonGroupIds': serializer.toJson<String>(addonGroupIds),
       'deliveryPriceBaisas': serializer.toJson<int?>(deliveryPriceBaisas),
       'deliveryPricesJson': serializer.toJson<String>(deliveryPricesJson),
+      'stockMode': serializer.toJson<String?>(stockMode),
+      'recipeJson': serializer.toJson<String>(recipeJson),
     };
   }
 
@@ -1283,6 +1344,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     String? addonGroupIds,
     Value<int?> deliveryPriceBaisas = const Value.absent(),
     String? deliveryPricesJson,
+    Value<String?> stockMode = const Value.absent(),
+    String? recipeJson,
   }) => ProductRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -1299,6 +1362,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
         ? deliveryPriceBaisas.value
         : this.deliveryPriceBaisas,
     deliveryPricesJson: deliveryPricesJson ?? this.deliveryPricesJson,
+    stockMode: stockMode.present ? stockMode.value : this.stockMode,
+    recipeJson: recipeJson ?? this.recipeJson,
   );
   ProductRow copyWithCompanion(ProductsCompanion data) {
     return ProductRow(
@@ -1325,6 +1390,10 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       deliveryPricesJson: data.deliveryPricesJson.present
           ? data.deliveryPricesJson.value
           : this.deliveryPricesJson,
+      stockMode: data.stockMode.present ? data.stockMode.value : this.stockMode,
+      recipeJson: data.recipeJson.present
+          ? data.recipeJson.value
+          : this.recipeJson,
     );
   }
 
@@ -1341,7 +1410,9 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           ..write('status: $status, ')
           ..write('addonGroupIds: $addonGroupIds, ')
           ..write('deliveryPriceBaisas: $deliveryPriceBaisas, ')
-          ..write('deliveryPricesJson: $deliveryPricesJson')
+          ..write('deliveryPricesJson: $deliveryPricesJson, ')
+          ..write('stockMode: $stockMode, ')
+          ..write('recipeJson: $recipeJson')
           ..write(')'))
         .toString();
   }
@@ -1359,6 +1430,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     addonGroupIds,
     deliveryPriceBaisas,
     deliveryPricesJson,
+    stockMode,
+    recipeJson,
   );
   @override
   bool operator ==(Object other) =>
@@ -1374,7 +1447,9 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           other.status == this.status &&
           other.addonGroupIds == this.addonGroupIds &&
           other.deliveryPriceBaisas == this.deliveryPriceBaisas &&
-          other.deliveryPricesJson == this.deliveryPricesJson);
+          other.deliveryPricesJson == this.deliveryPricesJson &&
+          other.stockMode == this.stockMode &&
+          other.recipeJson == this.recipeJson);
 }
 
 class ProductsCompanion extends UpdateCompanion<ProductRow> {
@@ -1389,6 +1464,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
   final Value<String> addonGroupIds;
   final Value<int?> deliveryPriceBaisas;
   final Value<String> deliveryPricesJson;
+  final Value<String?> stockMode;
+  final Value<String> recipeJson;
   const ProductsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -1401,6 +1478,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     this.addonGroupIds = const Value.absent(),
     this.deliveryPriceBaisas = const Value.absent(),
     this.deliveryPricesJson = const Value.absent(),
+    this.stockMode = const Value.absent(),
+    this.recipeJson = const Value.absent(),
   });
   ProductsCompanion.insert({
     this.id = const Value.absent(),
@@ -1414,6 +1493,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     this.addonGroupIds = const Value.absent(),
     this.deliveryPriceBaisas = const Value.absent(),
     this.deliveryPricesJson = const Value.absent(),
+    this.stockMode = const Value.absent(),
+    this.recipeJson = const Value.absent(),
   });
   static Insertable<ProductRow> custom({
     Expression<int>? id,
@@ -1427,6 +1508,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     Expression<String>? addonGroupIds,
     Expression<int>? deliveryPriceBaisas,
     Expression<String>? deliveryPricesJson,
+    Expression<String>? stockMode,
+    Expression<String>? recipeJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1442,6 +1525,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
         'delivery_price_baisas': deliveryPriceBaisas,
       if (deliveryPricesJson != null)
         'delivery_prices_json': deliveryPricesJson,
+      if (stockMode != null) 'stock_mode': stockMode,
+      if (recipeJson != null) 'recipe_json': recipeJson,
     });
   }
 
@@ -1457,6 +1542,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     Value<String>? addonGroupIds,
     Value<int?>? deliveryPriceBaisas,
     Value<String>? deliveryPricesJson,
+    Value<String?>? stockMode,
+    Value<String>? recipeJson,
   }) {
     return ProductsCompanion(
       id: id ?? this.id,
@@ -1470,6 +1557,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
       addonGroupIds: addonGroupIds ?? this.addonGroupIds,
       deliveryPriceBaisas: deliveryPriceBaisas ?? this.deliveryPriceBaisas,
       deliveryPricesJson: deliveryPricesJson ?? this.deliveryPricesJson,
+      stockMode: stockMode ?? this.stockMode,
+      recipeJson: recipeJson ?? this.recipeJson,
     );
   }
 
@@ -1509,6 +1598,12 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     if (deliveryPricesJson.present) {
       map['delivery_prices_json'] = Variable<String>(deliveryPricesJson.value);
     }
+    if (stockMode.present) {
+      map['stock_mode'] = Variable<String>(stockMode.value);
+    }
+    if (recipeJson.present) {
+      map['recipe_json'] = Variable<String>(recipeJson.value);
+    }
     return map;
   }
 
@@ -1525,7 +1620,9 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
           ..write('status: $status, ')
           ..write('addonGroupIds: $addonGroupIds, ')
           ..write('deliveryPriceBaisas: $deliveryPriceBaisas, ')
-          ..write('deliveryPricesJson: $deliveryPricesJson')
+          ..write('deliveryPricesJson: $deliveryPricesJson, ')
+          ..write('stockMode: $stockMode, ')
+          ..write('recipeJson: $recipeJson')
           ..write(')'))
         .toString();
   }
@@ -4763,6 +4860,224 @@ class DeliveryProvidersCompanion extends UpdateCompanion<DeliveryProviderRow> {
   }
 }
 
+class $BranchIngredientStockTable extends BranchIngredientStock
+    with TableInfo<$BranchIngredientStockTable, BranchIngredientStockRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BranchIngredientStockTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _ingredientIdMeta = const VerificationMeta(
+    'ingredientId',
+  );
+  @override
+  late final GeneratedColumn<int> ingredientId = GeneratedColumn<int>(
+    'ingredient_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _quantityMeta = const VerificationMeta(
+    'quantity',
+  );
+  @override
+  late final GeneratedColumn<double> quantity = GeneratedColumn<double>(
+    'quantity',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [ingredientId, quantity];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'branch_ingredient_stock';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BranchIngredientStockRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('ingredient_id')) {
+      context.handle(
+        _ingredientIdMeta,
+        ingredientId.isAcceptableOrUnknown(
+          data['ingredient_id']!,
+          _ingredientIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('quantity')) {
+      context.handle(
+        _quantityMeta,
+        quantity.isAcceptableOrUnknown(data['quantity']!, _quantityMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {ingredientId};
+  @override
+  BranchIngredientStockRow map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BranchIngredientStockRow(
+      ingredientId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}ingredient_id'],
+      )!,
+      quantity: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}quantity'],
+      )!,
+    );
+  }
+
+  @override
+  $BranchIngredientStockTable createAlias(String alias) {
+    return $BranchIngredientStockTable(attachedDatabase, alias);
+  }
+}
+
+class BranchIngredientStockRow extends DataClass
+    implements Insertable<BranchIngredientStockRow> {
+  final int ingredientId;
+  final double quantity;
+  const BranchIngredientStockRow({
+    required this.ingredientId,
+    required this.quantity,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['ingredient_id'] = Variable<int>(ingredientId);
+    map['quantity'] = Variable<double>(quantity);
+    return map;
+  }
+
+  BranchIngredientStockCompanion toCompanion(bool nullToAbsent) {
+    return BranchIngredientStockCompanion(
+      ingredientId: Value(ingredientId),
+      quantity: Value(quantity),
+    );
+  }
+
+  factory BranchIngredientStockRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BranchIngredientStockRow(
+      ingredientId: serializer.fromJson<int>(json['ingredientId']),
+      quantity: serializer.fromJson<double>(json['quantity']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'ingredientId': serializer.toJson<int>(ingredientId),
+      'quantity': serializer.toJson<double>(quantity),
+    };
+  }
+
+  BranchIngredientStockRow copyWith({int? ingredientId, double? quantity}) =>
+      BranchIngredientStockRow(
+        ingredientId: ingredientId ?? this.ingredientId,
+        quantity: quantity ?? this.quantity,
+      );
+  BranchIngredientStockRow copyWithCompanion(
+    BranchIngredientStockCompanion data,
+  ) {
+    return BranchIngredientStockRow(
+      ingredientId: data.ingredientId.present
+          ? data.ingredientId.value
+          : this.ingredientId,
+      quantity: data.quantity.present ? data.quantity.value : this.quantity,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BranchIngredientStockRow(')
+          ..write('ingredientId: $ingredientId, ')
+          ..write('quantity: $quantity')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(ingredientId, quantity);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BranchIngredientStockRow &&
+          other.ingredientId == this.ingredientId &&
+          other.quantity == this.quantity);
+}
+
+class BranchIngredientStockCompanion
+    extends UpdateCompanion<BranchIngredientStockRow> {
+  final Value<int> ingredientId;
+  final Value<double> quantity;
+  const BranchIngredientStockCompanion({
+    this.ingredientId = const Value.absent(),
+    this.quantity = const Value.absent(),
+  });
+  BranchIngredientStockCompanion.insert({
+    this.ingredientId = const Value.absent(),
+    this.quantity = const Value.absent(),
+  });
+  static Insertable<BranchIngredientStockRow> custom({
+    Expression<int>? ingredientId,
+    Expression<double>? quantity,
+  }) {
+    return RawValuesInsertable({
+      if (ingredientId != null) 'ingredient_id': ingredientId,
+      if (quantity != null) 'quantity': quantity,
+    });
+  }
+
+  BranchIngredientStockCompanion copyWith({
+    Value<int>? ingredientId,
+    Value<double>? quantity,
+  }) {
+    return BranchIngredientStockCompanion(
+      ingredientId: ingredientId ?? this.ingredientId,
+      quantity: quantity ?? this.quantity,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (ingredientId.present) {
+      map['ingredient_id'] = Variable<int>(ingredientId.value);
+    }
+    if (quantity.present) {
+      map['quantity'] = Variable<double>(quantity.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BranchIngredientStockCompanion(')
+          ..write('ingredientId: $ingredientId, ')
+          ..write('quantity: $quantity')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4778,6 +5093,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $OrderOutboxTable orderOutbox = $OrderOutboxTable(this);
   late final $DeliveryProvidersTable deliveryProviders =
       $DeliveryProvidersTable(this);
+  late final $BranchIngredientStockTable branchIngredientStock =
+      $BranchIngredientStockTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4794,6 +5111,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     syncMeta,
     orderOutbox,
     deliveryProviders,
+    branchIngredientStock,
   ];
 }
 
@@ -5258,6 +5576,8 @@ typedef $$ProductsTableCreateCompanionBuilder =
       Value<String> addonGroupIds,
       Value<int?> deliveryPriceBaisas,
       Value<String> deliveryPricesJson,
+      Value<String?> stockMode,
+      Value<String> recipeJson,
     });
 typedef $$ProductsTableUpdateCompanionBuilder =
     ProductsCompanion Function({
@@ -5272,6 +5592,8 @@ typedef $$ProductsTableUpdateCompanionBuilder =
       Value<String> addonGroupIds,
       Value<int?> deliveryPriceBaisas,
       Value<String> deliveryPricesJson,
+      Value<String?> stockMode,
+      Value<String> recipeJson,
     });
 
 class $$ProductsTableFilterComposer
@@ -5335,6 +5657,16 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<String> get deliveryPricesJson => $composableBuilder(
     column: $table.deliveryPricesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get stockMode => $composableBuilder(
+    column: $table.stockMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recipeJson => $composableBuilder(
+    column: $table.recipeJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -5402,6 +5734,16 @@ class $$ProductsTableOrderingComposer
     column: $table.deliveryPricesJson,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get stockMode => $composableBuilder(
+    column: $table.stockMode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recipeJson => $composableBuilder(
+    column: $table.recipeJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ProductsTableAnnotationComposer
@@ -5457,6 +5799,14 @@ class $$ProductsTableAnnotationComposer
     column: $table.deliveryPricesJson,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get stockMode =>
+      $composableBuilder(column: $table.stockMode, builder: (column) => column);
+
+  GeneratedColumn<String> get recipeJson => $composableBuilder(
+    column: $table.recipeJson,
+    builder: (column) => column,
+  );
 }
 
 class $$ProductsTableTableManager
@@ -5501,6 +5851,8 @@ class $$ProductsTableTableManager
                 Value<String> addonGroupIds = const Value.absent(),
                 Value<int?> deliveryPriceBaisas = const Value.absent(),
                 Value<String> deliveryPricesJson = const Value.absent(),
+                Value<String?> stockMode = const Value.absent(),
+                Value<String> recipeJson = const Value.absent(),
               }) => ProductsCompanion(
                 id: id,
                 name: name,
@@ -5513,6 +5865,8 @@ class $$ProductsTableTableManager
                 addonGroupIds: addonGroupIds,
                 deliveryPriceBaisas: deliveryPriceBaisas,
                 deliveryPricesJson: deliveryPricesJson,
+                stockMode: stockMode,
+                recipeJson: recipeJson,
               ),
           createCompanionCallback:
               ({
@@ -5527,6 +5881,8 @@ class $$ProductsTableTableManager
                 Value<String> addonGroupIds = const Value.absent(),
                 Value<int?> deliveryPriceBaisas = const Value.absent(),
                 Value<String> deliveryPricesJson = const Value.absent(),
+                Value<String?> stockMode = const Value.absent(),
+                Value<String> recipeJson = const Value.absent(),
               }) => ProductsCompanion.insert(
                 id: id,
                 name: name,
@@ -5539,6 +5895,8 @@ class $$ProductsTableTableManager
                 addonGroupIds: addonGroupIds,
                 deliveryPriceBaisas: deliveryPriceBaisas,
                 deliveryPricesJson: deliveryPricesJson,
+                stockMode: stockMode,
+                recipeJson: recipeJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -7280,6 +7638,164 @@ typedef $$DeliveryProvidersTableProcessedTableManager =
       DeliveryProviderRow,
       PrefetchHooks Function()
     >;
+typedef $$BranchIngredientStockTableCreateCompanionBuilder =
+    BranchIngredientStockCompanion Function({
+      Value<int> ingredientId,
+      Value<double> quantity,
+    });
+typedef $$BranchIngredientStockTableUpdateCompanionBuilder =
+    BranchIngredientStockCompanion Function({
+      Value<int> ingredientId,
+      Value<double> quantity,
+    });
+
+class $$BranchIngredientStockTableFilterComposer
+    extends Composer<_$AppDatabase, $BranchIngredientStockTable> {
+  $$BranchIngredientStockTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get ingredientId => $composableBuilder(
+    column: $table.ingredientId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get quantity => $composableBuilder(
+    column: $table.quantity,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BranchIngredientStockTableOrderingComposer
+    extends Composer<_$AppDatabase, $BranchIngredientStockTable> {
+  $$BranchIngredientStockTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get ingredientId => $composableBuilder(
+    column: $table.ingredientId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get quantity => $composableBuilder(
+    column: $table.quantity,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BranchIngredientStockTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BranchIngredientStockTable> {
+  $$BranchIngredientStockTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get ingredientId => $composableBuilder(
+    column: $table.ingredientId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get quantity =>
+      $composableBuilder(column: $table.quantity, builder: (column) => column);
+}
+
+class $$BranchIngredientStockTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BranchIngredientStockTable,
+          BranchIngredientStockRow,
+          $$BranchIngredientStockTableFilterComposer,
+          $$BranchIngredientStockTableOrderingComposer,
+          $$BranchIngredientStockTableAnnotationComposer,
+          $$BranchIngredientStockTableCreateCompanionBuilder,
+          $$BranchIngredientStockTableUpdateCompanionBuilder,
+          (
+            BranchIngredientStockRow,
+            BaseReferences<
+              _$AppDatabase,
+              $BranchIngredientStockTable,
+              BranchIngredientStockRow
+            >,
+          ),
+          BranchIngredientStockRow,
+          PrefetchHooks Function()
+        > {
+  $$BranchIngredientStockTableTableManager(
+    _$AppDatabase db,
+    $BranchIngredientStockTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BranchIngredientStockTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$BranchIngredientStockTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$BranchIngredientStockTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> ingredientId = const Value.absent(),
+                Value<double> quantity = const Value.absent(),
+              }) => BranchIngredientStockCompanion(
+                ingredientId: ingredientId,
+                quantity: quantity,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> ingredientId = const Value.absent(),
+                Value<double> quantity = const Value.absent(),
+              }) => BranchIngredientStockCompanion.insert(
+                ingredientId: ingredientId,
+                quantity: quantity,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BranchIngredientStockTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BranchIngredientStockTable,
+      BranchIngredientStockRow,
+      $$BranchIngredientStockTableFilterComposer,
+      $$BranchIngredientStockTableOrderingComposer,
+      $$BranchIngredientStockTableAnnotationComposer,
+      $$BranchIngredientStockTableCreateCompanionBuilder,
+      $$BranchIngredientStockTableUpdateCompanionBuilder,
+      (
+        BranchIngredientStockRow,
+        BaseReferences<
+          _$AppDatabase,
+          $BranchIngredientStockTable,
+          BranchIngredientStockRow
+        >,
+      ),
+      BranchIngredientStockRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -7306,4 +7822,6 @@ class $AppDatabaseManager {
       $$OrderOutboxTableTableManager(_db, _db.orderOutbox);
   $$DeliveryProvidersTableTableManager get deliveryProviders =>
       $$DeliveryProvidersTableTableManager(_db, _db.deliveryProviders);
+  $$BranchIngredientStockTableTableManager get branchIngredientStock =>
+      $$BranchIngredientStockTableTableManager(_db, _db.branchIngredientStock);
 }
