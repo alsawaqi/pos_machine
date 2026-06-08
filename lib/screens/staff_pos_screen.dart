@@ -191,6 +191,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             deliveryProviders: catalog.deliveryProviders,
             ingredientBalances: catalog.ingredientBalances,
             discounts: catalog.discounts,
+            loyaltyRules: catalog.loyaltyRules,
+            customers: catalog.customers,
           );
         }
       },

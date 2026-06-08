@@ -580,6 +580,58 @@ class MerchantDiscount {
       );
 }
 
+/// A merchant loyalty rule from the config bundle. `type` is visit_based (a
+/// stamp card) or spend_based (points). [config] holds the type-specific
+/// settings; the typed getters parse it (values may arrive as strings).
+class LoyaltyRule {
+  final int id;
+  final String name;
+  final String type; // visit_based | spend_based
+  final Map<String, dynamic> config;
+  final bool isActive;
+
+  const LoyaltyRule({
+    required this.id,
+    required this.name,
+    required this.type,
+    this.config = const {},
+    this.isActive = true,
+  });
+
+  bool get isVisitBased => type == 'visit_based';
+  bool get isSpendBased => type == 'spend_based';
+
+  // spend_based config
+  double get pointsPerOmr => _num(config['points_per_omr']);
+  int get minRedemptionPoints => _num(config['min_redemption_points']).round();
+  int get redemptionPoints => _num(config['redemption_points']).round();
+  double get redemptionValue => _num(config['redemption_value']); // OMR / block
+  // visit_based config
+  int get stampsRequired => _num(config['stamps_required']).round();
+  double get minOrderValue => _num(config['min_order_value']); // OMR
+
+  static double _num(Object? v) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v) ?? 0;
+    return 0;
+  }
+}
+
+/// A cached customer slice for offline lookup / attaching to an order. Money OMR.
+class CustomerRef {
+  final int id;
+  final String name;
+  final String phone;
+  final double walletBalance;
+
+  const CustomerRef({
+    required this.id,
+    required this.name,
+    this.phone = '',
+    this.walletBalance = 0,
+  });
+}
+
 /// The Soft POS (Mosambee) outcome for a single card tender, carried onto the
 /// order.pay tender so pos_api can persist the acquirer evidence. [status] is
 /// the pos_api Payment status — 'success' or 'pending_reconciliation' (the

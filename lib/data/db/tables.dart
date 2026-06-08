@@ -227,6 +227,39 @@ class Discounts extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+// Merchant loyalty rules from the config bundle (company-scoped). `type` is
+// visit_based (stamp card) | spend_based (points); `configJson` holds the
+// type-specific config (stamps_required / points_per_omr / redemption_value …).
+// The device sends a rule id on order.pay to earn, and uses spend_based config
+// to fund a redemption discount.
+@DataClassName('LoyaltyRuleRow')
+class LoyaltyRules extends Table {
+  IntColumn get id => integer()();
+  TextColumn get name => text().withDefault(const Constant(''))();
+  TextColumn get type => text().nullable()(); // visit_based | spend_based
+  TextColumn get configJson => text().withDefault(const Constant('{}'))();
+  DateTimeColumn get validityStart => dateTime().nullable()();
+  DateTimeColumn get validityEnd => dateTime().nullable()();
+  TextColumn get status => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+// A cached slice of the company customer book (for offline lookup + attaching a
+// customer to an order). The full book is searched online via
+// /device/customers/search; this is the offline fallback. Money is baisas.
+@DataClassName('CustomerRow')
+class CachedCustomers extends Table {
+  IntColumn get id => integer()();
+  TextColumn get name => text().withDefault(const Constant(''))();
+  TextColumn get phone => text().nullable()();
+  IntColumn get walletBalanceBaisas => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // Per-branch INGREDIENT balances (from the config `branch_stock` slice), keyed
 // by ingredient id. Drives ingredient-based product availability: a recipe
 // product is sold out when a needed ingredient's balance here is below the

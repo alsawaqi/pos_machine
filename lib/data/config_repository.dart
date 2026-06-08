@@ -32,6 +32,8 @@ class ConfigRepository {
       deliveryProviderRows: parsed.deliveryProviders,
       branchIngredientStockRows: parsed.branchIngredientStock,
       discountRows: parsed.discounts,
+      loyaltyRuleRows: parsed.loyaltyRules,
+      customerRows: parsed.customers,
       meta: parsed.meta,
     );
     await _session.saveTerminalId(config.terminalId);
@@ -57,13 +59,15 @@ class ConfigRepository {
     var deliveryProviders = <DeliveryProviderRow>[];
     var branchStock = <BranchIngredientStockRow>[];
     var discounts = <DiscountRow>[];
+    var loyaltyRules = <LoyaltyRuleRow>[];
+    var customers = <CustomerRow>[];
     var seenCats = false, seenProds = false, seenFloors = false, seenTables = false, seenTaxes = false;
 
     void emit() {
       if (seenCats && seenProds && seenFloors && seenTables && seenTaxes) {
         controller.add(ConfigMapper.toCatalog(
           branch, cats, prods, floors, tables, taxes, addonGroups, addons,
-          deliveryProviders, branchStock, discounts,
+          deliveryProviders, branchStock, discounts, loyaltyRules, customers,
         ));
       }
     }
@@ -116,6 +120,14 @@ class ConfigRepository {
       }),
       _db.watchDiscounts().listen((v) {
         discounts = v;
+        emit();
+      }),
+      _db.watchLoyaltyRules().listen((v) {
+        loyaltyRules = v;
+        emit();
+      }),
+      _db.watchCustomers().listen((v) {
+        customers = v;
         emit();
       }),
     ];

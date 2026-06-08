@@ -6017,6 +6017,761 @@ class DiscountsCompanion extends UpdateCompanion<DiscountRow> {
   }
 }
 
+class $LoyaltyRulesTable extends LoyaltyRules
+    with TableInfo<$LoyaltyRulesTable, LoyaltyRuleRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LoyaltyRulesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _configJsonMeta = const VerificationMeta(
+    'configJson',
+  );
+  @override
+  late final GeneratedColumn<String> configJson = GeneratedColumn<String>(
+    'config_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _validityStartMeta = const VerificationMeta(
+    'validityStart',
+  );
+  @override
+  late final GeneratedColumn<DateTime> validityStart =
+      GeneratedColumn<DateTime>(
+        'validity_start',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _validityEndMeta = const VerificationMeta(
+    'validityEnd',
+  );
+  @override
+  late final GeneratedColumn<DateTime> validityEnd = GeneratedColumn<DateTime>(
+    'validity_end',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    type,
+    configJson,
+    validityStart,
+    validityEnd,
+    status,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'loyalty_rules';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LoyaltyRuleRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    }
+    if (data.containsKey('config_json')) {
+      context.handle(
+        _configJsonMeta,
+        configJson.isAcceptableOrUnknown(data['config_json']!, _configJsonMeta),
+      );
+    }
+    if (data.containsKey('validity_start')) {
+      context.handle(
+        _validityStartMeta,
+        validityStart.isAcceptableOrUnknown(
+          data['validity_start']!,
+          _validityStartMeta,
+        ),
+      );
+    }
+    if (data.containsKey('validity_end')) {
+      context.handle(
+        _validityEndMeta,
+        validityEnd.isAcceptableOrUnknown(
+          data['validity_end']!,
+          _validityEndMeta,
+        ),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LoyaltyRuleRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LoyaltyRuleRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      ),
+      configJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}config_json'],
+      )!,
+      validityStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}validity_start'],
+      ),
+      validityEnd: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}validity_end'],
+      ),
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      ),
+    );
+  }
+
+  @override
+  $LoyaltyRulesTable createAlias(String alias) {
+    return $LoyaltyRulesTable(attachedDatabase, alias);
+  }
+}
+
+class LoyaltyRuleRow extends DataClass implements Insertable<LoyaltyRuleRow> {
+  final int id;
+  final String name;
+  final String? type;
+  final String configJson;
+  final DateTime? validityStart;
+  final DateTime? validityEnd;
+  final String? status;
+  const LoyaltyRuleRow({
+    required this.id,
+    required this.name,
+    this.type,
+    required this.configJson,
+    this.validityStart,
+    this.validityEnd,
+    this.status,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || type != null) {
+      map['type'] = Variable<String>(type);
+    }
+    map['config_json'] = Variable<String>(configJson);
+    if (!nullToAbsent || validityStart != null) {
+      map['validity_start'] = Variable<DateTime>(validityStart);
+    }
+    if (!nullToAbsent || validityEnd != null) {
+      map['validity_end'] = Variable<DateTime>(validityEnd);
+    }
+    if (!nullToAbsent || status != null) {
+      map['status'] = Variable<String>(status);
+    }
+    return map;
+  }
+
+  LoyaltyRulesCompanion toCompanion(bool nullToAbsent) {
+    return LoyaltyRulesCompanion(
+      id: Value(id),
+      name: Value(name),
+      type: type == null && nullToAbsent ? const Value.absent() : Value(type),
+      configJson: Value(configJson),
+      validityStart: validityStart == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validityStart),
+      validityEnd: validityEnd == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validityEnd),
+      status: status == null && nullToAbsent
+          ? const Value.absent()
+          : Value(status),
+    );
+  }
+
+  factory LoyaltyRuleRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LoyaltyRuleRow(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      type: serializer.fromJson<String?>(json['type']),
+      configJson: serializer.fromJson<String>(json['configJson']),
+      validityStart: serializer.fromJson<DateTime?>(json['validityStart']),
+      validityEnd: serializer.fromJson<DateTime?>(json['validityEnd']),
+      status: serializer.fromJson<String?>(json['status']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'type': serializer.toJson<String?>(type),
+      'configJson': serializer.toJson<String>(configJson),
+      'validityStart': serializer.toJson<DateTime?>(validityStart),
+      'validityEnd': serializer.toJson<DateTime?>(validityEnd),
+      'status': serializer.toJson<String?>(status),
+    };
+  }
+
+  LoyaltyRuleRow copyWith({
+    int? id,
+    String? name,
+    Value<String?> type = const Value.absent(),
+    String? configJson,
+    Value<DateTime?> validityStart = const Value.absent(),
+    Value<DateTime?> validityEnd = const Value.absent(),
+    Value<String?> status = const Value.absent(),
+  }) => LoyaltyRuleRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    type: type.present ? type.value : this.type,
+    configJson: configJson ?? this.configJson,
+    validityStart: validityStart.present
+        ? validityStart.value
+        : this.validityStart,
+    validityEnd: validityEnd.present ? validityEnd.value : this.validityEnd,
+    status: status.present ? status.value : this.status,
+  );
+  LoyaltyRuleRow copyWithCompanion(LoyaltyRulesCompanion data) {
+    return LoyaltyRuleRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      type: data.type.present ? data.type.value : this.type,
+      configJson: data.configJson.present
+          ? data.configJson.value
+          : this.configJson,
+      validityStart: data.validityStart.present
+          ? data.validityStart.value
+          : this.validityStart,
+      validityEnd: data.validityEnd.present
+          ? data.validityEnd.value
+          : this.validityEnd,
+      status: data.status.present ? data.status.value : this.status,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LoyaltyRuleRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('type: $type, ')
+          ..write('configJson: $configJson, ')
+          ..write('validityStart: $validityStart, ')
+          ..write('validityEnd: $validityEnd, ')
+          ..write('status: $status')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    type,
+    configJson,
+    validityStart,
+    validityEnd,
+    status,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LoyaltyRuleRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.type == this.type &&
+          other.configJson == this.configJson &&
+          other.validityStart == this.validityStart &&
+          other.validityEnd == this.validityEnd &&
+          other.status == this.status);
+}
+
+class LoyaltyRulesCompanion extends UpdateCompanion<LoyaltyRuleRow> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String?> type;
+  final Value<String> configJson;
+  final Value<DateTime?> validityStart;
+  final Value<DateTime?> validityEnd;
+  final Value<String?> status;
+  const LoyaltyRulesCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.type = const Value.absent(),
+    this.configJson = const Value.absent(),
+    this.validityStart = const Value.absent(),
+    this.validityEnd = const Value.absent(),
+    this.status = const Value.absent(),
+  });
+  LoyaltyRulesCompanion.insert({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.type = const Value.absent(),
+    this.configJson = const Value.absent(),
+    this.validityStart = const Value.absent(),
+    this.validityEnd = const Value.absent(),
+    this.status = const Value.absent(),
+  });
+  static Insertable<LoyaltyRuleRow> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? type,
+    Expression<String>? configJson,
+    Expression<DateTime>? validityStart,
+    Expression<DateTime>? validityEnd,
+    Expression<String>? status,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (type != null) 'type': type,
+      if (configJson != null) 'config_json': configJson,
+      if (validityStart != null) 'validity_start': validityStart,
+      if (validityEnd != null) 'validity_end': validityEnd,
+      if (status != null) 'status': status,
+    });
+  }
+
+  LoyaltyRulesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<String?>? type,
+    Value<String>? configJson,
+    Value<DateTime?>? validityStart,
+    Value<DateTime?>? validityEnd,
+    Value<String?>? status,
+  }) {
+    return LoyaltyRulesCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      type: type ?? this.type,
+      configJson: configJson ?? this.configJson,
+      validityStart: validityStart ?? this.validityStart,
+      validityEnd: validityEnd ?? this.validityEnd,
+      status: status ?? this.status,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (configJson.present) {
+      map['config_json'] = Variable<String>(configJson.value);
+    }
+    if (validityStart.present) {
+      map['validity_start'] = Variable<DateTime>(validityStart.value);
+    }
+    if (validityEnd.present) {
+      map['validity_end'] = Variable<DateTime>(validityEnd.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LoyaltyRulesCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('type: $type, ')
+          ..write('configJson: $configJson, ')
+          ..write('validityStart: $validityStart, ')
+          ..write('validityEnd: $validityEnd, ')
+          ..write('status: $status')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CachedCustomersTable extends CachedCustomers
+    with TableInfo<$CachedCustomersTable, CustomerRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedCustomersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _phoneMeta = const VerificationMeta('phone');
+  @override
+  late final GeneratedColumn<String> phone = GeneratedColumn<String>(
+    'phone',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _walletBalanceBaisasMeta =
+      const VerificationMeta('walletBalanceBaisas');
+  @override
+  late final GeneratedColumn<int> walletBalanceBaisas = GeneratedColumn<int>(
+    'wallet_balance_baisas',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, phone, walletBalanceBaisas];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_customers';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CustomerRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('phone')) {
+      context.handle(
+        _phoneMeta,
+        phone.isAcceptableOrUnknown(data['phone']!, _phoneMeta),
+      );
+    }
+    if (data.containsKey('wallet_balance_baisas')) {
+      context.handle(
+        _walletBalanceBaisasMeta,
+        walletBalanceBaisas.isAcceptableOrUnknown(
+          data['wallet_balance_baisas']!,
+          _walletBalanceBaisasMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CustomerRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CustomerRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      phone: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}phone'],
+      ),
+      walletBalanceBaisas: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}wallet_balance_baisas'],
+      )!,
+    );
+  }
+
+  @override
+  $CachedCustomersTable createAlias(String alias) {
+    return $CachedCustomersTable(attachedDatabase, alias);
+  }
+}
+
+class CustomerRow extends DataClass implements Insertable<CustomerRow> {
+  final int id;
+  final String name;
+  final String? phone;
+  final int walletBalanceBaisas;
+  const CustomerRow({
+    required this.id,
+    required this.name,
+    this.phone,
+    required this.walletBalanceBaisas,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || phone != null) {
+      map['phone'] = Variable<String>(phone);
+    }
+    map['wallet_balance_baisas'] = Variable<int>(walletBalanceBaisas);
+    return map;
+  }
+
+  CachedCustomersCompanion toCompanion(bool nullToAbsent) {
+    return CachedCustomersCompanion(
+      id: Value(id),
+      name: Value(name),
+      phone: phone == null && nullToAbsent
+          ? const Value.absent()
+          : Value(phone),
+      walletBalanceBaisas: Value(walletBalanceBaisas),
+    );
+  }
+
+  factory CustomerRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CustomerRow(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      phone: serializer.fromJson<String?>(json['phone']),
+      walletBalanceBaisas: serializer.fromJson<int>(
+        json['walletBalanceBaisas'],
+      ),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'phone': serializer.toJson<String?>(phone),
+      'walletBalanceBaisas': serializer.toJson<int>(walletBalanceBaisas),
+    };
+  }
+
+  CustomerRow copyWith({
+    int? id,
+    String? name,
+    Value<String?> phone = const Value.absent(),
+    int? walletBalanceBaisas,
+  }) => CustomerRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    phone: phone.present ? phone.value : this.phone,
+    walletBalanceBaisas: walletBalanceBaisas ?? this.walletBalanceBaisas,
+  );
+  CustomerRow copyWithCompanion(CachedCustomersCompanion data) {
+    return CustomerRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      phone: data.phone.present ? data.phone.value : this.phone,
+      walletBalanceBaisas: data.walletBalanceBaisas.present
+          ? data.walletBalanceBaisas.value
+          : this.walletBalanceBaisas,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomerRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('phone: $phone, ')
+          ..write('walletBalanceBaisas: $walletBalanceBaisas')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, phone, walletBalanceBaisas);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CustomerRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.phone == this.phone &&
+          other.walletBalanceBaisas == this.walletBalanceBaisas);
+}
+
+class CachedCustomersCompanion extends UpdateCompanion<CustomerRow> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String?> phone;
+  final Value<int> walletBalanceBaisas;
+  const CachedCustomersCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.phone = const Value.absent(),
+    this.walletBalanceBaisas = const Value.absent(),
+  });
+  CachedCustomersCompanion.insert({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.phone = const Value.absent(),
+    this.walletBalanceBaisas = const Value.absent(),
+  });
+  static Insertable<CustomerRow> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? phone,
+    Expression<int>? walletBalanceBaisas,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (phone != null) 'phone': phone,
+      if (walletBalanceBaisas != null)
+        'wallet_balance_baisas': walletBalanceBaisas,
+    });
+  }
+
+  CachedCustomersCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<String?>? phone,
+    Value<int>? walletBalanceBaisas,
+  }) {
+    return CachedCustomersCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      phone: phone ?? this.phone,
+      walletBalanceBaisas: walletBalanceBaisas ?? this.walletBalanceBaisas,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (phone.present) {
+      map['phone'] = Variable<String>(phone.value);
+    }
+    if (walletBalanceBaisas.present) {
+      map['wallet_balance_baisas'] = Variable<int>(walletBalanceBaisas.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedCustomersCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('phone: $phone, ')
+          ..write('walletBalanceBaisas: $walletBalanceBaisas')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -6035,6 +6790,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $BranchIngredientStockTable branchIngredientStock =
       $BranchIngredientStockTable(this);
   late final $DiscountsTable discounts = $DiscountsTable(this);
+  late final $LoyaltyRulesTable loyaltyRules = $LoyaltyRulesTable(this);
+  late final $CachedCustomersTable cachedCustomers = $CachedCustomersTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -6053,6 +6812,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     deliveryProviders,
     branchIngredientStock,
     discounts,
+    loyaltyRules,
+    cachedCustomers,
   ];
 }
 
@@ -9156,6 +9917,423 @@ typedef $$DiscountsTableProcessedTableManager =
       DiscountRow,
       PrefetchHooks Function()
     >;
+typedef $$LoyaltyRulesTableCreateCompanionBuilder =
+    LoyaltyRulesCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> type,
+      Value<String> configJson,
+      Value<DateTime?> validityStart,
+      Value<DateTime?> validityEnd,
+      Value<String?> status,
+    });
+typedef $$LoyaltyRulesTableUpdateCompanionBuilder =
+    LoyaltyRulesCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> type,
+      Value<String> configJson,
+      Value<DateTime?> validityStart,
+      Value<DateTime?> validityEnd,
+      Value<String?> status,
+    });
+
+class $$LoyaltyRulesTableFilterComposer
+    extends Composer<_$AppDatabase, $LoyaltyRulesTable> {
+  $$LoyaltyRulesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get configJson => $composableBuilder(
+    column: $table.configJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get validityStart => $composableBuilder(
+    column: $table.validityStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get validityEnd => $composableBuilder(
+    column: $table.validityEnd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LoyaltyRulesTableOrderingComposer
+    extends Composer<_$AppDatabase, $LoyaltyRulesTable> {
+  $$LoyaltyRulesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get configJson => $composableBuilder(
+    column: $table.configJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get validityStart => $composableBuilder(
+    column: $table.validityStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get validityEnd => $composableBuilder(
+    column: $table.validityEnd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LoyaltyRulesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LoyaltyRulesTable> {
+  $$LoyaltyRulesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get configJson => $composableBuilder(
+    column: $table.configJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get validityStart => $composableBuilder(
+    column: $table.validityStart,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get validityEnd => $composableBuilder(
+    column: $table.validityEnd,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+}
+
+class $$LoyaltyRulesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LoyaltyRulesTable,
+          LoyaltyRuleRow,
+          $$LoyaltyRulesTableFilterComposer,
+          $$LoyaltyRulesTableOrderingComposer,
+          $$LoyaltyRulesTableAnnotationComposer,
+          $$LoyaltyRulesTableCreateCompanionBuilder,
+          $$LoyaltyRulesTableUpdateCompanionBuilder,
+          (
+            LoyaltyRuleRow,
+            BaseReferences<_$AppDatabase, $LoyaltyRulesTable, LoyaltyRuleRow>,
+          ),
+          LoyaltyRuleRow,
+          PrefetchHooks Function()
+        > {
+  $$LoyaltyRulesTableTableManager(_$AppDatabase db, $LoyaltyRulesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LoyaltyRulesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LoyaltyRulesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LoyaltyRulesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> type = const Value.absent(),
+                Value<String> configJson = const Value.absent(),
+                Value<DateTime?> validityStart = const Value.absent(),
+                Value<DateTime?> validityEnd = const Value.absent(),
+                Value<String?> status = const Value.absent(),
+              }) => LoyaltyRulesCompanion(
+                id: id,
+                name: name,
+                type: type,
+                configJson: configJson,
+                validityStart: validityStart,
+                validityEnd: validityEnd,
+                status: status,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> type = const Value.absent(),
+                Value<String> configJson = const Value.absent(),
+                Value<DateTime?> validityStart = const Value.absent(),
+                Value<DateTime?> validityEnd = const Value.absent(),
+                Value<String?> status = const Value.absent(),
+              }) => LoyaltyRulesCompanion.insert(
+                id: id,
+                name: name,
+                type: type,
+                configJson: configJson,
+                validityStart: validityStart,
+                validityEnd: validityEnd,
+                status: status,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LoyaltyRulesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LoyaltyRulesTable,
+      LoyaltyRuleRow,
+      $$LoyaltyRulesTableFilterComposer,
+      $$LoyaltyRulesTableOrderingComposer,
+      $$LoyaltyRulesTableAnnotationComposer,
+      $$LoyaltyRulesTableCreateCompanionBuilder,
+      $$LoyaltyRulesTableUpdateCompanionBuilder,
+      (
+        LoyaltyRuleRow,
+        BaseReferences<_$AppDatabase, $LoyaltyRulesTable, LoyaltyRuleRow>,
+      ),
+      LoyaltyRuleRow,
+      PrefetchHooks Function()
+    >;
+typedef $$CachedCustomersTableCreateCompanionBuilder =
+    CachedCustomersCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> phone,
+      Value<int> walletBalanceBaisas,
+    });
+typedef $$CachedCustomersTableUpdateCompanionBuilder =
+    CachedCustomersCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> phone,
+      Value<int> walletBalanceBaisas,
+    });
+
+class $$CachedCustomersTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedCustomersTable> {
+  $$CachedCustomersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get phone => $composableBuilder(
+    column: $table.phone,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get walletBalanceBaisas => $composableBuilder(
+    column: $table.walletBalanceBaisas,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CachedCustomersTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedCustomersTable> {
+  $$CachedCustomersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get phone => $composableBuilder(
+    column: $table.phone,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get walletBalanceBaisas => $composableBuilder(
+    column: $table.walletBalanceBaisas,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CachedCustomersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedCustomersTable> {
+  $$CachedCustomersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get phone =>
+      $composableBuilder(column: $table.phone, builder: (column) => column);
+
+  GeneratedColumn<int> get walletBalanceBaisas => $composableBuilder(
+    column: $table.walletBalanceBaisas,
+    builder: (column) => column,
+  );
+}
+
+class $$CachedCustomersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CachedCustomersTable,
+          CustomerRow,
+          $$CachedCustomersTableFilterComposer,
+          $$CachedCustomersTableOrderingComposer,
+          $$CachedCustomersTableAnnotationComposer,
+          $$CachedCustomersTableCreateCompanionBuilder,
+          $$CachedCustomersTableUpdateCompanionBuilder,
+          (
+            CustomerRow,
+            BaseReferences<_$AppDatabase, $CachedCustomersTable, CustomerRow>,
+          ),
+          CustomerRow,
+          PrefetchHooks Function()
+        > {
+  $$CachedCustomersTableTableManager(
+    _$AppDatabase db,
+    $CachedCustomersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedCustomersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedCustomersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedCustomersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> phone = const Value.absent(),
+                Value<int> walletBalanceBaisas = const Value.absent(),
+              }) => CachedCustomersCompanion(
+                id: id,
+                name: name,
+                phone: phone,
+                walletBalanceBaisas: walletBalanceBaisas,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> phone = const Value.absent(),
+                Value<int> walletBalanceBaisas = const Value.absent(),
+              }) => CachedCustomersCompanion.insert(
+                id: id,
+                name: name,
+                phone: phone,
+                walletBalanceBaisas: walletBalanceBaisas,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CachedCustomersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CachedCustomersTable,
+      CustomerRow,
+      $$CachedCustomersTableFilterComposer,
+      $$CachedCustomersTableOrderingComposer,
+      $$CachedCustomersTableAnnotationComposer,
+      $$CachedCustomersTableCreateCompanionBuilder,
+      $$CachedCustomersTableUpdateCompanionBuilder,
+      (
+        CustomerRow,
+        BaseReferences<_$AppDatabase, $CachedCustomersTable, CustomerRow>,
+      ),
+      CustomerRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -9186,4 +10364,8 @@ class $AppDatabaseManager {
       $$BranchIngredientStockTableTableManager(_db, _db.branchIngredientStock);
   $$DiscountsTableTableManager get discounts =>
       $$DiscountsTableTableManager(_db, _db.discounts);
+  $$LoyaltyRulesTableTableManager get loyaltyRules =>
+      $$LoyaltyRulesTableTableManager(_db, _db.loyaltyRules);
+  $$CachedCustomersTableTableManager get cachedCustomers =>
+      $$CachedCustomersTableTableManager(_db, _db.cachedCustomers);
 }

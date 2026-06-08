@@ -17,6 +17,8 @@ class CatalogSnapshot {
     this.deliveryProviders = const <DeliveryProvider>[],
     this.ingredientBalances = const <int, double>{},
     this.discounts = const <MerchantDiscount>[],
+    this.loyaltyRules = const <LoyaltyRule>[],
+    this.customers = const <CustomerRef>[],
   });
 
   final List<String> categories;
@@ -34,6 +36,10 @@ class CatalogSnapshot {
   // Merchant discount rules; the POS offers the currently-applicable order-scope
   // ones in the discount picker.
   final List<MerchantDiscount> discounts;
+  // Merchant loyalty rules (stamp card / points); drive earn + redeem.
+  final List<LoyaltyRule> loyaltyRules;
+  // Cached customer slice for offline lookup / order attach.
+  final List<CustomerRef> customers;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -50,6 +56,8 @@ class ParsedConfig {
     required this.deliveryProviders,
     required this.branchIngredientStock,
     required this.discounts,
+    required this.loyaltyRules,
+    required this.customers,
     required this.meta,
   });
 
@@ -64,6 +72,8 @@ class ParsedConfig {
   final List<DeliveryProvidersCompanion> deliveryProviders;
   final List<BranchIngredientStockCompanion> branchIngredientStock;
   final List<DiscountsCompanion> discounts;
+  final List<LoyaltyRulesCompanion> loyaltyRules;
+  final List<CachedCustomersCompanion> customers;
   final SyncMetaCompanion meta;
 }
 
@@ -311,6 +321,29 @@ class ConfigMapper {
             ))
         .toList();
 
+    // Loyalty rules (company-scoped). config is stored as a JSON string.
+    final loyaltyRules = _list(data['loyalty_rules'])
+        .map((r) => LoyaltyRulesCompanion(
+              id: Value(_int(r['id']) ?? 0),
+              name: Value(_str(r['name'])),
+              type: Value(_strN(r['type'])),
+              configJson: Value(jsonEncode(r['config'] ?? const {})),
+              validityStart: Value(_date(r['validity_start'])),
+              validityEnd: Value(_date(r['validity_end'])),
+              status: Value(_strN(r['status'])),
+            ))
+        .toList();
+
+    // Cached customer slice.
+    final customers = _list(data['customers'])
+        .map((c) => CachedCustomersCompanion(
+              id: Value(_int(c['id']) ?? 0),
+              name: Value(_str(c['name'])),
+              phone: Value(_strN(c['phone'])),
+              walletBalanceBaisas: Value(_int(c['wallet_balance_baisas']) ?? 0),
+            ))
+        .toList();
+
     final metaCompanion = SyncMetaCompanion(
       id: const Value(1),
       companyId: Value(_int(meta['company_id']) ?? _int(branchMap?['company_id'])),
@@ -331,6 +364,8 @@ class ConfigMapper {
       deliveryProviders: deliveryProviders,
       branchIngredientStock: branchIngredientStock,
       discounts: discounts,
+      loyaltyRules: loyaltyRules,
+      customers: customers,
       meta: metaCompanion,
     );
   }
@@ -348,6 +383,8 @@ class ConfigMapper {
     List<DeliveryProviderRow> deliveryProviderRows = const [],
     List<BranchIngredientStockRow> branchStockRows = const [],
     List<DiscountRow> discountRows = const [],
+    List<LoyaltyRuleRow> loyaltyRuleRows = const [],
+    List<CustomerRow> customerRows = const [],
   ]) {
     final sortedCats = [...cats]
       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
@@ -483,6 +520,25 @@ class ConfigMapper {
             ))
         .toList();
 
+    final loyaltyRules = loyaltyRuleRows
+        .map((r) => LoyaltyRule(
+              id: r.id,
+              name: r.name,
+              type: r.type ?? '',
+              config: _decodeConfig(r.configJson),
+              isActive: r.status == null || r.status == 'active',
+            ))
+        .toList();
+
+    final customers = customerRows
+        .map((c) => CustomerRef(
+              id: c.id,
+              name: c.name,
+              phone: c.phone ?? '',
+              walletBalance: c.walletBalanceBaisas / 1000.0,
+            ))
+        .toList();
+
     return CatalogSnapshot(
       categories: sortedCats.map((c) => c.name).toList(),
       products: products,
@@ -493,7 +549,19 @@ class ConfigMapper {
       deliveryProviders: deliveryProviderDefs,
       ingredientBalances: ingredientBalances,
       discounts: discounts,
+      loyaltyRules: loyaltyRules,
+      customers: customers,
     );
+  }
+
+  /// Decode a loyalty rule's stored config JSON → map (empty on any failure).
+  static Map<String, dynamic> _decodeConfig(String json) {
+    if (json.isEmpty || json == '{}') return const {};
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is Map) return decoded.cast<String, dynamic>();
+    } catch (_) {}
+    return const {};
   }
 
   /// Decode a stored branch_scope JSON string → list of branch ids (empty = all).

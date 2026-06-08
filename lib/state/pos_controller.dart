@@ -251,6 +251,10 @@ class PosController extends ChangeNotifier {
   /// Merchant discount rules from the cached catalog (from the API). The picker
   /// offers the currently-applicable order-scope ones.
   List<MerchantDiscount> availableDiscounts = const [];
+  /// Merchant loyalty rules from the cached catalog (stamp card / points).
+  List<LoyaltyRule> loyaltyRules = const [];
+  /// Cached customer slice (offline lookup / order attach).
+  List<CustomerRef> cachedCustomers = const [];
   int splitCount = 1;
   final List<SplitPaymentRecord> _splitPayments = [];
   /// Soft POS evidence for the most recent single (non-split) card payment.
@@ -360,6 +364,8 @@ class PosController extends ChangeNotifier {
     List<DeliveryProvider> deliveryProviders = const <DeliveryProvider>[],
     Map<int, double> ingredientBalances = const <int, double>{},
     List<MerchantDiscount> discounts = const <MerchantDiscount>[],
+    List<LoyaltyRule> loyaltyRules = const <LoyaltyRule>[],
+    List<CustomerRef> customers = const <CustomerRef>[],
   }) {
     this.categories = categories;
     _baseProducts = products;
@@ -369,6 +375,8 @@ class PosController extends ChangeNotifier {
     this.deliveryProviders = deliveryProviders;
     this.ingredientBalances = ingredientBalances;
     availableDiscounts = discounts;
+    this.loyaltyRules = loyaltyRules;
+    cachedCustomers = customers;
     // Company taxes drive the cart tax lines + total. Stored in the shared
     // source so the persisted / printed order agrees with the live cart.
     activeCompanyTaxes = taxes;

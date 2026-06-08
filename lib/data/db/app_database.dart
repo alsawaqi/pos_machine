@@ -23,6 +23,8 @@ part 'app_database.g.dart';
     DeliveryProviders,
     BranchIngredientStock,
     Discounts,
+    LoyaltyRules,
+    CachedCustomers,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -32,7 +34,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -76,6 +78,12 @@ class AppDatabase extends _$AppDatabase {
             // v8 added cached merchant discount rules (from-API discounts).
             await m.createTable(discounts);
           }
+          if (from < 9) {
+            // v9 added cached loyalty rules + a customer slice (loyalty earn/
+            // redeem + offline customer lookup).
+            await m.createTable(loyaltyRules);
+            await m.createTable(cachedCustomers);
+          }
         },
       );
 
@@ -110,6 +118,11 @@ class AppDatabase extends _$AppDatabase {
       select(branchIngredientStock).watch();
 
   Stream<List<DiscountRow>> watchDiscounts() => select(discounts).watch();
+
+  Stream<List<LoyaltyRuleRow>> watchLoyaltyRules() =>
+      select(loyaltyRules).watch();
+
+  Stream<List<CustomerRow>> watchCustomers() => select(cachedCustomers).watch();
 
   Future<List<TaxRow>> getTaxes() =>
       (select(taxCache)..orderBy([(t) => OrderingTerm(expression: t.id)])).get();
@@ -164,6 +177,8 @@ class AppDatabase extends _$AppDatabase {
     required List<DeliveryProvidersCompanion> deliveryProviderRows,
     required List<BranchIngredientStockCompanion> branchIngredientStockRows,
     required List<DiscountsCompanion> discountRows,
+    required List<LoyaltyRulesCompanion> loyaltyRuleRows,
+    required List<CachedCustomersCompanion> customerRows,
     required SyncMetaCompanion meta,
   }) {
     return transaction(() async {
@@ -178,6 +193,8 @@ class AppDatabase extends _$AppDatabase {
       await delete(deliveryProviders).go();
       await delete(branchIngredientStock).go();
       await delete(discounts).go();
+      await delete(loyaltyRules).go();
+      await delete(cachedCustomers).go();
 
       await into(branchCache).insert(branch);
       await batch((b) {
@@ -191,6 +208,8 @@ class AppDatabase extends _$AppDatabase {
         b.insertAll(deliveryProviders, deliveryProviderRows);
         b.insertAll(branchIngredientStock, branchIngredientStockRows);
         b.insertAll(discounts, discountRows);
+        b.insertAll(loyaltyRules, loyaltyRuleRows);
+        b.insertAll(cachedCustomers, customerRows);
       });
       await into(syncMeta).insertOnConflictUpdate(meta);
     });
