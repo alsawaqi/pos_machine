@@ -637,6 +637,8 @@ class PosController extends ChangeNotifier {
       rawSubtotal: rawSubtotal,
       discountAmount: discountAmount,
       discountLabel: discount.label,
+      discountId: discount.discountId,
+      discountAmountType: discount.amountType,
       subtotal: subtotal,
       tax: tax,
       total: total,

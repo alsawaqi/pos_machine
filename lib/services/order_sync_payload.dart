@@ -152,6 +152,11 @@ OrderSyncPayload buildOrderSyncPayload(
     discounts.add({
       'name': snapshot.discountLabel.isEmpty ? 'Discount' : snapshot.discountLabel,
       'amount_baisas': omrToBaisas(snapshot.discountAmount),
+      // A merchant rule carries its id + amount_type so the server snapshots it
+      // (by-rule report); a manual discount omits them.
+      if (snapshot.discountId != null) 'discount_id': snapshot.discountId,
+      if (snapshot.discountAmountType != null)
+        'amount_type': snapshot.discountAmountType,
     });
   }
 

@@ -16,6 +16,8 @@ OrderSnapshot _snapshot({
   double rawSubtotal = 0,
   double discountAmount = 0,
   String discountLabel = '',
+  int? discountId,
+  String? discountAmountType,
   double tax = 0,
   double total = 0,
   String paymentMethod = 'Cash',
@@ -31,6 +33,8 @@ OrderSnapshot _snapshot({
     rawSubtotal: rawSubtotal,
     discountAmount: discountAmount,
     discountLabel: discountLabel,
+    discountId: discountId,
+    discountAmountType: discountAmountType,
     tax: tax,
     total: total,
     paymentMethod: paymentMethod,
@@ -342,6 +346,50 @@ void main() {
       expect(card['method'], 'card');
       expect(card['softpos_reference'], 'SPLITRRN');
       expect(card['softpos_auth_code'], 'SA1');
+    });
+
+    test('a merchant-rule discount carries discount_id + amount_type', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 10.0, 'lineTotal': 10.0},
+        ],
+        rawSubtotal: 10.0,
+        discountAmount: 1.0,
+        discountLabel: 'Ramadan 10%',
+        discountId: 3,
+        discountAmountType: 'percent',
+        total: 9.0,
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final order =
+          (payload.events[0]['payload'] as Map)['order'] as Map<String, dynamic>;
+      final discounts = order['discounts'] as List;
+      expect(discounts.length, 1);
+      final d = discounts.first as Map<String, dynamic>;
+      expect(d['name'], 'Ramadan 10%');
+      expect(d['amount_baisas'], 1000);
+      expect(d['discount_id'], 3);
+      expect(d['amount_type'], 'percent');
+    });
+
+    test('a manual discount omits discount_id + amount_type', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 10.0, 'lineTotal': 10.0},
+        ],
+        rawSubtotal: 10.0,
+        discountAmount: 2.0,
+        discountLabel: 'Manual',
+        total: 8.0,
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final order =
+          (payload.events[0]['payload'] as Map)['order'] as Map<String, dynamic>;
+      final d = (order['discounts'] as List).first as Map<String, dynamic>;
+      expect(d.containsKey('discount_id'), isFalse);
+      expect(d.containsKey('amount_type'), isFalse);
     });
 
     test('helpers map enums + money correctly', () {

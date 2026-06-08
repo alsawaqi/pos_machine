@@ -844,6 +844,10 @@ class OrderSnapshot {
   final double rawSubtotal;
   final double discountAmount;
   final String discountLabel;
+  // When the applied discount is a merchant rule: its id + amount_type, sent on
+  // order.create so the server snapshots the rule (by-rule report). Null = manual.
+  final int? discountId;
+  final String? discountAmountType;
   final double subtotal;
   final double tax;
   final double total;
@@ -899,6 +903,8 @@ class OrderSnapshot {
     required this.charityRoundUpTotal,
     this.splitPayments = const [],
     this.cancellations = const [],
+    this.discountId,
+    this.discountAmountType,
     required this.charityRoundUpPromptId,
     required this.recentProductId,
     required this.orderUpdateNonce,
@@ -1047,6 +1053,8 @@ class OrderSnapshot {
     double? rawSubtotal,
     double? discountAmount,
     String? discountLabel,
+    int? discountId,
+    String? discountAmountType,
     double? subtotal,
     double? tax,
     double? total,
@@ -1080,6 +1088,8 @@ class OrderSnapshot {
       rawSubtotal: rawSubtotal ?? this.rawSubtotal,
       discountAmount: discountAmount ?? this.discountAmount,
       discountLabel: discountLabel ?? this.discountLabel,
+      discountId: discountId ?? this.discountId,
+      discountAmountType: discountAmountType ?? this.discountAmountType,
       subtotal: subtotal ?? this.subtotal,
       tax: tax ?? this.tax,
       total: total ?? this.total,
