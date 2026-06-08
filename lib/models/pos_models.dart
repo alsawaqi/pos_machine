@@ -440,26 +440,144 @@ class DiscountConfiguration {
   final DiscountKind kind;
   final double value;
   final String label;
+  // The merchant rule id when this is a fetched discount (null = manual/ad-hoc).
+  // Sent on order.create so the server snapshots the rule for the by-rule report.
+  final int? discountId;
 
   const DiscountConfiguration({
     this.kind = DiscountKind.none,
     this.value = 0,
     this.label = '',
+    this.discountId,
   });
 
   bool get isActive => kind != DiscountKind.none && value > 0;
+
+  /// The server amount_type for this discount ('percent' | 'fixed' | null).
+  String? get amountType => switch (kind) {
+        DiscountKind.percentage => 'percent',
+        DiscountKind.fixedAmount => 'fixed',
+        DiscountKind.none => null,
+      };
 
   factory DiscountConfiguration.fromMap(Map<String, dynamic> map) {
     return DiscountConfiguration(
       kind: DiscountKindLabel.fromStorage(map['kind']?.toString()),
       value: (map['value'] as num?)?.toDouble() ?? 0,
       label: map['label']?.toString() ?? '',
+      discountId: (map['discountId'] as num?)?.toInt(),
     );
   }
 
   Map<String, dynamic> toMap() {
-    return {'kind': kind.storageValue, 'value': value, 'label': label};
+    return {
+      'kind': kind.storageValue,
+      'value': value,
+      'label': label,
+      if (discountId != null) 'discountId': discountId,
+    };
   }
+}
+
+/// A merchant discount rule from the API config bundle. The device offers the
+/// currently-applicable ORDER-scope ones in the discount picker; applicability
+/// mirrors the server `Discount` model (validity window / day-of-week mask /
+/// time-of-day window / branch scope). Money is OMR (converted from baisas at
+/// the cache boundary).
+class MerchantDiscount {
+  final int id;
+  final String name;
+  final String scope; // product | category | order
+  final String amountType; // fixed | percent
+  final double? fixedAmount; // OMR, when amountType == fixed
+  final double? percent; // when amountType == percent
+  final DateTime? validityStart;
+  final DateTime? validityEnd;
+  final int? dayOfWeekMask; // 1<<dow (Sun=0); null = every day
+  final String? timeStart; // 'HH:MM:SS'
+  final String? timeEnd;
+  final List<int> branchScope; // empty = all branches
+  final bool stackable;
+  final bool requiresManagerApproval;
+  final bool isActive;
+
+  const MerchantDiscount({
+    required this.id,
+    required this.name,
+    required this.scope,
+    required this.amountType,
+    this.fixedAmount,
+    this.percent,
+    this.validityStart,
+    this.validityEnd,
+    this.dayOfWeekMask,
+    this.timeStart,
+    this.timeEnd,
+    this.branchScope = const [],
+    this.stackable = false,
+    this.requiresManagerApproval = false,
+    this.isActive = true,
+  });
+
+  bool get isOrderScope => scope == 'order';
+
+  /// True when usable right now at [branchId]: active, within the validity
+  /// window, on an allowed weekday, within the time window, and in branch scope.
+  /// Mirrors pos_merchant Discount::appliesAt.
+  bool appliesAt(DateTime now, {required int branchId}) {
+    if (!isActive) return false;
+    if (validityStart != null && now.isBefore(validityStart!)) return false;
+    if (validityEnd != null && now.isAfter(validityEnd!)) return false;
+    if (!_matchesDay(now)) return false;
+    if (!_matchesTime(now)) return false;
+    if (!_matchesBranch(branchId)) return false;
+    return true;
+  }
+
+  bool _matchesDay(DateTime now) {
+    final mask = dayOfWeekMask ?? 127;
+    // Dart weekday is 1=Mon..7=Sun; the server mask is 0=Sun..6=Sat → % 7.
+    final bit = 1 << (now.weekday % 7);
+    return (mask & bit) != 0;
+  }
+
+  bool _matchesTime(DateTime now) {
+    if (timeStart == null && timeEnd == null) return true;
+    final hhmmss =
+        '${_pad2(now.hour)}:${_pad2(now.minute)}:${_pad2(now.second)}';
+    final start = timeStart ?? '00:00:00';
+    final end = timeEnd ?? '23:59:59';
+    if (start.compareTo(end) <= 0) {
+      return hhmmss.compareTo(start) >= 0 && hhmmss.compareTo(end) <= 0;
+    }
+    // Midnight wrap (e.g. 22:00 → 02:00).
+    return hhmmss.compareTo(start) >= 0 || hhmmss.compareTo(end) <= 0;
+  }
+
+  bool _matchesBranch(int branchId) =>
+      branchScope.isEmpty || branchScope.contains(branchId);
+
+  static String _pad2(int n) => n.toString().padLeft(2, '0');
+
+  /// The discount amount in OMR for an order [subtotal] (clamped to it).
+  double amountFor(double subtotal) {
+    final raw = amountType == 'percent'
+        ? subtotal * ((percent ?? 0) / 100)
+        : (fixedAmount ?? 0);
+    final clamped = raw.clamp(0.0, subtotal).toDouble();
+    return double.parse(clamped.toStringAsFixed(3));
+  }
+
+  /// The DiscountConfiguration this rule applies as (carries the rule id +
+  /// amount_type so order.pay can snapshot it for the by-rule report).
+  DiscountConfiguration toConfiguration() => DiscountConfiguration(
+        kind: amountType == 'percent'
+            ? DiscountKind.percentage
+            : DiscountKind.fixedAmount,
+        value: amountType == 'percent' ? (percent ?? 0) : (fixedAmount ?? 0),
+        label: name,
+        discountId: id,
+      );
 }
 
 /// The Soft POS (Mosambee) outcome for a single card tender, carried onto the

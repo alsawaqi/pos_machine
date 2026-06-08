@@ -22,6 +22,7 @@ part 'app_database.g.dart';
     OrderOutbox,
     DeliveryProviders,
     BranchIngredientStock,
+    Discounts,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -31,7 +32,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -71,6 +72,10 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(products, products.recipeJson);
             await m.createTable(branchIngredientStock);
           }
+          if (from < 8) {
+            // v8 added cached merchant discount rules (from-API discounts).
+            await m.createTable(discounts);
+          }
         },
       );
 
@@ -103,6 +108,8 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<List<BranchIngredientStockRow>> watchBranchIngredientStock() =>
       select(branchIngredientStock).watch();
+
+  Stream<List<DiscountRow>> watchDiscounts() => select(discounts).watch();
 
   Future<List<TaxRow>> getTaxes() =>
       (select(taxCache)..orderBy([(t) => OrderingTerm(expression: t.id)])).get();
@@ -156,6 +163,7 @@ class AppDatabase extends _$AppDatabase {
     required List<TaxCacheCompanion> taxRows,
     required List<DeliveryProvidersCompanion> deliveryProviderRows,
     required List<BranchIngredientStockCompanion> branchIngredientStockRows,
+    required List<DiscountsCompanion> discountRows,
     required SyncMetaCompanion meta,
   }) {
     return transaction(() async {
@@ -169,6 +177,7 @@ class AppDatabase extends _$AppDatabase {
       await delete(taxCache).go();
       await delete(deliveryProviders).go();
       await delete(branchIngredientStock).go();
+      await delete(discounts).go();
 
       await into(branchCache).insert(branch);
       await batch((b) {
@@ -181,6 +190,7 @@ class AppDatabase extends _$AppDatabase {
         b.insertAll(taxCache, taxRows);
         b.insertAll(deliveryProviders, deliveryProviderRows);
         b.insertAll(branchIngredientStock, branchIngredientStockRows);
+        b.insertAll(discounts, discountRows);
       });
       await into(syncMeta).insertOnConflictUpdate(meta);
     });

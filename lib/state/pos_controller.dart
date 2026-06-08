@@ -248,6 +248,9 @@ class PosController extends ChangeNotifier {
   ProductViewMode productViewMode = ProductViewMode.grid;
   OrderType selectedOrderType = OrderType.quickOrder;
   DiscountConfiguration discount = const DiscountConfiguration();
+  /// Merchant discount rules from the cached catalog (from the API). The picker
+  /// offers the currently-applicable order-scope ones.
+  List<MerchantDiscount> availableDiscounts = const [];
   int splitCount = 1;
   final List<SplitPaymentRecord> _splitPayments = [];
   /// Soft POS evidence for the most recent single (non-split) card payment.
@@ -356,6 +359,7 @@ class PosController extends ChangeNotifier {
     List<AddonGroup> addonGroups = const <AddonGroup>[],
     List<DeliveryProvider> deliveryProviders = const <DeliveryProvider>[],
     Map<int, double> ingredientBalances = const <int, double>{},
+    List<MerchantDiscount> discounts = const <MerchantDiscount>[],
   }) {
     this.categories = categories;
     _baseProducts = products;
@@ -364,6 +368,7 @@ class PosController extends ChangeNotifier {
     this.addonGroups = addonGroups;
     this.deliveryProviders = deliveryProviders;
     this.ingredientBalances = ingredientBalances;
+    availableDiscounts = discounts;
     // Company taxes drive the cart tax lines + total. Stored in the shared
     // source so the persisted / printed order agrees with the live cart.
     activeCompanyTaxes = taxes;

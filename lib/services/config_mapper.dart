@@ -16,6 +16,7 @@ class CatalogSnapshot {
     this.addonGroups = const <AddonGroup>[],
     this.deliveryProviders = const <DeliveryProvider>[],
     this.ingredientBalances = const <int, double>{},
+    this.discounts = const <MerchantDiscount>[],
   });
 
   final List<String> categories;
@@ -30,6 +31,9 @@ class CatalogSnapshot {
   // This branch's ingredient balances by ingredient id; drives ingredient-based
   // sold-out (a recipe product is out when a needed ingredient runs low).
   final Map<int, double> ingredientBalances;
+  // Merchant discount rules; the POS offers the currently-applicable order-scope
+  // ones in the discount picker.
+  final List<MerchantDiscount> discounts;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -45,6 +49,7 @@ class ParsedConfig {
     required this.taxes,
     required this.deliveryProviders,
     required this.branchIngredientStock,
+    required this.discounts,
     required this.meta,
   });
 
@@ -58,6 +63,7 @@ class ParsedConfig {
   final List<TaxCacheCompanion> taxes;
   final List<DeliveryProvidersCompanion> deliveryProviders;
   final List<BranchIngredientStockCompanion> branchIngredientStock;
+  final List<DiscountsCompanion> discounts;
   final SyncMetaCompanion meta;
 }
 
@@ -71,6 +77,8 @@ class ConfigMapper {
   static double? _dbl(Object? v) => (v as num?)?.toDouble();
   static String _str(Object? v) => v?.toString() ?? '';
   static String? _strN(Object? v) => v?.toString();
+  static DateTime? _date(Object? v) =>
+      v == null ? null : DateTime.tryParse(v.toString());
 
   static List<Map<String, dynamic>> _list(Object? v) =>
       (v as List?)
@@ -275,6 +283,34 @@ class ConfigMapper {
             ))
         .toList();
 
+    // Merchant discount rules (company-scoped). branch_scope_json + targets are
+    // stored as JSON strings; applicability is evaluated on-device.
+    final discounts = _list(data['discounts'])
+        .map((d) => DiscountsCompanion(
+              id: Value(_int(d['id']) ?? 0),
+              name: Value(_str(d['name'])),
+              scope: Value(_strN(d['scope'])),
+              amountType: Value(_strN(d['amount_type'])),
+              amountBaisas: Value(_int(d['amount_baisas'])),
+              percent: Value(_dbl(d['percent'])),
+              validityStart: Value(_date(d['validity_start'])),
+              validityEnd: Value(_date(d['validity_end'])),
+              dayofweekMask: Value(_int(d['dayofweek_mask'])),
+              timeStart: Value(_strN(d['time_start'])),
+              timeEnd: Value(_strN(d['time_end'])),
+              branchScopeJson: Value(
+                d['branch_scope_json'] == null
+                    ? null
+                    : jsonEncode(d['branch_scope_json']),
+              ),
+              stackable: Value(d['stackable'] == true),
+              requiresManagerApproval:
+                  Value(d['requires_manager_approval'] == true),
+              status: Value(_strN(d['status'])),
+              targetsJson: Value(jsonEncode(d['targets'] ?? const [])),
+            ))
+        .toList();
+
     final metaCompanion = SyncMetaCompanion(
       id: const Value(1),
       companyId: Value(_int(meta['company_id']) ?? _int(branchMap?['company_id'])),
@@ -294,6 +330,7 @@ class ConfigMapper {
       taxes: taxes,
       deliveryProviders: deliveryProviders,
       branchIngredientStock: branchIngredientStock,
+      discounts: discounts,
       meta: metaCompanion,
     );
   }
@@ -310,6 +347,7 @@ class ConfigMapper {
     List<AddonRow> addonRows = const [],
     List<DeliveryProviderRow> deliveryProviderRows = const [],
     List<BranchIngredientStockRow> branchStockRows = const [],
+    List<DiscountRow> discountRows = const [],
   ]) {
     final sortedCats = [...cats]
       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
@@ -424,6 +462,27 @@ class ConfigMapper {
       for (final s in branchStockRows) s.ingredientId: s.quantity,
     };
 
+    final discounts = discountRows
+        .map((d) => MerchantDiscount(
+              id: d.id,
+              name: d.name,
+              scope: d.scope ?? 'order',
+              amountType: d.amountType ?? 'fixed',
+              fixedAmount:
+                  d.amountBaisas != null ? d.amountBaisas! / 1000.0 : null,
+              percent: d.percent,
+              validityStart: d.validityStart,
+              validityEnd: d.validityEnd,
+              dayOfWeekMask: d.dayofweekMask,
+              timeStart: d.timeStart,
+              timeEnd: d.timeEnd,
+              branchScope: _branchScope(d.branchScopeJson),
+              stackable: d.stackable,
+              requiresManagerApproval: d.requiresManagerApproval,
+              isActive: d.status == null || d.status == 'active',
+            ))
+        .toList();
+
     return CatalogSnapshot(
       categories: sortedCats.map((c) => c.name).toList(),
       products: products,
@@ -433,6 +492,19 @@ class ConfigMapper {
       addonGroups: addonGroups,
       deliveryProviders: deliveryProviderDefs,
       ingredientBalances: ingredientBalances,
+      discounts: discounts,
     );
+  }
+
+  /// Decode a stored branch_scope JSON string → list of branch ids (empty = all).
+  static List<int> _branchScope(String? json) {
+    if (json == null || json.isEmpty || json == 'null') return const [];
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is List) {
+        return decoded.map((e) => (e as num?)?.toInt()).whereType<int>().toList();
+      }
+    } catch (_) {}
+    return const [];
   }
 }

@@ -195,6 +195,38 @@ class DeliveryProviders extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+// Merchant discount rules from the config bundle (company-scoped). The device
+// offers the currently-applicable ORDER-scope ones in the discount picker;
+// applicability (validity window / day-of-week mask / time window / branch
+// scope) is evaluated on-device (see MerchantDiscount). Money is baisas.
+// product/category-scope discounts are cached but not yet applied (the device
+// has no per-line discount model yet) — order-scope only for now.
+@DataClassName('DiscountRow')
+class Discounts extends Table {
+  IntColumn get id => integer()();
+  TextColumn get name => text().withDefault(const Constant(''))();
+  TextColumn get scope => text().nullable()(); // product | category | order
+  TextColumn get amountType => text().nullable()(); // fixed | percent
+  IntColumn get amountBaisas => integer().nullable()(); // fixed amount
+  RealColumn get percent => real().nullable()(); // percent amount
+  DateTimeColumn get validityStart => dateTime().nullable()();
+  DateTimeColumn get validityEnd => dateTime().nullable()();
+  IntColumn get dayofweekMask => integer().nullable()(); // 1<<dow, Sun=0; null=all
+  TextColumn get timeStart => text().nullable()(); // 'HH:MM:SS'
+  TextColumn get timeEnd => text().nullable()();
+  TextColumn get branchScopeJson => text().nullable()(); // [branchId,...]; null=all
+  BoolColumn get stackable => boolean().withDefault(const Constant(false))();
+  BoolColumn get requiresManagerApproval =>
+      boolean().withDefault(const Constant(false))();
+  TextColumn get status => text().nullable()();
+  // [{target_type, target_id}] — for product/category scope (cached for a future
+  // per-line-discount increment; unused by the order-scope picker today).
+  TextColumn get targetsJson => text().withDefault(const Constant('[]'))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // Per-branch INGREDIENT balances (from the config `branch_stock` slice), keyed
 // by ingredient id. Drives ingredient-based product availability: a recipe
 // product is sold out when a needed ingredient's balance here is below the

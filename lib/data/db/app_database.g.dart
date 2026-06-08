@@ -5078,6 +5078,945 @@ class BranchIngredientStockCompanion
   }
 }
 
+class $DiscountsTable extends Discounts
+    with TableInfo<$DiscountsTable, DiscountRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DiscountsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _scopeMeta = const VerificationMeta('scope');
+  @override
+  late final GeneratedColumn<String> scope = GeneratedColumn<String>(
+    'scope',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _amountTypeMeta = const VerificationMeta(
+    'amountType',
+  );
+  @override
+  late final GeneratedColumn<String> amountType = GeneratedColumn<String>(
+    'amount_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _amountBaisasMeta = const VerificationMeta(
+    'amountBaisas',
+  );
+  @override
+  late final GeneratedColumn<int> amountBaisas = GeneratedColumn<int>(
+    'amount_baisas',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _percentMeta = const VerificationMeta(
+    'percent',
+  );
+  @override
+  late final GeneratedColumn<double> percent = GeneratedColumn<double>(
+    'percent',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _validityStartMeta = const VerificationMeta(
+    'validityStart',
+  );
+  @override
+  late final GeneratedColumn<DateTime> validityStart =
+      GeneratedColumn<DateTime>(
+        'validity_start',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _validityEndMeta = const VerificationMeta(
+    'validityEnd',
+  );
+  @override
+  late final GeneratedColumn<DateTime> validityEnd = GeneratedColumn<DateTime>(
+    'validity_end',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dayofweekMaskMeta = const VerificationMeta(
+    'dayofweekMask',
+  );
+  @override
+  late final GeneratedColumn<int> dayofweekMask = GeneratedColumn<int>(
+    'dayofweek_mask',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _timeStartMeta = const VerificationMeta(
+    'timeStart',
+  );
+  @override
+  late final GeneratedColumn<String> timeStart = GeneratedColumn<String>(
+    'time_start',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _timeEndMeta = const VerificationMeta(
+    'timeEnd',
+  );
+  @override
+  late final GeneratedColumn<String> timeEnd = GeneratedColumn<String>(
+    'time_end',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _branchScopeJsonMeta = const VerificationMeta(
+    'branchScopeJson',
+  );
+  @override
+  late final GeneratedColumn<String> branchScopeJson = GeneratedColumn<String>(
+    'branch_scope_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _stackableMeta = const VerificationMeta(
+    'stackable',
+  );
+  @override
+  late final GeneratedColumn<bool> stackable = GeneratedColumn<bool>(
+    'stackable',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("stackable" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _requiresManagerApprovalMeta =
+      const VerificationMeta('requiresManagerApproval');
+  @override
+  late final GeneratedColumn<bool> requiresManagerApproval =
+      GeneratedColumn<bool>(
+        'requires_manager_approval',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("requires_manager_approval" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _targetsJsonMeta = const VerificationMeta(
+    'targetsJson',
+  );
+  @override
+  late final GeneratedColumn<String> targetsJson = GeneratedColumn<String>(
+    'targets_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    scope,
+    amountType,
+    amountBaisas,
+    percent,
+    validityStart,
+    validityEnd,
+    dayofweekMask,
+    timeStart,
+    timeEnd,
+    branchScopeJson,
+    stackable,
+    requiresManagerApproval,
+    status,
+    targetsJson,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'discounts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DiscountRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('scope')) {
+      context.handle(
+        _scopeMeta,
+        scope.isAcceptableOrUnknown(data['scope']!, _scopeMeta),
+      );
+    }
+    if (data.containsKey('amount_type')) {
+      context.handle(
+        _amountTypeMeta,
+        amountType.isAcceptableOrUnknown(data['amount_type']!, _amountTypeMeta),
+      );
+    }
+    if (data.containsKey('amount_baisas')) {
+      context.handle(
+        _amountBaisasMeta,
+        amountBaisas.isAcceptableOrUnknown(
+          data['amount_baisas']!,
+          _amountBaisasMeta,
+        ),
+      );
+    }
+    if (data.containsKey('percent')) {
+      context.handle(
+        _percentMeta,
+        percent.isAcceptableOrUnknown(data['percent']!, _percentMeta),
+      );
+    }
+    if (data.containsKey('validity_start')) {
+      context.handle(
+        _validityStartMeta,
+        validityStart.isAcceptableOrUnknown(
+          data['validity_start']!,
+          _validityStartMeta,
+        ),
+      );
+    }
+    if (data.containsKey('validity_end')) {
+      context.handle(
+        _validityEndMeta,
+        validityEnd.isAcceptableOrUnknown(
+          data['validity_end']!,
+          _validityEndMeta,
+        ),
+      );
+    }
+    if (data.containsKey('dayofweek_mask')) {
+      context.handle(
+        _dayofweekMaskMeta,
+        dayofweekMask.isAcceptableOrUnknown(
+          data['dayofweek_mask']!,
+          _dayofweekMaskMeta,
+        ),
+      );
+    }
+    if (data.containsKey('time_start')) {
+      context.handle(
+        _timeStartMeta,
+        timeStart.isAcceptableOrUnknown(data['time_start']!, _timeStartMeta),
+      );
+    }
+    if (data.containsKey('time_end')) {
+      context.handle(
+        _timeEndMeta,
+        timeEnd.isAcceptableOrUnknown(data['time_end']!, _timeEndMeta),
+      );
+    }
+    if (data.containsKey('branch_scope_json')) {
+      context.handle(
+        _branchScopeJsonMeta,
+        branchScopeJson.isAcceptableOrUnknown(
+          data['branch_scope_json']!,
+          _branchScopeJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('stackable')) {
+      context.handle(
+        _stackableMeta,
+        stackable.isAcceptableOrUnknown(data['stackable']!, _stackableMeta),
+      );
+    }
+    if (data.containsKey('requires_manager_approval')) {
+      context.handle(
+        _requiresManagerApprovalMeta,
+        requiresManagerApproval.isAcceptableOrUnknown(
+          data['requires_manager_approval']!,
+          _requiresManagerApprovalMeta,
+        ),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('targets_json')) {
+      context.handle(
+        _targetsJsonMeta,
+        targetsJson.isAcceptableOrUnknown(
+          data['targets_json']!,
+          _targetsJsonMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DiscountRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DiscountRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      scope: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}scope'],
+      ),
+      amountType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}amount_type'],
+      ),
+      amountBaisas: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount_baisas'],
+      ),
+      percent: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}percent'],
+      ),
+      validityStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}validity_start'],
+      ),
+      validityEnd: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}validity_end'],
+      ),
+      dayofweekMask: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}dayofweek_mask'],
+      ),
+      timeStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}time_start'],
+      ),
+      timeEnd: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}time_end'],
+      ),
+      branchScopeJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}branch_scope_json'],
+      ),
+      stackable: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}stackable'],
+      )!,
+      requiresManagerApproval: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}requires_manager_approval'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      ),
+      targetsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}targets_json'],
+      )!,
+    );
+  }
+
+  @override
+  $DiscountsTable createAlias(String alias) {
+    return $DiscountsTable(attachedDatabase, alias);
+  }
+}
+
+class DiscountRow extends DataClass implements Insertable<DiscountRow> {
+  final int id;
+  final String name;
+  final String? scope;
+  final String? amountType;
+  final int? amountBaisas;
+  final double? percent;
+  final DateTime? validityStart;
+  final DateTime? validityEnd;
+  final int? dayofweekMask;
+  final String? timeStart;
+  final String? timeEnd;
+  final String? branchScopeJson;
+  final bool stackable;
+  final bool requiresManagerApproval;
+  final String? status;
+  final String targetsJson;
+  const DiscountRow({
+    required this.id,
+    required this.name,
+    this.scope,
+    this.amountType,
+    this.amountBaisas,
+    this.percent,
+    this.validityStart,
+    this.validityEnd,
+    this.dayofweekMask,
+    this.timeStart,
+    this.timeEnd,
+    this.branchScopeJson,
+    required this.stackable,
+    required this.requiresManagerApproval,
+    this.status,
+    required this.targetsJson,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || scope != null) {
+      map['scope'] = Variable<String>(scope);
+    }
+    if (!nullToAbsent || amountType != null) {
+      map['amount_type'] = Variable<String>(amountType);
+    }
+    if (!nullToAbsent || amountBaisas != null) {
+      map['amount_baisas'] = Variable<int>(amountBaisas);
+    }
+    if (!nullToAbsent || percent != null) {
+      map['percent'] = Variable<double>(percent);
+    }
+    if (!nullToAbsent || validityStart != null) {
+      map['validity_start'] = Variable<DateTime>(validityStart);
+    }
+    if (!nullToAbsent || validityEnd != null) {
+      map['validity_end'] = Variable<DateTime>(validityEnd);
+    }
+    if (!nullToAbsent || dayofweekMask != null) {
+      map['dayofweek_mask'] = Variable<int>(dayofweekMask);
+    }
+    if (!nullToAbsent || timeStart != null) {
+      map['time_start'] = Variable<String>(timeStart);
+    }
+    if (!nullToAbsent || timeEnd != null) {
+      map['time_end'] = Variable<String>(timeEnd);
+    }
+    if (!nullToAbsent || branchScopeJson != null) {
+      map['branch_scope_json'] = Variable<String>(branchScopeJson);
+    }
+    map['stackable'] = Variable<bool>(stackable);
+    map['requires_manager_approval'] = Variable<bool>(requiresManagerApproval);
+    if (!nullToAbsent || status != null) {
+      map['status'] = Variable<String>(status);
+    }
+    map['targets_json'] = Variable<String>(targetsJson);
+    return map;
+  }
+
+  DiscountsCompanion toCompanion(bool nullToAbsent) {
+    return DiscountsCompanion(
+      id: Value(id),
+      name: Value(name),
+      scope: scope == null && nullToAbsent
+          ? const Value.absent()
+          : Value(scope),
+      amountType: amountType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(amountType),
+      amountBaisas: amountBaisas == null && nullToAbsent
+          ? const Value.absent()
+          : Value(amountBaisas),
+      percent: percent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(percent),
+      validityStart: validityStart == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validityStart),
+      validityEnd: validityEnd == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validityEnd),
+      dayofweekMask: dayofweekMask == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dayofweekMask),
+      timeStart: timeStart == null && nullToAbsent
+          ? const Value.absent()
+          : Value(timeStart),
+      timeEnd: timeEnd == null && nullToAbsent
+          ? const Value.absent()
+          : Value(timeEnd),
+      branchScopeJson: branchScopeJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(branchScopeJson),
+      stackable: Value(stackable),
+      requiresManagerApproval: Value(requiresManagerApproval),
+      status: status == null && nullToAbsent
+          ? const Value.absent()
+          : Value(status),
+      targetsJson: Value(targetsJson),
+    );
+  }
+
+  factory DiscountRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DiscountRow(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      scope: serializer.fromJson<String?>(json['scope']),
+      amountType: serializer.fromJson<String?>(json['amountType']),
+      amountBaisas: serializer.fromJson<int?>(json['amountBaisas']),
+      percent: serializer.fromJson<double?>(json['percent']),
+      validityStart: serializer.fromJson<DateTime?>(json['validityStart']),
+      validityEnd: serializer.fromJson<DateTime?>(json['validityEnd']),
+      dayofweekMask: serializer.fromJson<int?>(json['dayofweekMask']),
+      timeStart: serializer.fromJson<String?>(json['timeStart']),
+      timeEnd: serializer.fromJson<String?>(json['timeEnd']),
+      branchScopeJson: serializer.fromJson<String?>(json['branchScopeJson']),
+      stackable: serializer.fromJson<bool>(json['stackable']),
+      requiresManagerApproval: serializer.fromJson<bool>(
+        json['requiresManagerApproval'],
+      ),
+      status: serializer.fromJson<String?>(json['status']),
+      targetsJson: serializer.fromJson<String>(json['targetsJson']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'scope': serializer.toJson<String?>(scope),
+      'amountType': serializer.toJson<String?>(amountType),
+      'amountBaisas': serializer.toJson<int?>(amountBaisas),
+      'percent': serializer.toJson<double?>(percent),
+      'validityStart': serializer.toJson<DateTime?>(validityStart),
+      'validityEnd': serializer.toJson<DateTime?>(validityEnd),
+      'dayofweekMask': serializer.toJson<int?>(dayofweekMask),
+      'timeStart': serializer.toJson<String?>(timeStart),
+      'timeEnd': serializer.toJson<String?>(timeEnd),
+      'branchScopeJson': serializer.toJson<String?>(branchScopeJson),
+      'stackable': serializer.toJson<bool>(stackable),
+      'requiresManagerApproval': serializer.toJson<bool>(
+        requiresManagerApproval,
+      ),
+      'status': serializer.toJson<String?>(status),
+      'targetsJson': serializer.toJson<String>(targetsJson),
+    };
+  }
+
+  DiscountRow copyWith({
+    int? id,
+    String? name,
+    Value<String?> scope = const Value.absent(),
+    Value<String?> amountType = const Value.absent(),
+    Value<int?> amountBaisas = const Value.absent(),
+    Value<double?> percent = const Value.absent(),
+    Value<DateTime?> validityStart = const Value.absent(),
+    Value<DateTime?> validityEnd = const Value.absent(),
+    Value<int?> dayofweekMask = const Value.absent(),
+    Value<String?> timeStart = const Value.absent(),
+    Value<String?> timeEnd = const Value.absent(),
+    Value<String?> branchScopeJson = const Value.absent(),
+    bool? stackable,
+    bool? requiresManagerApproval,
+    Value<String?> status = const Value.absent(),
+    String? targetsJson,
+  }) => DiscountRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    scope: scope.present ? scope.value : this.scope,
+    amountType: amountType.present ? amountType.value : this.amountType,
+    amountBaisas: amountBaisas.present ? amountBaisas.value : this.amountBaisas,
+    percent: percent.present ? percent.value : this.percent,
+    validityStart: validityStart.present
+        ? validityStart.value
+        : this.validityStart,
+    validityEnd: validityEnd.present ? validityEnd.value : this.validityEnd,
+    dayofweekMask: dayofweekMask.present
+        ? dayofweekMask.value
+        : this.dayofweekMask,
+    timeStart: timeStart.present ? timeStart.value : this.timeStart,
+    timeEnd: timeEnd.present ? timeEnd.value : this.timeEnd,
+    branchScopeJson: branchScopeJson.present
+        ? branchScopeJson.value
+        : this.branchScopeJson,
+    stackable: stackable ?? this.stackable,
+    requiresManagerApproval:
+        requiresManagerApproval ?? this.requiresManagerApproval,
+    status: status.present ? status.value : this.status,
+    targetsJson: targetsJson ?? this.targetsJson,
+  );
+  DiscountRow copyWithCompanion(DiscountsCompanion data) {
+    return DiscountRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      scope: data.scope.present ? data.scope.value : this.scope,
+      amountType: data.amountType.present
+          ? data.amountType.value
+          : this.amountType,
+      amountBaisas: data.amountBaisas.present
+          ? data.amountBaisas.value
+          : this.amountBaisas,
+      percent: data.percent.present ? data.percent.value : this.percent,
+      validityStart: data.validityStart.present
+          ? data.validityStart.value
+          : this.validityStart,
+      validityEnd: data.validityEnd.present
+          ? data.validityEnd.value
+          : this.validityEnd,
+      dayofweekMask: data.dayofweekMask.present
+          ? data.dayofweekMask.value
+          : this.dayofweekMask,
+      timeStart: data.timeStart.present ? data.timeStart.value : this.timeStart,
+      timeEnd: data.timeEnd.present ? data.timeEnd.value : this.timeEnd,
+      branchScopeJson: data.branchScopeJson.present
+          ? data.branchScopeJson.value
+          : this.branchScopeJson,
+      stackable: data.stackable.present ? data.stackable.value : this.stackable,
+      requiresManagerApproval: data.requiresManagerApproval.present
+          ? data.requiresManagerApproval.value
+          : this.requiresManagerApproval,
+      status: data.status.present ? data.status.value : this.status,
+      targetsJson: data.targetsJson.present
+          ? data.targetsJson.value
+          : this.targetsJson,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiscountRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('scope: $scope, ')
+          ..write('amountType: $amountType, ')
+          ..write('amountBaisas: $amountBaisas, ')
+          ..write('percent: $percent, ')
+          ..write('validityStart: $validityStart, ')
+          ..write('validityEnd: $validityEnd, ')
+          ..write('dayofweekMask: $dayofweekMask, ')
+          ..write('timeStart: $timeStart, ')
+          ..write('timeEnd: $timeEnd, ')
+          ..write('branchScopeJson: $branchScopeJson, ')
+          ..write('stackable: $stackable, ')
+          ..write('requiresManagerApproval: $requiresManagerApproval, ')
+          ..write('status: $status, ')
+          ..write('targetsJson: $targetsJson')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    scope,
+    amountType,
+    amountBaisas,
+    percent,
+    validityStart,
+    validityEnd,
+    dayofweekMask,
+    timeStart,
+    timeEnd,
+    branchScopeJson,
+    stackable,
+    requiresManagerApproval,
+    status,
+    targetsJson,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DiscountRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.scope == this.scope &&
+          other.amountType == this.amountType &&
+          other.amountBaisas == this.amountBaisas &&
+          other.percent == this.percent &&
+          other.validityStart == this.validityStart &&
+          other.validityEnd == this.validityEnd &&
+          other.dayofweekMask == this.dayofweekMask &&
+          other.timeStart == this.timeStart &&
+          other.timeEnd == this.timeEnd &&
+          other.branchScopeJson == this.branchScopeJson &&
+          other.stackable == this.stackable &&
+          other.requiresManagerApproval == this.requiresManagerApproval &&
+          other.status == this.status &&
+          other.targetsJson == this.targetsJson);
+}
+
+class DiscountsCompanion extends UpdateCompanion<DiscountRow> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String?> scope;
+  final Value<String?> amountType;
+  final Value<int?> amountBaisas;
+  final Value<double?> percent;
+  final Value<DateTime?> validityStart;
+  final Value<DateTime?> validityEnd;
+  final Value<int?> dayofweekMask;
+  final Value<String?> timeStart;
+  final Value<String?> timeEnd;
+  final Value<String?> branchScopeJson;
+  final Value<bool> stackable;
+  final Value<bool> requiresManagerApproval;
+  final Value<String?> status;
+  final Value<String> targetsJson;
+  const DiscountsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.scope = const Value.absent(),
+    this.amountType = const Value.absent(),
+    this.amountBaisas = const Value.absent(),
+    this.percent = const Value.absent(),
+    this.validityStart = const Value.absent(),
+    this.validityEnd = const Value.absent(),
+    this.dayofweekMask = const Value.absent(),
+    this.timeStart = const Value.absent(),
+    this.timeEnd = const Value.absent(),
+    this.branchScopeJson = const Value.absent(),
+    this.stackable = const Value.absent(),
+    this.requiresManagerApproval = const Value.absent(),
+    this.status = const Value.absent(),
+    this.targetsJson = const Value.absent(),
+  });
+  DiscountsCompanion.insert({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.scope = const Value.absent(),
+    this.amountType = const Value.absent(),
+    this.amountBaisas = const Value.absent(),
+    this.percent = const Value.absent(),
+    this.validityStart = const Value.absent(),
+    this.validityEnd = const Value.absent(),
+    this.dayofweekMask = const Value.absent(),
+    this.timeStart = const Value.absent(),
+    this.timeEnd = const Value.absent(),
+    this.branchScopeJson = const Value.absent(),
+    this.stackable = const Value.absent(),
+    this.requiresManagerApproval = const Value.absent(),
+    this.status = const Value.absent(),
+    this.targetsJson = const Value.absent(),
+  });
+  static Insertable<DiscountRow> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? scope,
+    Expression<String>? amountType,
+    Expression<int>? amountBaisas,
+    Expression<double>? percent,
+    Expression<DateTime>? validityStart,
+    Expression<DateTime>? validityEnd,
+    Expression<int>? dayofweekMask,
+    Expression<String>? timeStart,
+    Expression<String>? timeEnd,
+    Expression<String>? branchScopeJson,
+    Expression<bool>? stackable,
+    Expression<bool>? requiresManagerApproval,
+    Expression<String>? status,
+    Expression<String>? targetsJson,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (scope != null) 'scope': scope,
+      if (amountType != null) 'amount_type': amountType,
+      if (amountBaisas != null) 'amount_baisas': amountBaisas,
+      if (percent != null) 'percent': percent,
+      if (validityStart != null) 'validity_start': validityStart,
+      if (validityEnd != null) 'validity_end': validityEnd,
+      if (dayofweekMask != null) 'dayofweek_mask': dayofweekMask,
+      if (timeStart != null) 'time_start': timeStart,
+      if (timeEnd != null) 'time_end': timeEnd,
+      if (branchScopeJson != null) 'branch_scope_json': branchScopeJson,
+      if (stackable != null) 'stackable': stackable,
+      if (requiresManagerApproval != null)
+        'requires_manager_approval': requiresManagerApproval,
+      if (status != null) 'status': status,
+      if (targetsJson != null) 'targets_json': targetsJson,
+    });
+  }
+
+  DiscountsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<String?>? scope,
+    Value<String?>? amountType,
+    Value<int?>? amountBaisas,
+    Value<double?>? percent,
+    Value<DateTime?>? validityStart,
+    Value<DateTime?>? validityEnd,
+    Value<int?>? dayofweekMask,
+    Value<String?>? timeStart,
+    Value<String?>? timeEnd,
+    Value<String?>? branchScopeJson,
+    Value<bool>? stackable,
+    Value<bool>? requiresManagerApproval,
+    Value<String?>? status,
+    Value<String>? targetsJson,
+  }) {
+    return DiscountsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      scope: scope ?? this.scope,
+      amountType: amountType ?? this.amountType,
+      amountBaisas: amountBaisas ?? this.amountBaisas,
+      percent: percent ?? this.percent,
+      validityStart: validityStart ?? this.validityStart,
+      validityEnd: validityEnd ?? this.validityEnd,
+      dayofweekMask: dayofweekMask ?? this.dayofweekMask,
+      timeStart: timeStart ?? this.timeStart,
+      timeEnd: timeEnd ?? this.timeEnd,
+      branchScopeJson: branchScopeJson ?? this.branchScopeJson,
+      stackable: stackable ?? this.stackable,
+      requiresManagerApproval:
+          requiresManagerApproval ?? this.requiresManagerApproval,
+      status: status ?? this.status,
+      targetsJson: targetsJson ?? this.targetsJson,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (scope.present) {
+      map['scope'] = Variable<String>(scope.value);
+    }
+    if (amountType.present) {
+      map['amount_type'] = Variable<String>(amountType.value);
+    }
+    if (amountBaisas.present) {
+      map['amount_baisas'] = Variable<int>(amountBaisas.value);
+    }
+    if (percent.present) {
+      map['percent'] = Variable<double>(percent.value);
+    }
+    if (validityStart.present) {
+      map['validity_start'] = Variable<DateTime>(validityStart.value);
+    }
+    if (validityEnd.present) {
+      map['validity_end'] = Variable<DateTime>(validityEnd.value);
+    }
+    if (dayofweekMask.present) {
+      map['dayofweek_mask'] = Variable<int>(dayofweekMask.value);
+    }
+    if (timeStart.present) {
+      map['time_start'] = Variable<String>(timeStart.value);
+    }
+    if (timeEnd.present) {
+      map['time_end'] = Variable<String>(timeEnd.value);
+    }
+    if (branchScopeJson.present) {
+      map['branch_scope_json'] = Variable<String>(branchScopeJson.value);
+    }
+    if (stackable.present) {
+      map['stackable'] = Variable<bool>(stackable.value);
+    }
+    if (requiresManagerApproval.present) {
+      map['requires_manager_approval'] = Variable<bool>(
+        requiresManagerApproval.value,
+      );
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (targetsJson.present) {
+      map['targets_json'] = Variable<String>(targetsJson.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DiscountsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('scope: $scope, ')
+          ..write('amountType: $amountType, ')
+          ..write('amountBaisas: $amountBaisas, ')
+          ..write('percent: $percent, ')
+          ..write('validityStart: $validityStart, ')
+          ..write('validityEnd: $validityEnd, ')
+          ..write('dayofweekMask: $dayofweekMask, ')
+          ..write('timeStart: $timeStart, ')
+          ..write('timeEnd: $timeEnd, ')
+          ..write('branchScopeJson: $branchScopeJson, ')
+          ..write('stackable: $stackable, ')
+          ..write('requiresManagerApproval: $requiresManagerApproval, ')
+          ..write('status: $status, ')
+          ..write('targetsJson: $targetsJson')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -5095,6 +6034,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $DeliveryProvidersTable(this);
   late final $BranchIngredientStockTable branchIngredientStock =
       $BranchIngredientStockTable(this);
+  late final $DiscountsTable discounts = $DiscountsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -5112,6 +6052,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     orderOutbox,
     deliveryProviders,
     branchIngredientStock,
+    discounts,
   ];
 }
 
@@ -7796,6 +8737,425 @@ typedef $$BranchIngredientStockTableProcessedTableManager =
       BranchIngredientStockRow,
       PrefetchHooks Function()
     >;
+typedef $$DiscountsTableCreateCompanionBuilder =
+    DiscountsCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> scope,
+      Value<String?> amountType,
+      Value<int?> amountBaisas,
+      Value<double?> percent,
+      Value<DateTime?> validityStart,
+      Value<DateTime?> validityEnd,
+      Value<int?> dayofweekMask,
+      Value<String?> timeStart,
+      Value<String?> timeEnd,
+      Value<String?> branchScopeJson,
+      Value<bool> stackable,
+      Value<bool> requiresManagerApproval,
+      Value<String?> status,
+      Value<String> targetsJson,
+    });
+typedef $$DiscountsTableUpdateCompanionBuilder =
+    DiscountsCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> scope,
+      Value<String?> amountType,
+      Value<int?> amountBaisas,
+      Value<double?> percent,
+      Value<DateTime?> validityStart,
+      Value<DateTime?> validityEnd,
+      Value<int?> dayofweekMask,
+      Value<String?> timeStart,
+      Value<String?> timeEnd,
+      Value<String?> branchScopeJson,
+      Value<bool> stackable,
+      Value<bool> requiresManagerApproval,
+      Value<String?> status,
+      Value<String> targetsJson,
+    });
+
+class $$DiscountsTableFilterComposer
+    extends Composer<_$AppDatabase, $DiscountsTable> {
+  $$DiscountsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get scope => $composableBuilder(
+    column: $table.scope,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get amountType => $composableBuilder(
+    column: $table.amountType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amountBaisas => $composableBuilder(
+    column: $table.amountBaisas,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get percent => $composableBuilder(
+    column: $table.percent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get validityStart => $composableBuilder(
+    column: $table.validityStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get validityEnd => $composableBuilder(
+    column: $table.validityEnd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dayofweekMask => $composableBuilder(
+    column: $table.dayofweekMask,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get timeStart => $composableBuilder(
+    column: $table.timeStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get timeEnd => $composableBuilder(
+    column: $table.timeEnd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get branchScopeJson => $composableBuilder(
+    column: $table.branchScopeJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get stackable => $composableBuilder(
+    column: $table.stackable,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get requiresManagerApproval => $composableBuilder(
+    column: $table.requiresManagerApproval,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get targetsJson => $composableBuilder(
+    column: $table.targetsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DiscountsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DiscountsTable> {
+  $$DiscountsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get scope => $composableBuilder(
+    column: $table.scope,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get amountType => $composableBuilder(
+    column: $table.amountType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amountBaisas => $composableBuilder(
+    column: $table.amountBaisas,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get percent => $composableBuilder(
+    column: $table.percent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get validityStart => $composableBuilder(
+    column: $table.validityStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get validityEnd => $composableBuilder(
+    column: $table.validityEnd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get dayofweekMask => $composableBuilder(
+    column: $table.dayofweekMask,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get timeStart => $composableBuilder(
+    column: $table.timeStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get timeEnd => $composableBuilder(
+    column: $table.timeEnd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get branchScopeJson => $composableBuilder(
+    column: $table.branchScopeJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get stackable => $composableBuilder(
+    column: $table.stackable,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get requiresManagerApproval => $composableBuilder(
+    column: $table.requiresManagerApproval,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get targetsJson => $composableBuilder(
+    column: $table.targetsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DiscountsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DiscountsTable> {
+  $$DiscountsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get scope =>
+      $composableBuilder(column: $table.scope, builder: (column) => column);
+
+  GeneratedColumn<String> get amountType => $composableBuilder(
+    column: $table.amountType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get amountBaisas => $composableBuilder(
+    column: $table.amountBaisas,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get percent =>
+      $composableBuilder(column: $table.percent, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get validityStart => $composableBuilder(
+    column: $table.validityStart,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get validityEnd => $composableBuilder(
+    column: $table.validityEnd,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get dayofweekMask => $composableBuilder(
+    column: $table.dayofweekMask,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get timeStart =>
+      $composableBuilder(column: $table.timeStart, builder: (column) => column);
+
+  GeneratedColumn<String> get timeEnd =>
+      $composableBuilder(column: $table.timeEnd, builder: (column) => column);
+
+  GeneratedColumn<String> get branchScopeJson => $composableBuilder(
+    column: $table.branchScopeJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get stackable =>
+      $composableBuilder(column: $table.stackable, builder: (column) => column);
+
+  GeneratedColumn<bool> get requiresManagerApproval => $composableBuilder(
+    column: $table.requiresManagerApproval,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get targetsJson => $composableBuilder(
+    column: $table.targetsJson,
+    builder: (column) => column,
+  );
+}
+
+class $$DiscountsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DiscountsTable,
+          DiscountRow,
+          $$DiscountsTableFilterComposer,
+          $$DiscountsTableOrderingComposer,
+          $$DiscountsTableAnnotationComposer,
+          $$DiscountsTableCreateCompanionBuilder,
+          $$DiscountsTableUpdateCompanionBuilder,
+          (
+            DiscountRow,
+            BaseReferences<_$AppDatabase, $DiscountsTable, DiscountRow>,
+          ),
+          DiscountRow,
+          PrefetchHooks Function()
+        > {
+  $$DiscountsTableTableManager(_$AppDatabase db, $DiscountsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DiscountsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DiscountsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DiscountsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> scope = const Value.absent(),
+                Value<String?> amountType = const Value.absent(),
+                Value<int?> amountBaisas = const Value.absent(),
+                Value<double?> percent = const Value.absent(),
+                Value<DateTime?> validityStart = const Value.absent(),
+                Value<DateTime?> validityEnd = const Value.absent(),
+                Value<int?> dayofweekMask = const Value.absent(),
+                Value<String?> timeStart = const Value.absent(),
+                Value<String?> timeEnd = const Value.absent(),
+                Value<String?> branchScopeJson = const Value.absent(),
+                Value<bool> stackable = const Value.absent(),
+                Value<bool> requiresManagerApproval = const Value.absent(),
+                Value<String?> status = const Value.absent(),
+                Value<String> targetsJson = const Value.absent(),
+              }) => DiscountsCompanion(
+                id: id,
+                name: name,
+                scope: scope,
+                amountType: amountType,
+                amountBaisas: amountBaisas,
+                percent: percent,
+                validityStart: validityStart,
+                validityEnd: validityEnd,
+                dayofweekMask: dayofweekMask,
+                timeStart: timeStart,
+                timeEnd: timeEnd,
+                branchScopeJson: branchScopeJson,
+                stackable: stackable,
+                requiresManagerApproval: requiresManagerApproval,
+                status: status,
+                targetsJson: targetsJson,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> scope = const Value.absent(),
+                Value<String?> amountType = const Value.absent(),
+                Value<int?> amountBaisas = const Value.absent(),
+                Value<double?> percent = const Value.absent(),
+                Value<DateTime?> validityStart = const Value.absent(),
+                Value<DateTime?> validityEnd = const Value.absent(),
+                Value<int?> dayofweekMask = const Value.absent(),
+                Value<String?> timeStart = const Value.absent(),
+                Value<String?> timeEnd = const Value.absent(),
+                Value<String?> branchScopeJson = const Value.absent(),
+                Value<bool> stackable = const Value.absent(),
+                Value<bool> requiresManagerApproval = const Value.absent(),
+                Value<String?> status = const Value.absent(),
+                Value<String> targetsJson = const Value.absent(),
+              }) => DiscountsCompanion.insert(
+                id: id,
+                name: name,
+                scope: scope,
+                amountType: amountType,
+                amountBaisas: amountBaisas,
+                percent: percent,
+                validityStart: validityStart,
+                validityEnd: validityEnd,
+                dayofweekMask: dayofweekMask,
+                timeStart: timeStart,
+                timeEnd: timeEnd,
+                branchScopeJson: branchScopeJson,
+                stackable: stackable,
+                requiresManagerApproval: requiresManagerApproval,
+                status: status,
+                targetsJson: targetsJson,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DiscountsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DiscountsTable,
+      DiscountRow,
+      $$DiscountsTableFilterComposer,
+      $$DiscountsTableOrderingComposer,
+      $$DiscountsTableAnnotationComposer,
+      $$DiscountsTableCreateCompanionBuilder,
+      $$DiscountsTableUpdateCompanionBuilder,
+      (
+        DiscountRow,
+        BaseReferences<_$AppDatabase, $DiscountsTable, DiscountRow>,
+      ),
+      DiscountRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -7824,4 +9184,6 @@ class $AppDatabaseManager {
       $$DeliveryProvidersTableTableManager(_db, _db.deliveryProviders);
   $$BranchIngredientStockTableTableManager get branchIngredientStock =>
       $$BranchIngredientStockTableTableManager(_db, _db.branchIngredientStock);
+  $$DiscountsTableTableManager get discounts =>
+      $$DiscountsTableTableManager(_db, _db.discounts);
 }
