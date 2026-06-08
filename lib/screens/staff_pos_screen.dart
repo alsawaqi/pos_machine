@@ -1414,8 +1414,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final applicable = controller.availableDiscounts
         .where((d) => d.isOrderScope && d.appliesAt(now, branchId: branchId))
         .toList();
+    final redeem = _redeemable();
 
-    if (applicable.isEmpty) {
+    if (applicable.isEmpty && redeem == null) {
       await _openManualDiscountDialog();
       return;
     }
@@ -1437,6 +1438,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 ),
               ),
             ),
+            if (redeem != null)
+              ListTile(
+                leading: const Icon(Icons.card_giftcard_rounded),
+                title: const Text('Redeem loyalty points'),
+                subtitle: Text(
+                  '${redeem.points} points available  ·  ${redeem.rule.name}',
+                ),
+                onTap: () => Navigator.pop(ctx, (type: 'redeem', rule: null)),
+              ),
             for (final d in applicable)
               ListTile(
                 leading: const Icon(Icons.local_offer_outlined),
@@ -1479,7 +1489,70 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         );
       case 'rule':
         await _applyMerchantDiscount(action.rule!);
+      case 'redeem':
+        await _openRedeemDialog();
     }
+  }
+
+  /// The redeemable spend-based rule for the attached customer (enough points
+  /// for at least one redemption block), or null.
+  ({LoyaltyRule rule, CustomerSearchResult customer, int points})? _redeemable() {
+    final c = controller.selectedCustomer;
+    if (c == null) return null;
+    for (final r in controller.loyaltyRules) {
+      if (!r.isActive || !r.isSpendBased) continue;
+      if (r.redemptionPoints <= 0 || r.redemptionValue <= 0) continue;
+      final pts = c.pointsForRule(r.id);
+      final minNeeded =
+          r.minRedemptionPoints > 0 ? r.minRedemptionPoints : r.redemptionPoints;
+      if (pts >= minNeeded && pts >= r.redemptionPoints) {
+        return (rule: r, customer: c, points: pts);
+      }
+    }
+    return null;
+  }
+
+  Future<void> _openRedeemDialog() async {
+    final redeem = _redeemable();
+    if (redeem == null) return;
+    final rule = redeem.rule;
+    // Cap blocks by the balance AND the order subtotal (can't discount past it).
+    final byBalance = redeem.points ~/ rule.redemptionPoints;
+    final byTotal = rule.redemptionValue > 0
+        ? (controller.rawSubtotal / rule.redemptionValue).floor()
+        : 0;
+    final maxBlocks = byBalance < byTotal ? byBalance : byTotal;
+    if (maxBlocks < 1) {
+      _showPopupMessage(
+        title: 'Cannot Redeem',
+        message: 'The order total is too low to redeem a block.',
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
+    final blocks = await showDialog<int>(
+      context: context,
+      builder: (_) => _RedeemBlocksDialog(
+        maxBlocks: maxBlocks,
+        pointsPerBlock: rule.redemptionPoints,
+        valuePerBlock: rule.redemptionValue,
+      ),
+    );
+    if (!mounted || blocks == null || blocks < 1) return;
+
+    controller.applyLoyaltyRedemption(
+      ruleId: rule.id,
+      points: blocks * rule.redemptionPoints,
+      valueOmr: blocks * rule.redemptionValue,
+      label: 'Loyalty redemption',
+    );
+    _showPopupMessage(
+      title: 'Points Redeemed',
+      message:
+          '${blocks * rule.redemptionPoints} points → ${SunmiReceiptService.money(blocks * rule.redemptionValue)} off.',
+      tone: FeedbackTone.success,
+    );
   }
 
   String _discountSubtitle(MerchantDiscount d) => d.amountType == 'percent'
@@ -8732,6 +8805,79 @@ class _CustomerSearchDialogState extends State<_CustomerSearchDialog> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Choose how many loyalty redemption blocks to redeem (1..maxBlocks).
+class _RedeemBlocksDialog extends StatefulWidget {
+  const _RedeemBlocksDialog({
+    required this.maxBlocks,
+    required this.pointsPerBlock,
+    required this.valuePerBlock,
+  });
+
+  final int maxBlocks;
+  final int pointsPerBlock;
+  final double valuePerBlock;
+
+  @override
+  State<_RedeemBlocksDialog> createState() => _RedeemBlocksDialogState();
+}
+
+class _RedeemBlocksDialogState extends State<_RedeemBlocksDialog> {
+  int _blocks = 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final points = _blocks * widget.pointsPerBlock;
+    final value = _blocks * widget.valuePerBlock;
+    return AlertDialog(
+      title: const Text('Redeem points'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${widget.pointsPerBlock} points = ${SunmiReceiptService.money(widget.valuePerBlock)} per block',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed:
+                    _blocks > 1 ? () => setState(() => _blocks--) : null,
+                icon: const Icon(Icons.remove_circle_outline),
+              ),
+              Text('$_blocks',
+                  style: const TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.w800)),
+              IconButton(
+                onPressed: _blocks < widget.maxBlocks
+                    ? () => setState(() => _blocks++)
+                    : null,
+                icon: const Icon(Icons.add_circle_outline),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$points points  →  ${SunmiReceiptService.money(value)} off',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _blocks),
+          child: const Text('Redeem'),
+        ),
+      ],
     );
   }
 }

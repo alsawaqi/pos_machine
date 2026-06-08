@@ -421,6 +421,37 @@ void main() {
       expect(pay.containsKey('loyalty_rule_id'), isFalse);
     });
 
+    test('loyalty_redeem rides on the pay event when points are redeemed', () {
+      final snap = OrderSnapshot.initial().copyWith(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 10.0, 'lineTotal': 10.0},
+        ],
+        rawSubtotal: 10.0,
+        discountAmount: 5.0,
+        discountLabel: 'Loyalty redemption',
+        loyaltyRedeemRuleId: 2,
+        loyaltyRedeemPoints: 100,
+        total: 5.0,
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final pay = payload.events[1]['payload'] as Map<String, dynamic>;
+      expect(pay['loyalty_redeem'], {'rule_id': 2, 'points': 100});
+    });
+
+    test('no loyalty_redeem key when nothing is redeemed', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 3.0, 'lineTotal': 3.0},
+        ],
+        rawSubtotal: 3.0,
+        total: 3.0,
+      );
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final pay = payload.events[1]['payload'] as Map<String, dynamic>;
+      expect(pay.containsKey('loyalty_redeem'), isFalse);
+    });
+
     test('helpers map enums + money correctly', () {
       expect(mapOrderType('dine_in'), 'dine_in');
       expect(mapOrderType('to_go'), 'to_go');

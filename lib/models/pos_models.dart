@@ -956,6 +956,10 @@ class OrderSnapshot {
   // order.create so the server snapshots the rule (by-rule report). Null = manual.
   final int? discountId;
   final String? discountAmountType;
+  // Loyalty redemption applied to this order (points spent under a rule); sent
+  // as loyalty_redeem on order.pay. Null/0 = no redemption.
+  final int? loyaltyRedeemRuleId;
+  final int loyaltyRedeemPoints;
   final double subtotal;
   final double tax;
   final double total;
@@ -1013,6 +1017,8 @@ class OrderSnapshot {
     this.cancellations = const [],
     this.discountId,
     this.discountAmountType,
+    this.loyaltyRedeemRuleId,
+    this.loyaltyRedeemPoints = 0,
     required this.charityRoundUpPromptId,
     required this.recentProductId,
     required this.orderUpdateNonce,
@@ -1163,6 +1169,8 @@ class OrderSnapshot {
     String? discountLabel,
     int? discountId,
     String? discountAmountType,
+    int? loyaltyRedeemRuleId,
+    int? loyaltyRedeemPoints,
     double? subtotal,
     double? tax,
     double? total,
@@ -1198,6 +1206,8 @@ class OrderSnapshot {
       discountLabel: discountLabel ?? this.discountLabel,
       discountId: discountId ?? this.discountId,
       discountAmountType: discountAmountType ?? this.discountAmountType,
+      loyaltyRedeemRuleId: loyaltyRedeemRuleId ?? this.loyaltyRedeemRuleId,
+      loyaltyRedeemPoints: loyaltyRedeemPoints ?? this.loyaltyRedeemPoints,
       subtotal: subtotal ?? this.subtotal,
       tax: tax ?? this.tax,
       total: total ?? this.total,

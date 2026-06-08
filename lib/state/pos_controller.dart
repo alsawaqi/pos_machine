@@ -662,6 +662,8 @@ class PosController extends ChangeNotifier {
       discountLabel: discount.label,
       discountId: discount.discountId,
       discountAmountType: discount.amountType,
+      loyaltyRedeemRuleId: loyaltyRedeemRuleId,
+      loyaltyRedeemPoints: loyaltyRedeemPoints,
       subtotal: subtotal,
       tax: tax,
       total: total,
@@ -846,14 +848,45 @@ class PosController extends ChangeNotifier {
     _broadcast();
   }
 
+  /// Pending loyalty redemption for this order (the points SPENT). Its monetary
+  /// value rides as the order discount; this is sent as loyalty_redeem on pay so
+  /// the server decrements the balance. Null = no redemption.
+  int? loyaltyRedeemRuleId;
+  int loyaltyRedeemPoints = 0;
+
   void applyDiscount(DiscountConfiguration configuration) {
     discount = configuration;
+    // A manual/merchant discount reuses the single discount slot — drop any
+    // pending loyalty redemption so we don't send a stale redeem on pay.
+    loyaltyRedeemRuleId = null;
+    loyaltyRedeemPoints = 0;
+    _resetCharityRoundUp();
+    _broadcast();
+  }
+
+  /// Redeem [points] under a spend-based rule: apply [valueOmr] as the order
+  /// discount and remember the points to spend (sent as loyalty_redeem on pay).
+  void applyLoyaltyRedemption({
+    required int ruleId,
+    required int points,
+    required double valueOmr,
+    required String label,
+  }) {
+    discount = DiscountConfiguration(
+      kind: DiscountKind.fixedAmount,
+      value: valueOmr,
+      label: label,
+    );
+    loyaltyRedeemRuleId = ruleId;
+    loyaltyRedeemPoints = points;
     _resetCharityRoundUp();
     _broadcast();
   }
 
   void clearDiscount() {
     discount = const DiscountConfiguration();
+    loyaltyRedeemRuleId = null;
+    loyaltyRedeemPoints = 0;
     _resetCharityRoundUp();
     _broadcast();
   }
@@ -2167,6 +2200,8 @@ class PosController extends ChangeNotifier {
     splitCount = 1;
     _splitPayments.clear();
     _lastCardCharge = null;
+    loyaltyRedeemRuleId = null;
+    loyaltyRedeemPoints = 0;
     showPendingReconciliationPrompt = false;
     _activePaymentBaseOverride = null;
     selectedOrderType = nextOrderType;
