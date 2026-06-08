@@ -63,6 +63,41 @@ class MosambeePaymentResult {
         message.contains('cancel');
   }
 
+  /// Neither a clear success nor an explicit cancel (e.g. an NFC timeout or an
+  /// ambiguous terminal verdict). The cashier may force-record these as
+  /// pending reconciliation rather than losing the sale.
+  bool get isUncertain => !isSuccess && !isCanceled;
+
+  /// The acquirer transaction reference (RRN / txn id) — the key the bank
+  /// settlement file is matched on. Looks top-level and inside receiptResponse.
+  String? get softposReference => _firstNonEmpty(const [
+    'rrn',
+    'retrievalReferenceNumber',
+    'transactionId',
+    'txnId',
+    'paymentId',
+    'invoiceNo',
+    'invoiceNumber',
+    'tid',
+  ]);
+
+  /// The card authorization / approval code.
+  String? get softposAuthCode => _firstNonEmpty(const [
+    'authCode',
+    'approvalCode',
+    'authorizationCode',
+    'approvalNo',
+  ]);
+
+  /// Look [keys] up in the top-level payload, falling back to the nested
+  /// receiptResponse. Returns null when none is present.
+  String? _firstNonEmpty(List<String> keys) {
+    final top = _lookupString(payload, keys);
+    if (top.isNotEmpty) return top;
+    final nested = _lookupString(_nestedMap(payload['receiptResponse']), keys);
+    return nested.isEmpty ? null : nested;
+  }
+
   String get userMessage {
     final receiptResponse = _nestedMap(payload['receiptResponse']);
 

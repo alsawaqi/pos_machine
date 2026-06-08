@@ -47,6 +47,23 @@ String mapPaymentMethod(String label) {
   return 'cash';
 }
 
+/// Attach the Soft POS evidence to a CARD [tender] in place. No-op for cash /
+/// other tenders, or when there is no charge result. Overwrites [tender]'s
+/// status with the charge status (success | pending_reconciliation).
+void _applyCardCharge(Map<String, dynamic> tender, CardCharge? charge) {
+  if (tender['method'] != 'card' || charge == null) return;
+  if (charge.softposReference != null) {
+    tender['softpos_reference'] = charge.softposReference;
+  }
+  if (charge.softposAuthCode != null) {
+    tender['softpos_auth_code'] = charge.softposAuthCode;
+  }
+  if (charge.bankResponse != null) {
+    tender['bank_response'] = charge.bankResponse;
+  }
+  tender['status'] = charge.status;
+}
+
 /// RFC-4122 v4 UUID. [rng] is injectable so tests can be deterministic.
 String uuidV4([Random? rng]) {
   final r = rng ?? Random.secure();
@@ -72,6 +89,7 @@ OrderSyncPayload buildOrderSyncPayload(
   int? customerId,
   String? plateNumber,
   String? deliveryProviderName,
+  CardCharge? cardCharge,
   DateTime? now,
   String Function()? newUuid,
 }) {
@@ -157,7 +175,9 @@ OrderSyncPayload buildOrderSyncPayload(
   };
 
   // ---- tenders: split into one row each, else a single tender. Sum is forced
-  // to equal grand_total exactly (the server tolerates ±1 baisa). ----
+  // to equal grand_total exactly (the server tolerates ±1 baisa). A CARD tender
+  // carries its Soft POS evidence (reference / auth code / raw bank response)
+  // and its status (success, or pending_reconciliation when force-recorded). ----
   final grandBaisas = omrToBaisas(snapshot.total);
   final payments = <Map<String, dynamic>>[];
   if (snapshot.splitPayments.isNotEmpty) {
@@ -167,18 +187,22 @@ OrderSyncPayload buildOrderSyncPayload(
       final isLast = i == snapshot.splitPayments.length - 1;
       final amt = isLast ? (grandBaisas - acc) : omrToBaisas(rec.baseAmount);
       acc += amt;
-      payments.add({
+      final tender = <String, dynamic>{
         'method': mapPaymentMethod(rec.paymentMethod),
         'amount_baisas': amt,
         'status': 'success',
-      });
+      };
+      _applyCardCharge(tender, rec.cardCharge);
+      payments.add(tender);
     }
   } else {
-    payments.add({
+    final tender = <String, dynamic>{
       'method': mapPaymentMethod(snapshot.paymentMethod),
       'amount_baisas': grandBaisas,
       'status': 'success',
-    });
+    };
+    _applyCardCharge(tender, cardCharge);
+    payments.add(tender);
   }
 
   final payEvent = <String, dynamic>{

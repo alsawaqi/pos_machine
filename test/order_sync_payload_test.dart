@@ -237,6 +237,113 @@ void main() {
       expect(order.containsKey('plate_number'), isFalse);
     });
 
+    test('single card tender carries the Soft POS evidence + success status', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 3.0, 'lineTotal': 3.0},
+        ],
+        rawSubtotal: 3.0,
+        total: 3.0,
+        paymentMethod: 'Credit Card',
+      );
+
+      final payload = buildOrderSyncPayload(
+        snap,
+        cardCharge: const CardCharge(
+          softposReference: 'RRN123',
+          softposAuthCode: 'AUTH9',
+          bankResponse: {'result': 'SUCCESS', 'rrn': 'RRN123'},
+        ),
+        newUuid: _seqUuid(),
+      );
+
+      final tender =
+          ((payload.events[1]['payload'] as Map)['payments'] as List).first
+              as Map<String, dynamic>;
+      expect(tender['method'], 'card');
+      expect(tender['softpos_reference'], 'RRN123');
+      expect(tender['softpos_auth_code'], 'AUTH9');
+      expect((tender['bank_response'] as Map)['result'], 'SUCCESS');
+      expect(tender['status'], 'success');
+    });
+
+    test('a force-recorded card charge rides as pending_reconciliation', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 3.0, 'lineTotal': 3.0},
+        ],
+        rawSubtotal: 3.0,
+        total: 3.0,
+        paymentMethod: 'Credit Card',
+      );
+
+      final payload = buildOrderSyncPayload(
+        snap,
+        cardCharge: const CardCharge(
+          softposReference: 'NFC-TIMEOUT',
+          status: 'pending_reconciliation',
+        ),
+        newUuid: _seqUuid(),
+      );
+
+      final tender =
+          ((payload.events[1]['payload'] as Map)['payments'] as List).first
+              as Map<String, dynamic>;
+      expect(tender['status'], 'pending_reconciliation');
+      expect(tender['softpos_reference'], 'NFC-TIMEOUT');
+    });
+
+    test('a cash single tender never gets card fields from cardCharge', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 1.0, 'lineTotal': 1.0},
+        ],
+        rawSubtotal: 1.0,
+        total: 1.0,
+        paymentMethod: 'Cash',
+      );
+
+      final payload = buildOrderSyncPayload(
+        snap,
+        cardCharge: const CardCharge(softposReference: 'X'),
+        newUuid: _seqUuid(),
+      );
+      final tender =
+          ((payload.events[1]['payload'] as Map)['payments'] as List).first
+              as Map<String, dynamic>;
+      expect(tender['method'], 'cash');
+      expect(tender.containsKey('softpos_reference'), isFalse);
+      expect(tender['status'], 'success');
+    });
+
+    test('a card tender within a split carries its own evidence', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 10.0, 'lineTotal': 10.0},
+        ],
+        rawSubtotal: 10.0,
+        total: 10.0,
+        paymentMethod: 'Split Payment',
+        splitPayments: [
+          _split(1, 'Cash', 6.0),
+          _split(2, 'Credit Card', 4.0,
+              cardCharge: const CardCharge(
+                  softposReference: 'SPLITRRN', softposAuthCode: 'SA1')),
+        ],
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final payments =
+          (payload.events[1]['payload'] as Map)['payments'] as List;
+      final cash = payments[0] as Map<String, dynamic>;
+      final card = payments[1] as Map<String, dynamic>;
+      expect(cash['method'], 'cash');
+      expect(cash.containsKey('softpos_reference'), isFalse);
+      expect(card['method'], 'card');
+      expect(card['softpos_reference'], 'SPLITRRN');
+      expect(card['softpos_auth_code'], 'SA1');
+    });
+
     test('helpers map enums + money correctly', () {
       expect(mapOrderType('dine_in'), 'dine_in');
       expect(mapOrderType('to_go'), 'to_go');
@@ -250,7 +357,8 @@ void main() {
   });
 }
 
-SplitPaymentRecord _split(int index, String method, double base) =>
+SplitPaymentRecord _split(int index, String method, double base,
+        {CardCharge? cardCharge}) =>
     SplitPaymentRecord(
       splitIndex: index,
       splitCount: 3,
@@ -260,4 +368,5 @@ SplitPaymentRecord _split(int index, String method, double base) =>
       charityRoundUpAmount: 0,
       paidAmount: base,
       paidAt: DateTime.fromMillisecondsSinceEpoch(0),
+      cardCharge: cardCharge,
     );
