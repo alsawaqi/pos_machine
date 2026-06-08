@@ -90,6 +90,7 @@ OrderSyncPayload buildOrderSyncPayload(
   String? plateNumber,
   String? deliveryProviderName,
   CardCharge? cardCharge,
+  int? loyaltyRuleId,
   DateTime? now,
   String Function()? newUuid,
 }) {
@@ -215,6 +216,10 @@ OrderSyncPayload buildOrderSyncPayload(
     'paid_at': ts,
     'payments': payments,
     'gps': ?gps,
+    // Loyalty EARN: naming a rule makes the server accrue points/stamps for the
+    // order's customer (server-authoritative). Only sent when a customer is
+    // attached and the company has an active earn rule.
+    'loyalty_rule_id': ?loyaltyRuleId,
   };
 
   final events = <Map<String, dynamic>>[

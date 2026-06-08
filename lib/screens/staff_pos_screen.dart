@@ -272,6 +272,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       }
     }
 
+    // Loyalty earn: only an identified customer accrues, under the active rule.
+    final loyaltyRuleId =
+        customerId != null ? controller.activeEarnRule?.id : null;
+
     try {
       await ref.read(orderSyncRepositoryProvider).enqueue(
             snapshot,
@@ -283,6 +287,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             plateNumber: plate.isEmpty ? null : plate,
             deliveryProviderName: deliveryProviderName,
             cardCharge: cardCharge,
+            loyaltyRuleId: loyaltyRuleId,
           );
     } catch (_) {
       // The outbox persists the order before any network call, so it is queued

@@ -392,6 +392,35 @@ void main() {
       expect(d.containsKey('amount_type'), isFalse);
     });
 
+    test('loyalty_rule_id rides on the pay event when set', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 3.0, 'lineTotal': 3.0},
+        ],
+        rawSubtotal: 3.0,
+        total: 3.0,
+      );
+
+      final payload =
+          buildOrderSyncPayload(snap, loyaltyRuleId: 2, newUuid: _seqUuid());
+      final pay = (payload.events[1]['payload'] as Map<String, dynamic>);
+      expect(pay['loyalty_rule_id'], 2);
+    });
+
+    test('no loyalty_rule_id key when unset (walk-in / no rule)', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 3.0, 'lineTotal': 3.0},
+        ],
+        rawSubtotal: 3.0,
+        total: 3.0,
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final pay = (payload.events[1]['payload'] as Map<String, dynamic>);
+      expect(pay.containsKey('loyalty_rule_id'), isFalse);
+    });
+
     test('helpers map enums + money correctly', () {
       expect(mapOrderType('dine_in'), 'dine_in');
       expect(mapOrderType('to_go'), 'to_go');
