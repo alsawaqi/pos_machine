@@ -12,6 +12,7 @@ import '../services/config_mapper.dart';
 import '../services/geofence_service.dart';
 import '../services/pos_api_service.dart';
 import '../services/session_service.dart';
+import '../services/settings_service.dart';
 import '../services/shift_service.dart';
 
 // --- async-initialized singletons (overridden in main()) -------------------
@@ -25,6 +26,31 @@ final sessionServiceProvider = Provider<SessionService>(
 
 final secureStorageProvider =
     Provider<FlutterSecureStorage>((ref) => const FlutterSecureStorage());
+
+// --- device-local settings (server URL, printer) ---------------------------
+final settingsServiceProvider = Provider<SettingsService>(
+  (ref) => SettingsService(ref.read(sharedPreferencesProvider)),
+);
+
+final settingsControllerProvider =
+    NotifierProvider<SettingsController, AppSettings>(SettingsController.new);
+
+class SettingsController extends Notifier<AppSettings> {
+  SettingsService get _svc => ref.read(settingsServiceProvider);
+
+  @override
+  AppSettings build() => _svc.snapshot();
+
+  Future<void> setServerBaseUrl(String? raw) async {
+    await _svc.saveServerBaseUrl(raw);
+    state = _svc.snapshot();
+  }
+
+  Future<void> setPrintReceipts(bool value) async {
+    await _svc.savePrintReceipts(value);
+    state = _svc.snapshot();
+  }
+}
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
@@ -79,8 +105,11 @@ class SessionController extends Notifier<SessionState> {
 // --- API + config ----------------------------------------------------------
 final apiServiceProvider = Provider<PosApiService>((ref) {
   final session = ref.read(sessionServiceProvider);
+  final settings = ref.read(settingsServiceProvider);
   return PosApiService(
     tokenGetter: () => session.deviceToken,
+    // Resolve the operator-configured server URL per request.
+    baseUrlGetter: () => settings.effectiveBaseUrl,
     onUnauthorized: () {
       // A 401 means the device was blocked/unpaired → drop back to pairing.
       Future.microtask(

@@ -13,6 +13,7 @@ class PosApiService {
   PosApiService({
     required this.tokenGetter,
     this.onUnauthorized,
+    this.baseUrlGetter,
     Dio? dio,
   }) : _dio = dio ??
             Dio(BaseOptions(
@@ -25,6 +26,13 @@ class PosApiService {
             )) {
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
+        // Resolve the server URL per request so an operator change in Settings
+        // takes effect without rebuilding the client. Falls back to the
+        // compile-time default.
+        final base = baseUrlGetter?.call();
+        if (base != null && base.isNotEmpty) {
+          options.baseUrl = base;
+        }
         final token = tokenGetter();
         if (token != null && token.isNotEmpty) {
           options.headers['Authorization'] = 'Bearer $token';
@@ -37,6 +45,29 @@ class PosApiService {
   final Dio _dio;
   final TokenGetter tokenGetter;
   final UnauthorizedCallback? onUnauthorized;
+  final String Function()? baseUrlGetter;
+
+  /// Lightweight reachability check for [baseUrl] (Settings "Test connection").
+  /// Any HTTP response — even a 401/404 — means the server is reachable; only a
+  /// transport failure (no route, refused, timeout) returns false.
+  Future<bool> pingBaseUrl(String baseUrl) async {
+    final probe = Dio(BaseOptions(
+      baseUrl: baseUrl,
+      connectTimeout: const Duration(seconds: 6),
+      receiveTimeout: const Duration(seconds: 6),
+      validateStatus: (_) => true,
+    ));
+    try {
+      await probe.get('/');
+      return true;
+    } on DioException {
+      return false;
+    } catch (_) {
+      return false;
+    } finally {
+      probe.close();
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // Endpoints
