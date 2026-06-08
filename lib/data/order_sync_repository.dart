@@ -29,6 +29,7 @@ class OrderSyncRepository {
     int? customerId,
     String? plateNumber,
     String? deliveryProviderName,
+    CardCharge? cardCharge,
   }) async {
     final payload = buildOrderSyncPayload(
       snapshot,
@@ -39,6 +40,7 @@ class OrderSyncRepository {
       customerId: customerId,
       plateNumber: plateNumber,
       deliveryProviderName: deliveryProviderName,
+      cardCharge: cardCharge,
     );
 
     // A snapshot with no pushable lines (e.g. only non-catalog demo products)

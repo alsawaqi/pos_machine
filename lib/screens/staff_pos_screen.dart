@@ -217,6 +217,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final phone = controller.customerReferenceNumber.trim();
     final plate = controller.vehiclePlateNumber.trim();
     final deliveryProviderName = controller.selectedDeliveryProvider?.name;
+    // Soft POS evidence for a single (non-split) card payment — read now, before
+    // the controller's next-order reset clears it (split tenders carry their own
+    // evidence on the snapshot's SplitPaymentRecords).
+    final cardCharge = controller.lastCardCharge;
 
     double? lat;
     double? lng;
@@ -268,6 +272,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             customerId: customerId,
             plateNumber: plate.isEmpty ? null : plate,
             deliveryProviderName: deliveryProviderName,
+            cardCharge: cardCharge,
           );
     } catch (_) {
       // The outbox persists the order before any network call, so it is queued

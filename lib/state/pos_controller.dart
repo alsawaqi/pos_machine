@@ -250,6 +250,11 @@ class PosController extends ChangeNotifier {
   DiscountConfiguration discount = const DiscountConfiguration();
   int splitCount = 1;
   final List<SplitPaymentRecord> _splitPayments = [];
+  /// Soft POS evidence for the most recent single (non-split) card payment.
+  /// Captured at completion and read synchronously by the order-push bridge
+  /// before the next-order reset clears it. Split tenders carry their own
+  /// evidence on each [SplitPaymentRecord] instead.
+  CardCharge? _lastCardCharge;
   double? _activePaymentBaseOverride;
   String? activeDiningTableId;
 
@@ -533,6 +538,10 @@ class PosController extends ChangeNotifier {
 
   List<SplitPaymentRecord> get splitPayments =>
       List.unmodifiable(_splitPayments);
+
+  /// Soft POS evidence for the last single (non-split) card payment, or null.
+  /// The order-push bridge reads this synchronously at completion.
+  CardCharge? get lastCardCharge => _lastCardCharge;
 
   int get paidSplitCount =>
       splitCount > 1 ? _splitPayments.length.clamp(0, splitCount).toInt() : 0;
@@ -1309,6 +1318,7 @@ class PosController extends ChangeNotifier {
         baseAmount: transactionBaseAmount,
         isDineInPayment: isDineInPayment,
         successMessage: lastPaymentMessage,
+        cardCharge: _cardChargeFromResult(paymentResult),
       );
     } finally {
       _clearPaymentLaunchOverlay();
@@ -1421,6 +1431,7 @@ class PosController extends ChangeNotifier {
             charityRoundUpAmount: cardRoundUpAmount,
             paidAmount: cardPaidAmount,
             paidAt: DateTime.now(),
+            cardCharge: _cardChargeFromResult(paymentResult),
           ),
         );
 
@@ -1447,6 +1458,21 @@ class PosController extends ChangeNotifier {
     }
   }
 
+  /// Build the Soft POS evidence object from a Mosambee result. [status] is the
+  /// pos_api Payment status — 'success', or 'pending_reconciliation' when the
+  /// cashier force-records an unconfirmed (e.g. NFC-timeout) charge.
+  CardCharge _cardChargeFromResult(
+    MosambeePaymentResult result, {
+    String status = 'success',
+  }) {
+    return CardCharge(
+      softposReference: result.softposReference,
+      softposAuthCode: result.softposAuthCode,
+      bankResponse: result.payload,
+      status: status,
+    );
+  }
+
   Future<String> _completeSuccessfulPayment({
     required String transactionMethod,
     required int splitCountAtPayment,
@@ -1454,6 +1480,7 @@ class PosController extends ChangeNotifier {
     required double baseAmount,
     required bool isDineInPayment,
     required String successMessage,
+    CardCharge? cardCharge,
   }) async {
     if (splitCountAtPayment > 1) {
       final paidAmount = payableTotal;
@@ -1469,6 +1496,7 @@ class PosController extends ChangeNotifier {
           charityRoundUpAmount: roundUpAmount,
           paidAmount: paidAmount,
           paidAt: DateTime.now(),
+          cardCharge: cardCharge,
         ),
       );
 
@@ -1499,6 +1527,10 @@ class PosController extends ChangeNotifier {
         successMessage: lastPaymentMessage,
       );
     }
+
+    // Single (non-split) payment: the card evidence (if any) rides on the
+    // order via the bridge, which reads lastCardCharge synchronously.
+    _lastCardCharge = cardCharge;
 
     return await _finishCompletedOrder(
       isDineInPayment: isDineInPayment,
@@ -1998,6 +2030,7 @@ class PosController extends ChangeNotifier {
     discount = const DiscountConfiguration();
     splitCount = 1;
     _splitPayments.clear();
+    _lastCardCharge = null;
     _activePaymentBaseOverride = null;
     selectedOrderType = nextOrderType;
     if (clearActiveDiningTable) {
