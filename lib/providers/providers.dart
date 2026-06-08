@@ -12,6 +12,7 @@ import '../services/config_mapper.dart';
 import '../services/geofence_service.dart';
 import '../services/pos_api_service.dart';
 import '../services/session_service.dart';
+import '../services/shift_service.dart';
 
 // --- async-initialized singletons (overridden in main()) -------------------
 final sharedPreferencesProvider = Provider<SharedPreferences>(
@@ -56,6 +57,19 @@ class SessionController extends Notifier<SessionState> {
     state = _svc.snapshot();
   }
 
+  /// Record the device's open shift after the server ACKs shift.open — flips
+  /// the gate from the open-shift screen into the POS.
+  Future<void> markShiftOpen(OpenShiftData shift) async {
+    await _svc.saveOpenShift(shift);
+    state = _svc.snapshot();
+  }
+
+  /// Clear the open shift after a settled shift.close.
+  Future<void> markShiftClosed() async {
+    await _svc.clearShift();
+    state = _svc.snapshot();
+  }
+
   Future<void> clearForRePair() async {
     await _svc.clearForRePair();
     state = _svc.snapshot();
@@ -75,6 +89,11 @@ final apiServiceProvider = Provider<PosApiService>((ref) {
     },
   );
 });
+
+/// Opens / closes cash-drawer shifts through the device sync pipeline.
+final shiftServiceProvider = Provider<ShiftService>(
+  (ref) => ShiftService(ref.read(apiServiceProvider)),
+);
 
 final configRepositoryProvider = Provider<ConfigRepository>(
   (ref) => ConfigRepository(
