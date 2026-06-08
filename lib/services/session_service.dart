@@ -5,6 +5,38 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_models.dart';
 
+/// The device's currently-open cash-drawer shift (null = no open shift). Scoped
+/// to the DEVICE, not the staff — the server enforces one open shift per device,
+/// so it survives a staff logout (the next cashier inherits the open drawer).
+class OpenShiftData {
+  const OpenShiftData({
+    required this.uuid,
+    required this.openingCashBaisas,
+    required this.openedAt,
+    required this.staffId,
+  });
+
+  final String uuid;
+  final int openingCashBaisas;
+  final DateTime openedAt;
+  final int staffId;
+
+  factory OpenShiftData.fromJson(Map<String, dynamic> json) => OpenShiftData(
+        uuid: json['uuid'].toString(),
+        openingCashBaisas: (json['opening_cash_baisas'] as num?)?.toInt() ?? 0,
+        openedAt: DateTime.tryParse(json['opened_at']?.toString() ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+        staffId: (json['staff_id'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'uuid': uuid,
+        'opening_cash_baisas': openingCashBaisas,
+        'opened_at': openedAt.toIso8601String(),
+        'staff_id': staffId,
+      };
+}
+
 /// Immutable snapshot of the device/staff session, watched by the boot gate.
 class SessionState {
   const SessionState({
@@ -14,6 +46,7 @@ class SessionState {
     this.kioskId,
     this.terminalId,
     this.staff,
+    this.openShift,
   });
 
   final bool isConfigured;
@@ -22,8 +55,10 @@ class SessionState {
   final String? kioskId; // fetched at activation (layer 1)
   final String? terminalId; // fetched at activation + refreshed from config (Soft POS)
   final StaffSessionData? staff;
+  final OpenShiftData? openShift;
 
   bool get hasStaff => staff != null;
+  bool get hasOpenShift => openShift != null;
 
   static const empty = SessionState();
 }
@@ -46,6 +81,7 @@ class SessionService {
   static const _kCompanyId = 'company_id';
   static const _kBranchId = 'branch_id';
   static const _kStaff = 'staff_session_json';
+  static const _kShift = 'open_shift_json';
 
   String? _deviceToken; // in-memory cache for the dio interceptor
 
@@ -68,6 +104,16 @@ class SessionService {
     }
   }
 
+  OpenShiftData? get openShift {
+    final raw = _prefs.getString(_kShift);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return OpenShiftData.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Read the persisted token into memory at startup.
   Future<void> load() async {
     _deviceToken = await _secure.read(key: _kDeviceToken);
@@ -80,6 +126,7 @@ class SessionService {
         kioskId: kioskId,
         terminalId: terminalId,
         staff: staff,
+        openShift: openShift,
       );
 
   /// Store a successful device activation: device token + kiosk ID + terminal ID
@@ -111,7 +158,18 @@ class SessionService {
     await _prefs.setString(_kStaff, jsonEncode(staff.toJson()));
   }
 
-  /// Staff logout (layer 2 only — keeps the device activated).
+  /// Persist the device's open shift (after the server ACKs shift.open).
+  Future<void> saveOpenShift(OpenShiftData shift) async {
+    await _prefs.setString(_kShift, jsonEncode(shift.toJson()));
+  }
+
+  /// Clear the open shift (after a settled shift.close).
+  Future<void> clearShift() async {
+    await _prefs.remove(_kShift);
+  }
+
+  /// Staff logout (layer 2 only — keeps the device activated AND the open shift,
+  /// which is a per-device drawer the next cashier inherits).
   Future<void> clearStaff() async {
     await _prefs.remove(_kStaff);
   }
@@ -122,6 +180,7 @@ class SessionService {
     _deviceToken = null;
     await _secure.delete(key: _kDeviceToken);
     await _prefs.remove(_kStaff);
+    await _prefs.remove(_kShift);
     await _prefs.remove(_kCompanyId);
     await _prefs.remove(_kBranchId);
     await _prefs.remove(_kKioskId);
