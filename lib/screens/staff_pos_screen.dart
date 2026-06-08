@@ -227,6 +227,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final phone = controller.customerReferenceNumber.trim();
     final plate = controller.vehiclePlateNumber.trim();
     final deliveryProviderName = controller.selectedDeliveryProvider?.name;
+    // A customer chosen from search attaches by id (their stored phone may carry
+    // a +country prefix the numeric field strips, so re-resolving by phone could
+    // mismatch).
+    final searchedCustomer = controller.selectedCustomer;
     // Soft POS evidence for a single (non-split) card payment — read now, before
     // the controller's next-order reset clears it (split tenders carry their own
     // evidence on the snapshot's SplitPaymentRecords).
@@ -260,7 +264,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // Best-effort: offline, the order still saves — the plate rides on the
     // order itself, only the customer LINK is deferred.
     int? customerId;
-    if (phone.isNotEmpty) {
+    if (searchedCustomer != null) {
+      customerId = searchedCustomer.id;
+    } else if (phone.isNotEmpty) {
       try {
         customerId = await ref.read(apiServiceProvider).saveCustomer(
               name: phone, // no separate name field at the POS; phone is the key
@@ -1133,6 +1139,69 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
     if (value == null) return;
     controller.setProductSearchQuery(value);
+  }
+
+  /// Customer field tap: search the live book (with loyalty), or enter a number.
+  Future<void> _openCustomerChooser() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.person_search_rounded),
+              title: const Text('Search customer'),
+              subtitle: const Text('Find by name / phone / plate, see loyalty'),
+              onTap: () => Navigator.pop(ctx, 'search'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.dialpad_rounded),
+              title: const Text('Enter number'),
+              onTap: () => Navigator.pop(ctx, 'manual'),
+            ),
+            if (controller.selectedCustomer != null ||
+                controller.customerReferenceNumber.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.person_off_outlined),
+                title: const Text('Clear customer'),
+                onTap: () => Navigator.pop(ctx, 'clear'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case 'search':
+        await _openCustomerSearch();
+      case 'manual':
+        await _openCustomerNumberKeyboard();
+      case 'clear':
+        setState(() => _customerNumberController.clear());
+        controller.setCustomerReferenceNumber('');
+    }
+  }
+
+  Future<void> _openCustomerSearch() async {
+    final result = await showDialog<CustomerSearchResult>(
+      context: context,
+      builder: (_) => _CustomerSearchDialog(
+        search: ref.read(apiServiceProvider).searchCustomers,
+      ),
+    );
+    if (!mounted || result == null) return;
+    controller.attachCustomer(result);
+    setState(() => _customerNumberController.text =
+        controller.customerReferenceNumber);
+    final pts = controller.activeEarnRule != null
+        ? result.pointsForRule(controller.activeEarnRule!.id)
+        : 0;
+    _showPopupMessage(
+      title: 'Customer Attached',
+      message: '${result.name}${pts > 0 ? '  ·  $pts points' : ''}',
+      tone: FeedbackTone.success,
+    );
   }
 
   Future<void> _openCustomerNumberKeyboard() async {
@@ -2249,7 +2318,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         const SizedBox(height: 8),
         InkWell(
           key: const ValueKey('payment-customer-number'),
-          onTap: _openCustomerNumberKeyboard,
+          onTap: _openCustomerChooser,
           borderRadius: BorderRadius.circular(18),
           child: Container(
             width: double.infinity,
@@ -8531,6 +8600,135 @@ class _KeyboardKey extends StatelessWidget {
             fontSize: 18,
             fontWeight: FontWeight.w900,
             color: Color(0xFF2A3A43),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Live customer search (name / phone / plate) with loyalty balances. Returns
+/// the chosen CustomerSearchResult, or null on cancel.
+class _CustomerSearchDialog extends StatefulWidget {
+  const _CustomerSearchDialog({required this.search});
+
+  final Future<List<CustomerSearchResult>> Function(String) search;
+
+  @override
+  State<_CustomerSearchDialog> createState() => _CustomerSearchDialogState();
+}
+
+class _CustomerSearchDialogState extends State<_CustomerSearchDialog> {
+  final _controller = TextEditingController();
+  bool _busy = false;
+  bool _searched = false;
+  String? _error;
+  List<CustomerSearchResult> _results = const [];
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _run() async {
+    final q = _controller.text.trim();
+    if (q.isEmpty) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final r = await widget.search(q);
+      if (mounted) {
+        setState(() {
+          _results = r;
+          _searched = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Search failed. Check the connection.');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  int _points(CustomerSearchResult c) =>
+      c.loyalty.fold(0, (s, b) => s + b.points);
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460, maxHeight: 560),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      autofocus: true,
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (_) => _run(),
+                      decoration: const InputDecoration(
+                        hintText: 'Name, phone, or plate',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _busy ? null : _run,
+                    child: const Text('Search'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_busy)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(),
+                ),
+              if (_error != null)
+                Text(_error!, style: const TextStyle(color: Color(0xFFD23B3B))),
+              if (!_busy && _searched && _results.isEmpty && _error == null)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('No customers found.'),
+                ),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _results.length,
+                  itemBuilder: (_, i) {
+                    final c = _results[i];
+                    final pts = _points(c);
+                    return ListTile(
+                      leading: const Icon(Icons.person_outline),
+                      title: Text(c.name.isEmpty ? c.phone : c.name),
+                      subtitle: Text([
+                        if (c.phone.isNotEmpty) c.phone,
+                        if (pts > 0) '$pts points',
+                      ].join('  ·  ')),
+                      onTap: () => Navigator.pop(context, c),
+                    );
+                  },
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ),
+            ],
           ),
         ),
       ),

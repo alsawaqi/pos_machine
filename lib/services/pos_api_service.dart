@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../core/api_config.dart';
+import '../models/pos_models.dart';
 import 'api_models.dart';
 
 typedef TokenGetter = String? Function();
@@ -134,6 +135,21 @@ class PosApiService {
         }));
     final customer = body.dataMap['customer'];
     return customer is Map ? (customer['id'] as num?)?.toInt() : null;
+  }
+
+  /// GET /device/customers/search?q= — live customer lookup (phone/name/plate),
+  /// including each customer's loyalty balances. Online-only (the full book is
+  /// beyond the cached slice).
+  Future<List<CustomerSearchResult>> searchCustomers(String query) async {
+    final body = await _send(
+      () => _dio.get('/device/customers/search', queryParameters: {'q': query}),
+    );
+    final list = body.dataMap['customers'];
+    if (list is! List) return const [];
+    return list
+        .whereType<Map>()
+        .map((m) => CustomerSearchResult.fromJson(m.cast<String, dynamic>()))
+        .toList();
   }
 
   // ---------------------------------------------------------------------------

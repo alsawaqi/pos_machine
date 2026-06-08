@@ -617,6 +617,62 @@ class LoyaltyRule {
   }
 }
 
+/// A customer's loyalty balance under one rule (from a live customer lookup).
+class LoyaltyBalance {
+  final int ruleId;
+  final int points;
+  final int stamps;
+
+  const LoyaltyBalance({
+    required this.ruleId,
+    required this.points,
+    required this.stamps,
+  });
+
+  factory LoyaltyBalance.fromJson(Map<String, dynamic> j) => LoyaltyBalance(
+        ruleId: (j['rule_id'] as num?)?.toInt() ?? 0,
+        points: (j['points'] as num?)?.toInt() ?? 0,
+        stamps: (j['stamps'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// A live customer search result (from /device/customers/search) — includes the
+/// loyalty balances the device shows + redeems against.
+class CustomerSearchResult {
+  final int id;
+  final String name;
+  final String phone;
+  final double walletBalance;
+  final List<LoyaltyBalance> loyalty;
+
+  const CustomerSearchResult({
+    required this.id,
+    required this.name,
+    this.phone = '',
+    this.walletBalance = 0,
+    this.loyalty = const [],
+  });
+
+  factory CustomerSearchResult.fromJson(Map<String, dynamic> j) =>
+      CustomerSearchResult(
+        id: (j['id'] as num?)?.toInt() ?? 0,
+        name: (j['name'] ?? '').toString(),
+        phone: (j['phone'] ?? '').toString(),
+        walletBalance: ((j['wallet_balance_baisas'] as num?)?.toDouble() ?? 0) /
+            1000.0,
+        loyalty: ((j['loyalty'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((m) => LoyaltyBalance.fromJson(m.cast<String, dynamic>()))
+            .toList(),
+      );
+
+  int pointsForRule(int ruleId) =>
+      loyalty.where((b) => b.ruleId == ruleId).fold(0, (s, b) => s + b.points);
+
+  int stampsForRule(int ruleId) =>
+      loyalty.where((b) => b.ruleId == ruleId).fold(0, (s, b) => s + b.stamps);
+}
+
 /// A cached customer slice for offline lookup / attaching to an order. Money OMR.
 class CustomerRef {
   final int id;

@@ -284,6 +284,10 @@ class PosController extends ChangeNotifier {
   String paymentOverlayTitle = '';
   String customerReferenceNumber = '';
   String vehiclePlateNumber = '';
+  /// A customer chosen from live search (with loyalty balances). When set, the
+  /// order attaches by this customer's id (not the phone field) and loyalty
+  /// earn/redeem use this customer.
+  CustomerSearchResult? selectedCustomer;
   bool rearDisplayOpened = false;
   bool isProcessingPayment = false;
   bool isLoadingStorage = false;
@@ -821,6 +825,17 @@ class PosController extends ChangeNotifier {
 
   void setCustomerReferenceNumber(String value) {
     customerReferenceNumber = value.replaceAll(RegExp(r'\D'), '').trim();
+    // Typing a raw number detaches any searched customer (they diverge).
+    selectedCustomer = null;
+    _broadcast();
+  }
+
+  /// Attach a customer chosen from live search. Their phone backfills the
+  /// reference display; the order will attach by id.
+  void attachCustomer(CustomerSearchResult customer) {
+    selectedCustomer = customer;
+    customerReferenceNumber =
+        customer.phone.replaceAll(RegExp(r'\D'), '').trim();
     _broadcast();
   }
 
@@ -2144,6 +2159,7 @@ class PosController extends ChangeNotifier {
     paymentOverlayTitle = '';
     customerReferenceNumber = '';
     vehiclePlateNumber = '';
+    selectedCustomer = null;
     currentOrderReference = '';
     isProcessingPayment = false;
     productSearchQuery = '';
