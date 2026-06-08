@@ -19,6 +19,7 @@ class CatalogSnapshot {
     this.discounts = const <MerchantDiscount>[],
     this.loyaltyRules = const <LoyaltyRule>[],
     this.customers = const <CustomerRef>[],
+    this.ingredients = const <IngredientRef>[],
   });
 
   final List<String> categories;
@@ -40,6 +41,8 @@ class CatalogSnapshot {
   final List<LoyaltyRule> loyaltyRules;
   // Cached customer slice for offline lookup / order attach.
   final List<CustomerRef> customers;
+  // Company ingredient catalogue (id+name+unit) for the restock-request picker.
+  final List<IngredientRef> ingredients;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -58,6 +61,7 @@ class ParsedConfig {
     required this.discounts,
     required this.loyaltyRules,
     required this.customers,
+    required this.ingredients,
     required this.meta,
   });
 
@@ -74,6 +78,7 @@ class ParsedConfig {
   final List<DiscountsCompanion> discounts;
   final List<LoyaltyRulesCompanion> loyaltyRules;
   final List<CachedCustomersCompanion> customers;
+  final List<IngredientsCompanion> ingredients;
   final SyncMetaCompanion meta;
 }
 
@@ -344,6 +349,16 @@ class ConfigMapper {
             ))
         .toList();
 
+    // Company ingredient catalogue (id + name + unit) for the restock picker.
+    final ingredients = _list(data['ingredients'])
+        .map((i) => IngredientsCompanion(
+              id: Value(_int(i['id']) ?? 0),
+              name: Value(_str(i['name'])),
+              nameAr: Value(_strN(i['name_ar'])),
+              unit: Value(_strN(i['unit'])),
+            ))
+        .toList();
+
     final metaCompanion = SyncMetaCompanion(
       id: const Value(1),
       companyId: Value(_int(meta['company_id']) ?? _int(branchMap?['company_id'])),
@@ -366,6 +381,7 @@ class ConfigMapper {
       discounts: discounts,
       loyaltyRules: loyaltyRules,
       customers: customers,
+      ingredients: ingredients,
       meta: metaCompanion,
     );
   }
@@ -385,6 +401,7 @@ class ConfigMapper {
     List<DiscountRow> discountRows = const [],
     List<LoyaltyRuleRow> loyaltyRuleRows = const [],
     List<CustomerRow> customerRows = const [],
+    List<IngredientRow> ingredientRows = const [],
   ]) {
     final sortedCats = [...cats]
       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
@@ -539,6 +556,15 @@ class ConfigMapper {
             ))
         .toList();
 
+    final ingredients = ingredientRows
+        .map((i) => IngredientRef(
+              id: i.id,
+              name: i.name,
+              nameAr: i.nameAr,
+              unit: i.unit,
+            ))
+        .toList();
+
     return CatalogSnapshot(
       categories: sortedCats.map((c) => c.name).toList(),
       products: products,
@@ -551,6 +577,7 @@ class ConfigMapper {
       discounts: discounts,
       loyaltyRules: loyaltyRules,
       customers: customers,
+      ingredients: ingredients,
     );
   }
 

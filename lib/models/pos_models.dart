@@ -688,6 +688,23 @@ class CustomerRef {
   });
 }
 
+/// A company ingredient (id + name + unit) for the device restock-request
+/// picker. The picker shows [name]/[unit] but sends [id] (the integer
+/// ingredient_id the restock.request handler resolves).
+class IngredientRef {
+  final int id;
+  final String name;
+  final String? nameAr;
+  final String? unit;
+
+  const IngredientRef({
+    required this.id,
+    required this.name,
+    this.nameAr,
+    this.unit,
+  });
+}
+
 /// The Soft POS (Mosambee) outcome for a single card tender, carried onto the
 /// order.pay tender so pos_api can persist the acquirer evidence. [status] is
 /// the pos_api Payment status — 'success' or 'pending_reconciliation' (the

@@ -272,3 +272,18 @@ class BranchIngredientStock extends Table {
   @override
   Set<Column> get primaryKey => {ingredientId};
 }
+
+// Company ingredient catalogue (id + name + unit) from the config `ingredients`
+// slice. Lets the device's restock-request screen show ingredient NAMES while
+// sending the integer ingredient_id the server expects. (BranchIngredientStock
+// only holds balances keyed by id — no names — so this is the name lookup.)
+@DataClassName('IngredientRow')
+class Ingredients extends Table {
+  IntColumn get id => integer()();
+  TextColumn get name => text().withDefault(const Constant(''))();
+  TextColumn get nameAr => text().nullable()();
+  TextColumn get unit => text().nullable()(); // kg, litre, piece, …
+
+  @override
+  Set<Column> get primaryKey => {id};
+}

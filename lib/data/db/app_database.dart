@@ -25,6 +25,7 @@ part 'app_database.g.dart';
     Discounts,
     LoyaltyRules,
     CachedCustomers,
+    Ingredients,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -34,7 +35,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -84,6 +85,11 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(loyaltyRules);
             await m.createTable(cachedCustomers);
           }
+          if (from < 10) {
+            // v10 added the ingredient catalogue (id+name+unit) for the device
+            // restock-request picker.
+            await m.createTable(ingredients);
+          }
         },
       );
 
@@ -123,6 +129,9 @@ class AppDatabase extends _$AppDatabase {
       select(loyaltyRules).watch();
 
   Stream<List<CustomerRow>> watchCustomers() => select(cachedCustomers).watch();
+
+  Stream<List<IngredientRow>> watchIngredients() =>
+      (select(ingredients)..orderBy([(i) => OrderingTerm(expression: i.name)])).watch();
 
   Future<List<TaxRow>> getTaxes() =>
       (select(taxCache)..orderBy([(t) => OrderingTerm(expression: t.id)])).get();
@@ -179,6 +188,7 @@ class AppDatabase extends _$AppDatabase {
     required List<DiscountsCompanion> discountRows,
     required List<LoyaltyRulesCompanion> loyaltyRuleRows,
     required List<CachedCustomersCompanion> customerRows,
+    required List<IngredientsCompanion> ingredientRows,
     required SyncMetaCompanion meta,
   }) {
     return transaction(() async {
@@ -195,6 +205,7 @@ class AppDatabase extends _$AppDatabase {
       await delete(discounts).go();
       await delete(loyaltyRules).go();
       await delete(cachedCustomers).go();
+      await delete(ingredients).go();
 
       await into(branchCache).insert(branch);
       await batch((b) {
@@ -210,6 +221,7 @@ class AppDatabase extends _$AppDatabase {
         b.insertAll(discounts, discountRows);
         b.insertAll(loyaltyRules, loyaltyRuleRows);
         b.insertAll(cachedCustomers, customerRows);
+        b.insertAll(ingredients, ingredientRows);
       });
       await into(syncMeta).insertOnConflictUpdate(meta);
     });

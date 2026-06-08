@@ -11,6 +11,8 @@ import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
 import '../providers/providers.dart';
+import 'log_expense_screen.dart';
+import 'restock_request_screen.dart';
 import 'settings_screen.dart';
 import 'shift_close_screen.dart';
 import '../services/config_mapper.dart';
@@ -3231,6 +3233,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               onTap: () => Navigator.pop(ctx, 'close_shift'),
             ),
             ListTile(
+              leading: const Icon(Icons.receipt_long_rounded),
+              title: const Text('Log expense'),
+              subtitle: const Text('Record a petty-cash expense'),
+              onTap: () => Navigator.pop(ctx, 'log_expense'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.inventory_2_rounded),
+              title: const Text('Request restock'),
+              subtitle: const Text('Ask the branch to restock ingredients'),
+              onTap: () => Navigator.pop(ctx, 'restock_request'),
+            ),
+            ListTile(
               leading: const Icon(Icons.settings),
               title: const Text('Settings'),
               subtitle: const Text('Server address, printing'),
@@ -3257,6 +3271,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     } else if (action == 'close_shift') {
       await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const ShiftCloseScreen()),
+      );
+    } else if (action == 'log_expense') {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const LogExpenseScreen()),
+      );
+    } else if (action == 'restock_request') {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const RestockRequestScreen()),
       );
     } else if (action == 'settings') {
       await Navigator.of(context).push(

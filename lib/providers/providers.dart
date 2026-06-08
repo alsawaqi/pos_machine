@@ -9,6 +9,7 @@ import '../data/db/app_database.dart';
 import '../data/order_sync_repository.dart';
 import '../services/api_models.dart';
 import '../services/config_mapper.dart';
+import '../services/expense_restock_service.dart';
 import '../services/geofence_service.dart';
 import '../services/pos_api_service.dart';
 import '../services/session_service.dart';
@@ -122,6 +123,11 @@ final apiServiceProvider = Provider<PosApiService>((ref) {
 /// Opens / closes cash-drawer shifts through the device sync pipeline.
 final shiftServiceProvider = Provider<ShiftService>(
   (ref) => ShiftService(ref.read(apiServiceProvider)),
+);
+
+/// Logs expenses / raises restock requests through the device sync pipeline.
+final expenseRestockServiceProvider = Provider<ExpenseRestockService>(
+  (ref) => ExpenseRestockService(ref.read(apiServiceProvider)),
 );
 
 final configRepositoryProvider = Provider<ConfigRepository>(

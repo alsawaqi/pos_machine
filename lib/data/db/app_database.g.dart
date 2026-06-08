@@ -6772,6 +6772,295 @@ class CachedCustomersCompanion extends UpdateCompanion<CustomerRow> {
   }
 }
 
+class $IngredientsTable extends Ingredients
+    with TableInfo<$IngredientsTable, IngredientRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $IngredientsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _nameArMeta = const VerificationMeta('nameAr');
+  @override
+  late final GeneratedColumn<String> nameAr = GeneratedColumn<String>(
+    'name_ar',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _unitMeta = const VerificationMeta('unit');
+  @override
+  late final GeneratedColumn<String> unit = GeneratedColumn<String>(
+    'unit',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, nameAr, unit];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'ingredients';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<IngredientRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('name_ar')) {
+      context.handle(
+        _nameArMeta,
+        nameAr.isAcceptableOrUnknown(data['name_ar']!, _nameArMeta),
+      );
+    }
+    if (data.containsKey('unit')) {
+      context.handle(
+        _unitMeta,
+        unit.isAcceptableOrUnknown(data['unit']!, _unitMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  IngredientRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return IngredientRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      nameAr: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name_ar'],
+      ),
+      unit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}unit'],
+      ),
+    );
+  }
+
+  @override
+  $IngredientsTable createAlias(String alias) {
+    return $IngredientsTable(attachedDatabase, alias);
+  }
+}
+
+class IngredientRow extends DataClass implements Insertable<IngredientRow> {
+  final int id;
+  final String name;
+  final String? nameAr;
+  final String? unit;
+  const IngredientRow({
+    required this.id,
+    required this.name,
+    this.nameAr,
+    this.unit,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || nameAr != null) {
+      map['name_ar'] = Variable<String>(nameAr);
+    }
+    if (!nullToAbsent || unit != null) {
+      map['unit'] = Variable<String>(unit);
+    }
+    return map;
+  }
+
+  IngredientsCompanion toCompanion(bool nullToAbsent) {
+    return IngredientsCompanion(
+      id: Value(id),
+      name: Value(name),
+      nameAr: nameAr == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nameAr),
+      unit: unit == null && nullToAbsent ? const Value.absent() : Value(unit),
+    );
+  }
+
+  factory IngredientRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return IngredientRow(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      nameAr: serializer.fromJson<String?>(json['nameAr']),
+      unit: serializer.fromJson<String?>(json['unit']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'nameAr': serializer.toJson<String?>(nameAr),
+      'unit': serializer.toJson<String?>(unit),
+    };
+  }
+
+  IngredientRow copyWith({
+    int? id,
+    String? name,
+    Value<String?> nameAr = const Value.absent(),
+    Value<String?> unit = const Value.absent(),
+  }) => IngredientRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    nameAr: nameAr.present ? nameAr.value : this.nameAr,
+    unit: unit.present ? unit.value : this.unit,
+  );
+  IngredientRow copyWithCompanion(IngredientsCompanion data) {
+    return IngredientRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      nameAr: data.nameAr.present ? data.nameAr.value : this.nameAr,
+      unit: data.unit.present ? data.unit.value : this.unit,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('IngredientRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('nameAr: $nameAr, ')
+          ..write('unit: $unit')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, nameAr, unit);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is IngredientRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.nameAr == this.nameAr &&
+          other.unit == this.unit);
+}
+
+class IngredientsCompanion extends UpdateCompanion<IngredientRow> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String?> nameAr;
+  final Value<String?> unit;
+  const IngredientsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.nameAr = const Value.absent(),
+    this.unit = const Value.absent(),
+  });
+  IngredientsCompanion.insert({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.nameAr = const Value.absent(),
+    this.unit = const Value.absent(),
+  });
+  static Insertable<IngredientRow> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? nameAr,
+    Expression<String>? unit,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (nameAr != null) 'name_ar': nameAr,
+      if (unit != null) 'unit': unit,
+    });
+  }
+
+  IngredientsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<String?>? nameAr,
+    Value<String?>? unit,
+  }) {
+    return IngredientsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      nameAr: nameAr ?? this.nameAr,
+      unit: unit ?? this.unit,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (nameAr.present) {
+      map['name_ar'] = Variable<String>(nameAr.value);
+    }
+    if (unit.present) {
+      map['unit'] = Variable<String>(unit.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('IngredientsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('nameAr: $nameAr, ')
+          ..write('unit: $unit')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -6794,6 +7083,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $CachedCustomersTable cachedCustomers = $CachedCustomersTable(
     this,
   );
+  late final $IngredientsTable ingredients = $IngredientsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -6814,6 +7104,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     discounts,
     loyaltyRules,
     cachedCustomers,
+    ingredients,
   ];
 }
 
@@ -10334,6 +10625,181 @@ typedef $$CachedCustomersTableProcessedTableManager =
       CustomerRow,
       PrefetchHooks Function()
     >;
+typedef $$IngredientsTableCreateCompanionBuilder =
+    IngredientsCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> nameAr,
+      Value<String?> unit,
+    });
+typedef $$IngredientsTableUpdateCompanionBuilder =
+    IngredientsCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> nameAr,
+      Value<String?> unit,
+    });
+
+class $$IngredientsTableFilterComposer
+    extends Composer<_$AppDatabase, $IngredientsTable> {
+  $$IngredientsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get nameAr => $composableBuilder(
+    column: $table.nameAr,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get unit => $composableBuilder(
+    column: $table.unit,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$IngredientsTableOrderingComposer
+    extends Composer<_$AppDatabase, $IngredientsTable> {
+  $$IngredientsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get nameAr => $composableBuilder(
+    column: $table.nameAr,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get unit => $composableBuilder(
+    column: $table.unit,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$IngredientsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $IngredientsTable> {
+  $$IngredientsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get nameAr =>
+      $composableBuilder(column: $table.nameAr, builder: (column) => column);
+
+  GeneratedColumn<String> get unit =>
+      $composableBuilder(column: $table.unit, builder: (column) => column);
+}
+
+class $$IngredientsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $IngredientsTable,
+          IngredientRow,
+          $$IngredientsTableFilterComposer,
+          $$IngredientsTableOrderingComposer,
+          $$IngredientsTableAnnotationComposer,
+          $$IngredientsTableCreateCompanionBuilder,
+          $$IngredientsTableUpdateCompanionBuilder,
+          (
+            IngredientRow,
+            BaseReferences<_$AppDatabase, $IngredientsTable, IngredientRow>,
+          ),
+          IngredientRow,
+          PrefetchHooks Function()
+        > {
+  $$IngredientsTableTableManager(_$AppDatabase db, $IngredientsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$IngredientsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$IngredientsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$IngredientsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> nameAr = const Value.absent(),
+                Value<String?> unit = const Value.absent(),
+              }) => IngredientsCompanion(
+                id: id,
+                name: name,
+                nameAr: nameAr,
+                unit: unit,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> nameAr = const Value.absent(),
+                Value<String?> unit = const Value.absent(),
+              }) => IngredientsCompanion.insert(
+                id: id,
+                name: name,
+                nameAr: nameAr,
+                unit: unit,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$IngredientsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $IngredientsTable,
+      IngredientRow,
+      $$IngredientsTableFilterComposer,
+      $$IngredientsTableOrderingComposer,
+      $$IngredientsTableAnnotationComposer,
+      $$IngredientsTableCreateCompanionBuilder,
+      $$IngredientsTableUpdateCompanionBuilder,
+      (
+        IngredientRow,
+        BaseReferences<_$AppDatabase, $IngredientsTable, IngredientRow>,
+      ),
+      IngredientRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -10368,4 +10834,6 @@ class $AppDatabaseManager {
       $$LoyaltyRulesTableTableManager(_db, _db.loyaltyRules);
   $$CachedCustomersTableTableManager get cachedCustomers =>
       $$CachedCustomersTableTableManager(_db, _db.cachedCustomers);
+  $$IngredientsTableTableManager get ingredients =>
+      $$IngredientsTableTableManager(_db, _db.ingredients);
 }
