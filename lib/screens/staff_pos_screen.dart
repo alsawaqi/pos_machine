@@ -1329,7 +1329,112 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
+  /// Discount entry point. Offers the currently-applicable merchant rules (from
+  /// the cached catalog) first, plus a custom amount and a remove option. With
+  /// no applicable rules it falls straight through to the manual editor.
   Future<void> _openDiscountDialog() async {
+    final branchId = ref.read(sessionControllerProvider).branchId ?? 0;
+    final now = DateTime.now();
+    final applicable = controller.availableDiscounts
+        .where((d) => d.isOrderScope && d.appliesAt(now, branchId: branchId))
+        .toList();
+
+    if (applicable.isEmpty) {
+      await _openManualDiscountDialog();
+      return;
+    }
+
+    final action =
+        await showModalBottomSheet<({String type, MerchantDiscount? rule})>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Apply a discount',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+            ),
+            for (final d in applicable)
+              ListTile(
+                leading: const Icon(Icons.local_offer_outlined),
+                title: Text(d.name),
+                subtitle: Text(
+                  _discountSubtitle(d) +
+                      (d.requiresManagerApproval
+                          ? '  ·  manager approval'
+                          : ''),
+                ),
+                onTap: () => Navigator.pop(ctx, (type: 'rule', rule: d)),
+              ),
+            const Divider(height: 0),
+            ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('Custom amount'),
+              onTap: () => Navigator.pop(ctx, (type: 'custom', rule: null)),
+            ),
+            if (controller.discount.isActive)
+              ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: const Text('Remove discount'),
+                onTap: () => Navigator.pop(ctx, (type: 'remove', rule: null)),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted || action == null) return;
+    switch (action.type) {
+      case 'custom':
+        await _openManualDiscountDialog();
+      case 'remove':
+        controller.clearDiscount();
+        _showPopupMessage(
+          title: 'Discount Cleared',
+          message: 'The order discount has been removed.',
+          tone: FeedbackTone.info,
+        );
+      case 'rule':
+        await _applyMerchantDiscount(action.rule!);
+    }
+  }
+
+  String _discountSubtitle(MerchantDiscount d) => d.amountType == 'percent'
+      ? '${(d.percent ?? 0).toStringAsFixed(0)}% off'
+      : '${SunmiReceiptService.money(d.fixedAmount ?? 0)} off';
+
+  Future<void> _applyMerchantDiscount(MerchantDiscount d) async {
+    if (d.requiresManagerApproval) {
+      final ok = await _managerAuthorization.authenticateManagerApproval(
+        subtitle: 'Approve discount',
+        description: 'Place the manager fingerprint to approve "${d.name}".',
+      );
+      if (!mounted) return;
+      if (!ok) {
+        _showPopupMessage(
+          title: 'Approval Required',
+          message: 'Manager approval was not granted for "${d.name}".',
+          tone: FeedbackTone.warning,
+        );
+        return;
+      }
+    }
+    controller.applyDiscount(d.toConfiguration());
+    _showPopupMessage(
+      title: 'Discount Applied',
+      message: '${d.name} is now active.',
+      tone: FeedbackTone.success,
+    );
+  }
+
+  Future<void> _openManualDiscountDialog() async {
     final value = await showDialog<DiscountConfiguration>(
       context: context,
       barrierDismissible: true,

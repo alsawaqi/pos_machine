@@ -34,6 +34,21 @@ class ManagerAuthorizationService {
     );
   }
 
+  /// Generic manager approval (e.g. an approval-required discount). Returns
+  /// false when no manager is registered or the biometric is declined/absent.
+  Future<bool> authenticateManagerApproval({
+    String subtitle = 'Manager approval',
+    String description = 'Place the manager fingerprint to approve.',
+  }) async {
+    if (!await isManagerRegistered()) return false;
+    return _authenticate(
+      title: 'Manager Approval Required',
+      subtitle: subtitle,
+      description: description,
+      negativeButton: 'Cancel',
+    );
+  }
+
   Future<bool> _authenticate({
     required String title,
     required String subtitle,
