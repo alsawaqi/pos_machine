@@ -11,6 +11,7 @@ import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
 import '../providers/providers.dart';
+import 'shift_close_screen.dart';
 import '../services/config_mapper.dart';
 
 const _customizationGroups = <_ModifierGroupDefinition>[
@@ -2889,7 +2890,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         ? ''
         : '  ${position[0].toUpperCase()}${position.substring(1)}';
     return InkWell(
-      onTap: _confirmLogout,
+      onTap: _openStaffMenu,
       borderRadius: BorderRadius.circular(16),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 196),
@@ -2952,6 +2953,45 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         ),
       ),
     );
+  }
+
+  /// Staff chip menu: close the cash-drawer shift, or log out.
+  Future<void> _openStaffMenu() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.point_of_sale_rounded),
+              title: const Text('Close shift'),
+              subtitle: const Text('Count the drawer and reconcile cash'),
+              onTap: () => Navigator.pop(ctx, 'close_shift'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('Log out'),
+              subtitle: const Text('Return to the staff PIN screen'),
+              onTap: () => Navigator.pop(ctx, 'logout'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.close),
+              title: const Text('Cancel'),
+              onTap: () => Navigator.pop(ctx, null),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'logout') {
+      await _confirmLogout();
+    } else if (action == 'close_shift') {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ShiftCloseScreen()),
+      );
+    }
   }
 
   Future<void> _confirmLogout() async {
