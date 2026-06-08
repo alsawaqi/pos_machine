@@ -270,6 +270,7 @@ class PosController extends ChangeNotifier {
   bool isProcessingPayment = false;
   bool isLoadingStorage = false;
   bool showCharityRoundUpPrompt = false;
+  bool showPendingReconciliationPrompt = false;
   bool showPaymentLaunchOverlay = false;
   bool charityRoundUpAccepted = false;
   double charityRoundUpAmount = 0;
@@ -296,6 +297,8 @@ class PosController extends ChangeNotifier {
   int _activeCharityRoundUpPromptId = 0;
   bool _charityPromptCanceled = false;
   int _referenceSequence = 0;
+  Completer<bool>? _pendingReconCompleter;
+  double _pendingReconAmount = 0;
 
   PosController({OrderStorageService? orderStorage})
     : _orderStorage = orderStorage ?? LocalOrderStorageService.instance {
@@ -1291,6 +1294,33 @@ class PosController extends ChangeNotifier {
       final paymentResult = await _paymentBridge.loginAndPay(payableTotal);
 
       if (!paymentResult.isSuccess) {
+        // Uncertain (NFC timeout / ambiguous, not an explicit cancel): offer the
+        // cashier to force-record the charge as pending reconciliation so the
+        // sale isn't lost — the admin queue settles it against the bank file.
+        if (paymentResult.isUncertain &&
+            await _promptForPendingReconciliation(amount: payableTotal)) {
+          _clearPaymentLaunchOverlay();
+          paymentStatus = 'Paid (pending reconciliation)';
+          lastPaymentMessage =
+              'Card recorded as pending reconciliation. The bank settlement will confirm it.';
+          displayNote =
+              'Payment recorded pending bank confirmation. Thank you.';
+          _broadcast();
+
+          return await _completeSuccessfulPayment(
+            transactionMethod: transactionMethod,
+            splitCountAtPayment: transactionSplitCount,
+            splitIndexAtPayment: transactionSplitIndex,
+            baseAmount: transactionBaseAmount,
+            isDineInPayment: isDineInPayment,
+            successMessage: lastPaymentMessage,
+            cardCharge: _cardChargeFromResult(
+              paymentResult,
+              status: 'pending_reconciliation',
+            ),
+          );
+        }
+
         _clearPaymentLaunchOverlay();
         paymentStatus = paymentResult.isCanceled
             ? 'Payment canceled'
@@ -1390,15 +1420,22 @@ class PosController extends ChangeNotifier {
 
       final paymentResult = await _paymentBridge.loginAndPay(payableTotal);
 
+      var cardChargeStatus = 'success';
       if (!paymentResult.isSuccess) {
-        _clearPaymentLaunchOverlay();
-        paymentStatus = paymentResult.isCanceled
-            ? 'Payment canceled'
-            : 'Payment failed';
-        lastPaymentMessage = paymentResult.userMessage;
-        displayNote = paymentResult.userMessage;
-        _broadcast();
-        return lastPaymentMessage;
+        // Uncertain charge → let the cashier force-record the card leg as
+        // pending reconciliation; otherwise abort the whole split.
+        if (!(paymentResult.isUncertain &&
+            await _promptForPendingReconciliation(amount: payableTotal))) {
+          _clearPaymentLaunchOverlay();
+          paymentStatus = paymentResult.isCanceled
+              ? 'Payment canceled'
+              : 'Payment failed';
+          lastPaymentMessage = paymentResult.userMessage;
+          displayNote = paymentResult.userMessage;
+          _broadcast();
+          return lastPaymentMessage;
+        }
+        cardChargeStatus = 'pending_reconciliation';
       }
 
       final cardPaidAmount = payableTotal;
@@ -1431,16 +1468,23 @@ class PosController extends ChangeNotifier {
             charityRoundUpAmount: cardRoundUpAmount,
             paidAmount: cardPaidAmount,
             paidAt: DateTime.now(),
-            cardCharge: _cardChargeFromResult(paymentResult),
+            cardCharge: _cardChargeFromResult(
+              paymentResult,
+              status: cardChargeStatus,
+            ),
           ),
         );
 
+      final cardPending = cardChargeStatus == 'pending_reconciliation';
       _clearPaymentLaunchOverlay();
-      paymentStatus = 'Paid';
+      paymentStatus = cardPending ? 'Paid (pending reconciliation)' : 'Paid';
       selectedPaymentMethod = 'Split Payment';
-      lastPaymentMessage =
-          'Split payment completed. Cash ${SunmiReceiptService.money(cashShare)} and card ${SunmiReceiptService.money(cardPaidAmount)} recorded.';
-      displayNote = charityRoundUpAccepted
+      lastPaymentMessage = cardPending
+          ? 'Split payment recorded. Cash ${SunmiReceiptService.money(cashShare)}; card ${SunmiReceiptService.money(cardPaidAmount)} pending reconciliation.'
+          : 'Split payment completed. Cash ${SunmiReceiptService.money(cashShare)} and card ${SunmiReceiptService.money(cardPaidAmount)} recorded.';
+      displayNote = cardPending
+          ? 'Cash received; card payment recorded pending bank confirmation. Thank you.'
+          : charityRoundUpAccepted
           ? 'Split payment completed with a card round-up donation. Thank you.'
           : 'Split payment completed. Thank you.';
       _broadcast();
@@ -1778,6 +1822,50 @@ class PosController extends ChangeNotifier {
     _charityPromptCanceled = false;
   }
 
+  /// The card amount awaiting a force-record decision (for the dialog message).
+  double get pendingReconciliationAmount => _pendingReconAmount;
+
+  /// Ask the cashier whether to force-record an unconfirmed card charge as
+  /// pending reconciliation. Resolves true to record, false to abort. Awaited
+  /// inline inside the pay flow, so the in-flight transaction context survives.
+  Future<bool> _promptForPendingReconciliation({required double amount}) async {
+    if (_pendingReconCompleter != null && !_pendingReconCompleter!.isCompleted) {
+      _pendingReconCompleter!.complete(false);
+    }
+    _pendingReconCompleter = Completer<bool>();
+    _pendingReconAmount = amount;
+
+    paymentStatus = 'Card charge not confirmed';
+    showPendingReconciliationPrompt = true;
+    _clearPaymentLaunchOverlay();
+    displayNote =
+        'The card charge could not be confirmed. Staff is reviewing the payment.';
+    _broadcast();
+
+    try {
+      return await _pendingReconCompleter!.future.timeout(
+        const Duration(minutes: 2),
+      );
+    } on TimeoutException {
+      showPendingReconciliationPrompt = false;
+      _broadcast();
+      return false;
+    } finally {
+      _pendingReconCompleter = null;
+    }
+  }
+
+  /// Cashier's answer to the pending-reconciliation prompt: [forceRecord] true
+  /// records the card leg as pending_reconciliation, false aborts the payment.
+  void confirmPendingReconciliation(bool forceRecord) {
+    if (_pendingReconCompleter == null || _pendingReconCompleter!.isCompleted) {
+      return;
+    }
+    showPendingReconciliationPrompt = false;
+    _broadcast();
+    _pendingReconCompleter!.complete(forceRecord);
+  }
+
   void _markOrderUpdated(String productId) {
     recentProductId = productId;
     orderUpdateNonce++;
@@ -2031,6 +2119,7 @@ class PosController extends ChangeNotifier {
     splitCount = 1;
     _splitPayments.clear();
     _lastCardCharge = null;
+    showPendingReconciliationPrompt = false;
     _activePaymentBaseOverride = null;
     selectedOrderType = nextOrderType;
     if (clearActiveDiningTable) {

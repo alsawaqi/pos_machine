@@ -370,6 +370,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   !controller.showCharityRoundUpPrompt &&
                   !controller.showPaymentLaunchOverlay)
                 Positioned.fill(child: _buildStaffCashProcessingOverlay()),
+              if (controller.showPendingReconciliationPrompt)
+                Positioned.fill(child: _buildPendingReconciliationOverlay()),
               _buildPopupMessageOverlay(),
             ],
           ),
@@ -1717,6 +1719,135 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Cashier-only confirm dialog shown when a card charge could not be
+  /// confirmed (e.g. NFC timeout). The cashier either retries or force-records
+  /// the card leg as pending reconciliation (settled later against the bank
+  /// file). Wired to controller.confirmPendingReconciliation.
+  Widget _buildPendingReconciliationOverlay() {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.62),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 540),
+          child: Container(
+            margin: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFCEBC6),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.warning_amber_rounded,
+                        color: Color(0xFFB9770E),
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Text(
+                        'Card charge not confirmed',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF16242B),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'The terminal did not confirm the '
+                  '${SunmiReceiptService.money(controller.pendingReconciliationAmount)} '
+                  'card charge (e.g. an NFC timeout).\n\n'
+                  'If the customer was charged, record it as PENDING '
+                  'RECONCILIATION — it will be matched against the bank '
+                  'settlement file. Otherwise cancel and try the charge again.',
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1.5,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF23343C).withValues(alpha: 0.9),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _pendingReconButton(
+                        label: 'Cancel — retry charge',
+                        filled: false,
+                        onTap: () =>
+                            controller.confirmPendingReconciliation(false),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: _pendingReconButton(
+                        label: 'Mark paid — pending reconciliation',
+                        filled: true,
+                        onTap: () =>
+                            controller.confirmPendingReconciliation(true),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pendingReconButton({
+    required String label,
+    required bool filled,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: filled ? const Color(0xFF1F8A70) : Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          height: 64,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: filled ? Colors.transparent : const Color(0xFFB7C4CB),
+              width: 1.4,
+            ),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w800,
+              color: filled ? Colors.white : const Color(0xFF23343C),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
