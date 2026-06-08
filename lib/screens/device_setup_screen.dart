@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
 import 'qr_scanner_screen.dart';
+import 'settings_screen.dart';
 
 /// Layer 1 (one-time, admin): scan OR type the single activation code generated
 /// in the admin portal for this device. The app activates → stores the device
@@ -86,6 +87,19 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF102028),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings, color: Colors.white54),
+            tooltip: 'Settings',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+        ],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),

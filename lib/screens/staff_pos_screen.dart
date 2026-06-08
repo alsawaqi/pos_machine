@@ -11,6 +11,7 @@ import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
 import '../providers/providers.dart';
+import 'settings_screen.dart';
 import 'shift_close_screen.dart';
 import '../services/config_mapper.dart';
 
@@ -152,6 +153,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     super.initState();
     controller = PosController();
     controller.onOrderCompleted = _handleOrderCompleted;
+    // Keep the receipt-printing toggle in sync with Settings.
+    controller.printReceipts = ref.read(settingsControllerProvider).printReceipts;
+    ref.listenManual(settingsControllerProvider, (prev, next) {
+      controller.printReceipts = next.printReceipts;
+    });
     _customerNumberController = TextEditingController();
     _vehiclePlateController = TextEditingController();
     _clockNow = ValueNotifier<DateTime>(DateTime.now());
@@ -2970,6 +2976,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               onTap: () => Navigator.pop(ctx, 'close_shift'),
             ),
             ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text('Settings'),
+              subtitle: const Text('Server address, printing'),
+              onTap: () => Navigator.pop(ctx, 'settings'),
+            ),
+            ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Log out'),
               subtitle: const Text('Return to the staff PIN screen'),
@@ -2990,6 +3002,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     } else if (action == 'close_shift') {
       await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const ShiftCloseScreen()),
+      );
+    } else if (action == 'settings') {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const SettingsScreen()),
       );
     }
   }

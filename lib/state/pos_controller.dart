@@ -284,6 +284,10 @@ class PosController extends ChangeNotifier {
   /// or fail order completion.
   void Function(OrderSnapshot snapshot)? onOrderCompleted;
 
+  /// Whether to print a Sunmi receipt on completion (driven by Settings; the
+  /// screen keeps it in sync with the settings controller).
+  bool printReceipts = true;
+
   bool _presentationEnabled =
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   bool _isDisposed = false;
@@ -1588,7 +1592,9 @@ class PosController extends ChangeNotifier {
   }) async {
     _assignFinalOrderNumber();
     final completedSnapshot = snapshot();
-    await SunmiReceiptService.printReceipt(completedSnapshot);
+    if (printReceipts) {
+      await SunmiReceiptService.printReceipt(completedSnapshot);
+    }
     await _saveCompletedOrder(completedSnapshot);
     // Push the finalized order to pos_api (via the durable outbox). Fire-and-
     // forget: completion never waits on, or fails because of, the network.
