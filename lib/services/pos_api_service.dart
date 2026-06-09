@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../core/api_config.dart';
 import '../models/pos_models.dart';
 import 'api_models.dart';
+import 'session_service.dart' show OpenShiftData;
 
 typedef TokenGetter = String? Function();
 typedef UnauthorizedCallback = void Function();
@@ -184,6 +185,22 @@ class PosApiService {
         .whereType<Map>()
         .map((m) => OrderHistoryRecord.fromServerJson(m.cast<String, dynamic>()))
         .toList();
+  }
+
+  /// GET /device/shift/current — the device's currently-open shift on the server,
+  /// or null. Lets the open-shift screen ADOPT an existing shift (recovering from
+  /// a local↔server desync) instead of failing to open a duplicate.
+  Future<OpenShiftData?> fetchCurrentShift() async {
+    final body = await _send(() => _dio.get('/device/shift/current'));
+    final shift = body.dataMap['shift'];
+    if (shift is! Map) return null;
+    final m = shift.cast<String, dynamic>();
+    return OpenShiftData(
+      uuid: m['uuid'].toString(),
+      openingCashBaisas: (m['opening_cash_baisas'] as num?)?.toInt() ?? 0,
+      openedAt: DateTime.tryParse(m['opened_at']?.toString() ?? '') ?? DateTime.now(),
+      staffId: (m['staff_id'] as num?)?.toInt() ?? 0,
+    );
   }
 
   // ---------------------------------------------------------------------------

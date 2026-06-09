@@ -21,8 +21,44 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
   int _openingBaisas = 0;
   bool _busy = false;
   String? _error;
+  bool _checking = true; // probing the server for an existing open shift
 
   String get _formatted => (_openingBaisas / 1000).toStringAsFixed(3);
+
+  @override
+  void initState() {
+    super.initState();
+    _probeExistingShift();
+  }
+
+  /// On entry, ask the server whether this device already has an open shift —
+  /// the local record can be lost on re-pair / cleared storage / a second
+  /// device at the branch. If so, ADOPT it (the gate then flips into the POS).
+  /// Offline or none → fall through to the manual open keypad.
+  Future<void> _probeExistingShift() async {
+    final adopted = await _adoptExistingShift(silent: true);
+    if (!adopted && mounted) setState(() => _checking = false);
+  }
+
+  /// Fetch the server's current open shift and adopt it locally. Returns true if
+  /// adopted (the gate rebuilds into the POS and this screen is disposed). When
+  /// not [silent], a failure surfaces a help message.
+  Future<bool> _adoptExistingShift({bool silent = false}) async {
+    try {
+      final existing = await ref.read(apiServiceProvider).fetchCurrentShift();
+      if (existing != null) {
+        await ref.read(sessionControllerProvider.notifier).markShiftOpen(existing);
+        return true;
+      }
+    } catch (_) {
+      // offline / transient — fall through.
+    }
+    if (!silent && mounted) {
+      setState(() => _error =
+          'This device already has an open shift, but it could not be loaded. Check your connection and try again.');
+    }
+    return false;
+  }
 
   void _tap(String digit) {
     if (_busy) return;
@@ -65,7 +101,13 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
       await ref.read(sessionControllerProvider.notifier).markShiftOpen(shift);
       // Gate rebuilds into the POS.
     } on ShiftException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      // Desync: the server already has an open shift for this device — adopt it
+      // instead of dead-ending the cashier on this screen.
+      if (e.message.toLowerCase().contains('already has an open shift')) {
+        if (await _adoptExistingShift()) return;
+      } else if (mounted) {
+        setState(() => _error = e.message);
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _error = 'Could not open the shift. Check your connection.');
@@ -77,6 +119,24 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_checking) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF102028),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Checking for an open shift…',
+                style: TextStyle(color: Colors.white60, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     final staffName = ref.watch(sessionControllerProvider).staff?.name ?? '';
     return Scaffold(
       backgroundColor: const Color(0xFF102028),
