@@ -207,7 +207,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       (previous, next) {
         if (next.asData?.value == true) {
           unawaited(
-            ref.read(configRepositoryProvider).fetchAndCache().catchError((_) {}),
+            ref.read(configRepositoryProvider).syncConfig().catchError((_) {}),
           );
           // Back online → push any orders queued while offline.
           unawaited(

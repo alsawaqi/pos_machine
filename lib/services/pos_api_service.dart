@@ -102,10 +102,29 @@ class PosApiService {
   }
 
   /// GET /device/config — full branch-scoped config bundle. Returns the raw
-  /// `data` map plus the device's terminal_id from `meta` (for the Soft POS).
-  Future<({Map<String, dynamic> data, String? terminalId})> fetchConfig() async {
+  /// `data` map, the device's terminal_id, and `meta.generated_at` (the server
+  /// cursor the device persists + replays as `?since=` on the next delta call).
+  Future<({Map<String, dynamic> data, String? terminalId, String? generatedAt})> fetchConfig() async {
     final body = await _send(() => _dio.get('/device/config'));
-    return (data: body.dataMap, terminalId: body.metaMap['terminal_id'] as String?);
+    return (
+      data: body.dataMap,
+      terminalId: body.metaMap['terminal_id'] as String?,
+      generatedAt: body.metaMap['generated_at'] as String?,
+    );
+  }
+
+  /// GET `/device/config/delta?since=...` — only rows changed since the cursor,
+  /// plus `data.deleted{}` (per-entity ids to purge). `meta.generated_at` is the
+  /// next cursor. `since` is the previous sync's generated_at (ISO-8601).
+  Future<({Map<String, dynamic> data, String? terminalId, String? generatedAt})> fetchConfigDelta(String since) async {
+    final body = await _send(
+      () => _dio.get('/device/config/delta', queryParameters: {'since': since}),
+    );
+    return (
+      data: body.dataMap,
+      terminalId: body.metaMap['terminal_id'] as String?,
+      generatedAt: body.metaMap['generated_at'] as String?,
+    );
   }
 
   /// POST /device/sync/push — push a batch of offline sync events (order.create

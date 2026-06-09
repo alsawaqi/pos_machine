@@ -82,6 +82,47 @@ class ParsedConfig {
   final SyncMetaCompanion meta;
 }
 
+/// Per-entity ids soft-deleted since the last sync (the delta's `data.deleted{}`
+/// map). The device purges these rows from its Drift cache.
+class DeletedIds {
+  const DeletedIds({
+    this.floors = const [],
+    this.tables = const [],
+    this.categories = const [],
+    this.products = const [],
+    this.addonGroups = const [],
+    this.addons = const [],
+    this.ingredients = const [],
+    this.discounts = const [],
+    this.loyaltyRules = const [],
+    this.customers = const [],
+    this.deliveryProviders = const [],
+  });
+
+  final List<int> floors;
+  final List<int> tables;
+  final List<int> categories;
+  final List<int> products;
+  final List<int> addonGroups;
+  final List<int> addons;
+  final List<int> ingredients;
+  final List<int> discounts;
+  final List<int> loyaltyRules;
+  final List<int> customers;
+  final List<int> deliveryProviders;
+}
+
+/// A parsed config delta: the changed-row companions (built via
+/// [ConfigMapper.parse]) + [hasBranch] (false = the branch row was unchanged, so
+/// leave branchCache untouched) + the [deleted] ids to purge.
+class ConfigDelta {
+  ConfigDelta({required this.changed, required this.hasBranch, required this.deleted});
+
+  final ParsedConfig changed;
+  final bool hasBranch;
+  final DeletedIds deleted;
+}
+
 /// Two-way mapping: API JSON → Drift companions, and Drift rows → existing UI
 /// models. Money stays integer baisas in Drift and becomes `double` OMR only in
 /// [toCatalog] (the boundary into the existing pos_machine models).
@@ -177,8 +218,10 @@ class ConfigMapper {
     return const [];
   }
 
-  /// API `data` map → Drift companions for AppDatabase.replaceConfig.
-  static ParsedConfig parse(Map<String, dynamic> data, {DateTime? now}) {
+  /// API `data` map → Drift companions for AppDatabase.replaceConfig. [cursor]
+  /// is the envelope's meta.generated_at (a sibling of `data`, so it can't be
+  /// read from `data` here) — persisted as the next delta `since`.
+  static ParsedConfig parse(Map<String, dynamic> data, {DateTime? now, String? cursor}) {
     final meta = (data['meta'] as Map?)?.cast<String, dynamic>() ?? const {};
     final branchMap = (data['branch'] as Map?)?.cast<String, dynamic>();
 
@@ -364,7 +407,7 @@ class ConfigMapper {
       companyId: Value(_int(meta['company_id']) ?? _int(branchMap?['company_id'])),
       branchId: Value(_int(meta['branch_id']) ?? _int(branchMap?['id'])),
       lastConfigSyncAt: Value(now ?? DateTime.now()),
-      configSchemaVersion: Value(_strN(meta['generated_at'])),
+      configSchemaVersion: Value(cursor ?? _strN(meta['generated_at'])),
     );
 
     return ParsedConfig(
@@ -383,6 +426,32 @@ class ConfigMapper {
       customers: customers,
       ingredients: ingredients,
       meta: metaCompanion,
+    );
+  }
+
+  /// API delta `data` map → changed companions + ids to purge. Reuses [parse]
+  /// for the changed-row companions (in delta mode `data` holds only the rows
+  /// changed since the cursor). `branch` is upserted only when present
+  /// ([ConfigDelta.hasBranch] false = the branch row was unchanged this delta).
+  static ConfigDelta parseDelta(Map<String, dynamic> data, {DateTime? now, String? cursor}) {
+    final changed = parse(data, now: now, cursor: cursor);
+    final del = (data['deleted'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return ConfigDelta(
+      changed: changed,
+      hasBranch: data['branch'] != null,
+      deleted: DeletedIds(
+        floors: _intList(del['floors']),
+        tables: _intList(del['tables']),
+        categories: _intList(del['categories']),
+        products: _intList(del['products']),
+        addonGroups: _intList(del['addon_groups']),
+        addons: _intList(del['addons']),
+        ingredients: _intList(del['ingredients']),
+        discounts: _intList(del['discounts']),
+        loyaltyRules: _intList(del['loyalty_rules']),
+        customers: _intList(del['customers']),
+        deliveryProviders: _intList(del['delivery_providers']),
+      ),
     );
   }
 

@@ -19,7 +19,7 @@ class ConfigRepository {
   /// persist the device's terminal ID (from meta) for the Soft POS.
   Future<void> fetchAndCache() async {
     final config = await _api.fetchConfig();
-    final parsed = ConfigMapper.parse(config.data);
+    final parsed = ConfigMapper.parse(config.data, cursor: config.generatedAt);
     await _db.replaceConfig(
       branch: parsed.branch,
       categoryRows: parsed.categories,
@@ -38,6 +38,62 @@ class ConfigRepository {
       meta: parsed.meta,
     );
     await _session.saveTerminalId(config.terminalId);
+  }
+
+  /// Incremental sync (Phase 7): a DELTA when we hold a cursor from a prior
+  /// sync, else a full [fetchAndCache]. A delta failure (bad/expired cursor,
+  /// transient error) falls back to a full sync, so the cache self-heals.
+  ///
+  /// Deltas don't signal a few deletions (taxes, branch_stock rows, a
+  /// *deactivated* delivery provider) — those are healed by the full syncs that
+  /// still run on device activation + staff login.
+  Future<void> syncConfig({bool preferDelta = true}) async {
+    final meta = await _db.getSyncMeta();
+    final cursor = meta?.configSchemaVersion;
+    if (!preferDelta || cursor == null || cursor.isEmpty) {
+      await fetchAndCache();
+      return;
+    }
+    try {
+      final res = await _api.fetchConfigDelta(cursor);
+      final delta = ConfigMapper.parseDelta(res.data, cursor: res.generatedAt);
+      final c = delta.changed;
+      final d = delta.deleted;
+      await _db.applyDelta(
+        hasBranch: delta.hasBranch,
+        branch: c.branch,
+        categoryRows: c.categories,
+        productRows: c.products,
+        floorRows: c.floors,
+        tableRows: c.tables,
+        addonGroupRows: c.addonGroups,
+        addonRows: c.addons,
+        taxRows: c.taxes,
+        deliveryProviderRows: c.deliveryProviders,
+        branchIngredientStockRows: c.branchIngredientStock,
+        discountRows: c.discounts,
+        loyaltyRuleRows: c.loyaltyRules,
+        customerRows: c.customers,
+        ingredientRows: c.ingredients,
+        deletedCategoryIds: d.categories,
+        deletedProductIds: d.products,
+        deletedFloorIds: d.floors,
+        deletedTableIds: d.tables,
+        deletedAddonGroupIds: d.addonGroups,
+        deletedAddonIds: d.addons,
+        deletedIngredientIds: d.ingredients,
+        deletedDiscountIds: d.discounts,
+        deletedLoyaltyRuleIds: d.loyaltyRules,
+        deletedCustomerIds: d.customers,
+        deletedDeliveryProviderIds: d.deliveryProviders,
+        cursor: res.generatedAt,
+        now: DateTime.now(),
+      );
+      await _session.saveTerminalId(res.terminalId);
+    } catch (_) {
+      // Self-heal: drop back to a full sync on any delta failure.
+      await fetchAndCache();
+    }
   }
 
   Future<bool> hasCachedConfig() => _db.hasCachedConfig();

@@ -174,7 +174,10 @@ final geofenceProvider = StreamProvider<GeofenceStatus>((ref) async* {
   // Re-runs on every Retry (the gate invalidates this provider). Offline or
   // transient failures fall back to the cached branch.
   try {
-    await repo.fetchAndCache();
+    // Delta-preferring (Phase 7): this is the hottest sync path, so it only
+    // pulls changed rows once a cursor exists. A branch geofence edit bumps the
+    // branch's updated_at, so it still comes back in the delta.
+    await repo.syncConfig();
   } catch (_) {
     // keep going with the cached branch
   }

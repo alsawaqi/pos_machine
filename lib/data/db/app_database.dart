@@ -226,4 +226,105 @@ class AppDatabase extends _$AppDatabase {
       await into(syncMeta).insertOnConflictUpdate(meta);
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Write: apply an incremental DELTA (Phase 7) — non-destructive sibling of
+  // replaceConfig. Upserts the changed rows (no wipe), purges the soft-deleted
+  // ids, then advances the cursor. company/branch on SyncMeta are left untouched
+  // (absent columns) so an unchanged-branch delta doesn't blank them.
+  // ---------------------------------------------------------------------------
+  Future<void> applyDelta({
+    required bool hasBranch,
+    required BranchCacheCompanion branch,
+    required List<CategoriesCompanion> categoryRows,
+    required List<ProductsCompanion> productRows,
+    required List<FloorsCompanion> floorRows,
+    required List<PosTablesCompanion> tableRows,
+    required List<AddonGroupsCompanion> addonGroupRows,
+    required List<AddonsCompanion> addonRows,
+    required List<TaxCacheCompanion> taxRows,
+    required List<DeliveryProvidersCompanion> deliveryProviderRows,
+    required List<BranchIngredientStockCompanion> branchIngredientStockRows,
+    required List<DiscountsCompanion> discountRows,
+    required List<LoyaltyRulesCompanion> loyaltyRuleRows,
+    required List<CachedCustomersCompanion> customerRows,
+    required List<IngredientsCompanion> ingredientRows,
+    required List<int> deletedCategoryIds,
+    required List<int> deletedProductIds,
+    required List<int> deletedFloorIds,
+    required List<int> deletedTableIds,
+    required List<int> deletedAddonGroupIds,
+    required List<int> deletedAddonIds,
+    required List<int> deletedIngredientIds,
+    required List<int> deletedDiscountIds,
+    required List<int> deletedLoyaltyRuleIds,
+    required List<int> deletedCustomerIds,
+    required List<int> deletedDeliveryProviderIds,
+    required String? cursor,
+    required DateTime now,
+  }) {
+    return transaction(() async {
+      // Upserts (changed rows only — untouched rows survive).
+      if (hasBranch) {
+        await into(branchCache).insertOnConflictUpdate(branch);
+      }
+      await batch((b) {
+        b.insertAllOnConflictUpdate(categories, categoryRows);
+        b.insertAllOnConflictUpdate(products, productRows);
+        b.insertAllOnConflictUpdate(floors, floorRows);
+        b.insertAllOnConflictUpdate(posTables, tableRows);
+        b.insertAllOnConflictUpdate(addonGroups, addonGroupRows);
+        b.insertAllOnConflictUpdate(addons, addonRows);
+        b.insertAllOnConflictUpdate(taxCache, taxRows);
+        b.insertAllOnConflictUpdate(deliveryProviders, deliveryProviderRows);
+        b.insertAllOnConflictUpdate(branchIngredientStock, branchIngredientStockRows);
+        b.insertAllOnConflictUpdate(discounts, discountRows);
+        b.insertAllOnConflictUpdate(loyaltyRules, loyaltyRuleRows);
+        b.insertAllOnConflictUpdate(cachedCustomers, customerRows);
+        b.insertAllOnConflictUpdate(ingredients, ingredientRows);
+      });
+
+      // Purge soft-deleted ids.
+      if (deletedCategoryIds.isNotEmpty) {
+        await (delete(categories)..where((t) => t.id.isIn(deletedCategoryIds))).go();
+      }
+      if (deletedProductIds.isNotEmpty) {
+        await (delete(products)..where((t) => t.id.isIn(deletedProductIds))).go();
+      }
+      if (deletedFloorIds.isNotEmpty) {
+        await (delete(floors)..where((t) => t.id.isIn(deletedFloorIds))).go();
+      }
+      if (deletedTableIds.isNotEmpty) {
+        await (delete(posTables)..where((t) => t.id.isIn(deletedTableIds))).go();
+      }
+      if (deletedAddonGroupIds.isNotEmpty) {
+        await (delete(addonGroups)..where((t) => t.id.isIn(deletedAddonGroupIds))).go();
+      }
+      if (deletedAddonIds.isNotEmpty) {
+        await (delete(addons)..where((t) => t.id.isIn(deletedAddonIds))).go();
+      }
+      if (deletedIngredientIds.isNotEmpty) {
+        await (delete(ingredients)..where((t) => t.id.isIn(deletedIngredientIds))).go();
+      }
+      if (deletedDiscountIds.isNotEmpty) {
+        await (delete(discounts)..where((t) => t.id.isIn(deletedDiscountIds))).go();
+      }
+      if (deletedLoyaltyRuleIds.isNotEmpty) {
+        await (delete(loyaltyRules)..where((t) => t.id.isIn(deletedLoyaltyRuleIds))).go();
+      }
+      if (deletedCustomerIds.isNotEmpty) {
+        await (delete(cachedCustomers)..where((t) => t.id.isIn(deletedCustomerIds))).go();
+      }
+      if (deletedDeliveryProviderIds.isNotEmpty) {
+        await (delete(deliveryProviders)..where((t) => t.id.isIn(deletedDeliveryProviderIds))).go();
+      }
+
+      // Advance the cursor only — keep company/branch (absent = unchanged).
+      await into(syncMeta).insertOnConflictUpdate(SyncMetaCompanion(
+        id: const Value(1),
+        lastConfigSyncAt: Value(now),
+        configSchemaVersion: Value(cursor),
+      ));
+    });
+  }
 }
