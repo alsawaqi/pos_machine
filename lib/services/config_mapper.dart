@@ -389,6 +389,7 @@ class ConfigMapper {
               name: Value(_str(c['name'])),
               phone: Value(_strN(c['phone'])),
               walletBalanceBaisas: Value(_int(c['wallet_balance_baisas']) ?? 0),
+              loyaltyJson: Value(jsonEncode(c['loyalty'] ?? const [])),
             ))
         .toList();
 
@@ -624,6 +625,7 @@ class ConfigMapper {
               name: c.name,
               phone: c.phone ?? '',
               walletBalance: c.walletBalanceBaisas / 1000.0,
+              loyalty: _loyaltyBalances(c.loyaltyJson),
             ))
         .toList();
 
@@ -676,6 +678,22 @@ class ConfigMapper {
                   targetId: (m['target_id'] as num?)?.toInt() ?? 0,
                 ))
             .where((t) => t.targetType.isNotEmpty && t.targetId != 0)
+            .toList();
+      }
+    } catch (_) {}
+    return const [];
+  }
+
+  /// Decode a cached customer's loyalty JSON ([{rule_id, points, stamps}]) →
+  /// LoyaltyBalance list (for offline points display + redeem).
+  static List<LoyaltyBalance> _loyaltyBalances(String json) {
+    if (json.isEmpty || json == '[]') return const [];
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is List) {
+        return decoded
+            .whereType<Map>()
+            .map((m) => LoyaltyBalance.fromJson(m.cast<String, dynamic>()))
             .toList();
       }
     } catch (_) {}

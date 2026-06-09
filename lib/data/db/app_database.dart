@@ -35,7 +35,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -89,6 +89,10 @@ class AppDatabase extends _$AppDatabase {
             // v10 added the ingredient catalogue (id+name+unit) for the device
             // restock-request picker.
             await m.createTable(ingredients);
+          }
+          if (from < 11) {
+            // v11 cached per-customer loyalty balances (offline points/redeem).
+            await m.addColumn(cachedCustomers, cachedCustomers.loyaltyJson);
           }
         },
       );

@@ -713,13 +713,26 @@ class CustomerRef {
   final String name;
   final String phone;
   final double walletBalance;
+  // Cached loyalty balances per rule (offline points view + redeem).
+  final List<LoyaltyBalance> loyalty;
 
   const CustomerRef({
     required this.id,
     required this.name,
     this.phone = '',
     this.walletBalance = 0,
+    this.loyalty = const [],
   });
+
+  /// Convert to the [CustomerSearchResult] shape the attach/redeem flow uses, so
+  /// an offline cache hit reuses the same selectedCustomer / _redeemable path.
+  CustomerSearchResult toSearchResult() => CustomerSearchResult(
+        id: id,
+        name: name,
+        phone: phone,
+        walletBalance: walletBalance,
+        loyalty: loyalty,
+      );
 }
 
 /// A company ingredient (id + name + unit) for the device restock-request

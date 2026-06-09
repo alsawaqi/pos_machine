@@ -1198,7 +1198,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final result = await showDialog<CustomerSearchResult>(
       context: context,
       builder: (_) => _CustomerSearchDialog(
-        search: ref.read(apiServiceProvider).searchCustomers,
+        search: (q) async {
+          try {
+            return await ref.read(apiServiceProvider).searchCustomers(q);
+          } catch (_) {
+            // Offline / search error → fall back to the cached customer slice
+            // (with cached loyalty), so attach + redeem still work offline.
+            return controller.searchCachedCustomers(q);
+          }
+        },
       ),
     );
     if (!mounted || result == null) return;

@@ -911,6 +911,20 @@ class PosController extends ChangeNotifier {
     _broadcast();
   }
 
+  /// Offline customer search over the cached slice (name/phone contains the
+  /// query), returning the CustomerSearchResult shape WITH cached loyalty, so
+  /// attach + redeem work unchanged when the live search is unreachable.
+  List<CustomerSearchResult> searchCachedCustomers(String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return const [];
+    return cachedCustomers
+        .where((c) =>
+            c.name.toLowerCase().contains(q) || c.phone.toLowerCase().contains(q))
+        .take(20)
+        .map((c) => c.toSearchResult())
+        .toList();
+  }
+
   /// Pending loyalty redemption for this order (the points SPENT). Its monetary
   /// value rides as the order discount; this is sent as loyalty_redeem on pay so
   /// the server decrements the balance. Null = no redemption.

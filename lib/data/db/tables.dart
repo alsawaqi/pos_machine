@@ -255,6 +255,9 @@ class CachedCustomers extends Table {
   TextColumn get name => text().withDefault(const Constant(''))();
   TextColumn get phone => text().nullable()();
   IntColumn get walletBalanceBaisas => integer().withDefault(const Constant(0))();
+  // Cached loyalty balances per rule: JSON [{rule_id, points, stamps}]. Drives
+  // OFFLINE points display + redeem (the live search refreshes it when online).
+  TextColumn get loyaltyJson => text().withDefault(const Constant('[]'))();
 
   @override
   Set<Column> get primaryKey => {id};
