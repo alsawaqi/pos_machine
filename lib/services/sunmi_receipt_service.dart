@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sunmi_printer_plus/sunmi_printer_plus.dart';
 import '../models/pos_models.dart';
 
@@ -12,6 +14,20 @@ class SunmiReceiptService {
     return '$safeLeft${' ' * (spaces > 0 ? spaces : 1)}$right';
   }
 
+  /// Print the branch logo (a base64-encoded PNG) centered. Fail-safe: a bad /
+  /// undecodable image is skipped so it can never block the rest of the
+  /// receipt from printing.
+  static Future<void> _printLogo(String base64Png) async {
+    try {
+      final bytes = base64Decode(base64Png);
+      if (bytes.isEmpty) return;
+      await SunmiPrinter.printImage(bytes, align: SunmiPrintAlign.CENTER);
+      await SunmiPrinter.lineWrap(1);
+    } catch (_) {
+      // Ignore — print the rest of the receipt without the logo.
+    }
+  }
+
   /// Print a receipt. When [template] is supplied (the merchant-authored
   /// per-branch template from /device/config), its business name / CR / VAT /
   /// header + footer lines drive the printout; otherwise the built-in default
@@ -20,15 +36,24 @@ class SunmiReceiptService {
     final orderType = OrderTypeLabel.fromStorage(order.orderType).label;
     final t = (template != null && !template.isEmpty) ? template : null;
 
-    // Header — business name (large), then the merchant's custom header block.
-    await SunmiPrinter.printText(
-      t?.businessName ?? 'MITHQAL 2.0',
-      style: SunmiTextStyle(
-        bold: true,
-        fontSize: 36,
-        align: SunmiPrintAlign.CENTER,
-      ),
-    );
+    // Header — optional logo, then business name (large), then the merchant's
+    // custom header block. The logo (when present) stands in for the default
+    // name, so we only fall back to "MITHQAL 2.0" when there's neither.
+    if (t?.logoBase64 != null) {
+      await _printLogo(t!.logoBase64!);
+    }
+
+    final headerName = t?.businessName ?? (t?.logoBase64 == null ? 'MITHQAL 2.0' : null);
+    if (headerName != null) {
+      await SunmiPrinter.printText(
+        headerName,
+        style: SunmiTextStyle(
+          bold: true,
+          fontSize: 36,
+          align: SunmiPrintAlign.CENTER,
+        ),
+      );
+    }
     if (t != null) {
       if (t.businessNameAr != null) {
         await SunmiPrinter.printText(

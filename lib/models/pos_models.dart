@@ -223,6 +223,7 @@ class ReceiptTemplate {
     this.headerLines = const <String>[],
     this.footerLines = const <String>[],
     this.showQr = true,
+    this.logoBase64,
   });
 
   final String? businessName;
@@ -234,9 +235,13 @@ class ReceiptTemplate {
   final List<String> headerLines;
   final List<String> footerLines;
   final bool showQr;
+  // Base64-encoded PNG of the branch logo (already resized + greyscaled by the
+  // merchant portal). Null = no logo. Printed at the top of the receipt.
+  final String? logoBase64;
 
   /// True when there is nothing custom to print (so the caller uses the
-  /// default "MITHQAL 2.0" header instead of a blank one).
+  /// default "MITHQAL 2.0" header instead of a blank one). A logo alone counts
+  /// as custom content.
   bool get isEmpty =>
       (businessName?.isEmpty ?? true) &&
       (businessNameAr?.isEmpty ?? true) &&
@@ -245,7 +250,8 @@ class ReceiptTemplate {
       (address?.isEmpty ?? true) &&
       (phone?.isEmpty ?? true) &&
       headerLines.isEmpty &&
-      footerLines.isEmpty;
+      footerLines.isEmpty &&
+      (logoBase64?.isEmpty ?? true);
 
   /// Parse the `branch.receipt_template` config object. Returns null when the
   /// branch has no template configured.
@@ -275,6 +281,7 @@ class ReceiptTemplate {
       footerLines: lines(json['footer_lines']),
       // Default to printing the QR unless the merchant explicitly turned it off.
       showQr: json['show_qr'] == null ? true : json['show_qr'] == true,
+      logoBase64: str(json['logo_base64']),
     );
   }
 }

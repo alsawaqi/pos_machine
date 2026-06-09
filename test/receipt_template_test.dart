@@ -48,6 +48,15 @@ void main() {
       expect(t.businessName, isNull);
       expect(t.isEmpty, isTrue);
     });
+
+    test('parses logo_base64 and treats a logo-only template as non-empty', () {
+      final t = ReceiptTemplate.fromJson(<String, dynamic>{
+        'logo_base64': 'iVBORw0KGgo=',
+      })!;
+      expect(t.logoBase64, 'iVBORw0KGgo=');
+      expect(t.businessName, isNull);
+      expect(t.isEmpty, isFalse); // a logo alone is custom content
+    });
   });
 
   group('config mapper', () {
