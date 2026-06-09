@@ -735,6 +735,7 @@ class PosController extends ChangeNotifier {
       discountAmountType: discount.amountType,
       loyaltyRedeemRuleId: loyaltyRedeemRuleId,
       loyaltyRedeemPoints: loyaltyRedeemPoints,
+      loyaltyRedeemStamps: loyaltyRedeemStamps,
       subtotal: subtotal,
       tax: tax,
       total: total,
@@ -938,6 +939,9 @@ class PosController extends ChangeNotifier {
   /// the server decrements the balance. Null = no redemption.
   int? loyaltyRedeemRuleId;
   int loyaltyRedeemPoints = 0;
+  // Stamps spent on a visit_based (stamp-card) redemption (sent as
+  // loyalty_redeem.stamps on pay). 0 = a points redemption (or none).
+  int loyaltyRedeemStamps = 0;
 
   void applyDiscount(DiscountConfiguration configuration) {
     discount = configuration;
@@ -945,17 +949,20 @@ class PosController extends ChangeNotifier {
     // pending loyalty redemption so we don't send a stale redeem on pay.
     loyaltyRedeemRuleId = null;
     loyaltyRedeemPoints = 0;
+    loyaltyRedeemStamps = 0;
     _resetCharityRoundUp();
     _broadcast();
   }
 
-  /// Redeem [points] under a spend-based rule: apply [valueOmr] as the order
-  /// discount and remember the points to spend (sent as loyalty_redeem on pay).
+  /// Redeem under a loyalty rule: apply [valueOmr] as the order discount and
+  /// remember the [points] OR [stamps] to spend (sent as loyalty_redeem on
+  /// pay). spend_based passes points; visit_based passes stamps.
   void applyLoyaltyRedemption({
     required int ruleId,
-    required int points,
     required double valueOmr,
     required String label,
+    int points = 0,
+    int stamps = 0,
   }) {
     discount = DiscountConfiguration(
       kind: DiscountKind.fixedAmount,
@@ -964,6 +971,7 @@ class PosController extends ChangeNotifier {
     );
     loyaltyRedeemRuleId = ruleId;
     loyaltyRedeemPoints = points;
+    loyaltyRedeemStamps = stamps;
     _resetCharityRoundUp();
     _broadcast();
   }
@@ -972,8 +980,18 @@ class PosController extends ChangeNotifier {
     discount = const DiscountConfiguration();
     loyaltyRedeemRuleId = null;
     loyaltyRedeemPoints = 0;
+    loyaltyRedeemStamps = 0;
     _resetCharityRoundUp();
     _broadcast();
+  }
+
+  /// The catalogue product with this id, or null (used to value a free-product
+  /// stamp reward at its current price).
+  Product? productById(int id) {
+    for (final p in _baseProducts) {
+      if (int.tryParse(p.id) == id) return p;
+    }
+    return null;
   }
 
   void setSplitCount(int count) {

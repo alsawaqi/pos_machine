@@ -643,6 +643,16 @@ class LoyaltyRule {
   // visit_based config
   int get stampsRequired => _num(config['stamps_required']).round();
   double get minOrderValue => _num(config['min_order_value']); // OMR
+  // Stamp reward: 'percent_off' (rewardValue = % off) or 'free_product'
+  // (rewardProductId names the product; its catalog price is the value).
+  String? get rewardType => config['reward_type'] as String?;
+  double get rewardValue => _num(config['reward_value']);
+  int? get rewardProductId {
+    final v = config['reward_product_id'];
+    if (v == null) return null;
+    final n = _num(v).round();
+    return n > 0 ? n : null;
+  }
 
   static double _num(Object? v) {
     if (v is num) return v.toDouble();
@@ -1024,6 +1034,8 @@ class OrderSnapshot {
   // as loyalty_redeem on order.pay. Null/0 = no redemption.
   final int? loyaltyRedeemRuleId;
   final int loyaltyRedeemPoints;
+  // Stamps spent on a visit_based (stamp-card) redemption. Null/0 = none.
+  final int loyaltyRedeemStamps;
   final double subtotal;
   final double tax;
   final double total;
@@ -1083,6 +1095,7 @@ class OrderSnapshot {
     this.discountAmountType,
     this.loyaltyRedeemRuleId,
     this.loyaltyRedeemPoints = 0,
+    this.loyaltyRedeemStamps = 0,
     required this.charityRoundUpPromptId,
     required this.recentProductId,
     required this.orderUpdateNonce,
@@ -1235,6 +1248,7 @@ class OrderSnapshot {
     String? discountAmountType,
     int? loyaltyRedeemRuleId,
     int? loyaltyRedeemPoints,
+    int? loyaltyRedeemStamps,
     double? subtotal,
     double? tax,
     double? total,
@@ -1272,6 +1286,7 @@ class OrderSnapshot {
       discountAmountType: discountAmountType ?? this.discountAmountType,
       loyaltyRedeemRuleId: loyaltyRedeemRuleId ?? this.loyaltyRedeemRuleId,
       loyaltyRedeemPoints: loyaltyRedeemPoints ?? this.loyaltyRedeemPoints,
+      loyaltyRedeemStamps: loyaltyRedeemStamps ?? this.loyaltyRedeemStamps,
       subtotal: subtotal ?? this.subtotal,
       tax: tax ?? this.tax,
       total: total ?? this.total,

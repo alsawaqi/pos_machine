@@ -1435,8 +1435,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         .where((d) => d.isOrderScope && d.appliesAt(now, branchId: branchId))
         .toList();
     final redeem = _redeemable();
+    final redeemStamp = _redeemableStamp();
 
-    if (applicable.isEmpty && redeem == null) {
+    if (applicable.isEmpty && redeem == null && redeemStamp == null) {
       await _openManualDiscountDialog();
       return;
     }
@@ -1466,6 +1467,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   '${redeem.points} points available  ·  ${redeem.rule.name}',
                 ),
                 onTap: () => Navigator.pop(ctx, (type: 'redeem', rule: null)),
+              ),
+            if (redeemStamp != null)
+              ListTile(
+                leading: const Icon(Icons.workspace_premium_rounded),
+                title: const Text('Redeem stamp reward'),
+                subtitle: Text(
+                  '${redeemStamp.stamps} stamps → ${SunmiReceiptService.money(redeemStamp.valueOmr)} off  ·  ${redeemStamp.rule.name}',
+                ),
+                onTap: () => Navigator.pop(ctx, (type: 'redeem_stamp', rule: null)),
               ),
             for (final d in applicable)
               ListTile(
@@ -1511,6 +1521,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         await _applyMerchantDiscount(action.rule!);
       case 'redeem':
         await _openRedeemDialog();
+      case 'redeem_stamp':
+        await _redeemStamp();
     }
   }
 
@@ -1530,6 +1542,106 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       }
     }
     return null;
+  }
+
+  /// The redeemable visit_based (stamp-card) rule for the attached customer:
+  /// enough stamps for one reward, with a resolvable OMR value, or null.
+  ({LoyaltyRule rule, CustomerSearchResult customer, int stamps, double valueOmr})?
+      _redeemableStamp() {
+    final c = controller.selectedCustomer;
+    if (c == null) return null;
+    final subtotal = controller.rawSubtotal;
+    if (subtotal <= 0) return null;
+    for (final r in controller.loyaltyRules) {
+      if (!r.isActive || !r.isVisitBased || r.stampsRequired <= 0) continue;
+      if (c.stampsForRule(r.id) < r.stampsRequired) continue;
+      final value = _stampRewardValue(r, subtotal);
+      if (value <= 0) continue;
+      final capped = value > subtotal ? subtotal : value;
+      return (rule: r, customer: c, stamps: r.stampsRequired, valueOmr: capped);
+    }
+    return null;
+  }
+
+  /// OMR value of one stamp reward: percent_off → % of [subtotal];
+  /// free_product → the reward product's current catalogue price (fallback to
+  /// an explicit reward_value). 0 = not redeemable on the device.
+  double _stampRewardValue(LoyaltyRule r, double subtotal) {
+    switch (r.rewardType) {
+      case 'percent_off':
+        final pct = r.rewardValue;
+        if (pct <= 0) return 0;
+        return subtotal * (pct > 100 ? 100 : pct) / 100.0;
+      case 'free_product':
+        final id = r.rewardProductId;
+        if (id == null) return 0;
+        final p = controller.productById(id);
+        return p?.price ?? (r.rewardValue > 0 ? r.rewardValue : 0);
+      default:
+        return r.rewardValue > 0 ? r.rewardValue : 0;
+    }
+  }
+
+  /// Confirm + apply a visit_based stamp reward (spends stampsRequired stamps
+  /// for a one-off discount; the stamps ride as loyalty_redeem on pay).
+  Future<void> _redeemStamp() async {
+    final redeem = _redeemableStamp();
+    if (redeem == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Redeem stamp reward'),
+        content: Text(
+          '${redeem.stamps} stamps → ${SunmiReceiptService.money(redeem.valueOmr)} off  ·  ${redeem.rule.name}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Redeem'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || ok != true) return;
+
+    controller.applyLoyaltyRedemption(
+      ruleId: redeem.rule.id,
+      stamps: redeem.stamps,
+      valueOmr: redeem.valueOmr,
+      label: 'Stamp reward',
+    );
+    _showPopupMessage(
+      title: 'Reward Redeemed',
+      message:
+          '${redeem.stamps} stamps → ${SunmiReceiptService.money(redeem.valueOmr)} off.',
+      tone: FeedbackTone.success,
+    );
+  }
+
+  /// Entry point for the payment-console "Redeem Loyalty" action: surfaces
+  /// points + stamp redemption (via the discount sheet) or a helpful message.
+  Future<void> _openLoyaltyRedeem() async {
+    if (controller.selectedCustomer == null) {
+      _showPopupMessage(
+        title: 'No Customer',
+        message: 'Attach a customer first to redeem loyalty.',
+        tone: FeedbackTone.info,
+      );
+      return;
+    }
+    if (_redeemable() == null && _redeemableStamp() == null) {
+      _showPopupMessage(
+        title: 'Nothing to Redeem',
+        message: 'No redeemable points or stamps for this order yet.',
+        tone: FeedbackTone.info,
+      );
+      return;
+    }
+    await _openDiscountDialog();
   }
 
   Future<void> _openRedeemDialog() async {
@@ -2575,10 +2687,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 icon: Icons.workspace_premium_rounded,
                 title: 'Redeem Loyalty',
                 onTap: () {
-                  _showPlaceholderMessage(
-                    'Loyalty Coming Next',
-                    'We will connect reward redemption once the customer profile flow is ready.',
-                  );
+                  unawaited(_openLoyaltyRedeem());
                 },
               ),
             ),
@@ -3792,10 +3901,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     icon: Icons.loyalty_outlined,
                     title: 'Loyalty',
                     onTap: () {
-                      _showPlaceholderMessage(
-                        'Loyalty Coming Next',
-                        'We will connect loyalty profiles after the order archive flow is finalized.',
-                      );
+                      unawaited(_openLoyaltyRedeem());
                     },
                   ),
                 ),

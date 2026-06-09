@@ -436,7 +436,26 @@ void main() {
 
       final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
       final pay = payload.events[1]['payload'] as Map<String, dynamic>;
-      expect(pay['loyalty_redeem'], {'rule_id': 2, 'points': 100});
+      expect(pay['loyalty_redeem'], {'rule_id': 2, 'points': 100, 'stamps': 0});
+    });
+
+    test('loyalty_redeem carries stamps on a visit_based redemption', () {
+      final snap = OrderSnapshot.initial().copyWith(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 10.0, 'lineTotal': 10.0},
+        ],
+        rawSubtotal: 10.0,
+        discountAmount: 4.0,
+        discountLabel: 'Stamp reward',
+        loyaltyRedeemRuleId: 3,
+        loyaltyRedeemPoints: 0,
+        loyaltyRedeemStamps: 5,
+        total: 6.0,
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final pay = payload.events[1]['payload'] as Map<String, dynamic>;
+      expect(pay['loyalty_redeem'], {'rule_id': 3, 'points': 0, 'stamps': 5});
     });
 
     test('no loyalty_redeem key when nothing is redeemed', () {

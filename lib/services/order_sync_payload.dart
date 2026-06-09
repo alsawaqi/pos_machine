@@ -249,12 +249,15 @@ OrderSyncPayload buildOrderSyncPayload(
     'loyalty_rule_id': ?loyaltyRuleId,
   };
 
-  // Loyalty REDEEM: the points spent (their value is already on the order as the
-  // discount). The server decrements the balance (strict — over-balance fails).
-  if (snapshot.loyaltyRedeemRuleId != null && snapshot.loyaltyRedeemPoints > 0) {
+  // Loyalty REDEEM: the points OR stamps spent (their value is already on the
+  // order as the discount). The server decrements the balance (strict —
+  // over-balance fails). spend_based sends points; visit_based sends stamps.
+  if (snapshot.loyaltyRedeemRuleId != null &&
+      (snapshot.loyaltyRedeemPoints > 0 || snapshot.loyaltyRedeemStamps > 0)) {
     payEvent['loyalty_redeem'] = <String, dynamic>{
       'rule_id': snapshot.loyaltyRedeemRuleId,
       'points': snapshot.loyaltyRedeemPoints,
+      'stamps': snapshot.loyaltyRedeemStamps,
     };
   }
 

@@ -36,6 +36,27 @@ void main() {
       expect(rule.minOrderValue, 2.0);
     });
 
+    test('visit_based reward getters (percent_off + free_product)', () {
+      const percent = LoyaltyRule(
+        id: 1,
+        name: 'Percent card',
+        type: 'visit_based',
+        config: {'stamps_required': 10, 'reward_type': 'percent_off', 'reward_value': '50'},
+      );
+      expect(percent.rewardType, 'percent_off');
+      expect(percent.rewardValue, 50.0);
+      expect(percent.rewardProductId, isNull);
+
+      const freeProduct = LoyaltyRule(
+        id: 2,
+        name: 'Free coffee',
+        type: 'visit_based',
+        config: {'stamps_required': 8, 'reward_type': 'free_product', 'reward_product_id': 42},
+      );
+      expect(freeProduct.rewardType, 'free_product');
+      expect(freeProduct.rewardProductId, 42);
+    });
+
     test('missing config keys default to zero', () {
       const rule = LoyaltyRule(id: 3, name: 'Empty', type: 'spend_based');
       expect(rule.pointsPerOmr, 0);
