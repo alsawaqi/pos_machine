@@ -209,6 +209,76 @@ class DeliveryProvider {
   final int sortOrder;
 }
 
+/// Per-branch custom receipt template (merchant-authored, delivered via
+/// /device/config). Drives the header + footer the POS device prints. Null
+/// fields / an [isEmpty] instance fall back to the built-in default receipt.
+class ReceiptTemplate {
+  const ReceiptTemplate({
+    this.businessName,
+    this.businessNameAr,
+    this.crNumber,
+    this.vatNumber,
+    this.address,
+    this.phone,
+    this.headerLines = const <String>[],
+    this.footerLines = const <String>[],
+    this.showQr = true,
+  });
+
+  final String? businessName;
+  final String? businessNameAr;
+  final String? crNumber;
+  final String? vatNumber;
+  final String? address;
+  final String? phone;
+  final List<String> headerLines;
+  final List<String> footerLines;
+  final bool showQr;
+
+  /// True when there is nothing custom to print (so the caller uses the
+  /// default "MITHQAL 2.0" header instead of a blank one).
+  bool get isEmpty =>
+      (businessName?.isEmpty ?? true) &&
+      (businessNameAr?.isEmpty ?? true) &&
+      (crNumber?.isEmpty ?? true) &&
+      (vatNumber?.isEmpty ?? true) &&
+      (address?.isEmpty ?? true) &&
+      (phone?.isEmpty ?? true) &&
+      headerLines.isEmpty &&
+      footerLines.isEmpty;
+
+  /// Parse the `branch.receipt_template` config object. Returns null when the
+  /// branch has no template configured.
+  static ReceiptTemplate? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+
+    String? str(Object? v) {
+      final s = v?.toString().trim() ?? '';
+      return s.isEmpty ? null : s;
+    }
+
+    List<String> lines(Object? v) => v is List
+        ? v
+            .map((e) => e?.toString().trim() ?? '')
+            .where((e) => e.isNotEmpty)
+            .toList()
+        : const <String>[];
+
+    return ReceiptTemplate(
+      businessName: str(json['business_name']),
+      businessNameAr: str(json['business_name_ar']),
+      crNumber: str(json['cr_number']),
+      vatNumber: str(json['vat_number']),
+      address: str(json['address']),
+      phone: str(json['phone']),
+      headerLines: lines(json['header_lines']),
+      footerLines: lines(json['footer_lines']),
+      // Default to printing the QR unless the merchant explicitly turned it off.
+      showQr: json['show_qr'] == null ? true : json['show_qr'] == true,
+    );
+  }
+}
+
 /// One ingredient line of a product's recipe: how much of an ingredient one unit
 /// of the product needs. Drives ingredient-based sold-out on the device.
 class RecipeLine {

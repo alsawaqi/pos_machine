@@ -22,6 +22,8 @@ class BranchCache extends Table {
   IntColumn get geofenceRadiusM => integer().nullable()();
   TextColumn get defaultOrderType => text().nullable()();
   TextColumn get status => text().nullable()();
+  // Merchant-authored custom receipt template (JSON); null = device default.
+  TextColumn get receiptTemplateJson => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

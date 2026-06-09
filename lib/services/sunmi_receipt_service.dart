@@ -12,17 +12,46 @@ class SunmiReceiptService {
     return '$safeLeft${' ' * (spaces > 0 ? spaces : 1)}$right';
   }
 
-  static Future<void> printReceipt(OrderSnapshot order) async {
+  /// Print a receipt. When [template] is supplied (the merchant-authored
+  /// per-branch template from /device/config), its business name / CR / VAT /
+  /// header + footer lines drive the printout; otherwise the built-in default
+  /// header ("MITHQAL 2.0") is used.
+  static Future<void> printReceipt(OrderSnapshot order, {ReceiptTemplate? template}) async {
     final orderType = OrderTypeLabel.fromStorage(order.orderType).label;
+    final t = (template != null && !template.isEmpty) ? template : null;
 
+    // Header — business name (large), then the merchant's custom header block.
     await SunmiPrinter.printText(
-      'MITHQAL 2.0',
+      t?.businessName ?? 'MITHQAL 2.0',
       style: SunmiTextStyle(
         bold: true,
         fontSize: 36,
         align: SunmiPrintAlign.CENTER,
       ),
     );
+    if (t != null) {
+      if (t.businessNameAr != null) {
+        await SunmiPrinter.printText(
+          t.businessNameAr!,
+          style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.CENTER),
+        );
+      }
+      for (final line in t.headerLines) {
+        await SunmiPrinter.printText(line, style: SunmiTextStyle(align: SunmiPrintAlign.CENTER));
+      }
+      if (t.address != null) {
+        await SunmiPrinter.printText(t.address!, style: SunmiTextStyle(align: SunmiPrintAlign.CENTER));
+      }
+      if (t.phone != null) {
+        await SunmiPrinter.printText('Tel: ${t.phone}', style: SunmiTextStyle(align: SunmiPrintAlign.CENTER));
+      }
+      if (t.crNumber != null) {
+        await SunmiPrinter.printText('CR No.: ${t.crNumber}', style: SunmiTextStyle(align: SunmiPrintAlign.CENTER));
+      }
+      if (t.vatNumber != null) {
+        await SunmiPrinter.printText('VAT No.: ${t.vatNumber}', style: SunmiTextStyle(align: SunmiPrintAlign.CENTER));
+      }
+    }
 
     await SunmiPrinter.printText(
       '$orderType Receipt',
@@ -118,14 +147,25 @@ class SunmiReceiptService {
       );
     }
 
-    await SunmiPrinter.lineWrap(1);
-    await SunmiPrinter.printQRCode(
-      'MITHQAL|TOTAL=${order.payableTotal.toStringAsFixed(3)}|STATUS=${order.paymentStatus}',
-      style: SunmiQrcodeStyle(
-        qrcodeSize: 4,
-        errorLevel: SunmiQrcodeLevel.LEVEL_H,
-      ),
-    );
+    // QR — printed unless the merchant turned it off in the template.
+    if (t == null || t.showQr) {
+      await SunmiPrinter.lineWrap(1);
+      await SunmiPrinter.printQRCode(
+        'MITHQAL|TOTAL=${order.payableTotal.toStringAsFixed(3)}|STATUS=${order.paymentStatus}',
+        style: SunmiQrcodeStyle(
+          qrcodeSize: 4,
+          errorLevel: SunmiQrcodeLevel.LEVEL_H,
+        ),
+      );
+    }
+
+    // Merchant's custom footer lines (thank-you note, policy, etc.).
+    if (t != null && t.footerLines.isNotEmpty) {
+      await SunmiPrinter.lineWrap(1);
+      for (final line in t.footerLines) {
+        await SunmiPrinter.printText(line, style: SunmiTextStyle(align: SunmiPrintAlign.CENTER));
+      }
+    }
 
     await SunmiPrinter.lineWrap(3);
     await SunmiPrinter.cutPaper();

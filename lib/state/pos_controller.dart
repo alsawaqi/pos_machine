@@ -237,6 +237,10 @@ class PosController extends ChangeNotifier {
   /// config sync populates it; see [positionCanCancelOrders].
   List<String> cancelOrderPositions = const <String>['manager'];
 
+  /// The branch's merchant-authored receipt template (from /device/config).
+  /// Null = print the built-in default receipt. Passed to [SunmiReceiptService].
+  ReceiptTemplate? receiptTemplate;
+
   /// Whether a staff member with [position] may cancel an order under the
   /// current company policy. Case-insensitive; an unknown / null position is
   /// denied. With no policy cached, the default managers-only list applies.
@@ -423,6 +427,7 @@ class PosController extends ChangeNotifier {
     List<LoyaltyRule> loyaltyRules = const <LoyaltyRule>[],
     List<CustomerRef> customers = const <CustomerRef>[],
     List<String> cancelOrderPositions = const <String>['manager'],
+    ReceiptTemplate? receiptTemplate,
     int? branchId,
   }) {
     this.categories = categories;
@@ -439,6 +444,7 @@ class PosController extends ChangeNotifier {
     cachedCustomers = customers;
     this.cancelOrderPositions =
         cancelOrderPositions.isEmpty ? const <String>['manager'] : cancelOrderPositions;
+    this.receiptTemplate = receiptTemplate;
     // Company taxes drive the cart tax lines + total. Stored in the shared
     // source so the persisted / printed order agrees with the live cart.
     activeCompanyTaxes = taxes;
@@ -1247,11 +1253,11 @@ class PosController extends ChangeNotifier {
 
   Future<void> printOnly() async {
     if (_cart.isEmpty) return;
-    await SunmiReceiptService.printReceipt(snapshot());
+    await SunmiReceiptService.printReceipt(snapshot(), template: receiptTemplate);
   }
 
   Future<void> printHistoricalReceipt(OrderHistoryRecord record) async {
-    await SunmiReceiptService.printReceipt(record.snapshot);
+    await SunmiReceiptService.printReceipt(record.snapshot, template: receiptTemplate);
   }
 
   Future<String?> holdCurrentOrder() async {
@@ -1826,7 +1832,7 @@ class PosController extends ChangeNotifier {
     // push share it — a later full-cancel can then emit a matching order.void.
     final completedSnapshot = snapshot().copyWith(serverOrderUuid: uuidV4());
     if (printReceipts) {
-      await SunmiReceiptService.printReceipt(completedSnapshot);
+      await SunmiReceiptService.printReceipt(completedSnapshot, template: receiptTemplate);
     }
     await _saveCompletedOrder(completedSnapshot);
     // Push the finalized order to pos_api (via the durable outbox). Fire-and-

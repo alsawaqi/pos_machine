@@ -22,6 +22,7 @@ class CatalogSnapshot {
     this.customers = const <CustomerRef>[],
     this.ingredients = const <IngredientRef>[],
     this.cancelOrderPositions = const <String>['manager'],
+    this.receiptTemplate,
   });
 
   final List<String> categories;
@@ -51,6 +52,8 @@ class CatalogSnapshot {
   // v2 #14 — staff positions allowed to cancel an order at the POS (company
   // policy). Defaults to managers-only until a config sync populates it.
   final List<String> cancelOrderPositions;
+  // Per-branch custom receipt template; null = device prints its default.
+  final ReceiptTemplate? receiptTemplate;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -244,6 +247,7 @@ class ConfigMapper {
     final meta = (data['meta'] as Map?)?.cast<String, dynamic>() ?? const {};
     final branchMap = (data['branch'] as Map?)?.cast<String, dynamic>();
 
+    final receiptTemplate = branchMap?['receipt_template'];
     final branch = BranchCacheCompanion(
       id: Value(_int(branchMap?['id']) ?? 0),
       name: Value(_str(branchMap?['name'])),
@@ -253,6 +257,8 @@ class ConfigMapper {
       geofenceRadiusM: Value(_int(branchMap?['geofence_radius_m'])),
       defaultOrderType: Value(_strN(branchMap?['default_order_type'])),
       status: Value(_strN(branchMap?['status'])),
+      receiptTemplateJson:
+          Value(receiptTemplate is Map ? jsonEncode(receiptTemplate) : null),
     );
 
     final categories = _list(data['categories'])
@@ -630,6 +636,8 @@ class ConfigMapper {
       for (final s in branchStockRows) s.ingredientId: s.quantity,
     };
 
+    final receiptTemplate = _receiptTemplate(branch?.receiptTemplateJson);
+
     final discounts = discountRows
         .map((d) => MerchantDiscount(
               id: d.id,
@@ -696,7 +704,22 @@ class ConfigMapper {
       customers: customers,
       ingredients: ingredients,
       cancelOrderPositions: _cancelPositionsFromMeta(meta),
+      receiptTemplate: receiptTemplate,
     );
+  }
+
+  /// Decode the cached per-branch receipt template JSON → [ReceiptTemplate].
+  /// Returns null when unset / malformed (device falls back to its default).
+  static ReceiptTemplate? _receiptTemplate(String? json) {
+    if (json == null || json.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(json);
+      return decoded is Map<String, dynamic>
+          ? ReceiptTemplate.fromJson(decoded)
+          : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Decode the cached order-cancel policy JSON → position list. Falls back to

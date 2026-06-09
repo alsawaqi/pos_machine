@@ -36,7 +36,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -102,6 +102,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 13) {
             // v13 cached the order-cancel positions policy (device cancel gate).
             await m.addColumn(syncMeta, syncMeta.orderCancelPositions);
+          }
+          if (from < 14) {
+            // v14 cached the per-branch custom receipt template.
+            await m.addColumn(branchCache, branchCache.receiptTemplateJson);
           }
         },
       );

@@ -90,6 +90,17 @@ class $BranchCacheTable extends BranchCache
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _receiptTemplateJsonMeta =
+      const VerificationMeta('receiptTemplateJson');
+  @override
+  late final GeneratedColumn<String> receiptTemplateJson =
+      GeneratedColumn<String>(
+        'receipt_template_json',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -100,6 +111,7 @@ class $BranchCacheTable extends BranchCache
     geofenceRadiusM,
     defaultOrderType,
     status,
+    receiptTemplateJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -164,6 +176,15 @@ class $BranchCacheTable extends BranchCache
         status.isAcceptableOrUnknown(data['status']!, _statusMeta),
       );
     }
+    if (data.containsKey('receipt_template_json')) {
+      context.handle(
+        _receiptTemplateJsonMeta,
+        receiptTemplateJson.isAcceptableOrUnknown(
+          data['receipt_template_json']!,
+          _receiptTemplateJsonMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -205,6 +226,10 @@ class $BranchCacheTable extends BranchCache
         DriftSqlType.string,
         data['${effectivePrefix}status'],
       ),
+      receiptTemplateJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}receipt_template_json'],
+      ),
     );
   }
 
@@ -223,6 +248,7 @@ class BranchRow extends DataClass implements Insertable<BranchRow> {
   final int? geofenceRadiusM;
   final String? defaultOrderType;
   final String? status;
+  final String? receiptTemplateJson;
   const BranchRow({
     required this.id,
     required this.name,
@@ -232,6 +258,7 @@ class BranchRow extends DataClass implements Insertable<BranchRow> {
     this.geofenceRadiusM,
     this.defaultOrderType,
     this.status,
+    this.receiptTemplateJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -255,6 +282,9 @@ class BranchRow extends DataClass implements Insertable<BranchRow> {
     }
     if (!nullToAbsent || status != null) {
       map['status'] = Variable<String>(status);
+    }
+    if (!nullToAbsent || receiptTemplateJson != null) {
+      map['receipt_template_json'] = Variable<String>(receiptTemplateJson);
     }
     return map;
   }
@@ -281,6 +311,9 @@ class BranchRow extends DataClass implements Insertable<BranchRow> {
       status: status == null && nullToAbsent
           ? const Value.absent()
           : Value(status),
+      receiptTemplateJson: receiptTemplateJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(receiptTemplateJson),
     );
   }
 
@@ -298,6 +331,9 @@ class BranchRow extends DataClass implements Insertable<BranchRow> {
       geofenceRadiusM: serializer.fromJson<int?>(json['geofenceRadiusM']),
       defaultOrderType: serializer.fromJson<String?>(json['defaultOrderType']),
       status: serializer.fromJson<String?>(json['status']),
+      receiptTemplateJson: serializer.fromJson<String?>(
+        json['receiptTemplateJson'],
+      ),
     );
   }
   @override
@@ -312,6 +348,7 @@ class BranchRow extends DataClass implements Insertable<BranchRow> {
       'geofenceRadiusM': serializer.toJson<int?>(geofenceRadiusM),
       'defaultOrderType': serializer.toJson<String?>(defaultOrderType),
       'status': serializer.toJson<String?>(status),
+      'receiptTemplateJson': serializer.toJson<String?>(receiptTemplateJson),
     };
   }
 
@@ -324,6 +361,7 @@ class BranchRow extends DataClass implements Insertable<BranchRow> {
     Value<int?> geofenceRadiusM = const Value.absent(),
     Value<String?> defaultOrderType = const Value.absent(),
     Value<String?> status = const Value.absent(),
+    Value<String?> receiptTemplateJson = const Value.absent(),
   }) => BranchRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -337,6 +375,9 @@ class BranchRow extends DataClass implements Insertable<BranchRow> {
         ? defaultOrderType.value
         : this.defaultOrderType,
     status: status.present ? status.value : this.status,
+    receiptTemplateJson: receiptTemplateJson.present
+        ? receiptTemplateJson.value
+        : this.receiptTemplateJson,
   );
   BranchRow copyWithCompanion(BranchCacheCompanion data) {
     return BranchRow(
@@ -352,6 +393,9 @@ class BranchRow extends DataClass implements Insertable<BranchRow> {
           ? data.defaultOrderType.value
           : this.defaultOrderType,
       status: data.status.present ? data.status.value : this.status,
+      receiptTemplateJson: data.receiptTemplateJson.present
+          ? data.receiptTemplateJson.value
+          : this.receiptTemplateJson,
     );
   }
 
@@ -365,7 +409,8 @@ class BranchRow extends DataClass implements Insertable<BranchRow> {
           ..write('longitude: $longitude, ')
           ..write('geofenceRadiusM: $geofenceRadiusM, ')
           ..write('defaultOrderType: $defaultOrderType, ')
-          ..write('status: $status')
+          ..write('status: $status, ')
+          ..write('receiptTemplateJson: $receiptTemplateJson')
           ..write(')'))
         .toString();
   }
@@ -380,6 +425,7 @@ class BranchRow extends DataClass implements Insertable<BranchRow> {
     geofenceRadiusM,
     defaultOrderType,
     status,
+    receiptTemplateJson,
   );
   @override
   bool operator ==(Object other) =>
@@ -392,7 +438,8 @@ class BranchRow extends DataClass implements Insertable<BranchRow> {
           other.longitude == this.longitude &&
           other.geofenceRadiusM == this.geofenceRadiusM &&
           other.defaultOrderType == this.defaultOrderType &&
-          other.status == this.status);
+          other.status == this.status &&
+          other.receiptTemplateJson == this.receiptTemplateJson);
 }
 
 class BranchCacheCompanion extends UpdateCompanion<BranchRow> {
@@ -404,6 +451,7 @@ class BranchCacheCompanion extends UpdateCompanion<BranchRow> {
   final Value<int?> geofenceRadiusM;
   final Value<String?> defaultOrderType;
   final Value<String?> status;
+  final Value<String?> receiptTemplateJson;
   const BranchCacheCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -413,6 +461,7 @@ class BranchCacheCompanion extends UpdateCompanion<BranchRow> {
     this.geofenceRadiusM = const Value.absent(),
     this.defaultOrderType = const Value.absent(),
     this.status = const Value.absent(),
+    this.receiptTemplateJson = const Value.absent(),
   });
   BranchCacheCompanion.insert({
     this.id = const Value.absent(),
@@ -423,6 +472,7 @@ class BranchCacheCompanion extends UpdateCompanion<BranchRow> {
     this.geofenceRadiusM = const Value.absent(),
     this.defaultOrderType = const Value.absent(),
     this.status = const Value.absent(),
+    this.receiptTemplateJson = const Value.absent(),
   });
   static Insertable<BranchRow> custom({
     Expression<int>? id,
@@ -433,6 +483,7 @@ class BranchCacheCompanion extends UpdateCompanion<BranchRow> {
     Expression<int>? geofenceRadiusM,
     Expression<String>? defaultOrderType,
     Expression<String>? status,
+    Expression<String>? receiptTemplateJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -443,6 +494,8 @@ class BranchCacheCompanion extends UpdateCompanion<BranchRow> {
       if (geofenceRadiusM != null) 'geofence_radius_m': geofenceRadiusM,
       if (defaultOrderType != null) 'default_order_type': defaultOrderType,
       if (status != null) 'status': status,
+      if (receiptTemplateJson != null)
+        'receipt_template_json': receiptTemplateJson,
     });
   }
 
@@ -455,6 +508,7 @@ class BranchCacheCompanion extends UpdateCompanion<BranchRow> {
     Value<int?>? geofenceRadiusM,
     Value<String?>? defaultOrderType,
     Value<String?>? status,
+    Value<String?>? receiptTemplateJson,
   }) {
     return BranchCacheCompanion(
       id: id ?? this.id,
@@ -465,6 +519,7 @@ class BranchCacheCompanion extends UpdateCompanion<BranchRow> {
       geofenceRadiusM: geofenceRadiusM ?? this.geofenceRadiusM,
       defaultOrderType: defaultOrderType ?? this.defaultOrderType,
       status: status ?? this.status,
+      receiptTemplateJson: receiptTemplateJson ?? this.receiptTemplateJson,
     );
   }
 
@@ -495,6 +550,11 @@ class BranchCacheCompanion extends UpdateCompanion<BranchRow> {
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
+    if (receiptTemplateJson.present) {
+      map['receipt_template_json'] = Variable<String>(
+        receiptTemplateJson.value,
+      );
+    }
     return map;
   }
 
@@ -508,7 +568,8 @@ class BranchCacheCompanion extends UpdateCompanion<BranchRow> {
           ..write('longitude: $longitude, ')
           ..write('geofenceRadiusM: $geofenceRadiusM, ')
           ..write('defaultOrderType: $defaultOrderType, ')
-          ..write('status: $status')
+          ..write('status: $status, ')
+          ..write('receiptTemplateJson: $receiptTemplateJson')
           ..write(')'))
         .toString();
   }
@@ -7571,6 +7632,7 @@ typedef $$BranchCacheTableCreateCompanionBuilder =
       Value<int?> geofenceRadiusM,
       Value<String?> defaultOrderType,
       Value<String?> status,
+      Value<String?> receiptTemplateJson,
     });
 typedef $$BranchCacheTableUpdateCompanionBuilder =
     BranchCacheCompanion Function({
@@ -7582,6 +7644,7 @@ typedef $$BranchCacheTableUpdateCompanionBuilder =
       Value<int?> geofenceRadiusM,
       Value<String?> defaultOrderType,
       Value<String?> status,
+      Value<String?> receiptTemplateJson,
     });
 
 class $$BranchCacheTableFilterComposer
@@ -7630,6 +7693,11 @@ class $$BranchCacheTableFilterComposer
 
   ColumnFilters<String> get status => $composableBuilder(
     column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get receiptTemplateJson => $composableBuilder(
+    column: $table.receiptTemplateJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -7682,6 +7750,11 @@ class $$BranchCacheTableOrderingComposer
     column: $table.status,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get receiptTemplateJson => $composableBuilder(
+    column: $table.receiptTemplateJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$BranchCacheTableAnnotationComposer
@@ -7720,6 +7793,11 @@ class $$BranchCacheTableAnnotationComposer
 
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get receiptTemplateJson => $composableBuilder(
+    column: $table.receiptTemplateJson,
+    builder: (column) => column,
+  );
 }
 
 class $$BranchCacheTableTableManager
@@ -7761,6 +7839,7 @@ class $$BranchCacheTableTableManager
                 Value<int?> geofenceRadiusM = const Value.absent(),
                 Value<String?> defaultOrderType = const Value.absent(),
                 Value<String?> status = const Value.absent(),
+                Value<String?> receiptTemplateJson = const Value.absent(),
               }) => BranchCacheCompanion(
                 id: id,
                 name: name,
@@ -7770,6 +7849,7 @@ class $$BranchCacheTableTableManager
                 geofenceRadiusM: geofenceRadiusM,
                 defaultOrderType: defaultOrderType,
                 status: status,
+                receiptTemplateJson: receiptTemplateJson,
               ),
           createCompanionCallback:
               ({
@@ -7781,6 +7861,7 @@ class $$BranchCacheTableTableManager
                 Value<int?> geofenceRadiusM = const Value.absent(),
                 Value<String?> defaultOrderType = const Value.absent(),
                 Value<String?> status = const Value.absent(),
+                Value<String?> receiptTemplateJson = const Value.absent(),
               }) => BranchCacheCompanion.insert(
                 id: id,
                 name: name,
@@ -7790,6 +7871,7 @@ class $$BranchCacheTableTableManager
                 geofenceRadiusM: geofenceRadiusM,
                 defaultOrderType: defaultOrderType,
                 status: status,
+                receiptTemplateJson: receiptTemplateJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
