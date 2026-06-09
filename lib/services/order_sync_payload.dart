@@ -96,7 +96,10 @@ OrderSyncPayload buildOrderSyncPayload(
 }) {
   final gen = newUuid ?? uuidV4;
   final ts = (now ?? DateTime.now()).toUtc().toIso8601String();
-  final orderUuid = gen();
+  // Reuse the uuid stamped on the snapshot at completion (so a later full-cancel
+  // can emit a matching order.void); otherwise mint a fresh one.
+  final orderUuid =
+      snapshot.serverOrderUuid.isNotEmpty ? snapshot.serverOrderUuid : gen();
 
   Map<String, double>? gps;
   if (lat != null && lng != null) {
@@ -302,4 +305,38 @@ OrderSyncPayload buildOrderSyncPayload(
   }
 
   return OrderSyncPayload(orderUuid: orderUuid, events: events);
+}
+
+/// Build a single `order.void` event for [orderUuid] (the server matches by the
+/// order_uuid that order.create used). The server voids the WHOLE order and
+/// unwinds its inventory / loyalty / round-up / commission, idempotently. The
+/// client_event_id is stable per build so a re-push (offline replay) is deduped.
+///
+/// [staffId]/[authorizedBy] ride along for the audit trail (the server ignores
+/// keys it doesn't read). Pure + injectable for unit tests.
+Map<String, dynamic> buildOrderVoidEvent({
+  required String orderUuid,
+  String? reason,
+  int? staffId,
+  String? authorizedBy,
+  DateTime? voidedAt,
+  String Function()? newUuid,
+}) {
+  final gen = newUuid ?? uuidV4;
+  final ts = (voidedAt ?? DateTime.now()).toUtc().toIso8601String();
+  final cleanReason = reason?.trim();
+  final cleanBy = authorizedBy?.trim();
+
+  return <String, dynamic>{
+    'client_event_id': gen(),
+    'event_type': 'order.void',
+    'client_timestamp': ts,
+    'payload': <String, dynamic>{
+      'order_uuid': orderUuid,
+      'voided_at': ts,
+      if (cleanReason != null && cleanReason.isNotEmpty) 'reason': cleanReason,
+      'staff_id': ?staffId,
+      if (cleanBy != null && cleanBy.isNotEmpty) 'authorized_by': cleanBy,
+    },
+  };
 }

@@ -65,6 +65,38 @@ class OrderSyncRepository {
     await flush();
   }
 
+  /// Enqueue an `order.void` for an already-pushed order (a full cancellation),
+  /// then flush. Persisted to its OWN durable outbox row keyed `[uuid]:void` so
+  /// it never collides with the original order row (which may already be synced)
+  /// and rides the same offline-first retry path. Created AFTER the order row,
+  /// so the oldest-first flush pushes create/pay before the void. No-op without
+  /// a server uuid (an order never pushed has nothing to void).
+  Future<void> enqueueVoid(
+    String orderUuid, {
+    int? orderNumber,
+    String? reason,
+    int? staffId,
+    String? authorizedBy,
+  }) async {
+    if (orderUuid.isEmpty) return;
+
+    final event = buildOrderVoidEvent(
+      orderUuid: orderUuid,
+      reason: reason,
+      staffId: staffId,
+      authorizedBy: authorizedBy,
+    );
+
+    await _db.enqueueOutbox(OrderOutboxCompanion(
+      orderUuid: Value('$orderUuid:void'),
+      eventsJson: Value(jsonEncode([event])),
+      orderNumber: Value(orderNumber ?? 0),
+      createdAt: Value(DateTime.now()),
+    ));
+
+    await flush();
+  }
+
   /// Push every pending order. Best-effort and safe to call repeatedly: a
   /// network failure leaves the row queued for the next attempt; a server-side
   /// rejection of an event is recorded (lastError) for visibility. Returns the

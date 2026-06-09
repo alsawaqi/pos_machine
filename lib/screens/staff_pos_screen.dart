@@ -155,6 +155,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     super.initState();
     controller = PosController();
     controller.onOrderCompleted = _handleOrderCompleted;
+    controller.onOrderVoided = _handleOrderVoided;
     // Keep the receipt-printing toggle in sync with Settings.
     controller.printReceipts = ref.read(settingsControllerProvider).printReceipts;
     ref.listenManual(settingsControllerProvider, (prev, next) {
@@ -303,6 +304,29 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       // The outbox persists the order before any network call, so it is queued
       // even if this throws; flush() retries on the next reconnect.
     }
+  }
+
+  /// Mirror a full order cancellation to pos_api via the durable outbox (an
+  /// order.void). Fire-and-forget: the local cancel already succeeded, and the
+  /// outbox persists + retries the void independently of the network.
+  void _handleOrderVoided(
+    String orderUuid, {
+    int? orderNumber,
+    String? reason,
+  }) {
+    final staffId = ref.read(sessionServiceProvider).staff?.id;
+    unawaited(
+      ref
+          .read(orderSyncRepositoryProvider)
+          .enqueueVoid(
+            orderUuid,
+            orderNumber: orderNumber,
+            reason: reason,
+            staffId: staffId,
+            authorizedBy: 'Manager',
+          )
+          .catchError((_) {}),
+    );
   }
 
   @override

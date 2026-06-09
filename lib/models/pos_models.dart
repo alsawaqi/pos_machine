@@ -1061,6 +1061,11 @@ class OrderSnapshot {
   final int charityRoundUpPromptId;
   final String recentProductId;
   final int orderUpdateNonce;
+  // The server order_uuid sent in order.create when this order was pushed
+  // (stamped at completion). Lets a later full-cancel emit a matching
+  // order.void to pos_api. Empty for orders never pushed (e.g. demo-only) or
+  // records loaded from the server's history.
+  final String serverOrderUuid;
 
   const OrderSnapshot({
     required this.orderNumber,
@@ -1099,6 +1104,7 @@ class OrderSnapshot {
     required this.charityRoundUpPromptId,
     required this.recentProductId,
     required this.orderUpdateNonce,
+    this.serverOrderUuid = '',
   });
 
   factory OrderSnapshot.initial() {
@@ -1196,6 +1202,7 @@ class OrderSnapshot {
           (map['charityRoundUpPromptId'] as num?)?.toInt() ?? 0,
       recentProductId: map['recentProductId']?.toString() ?? '',
       orderUpdateNonce: (map['orderUpdateNonce'] as num?)?.toInt() ?? 0,
+      serverOrderUuid: map['serverOrderUuid']?.toString() ?? '',
     );
   }
 
@@ -1234,6 +1241,7 @@ class OrderSnapshot {
       'charityRoundUpPromptId': charityRoundUpPromptId,
       'recentProductId': recentProductId,
       'orderUpdateNonce': orderUpdateNonce,
+      'serverOrderUuid': serverOrderUuid,
     };
   }
 
@@ -1274,6 +1282,7 @@ class OrderSnapshot {
     int? charityRoundUpPromptId,
     String? recentProductId,
     int? orderUpdateNonce,
+    String? serverOrderUuid,
   }) {
     return OrderSnapshot(
       orderNumber: orderNumber ?? this.orderNumber,
@@ -1318,6 +1327,7 @@ class OrderSnapshot {
           charityRoundUpPromptId ?? this.charityRoundUpPromptId,
       recentProductId: recentProductId ?? this.recentProductId,
       orderUpdateNonce: orderUpdateNonce ?? this.orderUpdateNonce,
+      serverOrderUuid: serverOrderUuid ?? this.serverOrderUuid,
     );
   }
 

@@ -481,6 +481,65 @@ void main() {
       expect(omrToBaisas(1.234), 1234);
       expect(omrToBaisas(0.1), 100);
     });
+
+    test('reuses the snapshot serverOrderUuid as the order.create uuid', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 1.0, 'lineTotal': 1.0},
+        ],
+        rawSubtotal: 1.0,
+        total: 1.0,
+      ).copyWith(serverOrderUuid: 'fixed-order-uuid');
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+
+      // The generated uuid-0 is NOT used; the stamped uuid is, on both events.
+      expect(payload.orderUuid, 'fixed-order-uuid');
+      final order =
+          (payload.events[0]['payload'] as Map)['order'] as Map<String, dynamic>;
+      expect(order['uuid'], 'fixed-order-uuid');
+      expect((payload.events[1]['payload'] as Map)['order_uuid'],
+          'fixed-order-uuid');
+    });
+  });
+
+  group('buildOrderVoidEvent', () {
+    test('builds an order.void with the order_uuid + reason + audit fields', () {
+      final event = buildOrderVoidEvent(
+        orderUuid: 'order-123',
+        reason: '  Canceled by manager  ',
+        staffId: 7,
+        authorizedBy: ' Manager ',
+        voidedAt: DateTime.utc(2026, 6, 9, 10, 30),
+        newUuid: _seqUuid(),
+      );
+
+      expect(event['event_type'], 'order.void');
+      expect(event['client_event_id'], 'uuid-0');
+      expect(event['client_timestamp'], '2026-06-09T10:30:00.000Z');
+
+      final payload = event['payload'] as Map<String, dynamic>;
+      expect(payload['order_uuid'], 'order-123');
+      expect(payload['voided_at'], '2026-06-09T10:30:00.000Z');
+      expect(payload['reason'], 'Canceled by manager'); // trimmed
+      expect(payload['staff_id'], 7);
+      expect(payload['authorized_by'], 'Manager'); // trimmed
+    });
+
+    test('omits blank reason / authorized_by / null staff_id', () {
+      final event = buildOrderVoidEvent(
+        orderUuid: 'order-9',
+        reason: '   ',
+        authorizedBy: '',
+        newUuid: _seqUuid(),
+      );
+
+      final payload = event['payload'] as Map<String, dynamic>;
+      expect(payload['order_uuid'], 'order-9');
+      expect(payload.containsKey('reason'), isFalse);
+      expect(payload.containsKey('authorized_by'), isFalse);
+      expect(payload.containsKey('staff_id'), isFalse);
+    });
   });
 }
 

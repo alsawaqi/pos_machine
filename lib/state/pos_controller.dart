@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../models/pos_models.dart';
 import '../services/local_order_storage_service.dart';
 import '../services/mosambee_payment_service.dart';
+import '../services/order_sync_payload.dart' show uuidV4;
 import '../services/presentation_service.dart';
 import '../services/sunmi_receipt_service.dart';
 
@@ -314,6 +315,16 @@ class PosController extends ChangeNotifier {
   /// outbox so the order reaches pos_api. Fire-and-forget — it must never block
   /// or fail order completion.
   void Function(OrderSnapshot snapshot)? onOrderCompleted;
+
+  /// Invoked when a completed order is FULLY canceled — the screen wires this to
+  /// the outbox so an `order.void` reaches pos_api (which unwinds the sale's
+  /// inventory / loyalty / round-up / commission). Fire-and-forget; never blocks
+  /// the local cancel. Carries the server order_uuid the order was pushed under.
+  void Function(
+    String orderUuid, {
+    int? orderNumber,
+    String? reason,
+  })? onOrderVoided;
 
   /// Whether to print a Sunmi receipt on completion (driven by Settings; the
   /// screen keeps it in sync with the settings controller).
@@ -1396,6 +1407,18 @@ class PosController extends ChangeNotifier {
     await refreshOrderHistory();
 
     if (cancelFullOrder) {
+      // Mirror the cancellation to pos_api: a full cancel of an order that was
+      // pushed (has a server uuid + isn't a server-history record) emits an
+      // order.void so the backend unwinds its inventory / loyalty / round-up /
+      // commission. Local-only when there's no server uuid (e.g. demo orders).
+      final serverUuid = snapshot.serverOrderUuid;
+      if (serverUuid.isNotEmpty && !record.fromServer) {
+        onOrderVoided?.call(
+          serverUuid,
+          orderNumber: record.orderNumber,
+          reason: 'Canceled by manager at POS',
+        );
+      }
       return 'Order #${record.orderNumber} was fully canceled.';
     }
     return '${newCancellations.length} item${newCancellations.length == 1 ? '' : 's'} canceled from order #${record.orderNumber}.';
@@ -1777,7 +1800,9 @@ class PosController extends ChangeNotifier {
     required String successMessage,
   }) async {
     _assignFinalOrderNumber();
-    final completedSnapshot = snapshot();
+    // Stamp the server order_uuid now, so the saved record + the order.create
+    // push share it — a later full-cancel can then emit a matching order.void.
+    final completedSnapshot = snapshot().copyWith(serverOrderUuid: uuidV4());
     if (printReceipts) {
       await SunmiReceiptService.printReceipt(completedSnapshot);
     }
