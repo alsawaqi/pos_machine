@@ -221,6 +221,9 @@ class Product {
   final String id;
   final String name;
   final String category;
+  // Numeric category id — for matching category-scope discounts to a cart line.
+  // Null when unknown (e.g. a product reconstructed from an older snapshot).
+  final int? categoryId;
   final double price;
   final String? imageAsset;
   final bool lowStock;
@@ -243,6 +246,7 @@ class Product {
     required this.id,
     required this.name,
     required this.category,
+    this.categoryId,
     required this.price,
     this.imageAsset,
     this.lowStock = false,
@@ -263,6 +267,7 @@ class Product {
         id: id,
         name: name,
         category: category,
+        categoryId: categoryId,
         price: price ?? this.price,
         imageAsset: imageAsset,
         lowStock: lowStock,
@@ -279,6 +284,7 @@ class Product {
       id: map['id']?.toString() ?? '',
       name: map['name']?.toString() ?? '',
       category: map['category']?.toString() ?? '',
+      categoryId: (map['categoryId'] as num?)?.toInt(),
       price:
           (map['basePrice'] as num?)?.toDouble() ??
           (map['price'] as num?)?.toDouble() ??
@@ -479,11 +485,21 @@ class DiscountConfiguration {
   }
 }
 
+/// One product- or category-scope target of a [MerchantDiscount] (which
+/// products/categories a line-level rule applies to).
+class DiscountTarget {
+  final String targetType; // product | category
+  final int targetId;
+
+  const DiscountTarget({required this.targetType, required this.targetId});
+}
+
 /// A merchant discount rule from the API config bundle. The device offers the
-/// currently-applicable ORDER-scope ones in the discount picker; applicability
+/// currently-applicable ORDER-scope ones in the discount picker, and
+/// AUTO-APPLIES product/category-scope ones to matching cart lines. Applicability
 /// mirrors the server `Discount` model (validity window / day-of-week mask /
-/// time-of-day window / branch scope). Money is OMR (converted from baisas at
-/// the cache boundary).
+/// time-of-day window / branch scope / targets). Money is OMR (converted from
+/// baisas at the cache boundary).
 class MerchantDiscount {
   final int id;
   final String name;
@@ -500,6 +516,9 @@ class MerchantDiscount {
   final bool stackable;
   final bool requiresManagerApproval;
   final bool isActive;
+  // product/category-scope targets (which products/categories this rule hits);
+  // empty for order-scope rules.
+  final List<DiscountTarget> targets;
 
   const MerchantDiscount({
     required this.id,
@@ -517,9 +536,24 @@ class MerchantDiscount {
     this.stackable = false,
     this.requiresManagerApproval = false,
     this.isActive = true,
+    this.targets = const <DiscountTarget>[],
   });
 
   bool get isOrderScope => scope == 'order';
+
+  /// True when this product/category-scope rule targets the given cart line.
+  /// Order-scope rules return false (they apply to the whole order, not a line).
+  bool appliesToProduct(int? productId, int? categoryId) {
+    if (scope == 'product') {
+      return productId != null &&
+          targets.any((t) => t.targetType == 'product' && t.targetId == productId);
+    }
+    if (scope == 'category') {
+      return categoryId != null &&
+          targets.any((t) => t.targetType == 'category' && t.targetId == categoryId);
+    }
+    return false;
+  }
 
   /// True when usable right now at [branchId]: active, within the validity
   /// window, on an allowed weekday, within the time window, and in branch scope.

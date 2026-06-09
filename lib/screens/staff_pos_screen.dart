@@ -195,6 +195,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             discounts: catalog.discounts,
             loyaltyRules: catalog.loyaltyRules,
             customers: catalog.customers,
+            branchId: ref.read(sessionControllerProvider).branchId,
           );
         }
       },

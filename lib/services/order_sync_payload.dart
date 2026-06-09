@@ -118,6 +118,11 @@ OrderSyncPayload buildOrderSyncPayload(
 
   // ---- lines (+ add-ons) ----
   final lines = <Map<String, dynamic>>[];
+  // Auto-applied per-line (product/category) discounts, emitted with a
+  // line_index pointing at the line's position in [lines] (the server maps
+  // line_index -> order_item).
+  final lineDiscounts = <Map<String, dynamic>>[];
+  var lineDiscountSum = 0.0;
   for (final raw in snapshot.items) {
     final productId = int.tryParse('${raw['id']}');
     if (productId == null) continue; // non-catalog (demo) product — cannot ref
@@ -137,6 +142,7 @@ OrderSyncPayload buildOrderSyncPayload(
     }
 
     final notes = (raw['notes'] as String?)?.trim();
+    final lineIndex = lines.length;
     lines.add({
       'product_id': productId,
       'qty': qty,
@@ -145,14 +151,34 @@ OrderSyncPayload buildOrderSyncPayload(
       if (notes != null && notes.isNotEmpty) 'notes': notes,
       if (addons.isNotEmpty) 'addons': addons,
     });
+
+    final lineDiscount = (raw['lineDiscount'] as num?)?.toDouble() ?? 0;
+    if (lineDiscount > 0) {
+      lineDiscountSum += lineDiscount;
+      final label = (raw['lineDiscountLabel'] as String?) ?? '';
+      lineDiscounts.add({
+        'name': label.isEmpty ? 'Discount' : label,
+        'amount_baisas': omrToBaisas(lineDiscount),
+        if (raw['lineDiscountId'] != null) 'discount_id': raw['lineDiscountId'],
+        if (raw['lineDiscountAmountType'] != null)
+          'amount_type': raw['lineDiscountAmountType'],
+        'line_index': lineIndex,
+      });
+    }
   }
 
-  // ---- order-level discount (snapshot-authoritative) ----
+  // ---- discounts (snapshot-authoritative) ----
+  // snapshot.discountAmount is the COMBINED total (order-level + auto-applied
+  // line discounts). Split it back out: the order-level entry carries only its
+  // own portion, then each per-line discount is appended with its line_index.
   final discounts = <Map<String, dynamic>>[];
-  if (snapshot.discountAmount > 0) {
+  final orderLevelDiscount = (snapshot.discountAmount - lineDiscountSum)
+      .clamp(0.0, double.infinity)
+      .toDouble();
+  if (orderLevelDiscount > 0) {
     discounts.add({
       'name': snapshot.discountLabel.isEmpty ? 'Discount' : snapshot.discountLabel,
-      'amount_baisas': omrToBaisas(snapshot.discountAmount),
+      'amount_baisas': omrToBaisas(orderLevelDiscount),
       // A merchant rule carries its id + amount_type so the server snapshots it
       // (by-rule report); a manual discount omits them.
       if (snapshot.discountId != null) 'discount_id': snapshot.discountId,
@@ -160,6 +186,7 @@ OrderSyncPayload buildOrderSyncPayload(
         'amount_type': snapshot.discountAmountType,
     });
   }
+  discounts.addAll(lineDiscounts);
 
   final order = <String, dynamic>{
     'uuid': orderUuid,

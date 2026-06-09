@@ -248,6 +248,10 @@ class PosController extends ChangeNotifier {
   ProductViewMode productViewMode = ProductViewMode.grid;
   OrderType selectedOrderType = OrderType.quickOrder;
   DiscountConfiguration discount = const DiscountConfiguration();
+
+  // Session branch id, for auto-applying product/category-scope discounts to
+  // cart lines (set by applyCatalog). Null = no branch context → no auto-apply.
+  int? _discountBranchId;
   /// Merchant discount rules from the cached catalog (from the API). The picker
   /// offers the currently-applicable order-scope ones.
   List<MerchantDiscount> availableDiscounts = const [];
@@ -381,6 +385,7 @@ class PosController extends ChangeNotifier {
     List<MerchantDiscount> discounts = const <MerchantDiscount>[],
     List<LoyaltyRule> loyaltyRules = const <LoyaltyRule>[],
     List<CustomerRef> customers = const <CustomerRef>[],
+    int? branchId,
   }) {
     this.categories = categories;
     _baseProducts = products;
@@ -390,6 +395,7 @@ class PosController extends ChangeNotifier {
     this.deliveryProviders = deliveryProviders;
     this.ingredientBalances = ingredientBalances;
     availableDiscounts = discounts;
+    _discountBranchId = branchId;
     this.loyaltyRules = loyaltyRules;
     cachedCustomers = customers;
     // Company taxes drive the cart tax lines + total. Stored in the shared
@@ -549,15 +555,72 @@ class PosController extends ChangeNotifier {
   double get rawSubtotal => _cart.fold(0, (sum, item) => sum + item.lineTotal);
 
   double get discountAmount {
-    if (!discount.isActive) return 0;
+    final orderLevel = discount.isActive
+        ? switch (discount.kind) {
+            DiscountKind.fixedAmount => discount.value,
+            DiscountKind.percentage => rawSubtotal * (discount.value / 100),
+            DiscountKind.none => 0.0,
+          }
+        : 0.0;
+    // Auto-applied product/category line discounts stack on top of any
+    // order-level discount; the combined total is clamped so the order can
+    // never go negative.
+    final combined = orderLevel + lineDiscountTotal;
+    return _roundMoney(combined.clamp(0.0, rawSubtotal).toDouble());
+  }
 
-    final calculated = switch (discount.kind) {
-      DiscountKind.fixedAmount => discount.value,
-      DiscountKind.percentage => rawSubtotal * (discount.value / 100),
-      DiscountKind.none => 0,
-    };
+  /// The best applicable product/category-scope discount for [item] right now —
+  /// auto-applied, since targeted promotions need no picker. Zero if none.
+  ({double amount, int? id, String? amountType, String label}) lineDiscountFor(
+    CartItem item,
+  ) {
+    final branchId = _discountBranchId;
+    if (branchId == null) {
+      return (amount: 0.0, id: null, amountType: null, label: '');
+    }
+    final productId = int.tryParse(item.product.id);
+    final categoryId = item.product.categoryId;
+    final now = DateTime.now();
 
-    return _roundMoney(calculated.clamp(0.0, rawSubtotal).toDouble());
+    MerchantDiscount? best;
+    double bestAmount = 0;
+    for (final d in availableDiscounts) {
+      if (d.isOrderScope) continue;
+      if (!d.appliesAt(now, branchId: branchId)) continue;
+      if (!d.appliesToProduct(productId, categoryId)) continue;
+      final amount = d.amountFor(item.lineTotal);
+      if (amount > bestAmount) {
+        bestAmount = amount;
+        best = d;
+      }
+    }
+    if (best == null || bestAmount <= 0) {
+      return (amount: 0.0, id: null, amountType: null, label: '');
+    }
+    return (
+      amount: bestAmount,
+      id: best.id,
+      amountType: best.amountType,
+      label: best.name,
+    );
+  }
+
+  /// Total of auto-applied product/category line discounts across the cart (OMR).
+  double get lineDiscountTotal =>
+      _cart.fold(0.0, (sum, item) => sum + lineDiscountFor(item).amount);
+
+  /// A cart item's snapshot map + its auto-applied line discount, so the order
+  /// push can emit a per-line discounts[] entry with line_index.
+  Map<String, dynamic> _snapshotItem(CartItem item) {
+    final map = item.toMap();
+    final ld = lineDiscountFor(item);
+    if (ld.amount > 0) {
+      map['lineDiscount'] = ld.amount;
+      map['lineDiscountLabel'] = ld.label;
+      if (ld.id != null) map['lineDiscountId'] = ld.id;
+      if (ld.amountType != null) map['lineDiscountAmountType'] = ld.amountType;
+    }
+    return map;
   }
 
   double get subtotal => _roundMoney(
@@ -656,7 +719,7 @@ class PosController extends ChangeNotifier {
     return OrderSnapshot(
       orderNumber: currentOrderNumber,
       orderType: selectedOrderType.storageValue,
-      items: _cart.map((e) => e.toMap()).toList(),
+      items: _cart.map(_snapshotItem).toList(),
       rawSubtotal: rawSubtotal,
       discountAmount: discountAmount,
       discountLabel: discount.label,

@@ -481,6 +481,7 @@ class ConfigMapper {
               id: p.id.toString(),
               name: p.name,
               category: idToName[p.categoryId] ?? '',
+              categoryId: p.categoryId,
               price: p.basePriceBaisas / 1000.0,
               addonGroupIds: _idsFromCsv(p.addonGroupIds),
               deliveryPrice: p.deliveryPriceBaisas != null
@@ -603,6 +604,7 @@ class ConfigMapper {
               stackable: d.stackable,
               requiresManagerApproval: d.requiresManagerApproval,
               isActive: d.status == null || d.status == 'active',
+              targets: _discountTargets(d.targetsJson),
             ))
         .toList();
 
@@ -658,6 +660,26 @@ class ConfigMapper {
       if (decoded is Map) return decoded.cast<String, dynamic>();
     } catch (_) {}
     return const {};
+  }
+
+  /// Decode a discount's stored targets JSON ([{target_type, target_id}]) →
+  /// list of DiscountTarget (for product/category-scope applicability).
+  static List<DiscountTarget> _discountTargets(String json) {
+    if (json.isEmpty || json == '[]') return const [];
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is List) {
+        return decoded
+            .whereType<Map>()
+            .map((m) => DiscountTarget(
+                  targetType: m['target_type']?.toString() ?? '',
+                  targetId: (m['target_id'] as num?)?.toInt() ?? 0,
+                ))
+            .where((t) => t.targetType.isNotEmpty && t.targetId != 0)
+            .toList();
+      }
+    } catch (_) {}
+    return const [];
   }
 
   /// Decode a stored branch_scope JSON string → list of branch ids (empty = all).
