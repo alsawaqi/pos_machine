@@ -28,6 +28,7 @@ void main() {
         const [], // addon groups
         const [], // addons
         const [], // delivery providers
+        const [], // expense categories
         const [], // branch stock
         const [], // discounts
         const [], // loyalty rules
@@ -52,7 +53,8 @@ void main() {
       );
       final catalog = ConfigMapper.toCatalog(
         null, const [], const [], const [], const [], const [],
-        const [], const [], const [], const [], const [], const [], [row],
+        const [], const [], const [], const [], const [], const [], const [],
+        [row],
       );
       expect(catalog.customers.first.loyalty, isEmpty);
     });

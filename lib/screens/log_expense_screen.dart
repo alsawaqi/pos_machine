@@ -87,6 +87,24 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Prefer the company's config-driven expense categories (value = key, label
+    // = name); fall back to the hardcoded const keys when none are cached
+    // (offline before the first config sync). Sourced from the same Drift-backed
+    // catalog stream that feeds the controller's expenseCategories.
+    final configCategories =
+        ref.watch(catalogProvider).asData?.value.expenseCategories ??
+            const <({String key, String name})>[];
+    final categoryEntries = configCategories.isNotEmpty
+        ? configCategories
+        : expenseCategories.map((k) => (key: k, name: _label(k))).toList();
+
+    // Keep the selection valid against the available set (the field initialiser
+    // seeds the const first key, which may not exist among config categories).
+    if (categoryEntries.isNotEmpty &&
+        !categoryEntries.any((c) => c.key == _category)) {
+      _category = categoryEntries.first.key;
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF102028),
       appBar: AppBar(
@@ -114,13 +132,14 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: expenseCategories.map((c) {
-                    final selected = c == _category;
+                  children: categoryEntries.map((c) {
+                    final selected = c.key == _category;
                     return ChoiceChip(
-                      label: Text(_label(c)),
+                      label: Text(c.name),
                       selected: selected,
-                      onSelected:
-                          _busy ? null : (_) => setState(() => _category = c),
+                      onSelected: _busy
+                          ? null
+                          : (_) => setState(() => _category = c.key),
                       labelStyle: TextStyle(
                         color: selected ? Colors.white : Colors.white70,
                         fontWeight: FontWeight.w600,

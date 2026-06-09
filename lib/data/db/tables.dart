@@ -195,6 +195,22 @@ class DeliveryProviders extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+// Company expense categories (Utilities, Supplies, …) for the device's
+// expense-logging screen. The device offers these by `key` (the value
+// submitted to the API) labelled by `name`. Cached offline; the screen falls
+// back to a hardcoded const list when this table is empty.
+@DataClassName('ExpenseCategoryRow')
+class ExpenseCategories extends Table {
+  IntColumn get id => integer()();
+  TextColumn get key => text().withDefault(const Constant(''))();
+  TextColumn get name => text().withDefault(const Constant(''))();
+  TextColumn get nameAr => text().nullable()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // Merchant discount rules from the config bundle (company-scoped). The device
 // offers the currently-applicable ORDER-scope ones in the discount picker;
 // applicability (validity window / day-of-week mask / time window / branch

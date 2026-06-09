@@ -219,6 +219,11 @@ class PosController extends ChangeNotifier {
   /// Company delivery providers (Talabat, Otlob, …) for the delivery picker.
   List<DeliveryProvider> deliveryProviders = const <DeliveryProvider>[];
 
+  /// Company expense categories from the config (value = key, label = name) for
+  /// the expense-log picker. Empty = use the screen's hardcoded const fallback.
+  List<({String key, String name})> expenseCategories =
+      const <({String key, String name})>[];
+
   /// The provider chosen for the current delivery order (null = none picked).
   int? selectedDeliveryProviderId;
 
@@ -381,6 +386,8 @@ class PosController extends ChangeNotifier {
     List<CompanyTax> taxes = const <CompanyTax>[],
     List<AddonGroup> addonGroups = const <AddonGroup>[],
     List<DeliveryProvider> deliveryProviders = const <DeliveryProvider>[],
+    List<({String key, String name})> expenseCategories =
+        const <({String key, String name})>[],
     Map<int, double> ingredientBalances = const <int, double>{},
     List<MerchantDiscount> discounts = const <MerchantDiscount>[],
     List<LoyaltyRule> loyaltyRules = const <LoyaltyRule>[],
@@ -393,6 +400,7 @@ class PosController extends ChangeNotifier {
     diningTableDefinitions = tables;
     this.addonGroups = addonGroups;
     this.deliveryProviders = deliveryProviders;
+    this.expenseCategories = expenseCategories;
     this.ingredientBalances = ingredientBalances;
     availableDiscounts = discounts;
     _discountBranchId = branchId;

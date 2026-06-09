@@ -21,6 +21,7 @@ part 'app_database.g.dart';
     SyncMeta,
     OrderOutbox,
     DeliveryProviders,
+    ExpenseCategories,
     BranchIngredientStock,
     Discounts,
     LoyaltyRules,
@@ -35,7 +36,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -94,6 +95,10 @@ class AppDatabase extends _$AppDatabase {
             // v11 cached per-customer loyalty balances (offline points/redeem).
             await m.addColumn(cachedCustomers, cachedCustomers.loyaltyJson);
           }
+          if (from < 12) {
+            // v12 added company expense categories (dynamic expense-log picker).
+            await m.createTable(expenseCategories);
+          }
         },
       );
 
@@ -123,6 +128,9 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<List<DeliveryProviderRow>> watchDeliveryProviders() =>
       (select(deliveryProviders)..orderBy([(d) => OrderingTerm(expression: d.sortOrder)])).watch();
+
+  Stream<List<ExpenseCategoryRow>> watchExpenseCategories() =>
+      (select(expenseCategories)..orderBy([(e) => OrderingTerm(expression: e.sortOrder)])).watch();
 
   Stream<List<BranchIngredientStockRow>> watchBranchIngredientStock() =>
       select(branchIngredientStock).watch();
@@ -188,6 +196,7 @@ class AppDatabase extends _$AppDatabase {
     required List<AddonsCompanion> addonRows,
     required List<TaxCacheCompanion> taxRows,
     required List<DeliveryProvidersCompanion> deliveryProviderRows,
+    required List<ExpenseCategoriesCompanion> expenseCategoryRows,
     required List<BranchIngredientStockCompanion> branchIngredientStockRows,
     required List<DiscountsCompanion> discountRows,
     required List<LoyaltyRulesCompanion> loyaltyRuleRows,
@@ -205,6 +214,7 @@ class AppDatabase extends _$AppDatabase {
       await delete(addons).go();
       await delete(taxCache).go();
       await delete(deliveryProviders).go();
+      await delete(expenseCategories).go();
       await delete(branchIngredientStock).go();
       await delete(discounts).go();
       await delete(loyaltyRules).go();
@@ -221,6 +231,7 @@ class AppDatabase extends _$AppDatabase {
         b.insertAll(addons, addonRows);
         b.insertAll(taxCache, taxRows);
         b.insertAll(deliveryProviders, deliveryProviderRows);
+        b.insertAll(expenseCategories, expenseCategoryRows);
         b.insertAll(branchIngredientStock, branchIngredientStockRows);
         b.insertAll(discounts, discountRows);
         b.insertAll(loyaltyRules, loyaltyRuleRows);
@@ -248,6 +259,7 @@ class AppDatabase extends _$AppDatabase {
     required List<AddonsCompanion> addonRows,
     required List<TaxCacheCompanion> taxRows,
     required List<DeliveryProvidersCompanion> deliveryProviderRows,
+    required List<ExpenseCategoriesCompanion> expenseCategoryRows,
     required List<BranchIngredientStockCompanion> branchIngredientStockRows,
     required List<DiscountsCompanion> discountRows,
     required List<LoyaltyRulesCompanion> loyaltyRuleRows,
@@ -264,6 +276,7 @@ class AppDatabase extends _$AppDatabase {
     required List<int> deletedLoyaltyRuleIds,
     required List<int> deletedCustomerIds,
     required List<int> deletedDeliveryProviderIds,
+    required List<int> deletedExpenseCategoryIds,
     required String? cursor,
     required DateTime now,
   }) {
@@ -281,6 +294,7 @@ class AppDatabase extends _$AppDatabase {
         b.insertAllOnConflictUpdate(addons, addonRows);
         b.insertAllOnConflictUpdate(taxCache, taxRows);
         b.insertAllOnConflictUpdate(deliveryProviders, deliveryProviderRows);
+        b.insertAllOnConflictUpdate(expenseCategories, expenseCategoryRows);
         b.insertAllOnConflictUpdate(branchIngredientStock, branchIngredientStockRows);
         b.insertAllOnConflictUpdate(discounts, discountRows);
         b.insertAllOnConflictUpdate(loyaltyRules, loyaltyRuleRows);
@@ -321,6 +335,9 @@ class AppDatabase extends _$AppDatabase {
       }
       if (deletedDeliveryProviderIds.isNotEmpty) {
         await (delete(deliveryProviders)..where((t) => t.id.isIn(deletedDeliveryProviderIds))).go();
+      }
+      if (deletedExpenseCategoryIds.isNotEmpty) {
+        await (delete(expenseCategories)..where((t) => t.id.isIn(deletedExpenseCategoryIds))).go();
       }
 
       // Advance the cursor only — keep company/branch (absent = unchanged).

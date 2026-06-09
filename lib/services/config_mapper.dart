@@ -15,6 +15,7 @@ class CatalogSnapshot {
     required this.taxes,
     this.addonGroups = const <AddonGroup>[],
     this.deliveryProviders = const <DeliveryProvider>[],
+    this.expenseCategories = const <({String key, String name})>[],
     this.ingredientBalances = const <int, double>{},
     this.discounts = const <MerchantDiscount>[],
     this.loyaltyRules = const <LoyaltyRule>[],
@@ -31,6 +32,9 @@ class CatalogSnapshot {
   final List<AddonGroup> addonGroups;
   // Company delivery providers for the POS provider picker (delivery orders).
   final List<DeliveryProvider> deliveryProviders;
+  // Company expense categories for the expense-log picker (value = key, label =
+  // name). Empty = no config categories cached → the screen uses its const list.
+  final List<({String key, String name})> expenseCategories;
   // This branch's ingredient balances by ingredient id; drives ingredient-based
   // sold-out (a recipe product is out when a needed ingredient runs low).
   final Map<int, double> ingredientBalances;
@@ -57,6 +61,7 @@ class ParsedConfig {
     required this.addons,
     required this.taxes,
     required this.deliveryProviders,
+    required this.expenseCategories,
     required this.branchIngredientStock,
     required this.discounts,
     required this.loyaltyRules,
@@ -74,6 +79,7 @@ class ParsedConfig {
   final List<AddonsCompanion> addons;
   final List<TaxCacheCompanion> taxes;
   final List<DeliveryProvidersCompanion> deliveryProviders;
+  final List<ExpenseCategoriesCompanion> expenseCategories;
   final List<BranchIngredientStockCompanion> branchIngredientStock;
   final List<DiscountsCompanion> discounts;
   final List<LoyaltyRulesCompanion> loyaltyRules;
@@ -97,6 +103,7 @@ class DeletedIds {
     this.loyaltyRules = const [],
     this.customers = const [],
     this.deliveryProviders = const [],
+    this.expenseCategories = const [],
   });
 
   final List<int> floors;
@@ -110,6 +117,7 @@ class DeletedIds {
   final List<int> loyaltyRules;
   final List<int> customers;
   final List<int> deliveryProviders;
+  final List<int> expenseCategories;
 }
 
 /// A parsed config delta: the changed-row companions (built via
@@ -332,6 +340,16 @@ class ConfigMapper {
             ))
         .toList();
 
+    final expenseCategories = _list(data['expense_categories'])
+        .map((e) => ExpenseCategoriesCompanion(
+              id: Value(_int(e['id']) ?? 0),
+              key: Value(_str(e['key'])),
+              name: Value(_str(e['name'])),
+              nameAr: Value(_strN(e['name_ar'])),
+              sortOrder: Value(_int(e['sort_order']) ?? 0),
+            ))
+        .toList();
+
     // Per-branch ingredient balances (the device's branch). Drives
     // ingredient-based product availability.
     final branchIngredientStock = _list(data['branch_stock'])
@@ -421,6 +439,7 @@ class ConfigMapper {
       addons: addons,
       taxes: taxes,
       deliveryProviders: deliveryProviders,
+      expenseCategories: expenseCategories,
       branchIngredientStock: branchIngredientStock,
       discounts: discounts,
       loyaltyRules: loyaltyRules,
@@ -452,6 +471,7 @@ class ConfigMapper {
         loyaltyRules: _intList(del['loyalty_rules']),
         customers: _intList(del['customers']),
         deliveryProviders: _intList(del['delivery_providers']),
+        expenseCategories: _intList(del['expense_categories']),
       ),
     );
   }
@@ -467,6 +487,7 @@ class ConfigMapper {
     List<AddonGroupRow> addonGroupRows = const [],
     List<AddonRow> addonRows = const [],
     List<DeliveryProviderRow> deliveryProviderRows = const [],
+    List<ExpenseCategoryRow> expenseCategoryRows = const [],
     List<BranchIngredientStockRow> branchStockRows = const [],
     List<DiscountRow> discountRows = const [],
     List<LoyaltyRuleRow> loyaltyRuleRows = const [],
@@ -583,6 +604,11 @@ class ConfigMapper {
             ))
         .toList();
 
+    final expenseCategoryDefs = ([...expenseCategoryRows]
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder)))
+        .map((e) => (key: e.key, name: e.name))
+        .toList();
+
     final ingredientBalances = <int, double>{
       for (final s in branchStockRows) s.ingredientId: s.quantity,
     };
@@ -646,6 +672,7 @@ class ConfigMapper {
       taxes: companyTaxes,
       addonGroups: addonGroups,
       deliveryProviders: deliveryProviderDefs,
+      expenseCategories: expenseCategoryDefs,
       ingredientBalances: ingredientBalances,
       discounts: discounts,
       loyaltyRules: loyaltyRules,

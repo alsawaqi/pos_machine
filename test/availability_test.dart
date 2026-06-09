@@ -43,6 +43,7 @@ void main() {
         const <AddonGroupRow>[],
         const <AddonRow>[],
         const <DeliveryProviderRow>[],
+        const <ExpenseCategoryRow>[],
         [const BranchIngredientStockRow(ingredientId: 1, quantity: 0.5)],
       );
 

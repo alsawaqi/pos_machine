@@ -191,6 +191,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             taxes: catalog.taxes,
             addonGroups: catalog.addonGroups,
             deliveryProviders: catalog.deliveryProviders,
+            expenseCategories: catalog.expenseCategories,
             ingredientBalances: catalog.ingredientBalances,
             discounts: catalog.discounts,
             loyaltyRules: catalog.loyaltyRules,

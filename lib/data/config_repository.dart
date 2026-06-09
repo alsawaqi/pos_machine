@@ -30,6 +30,7 @@ class ConfigRepository {
       addonRows: parsed.addons,
       taxRows: parsed.taxes,
       deliveryProviderRows: parsed.deliveryProviders,
+      expenseCategoryRows: parsed.expenseCategories,
       branchIngredientStockRows: parsed.branchIngredientStock,
       discountRows: parsed.discounts,
       loyaltyRuleRows: parsed.loyaltyRules,
@@ -70,6 +71,7 @@ class ConfigRepository {
         addonRows: c.addons,
         taxRows: c.taxes,
         deliveryProviderRows: c.deliveryProviders,
+        expenseCategoryRows: c.expenseCategories,
         branchIngredientStockRows: c.branchIngredientStock,
         discountRows: c.discounts,
         loyaltyRuleRows: c.loyaltyRules,
@@ -86,6 +88,7 @@ class ConfigRepository {
         deletedLoyaltyRuleIds: d.loyaltyRules,
         deletedCustomerIds: d.customers,
         deletedDeliveryProviderIds: d.deliveryProviders,
+        deletedExpenseCategoryIds: d.expenseCategories,
         cursor: res.generatedAt,
         now: DateTime.now(),
       );
@@ -114,6 +117,7 @@ class ConfigRepository {
     var addonGroups = <AddonGroupRow>[];
     var addons = <AddonRow>[];
     var deliveryProviders = <DeliveryProviderRow>[];
+    var expenseCategories = <ExpenseCategoryRow>[];
     var branchStock = <BranchIngredientStockRow>[];
     var discounts = <DiscountRow>[];
     var loyaltyRules = <LoyaltyRuleRow>[];
@@ -125,8 +129,8 @@ class ConfigRepository {
       if (seenCats && seenProds && seenFloors && seenTables && seenTaxes) {
         controller.add(ConfigMapper.toCatalog(
           branch, cats, prods, floors, tables, taxes, addonGroups, addons,
-          deliveryProviders, branchStock, discounts, loyaltyRules, customers,
-          ingredients,
+          deliveryProviders, expenseCategories, branchStock, discounts,
+          loyaltyRules, customers, ingredients,
         ));
       }
     }
@@ -171,6 +175,10 @@ class ConfigRepository {
       }),
       _db.watchDeliveryProviders().listen((v) {
         deliveryProviders = v;
+        emit();
+      }),
+      _db.watchExpenseCategories().listen((v) {
+        expenseCategories = v;
         emit();
       }),
       _db.watchBranchIngredientStock().listen((v) {
