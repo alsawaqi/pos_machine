@@ -1231,7 +1231,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       builder: (context) => _InAppKeyboardDialog(
         title: 'Customer Number',
         initialValue: _customerNumberController.text,
-        hintText: 'Enter number for reference',
+        hintText: 'Enter number, then fetch loyalty',
         numbersOnly: true,
       ),
     );
@@ -1242,6 +1242,58 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       _customerNumberController.text = value;
     });
     controller.setCustomerReferenceNumber(value);
+
+    // Fetch-on-Enter (#3): look the number up (phone), attach the customer so
+    // their loyalty loads, and surface the balances. Falls back to the offline
+    // cache, then to keeping the value as a bare reference.
+    final q = value.trim();
+    if (q.isEmpty) return;
+
+    List<CustomerSearchResult> matches;
+    try {
+      matches = await ref.read(apiServiceProvider).searchCustomers(q);
+    } catch (_) {
+      matches = controller.searchCachedCustomers(q);
+    }
+    if (!mounted) return;
+
+    CustomerSearchResult? match;
+    for (final c in matches) {
+      if (c.phone == q) {
+        match = c;
+        break;
+      }
+    }
+    match ??= matches.isNotEmpty ? matches.first : null;
+
+    if (match == null) {
+      _showPopupMessage(
+        title: 'No Customer Found',
+        message: 'No customer matches "$q". Kept as an order reference.',
+        tone: FeedbackTone.info,
+      );
+      return;
+    }
+
+    controller.attachCustomer(match);
+    setState(() =>
+        _customerNumberController.text = controller.customerReferenceNumber);
+    _showPopupMessage(
+      title: 'Customer Attached',
+      message: '${match.name}  ·  ${_loyaltySummary(match)}',
+      tone: FeedbackTone.success,
+    );
+  }
+
+  /// A short loyalty summary (total points + stamps across rules) for the
+  /// attach confirmation — the "check loyalty" readout.
+  String _loyaltySummary(CustomerSearchResult c) {
+    final pts = c.loyalty.fold<int>(0, (s, b) => s + b.points);
+    final stamps = c.loyalty.fold<int>(0, (s, b) => s + b.stamps);
+    final parts = <String>[];
+    if (pts > 0) parts.add('$pts pts');
+    if (stamps > 0) parts.add('$stamps stamps');
+    return parts.isEmpty ? 'no loyalty yet' : parts.join('  ·  ');
   }
 
   Future<void> _openVehiclePlateKeyboard() async {
