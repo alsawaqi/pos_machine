@@ -3232,7 +3232,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
@@ -3271,6 +3272,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               onTap: () => Navigator.pop(ctx, null),
             ),
           ],
+          ),
         ),
       ),
     );
