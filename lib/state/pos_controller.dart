@@ -281,16 +281,20 @@ class PosController extends ChangeNotifier {
   /// Cached customer slice (offline lookup / order attach).
   List<CustomerRef> cachedCustomers = const [];
 
-  /// The loyalty rule an identified customer earns under at sale, or null. The
-  /// server takes one rule id per pay; we earn under the first active rule
-  /// (most companies run a single program — multi-program earn is a server
-  /// contract limitation, not handled here).
+  /// The first active loyalty rule (kept for callers that want a single rule).
   LoyaltyRule? get activeEarnRule {
     for (final r in loyaltyRules) {
       if (r.isActive) return r;
     }
     return null;
   }
+
+  /// v2 #3 — the ids of EVERY active earn rule. A merchant can run several earn
+  /// programs at once (e.g. a stamp card AND points); the device names them all
+  /// on the pay event (loyalty_rule_ids) so an identified customer accrues under
+  /// each, not just the first.
+  List<int> get activeEarnRuleIds =>
+      loyaltyRules.where((r) => r.isActive).map((r) => r.id).toList();
   int splitCount = 1;
   final List<SplitPaymentRecord> _splitPayments = [];
   /// Soft POS evidence for the most recent single (non-split) card payment.

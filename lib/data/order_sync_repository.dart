@@ -30,7 +30,7 @@ class OrderSyncRepository {
     String? plateNumber,
     String? deliveryProviderName,
     CardCharge? cardCharge,
-    int? loyaltyRuleId,
+    List<int> loyaltyRuleIds = const <int>[],
   }) async {
     final payload = buildOrderSyncPayload(
       snapshot,
@@ -42,7 +42,7 @@ class OrderSyncRepository {
       plateNumber: plateNumber,
       deliveryProviderName: deliveryProviderName,
       cardCharge: cardCharge,
-      loyaltyRuleId: loyaltyRuleId,
+      loyaltyRuleIds: loyaltyRuleIds,
     );
 
     // A snapshot with no pushable lines (e.g. only non-catalog demo products)

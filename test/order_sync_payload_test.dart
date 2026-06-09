@@ -392,7 +392,7 @@ void main() {
       expect(d.containsKey('amount_type'), isFalse);
     });
 
-    test('loyalty_rule_id rides on the pay event when set', () {
+    test('loyalty_rule_ids ride on the pay event when set (v2 #3 multi-rule)', () {
       final snap = _snapshot(
         items: [
           {'id': '5', 'qty': 1, 'unitPrice': 3.0, 'lineTotal': 3.0},
@@ -402,12 +402,12 @@ void main() {
       );
 
       final payload =
-          buildOrderSyncPayload(snap, loyaltyRuleId: 2, newUuid: _seqUuid());
+          buildOrderSyncPayload(snap, loyaltyRuleIds: [2, 5], newUuid: _seqUuid());
       final pay = (payload.events[1]['payload'] as Map<String, dynamic>);
-      expect(pay['loyalty_rule_id'], 2);
+      expect(pay['loyalty_rule_ids'], [2, 5]);
     });
 
-    test('no loyalty_rule_id key when unset (walk-in / no rule)', () {
+    test('no loyalty_rule_ids key when no active earn rules', () {
       final snap = _snapshot(
         items: [
           {'id': '5', 'qty': 1, 'unitPrice': 3.0, 'lineTotal': 3.0},
@@ -418,6 +418,7 @@ void main() {
 
       final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
       final pay = (payload.events[1]['payload'] as Map<String, dynamic>);
+      expect(pay.containsKey('loyalty_rule_ids'), isFalse);
       expect(pay.containsKey('loyalty_rule_id'), isFalse);
     });
 
