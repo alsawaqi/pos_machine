@@ -21,6 +21,7 @@ class CatalogSnapshot {
     this.loyaltyRules = const <LoyaltyRule>[],
     this.customers = const <CustomerRef>[],
     this.ingredients = const <IngredientRef>[],
+    this.cancelOrderPositions = const <String>['manager'],
   });
 
   final List<String> categories;
@@ -47,6 +48,9 @@ class CatalogSnapshot {
   final List<CustomerRef> customers;
   // Company ingredient catalogue (id+name+unit) for the restock-request picker.
   final List<IngredientRef> ingredients;
+  // v2 #14 — staff positions allowed to cancel an order at the POS (company
+  // policy). Defaults to managers-only until a config sync populates it.
+  final List<String> cancelOrderPositions;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -153,6 +157,13 @@ class ConfigMapper {
 
   static List<int> _intList(Object? v) =>
       (v as List?)?.map((e) => (e as num?)?.toInt()).whereType<int>().toList() ??
+      const [];
+
+  static List<String> _strList(Object? v) =>
+      (v as List?)
+          ?.map((e) => e?.toString().trim() ?? '')
+          .where((s) => s.isNotEmpty)
+          .toList() ??
       const [];
 
   static List<int> _idsFromCsv(String csv) => csv.isEmpty
@@ -421,12 +432,17 @@ class ConfigMapper {
             ))
         .toList();
 
+    // v2 #14 — company POS policy: which staff positions may cancel an order.
+    final settings = (data['settings'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final cancelPositions = _strList(settings['order_cancel_positions']);
+
     final metaCompanion = SyncMetaCompanion(
       id: const Value(1),
       companyId: Value(_int(meta['company_id']) ?? _int(branchMap?['company_id'])),
       branchId: Value(_int(meta['branch_id']) ?? _int(branchMap?['id'])),
       lastConfigSyncAt: Value(now ?? DateTime.now()),
       configSchemaVersion: Value(cursor ?? _strN(meta['generated_at'])),
+      orderCancelPositions: Value(jsonEncode(cancelPositions)),
     );
 
     return ParsedConfig(
@@ -493,6 +509,7 @@ class ConfigMapper {
     List<LoyaltyRuleRow> loyaltyRuleRows = const [],
     List<CustomerRow> customerRows = const [],
     List<IngredientRow> ingredientRows = const [],
+    SyncMetaRow? meta,
   ]) {
     final sortedCats = [...cats]
       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
@@ -678,7 +695,26 @@ class ConfigMapper {
       loyaltyRules: loyaltyRules,
       customers: customers,
       ingredients: ingredients,
+      cancelOrderPositions: _cancelPositionsFromMeta(meta),
     );
+  }
+
+  /// Decode the cached order-cancel policy JSON → position list. Falls back to
+  /// managers-only when unset (older cache / never synced) or malformed.
+  static List<String> _cancelPositionsFromMeta(SyncMetaRow? meta) {
+    final json = meta?.orderCancelPositions;
+    if (json == null || json.isEmpty) return const ['manager'];
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is List) {
+        final out = decoded
+            .map((e) => e?.toString().trim() ?? '')
+            .where((s) => s.isNotEmpty)
+            .toList();
+        return out.isEmpty ? const ['manager'] : out;
+      }
+    } catch (_) {}
+    return const ['manager'];
   }
 
   /// Decode a loyalty rule's stored config JSON → map (empty on any failure).

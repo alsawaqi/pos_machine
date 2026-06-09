@@ -91,6 +91,8 @@ class ConfigRepository {
         deletedExpenseCategoryIds: d.expenseCategories,
         cursor: res.generatedAt,
         now: DateTime.now(),
+        // The cancel-policy is always emitted (full + delta); refresh it.
+        orderCancelPositions: c.meta.orderCancelPositions.value,
       );
       await _session.saveTerminalId(res.terminalId);
     } catch (_) {
@@ -123,6 +125,7 @@ class ConfigRepository {
     var loyaltyRules = <LoyaltyRuleRow>[];
     var customers = <CustomerRow>[];
     var ingredients = <IngredientRow>[];
+    SyncMetaRow? meta;
     var seenCats = false, seenProds = false, seenFloors = false, seenTables = false, seenTaxes = false;
 
     void emit() {
@@ -130,7 +133,7 @@ class ConfigRepository {
         controller.add(ConfigMapper.toCatalog(
           branch, cats, prods, floors, tables, taxes, addonGroups, addons,
           deliveryProviders, expenseCategories, branchStock, discounts,
-          loyaltyRules, customers, ingredients,
+          loyaltyRules, customers, ingredients, meta,
         ));
       }
     }
@@ -199,6 +202,10 @@ class ConfigRepository {
       }),
       _db.watchIngredients().listen((v) {
         ingredients = v;
+        emit();
+      }),
+      _db.watchSyncMeta().listen((v) {
+        meta = v;
         emit();
       }),
     ];

@@ -141,6 +141,10 @@ class SyncMeta extends Table {
   IntColumn get branchId => integer().nullable()();
   DateTimeColumn get lastConfigSyncAt => dateTime().nullable()();
   TextColumn get configSchemaVersion => text().nullable()();
+  // v2 #14 — JSON list of staff positions allowed to cancel an order at the POS
+  // (company policy from /device/config `settings.order_cancel_positions`).
+  // null = not yet synced → the device falls back to managers-only.
+  TextColumn get orderCancelPositions => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

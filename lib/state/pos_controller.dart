@@ -232,6 +232,21 @@ class PosController extends ChangeNotifier {
   /// ingredient-based sold-out enforcement (see [isOutOfStock]).
   Map<int, double> ingredientBalances = const <int, double>{};
 
+  /// v2 #14 — staff positions the merchant allows to cancel an order at the POS
+  /// (company policy from /device/config). Defaults to managers-only until a
+  /// config sync populates it; see [positionCanCancelOrders].
+  List<String> cancelOrderPositions = const <String>['manager'];
+
+  /// Whether a staff member with [position] may cancel an order under the
+  /// current company policy. Case-insensitive; an unknown / null position is
+  /// denied. With no policy cached, the default managers-only list applies.
+  bool positionCanCancelOrders(String? position) {
+    final p = (position ?? '').trim().toLowerCase();
+    if (p.isEmpty) return false;
+
+    return cancelOrderPositions.any((allowed) => allowed.trim().toLowerCase() == p);
+  }
+
   /// The unmodified catalog (base prices). [allProducts] is this list re-priced
   /// for the selected provider when the order type is delivery.
   List<Product> _baseProducts = const <Product>[];
@@ -403,6 +418,7 @@ class PosController extends ChangeNotifier {
     List<MerchantDiscount> discounts = const <MerchantDiscount>[],
     List<LoyaltyRule> loyaltyRules = const <LoyaltyRule>[],
     List<CustomerRef> customers = const <CustomerRef>[],
+    List<String> cancelOrderPositions = const <String>['manager'],
     int? branchId,
   }) {
     this.categories = categories;
@@ -417,6 +433,8 @@ class PosController extends ChangeNotifier {
     _discountBranchId = branchId;
     this.loyaltyRules = loyaltyRules;
     cachedCustomers = customers;
+    this.cancelOrderPositions =
+        cancelOrderPositions.isEmpty ? const <String>['manager'] : cancelOrderPositions;
     // Company taxes drive the cart tax lines + total. Stored in the shared
     // source so the persisted / printed order agrees with the live cart.
     activeCompanyTaxes = taxes;

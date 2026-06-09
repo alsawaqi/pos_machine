@@ -36,7 +36,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -99,6 +99,10 @@ class AppDatabase extends _$AppDatabase {
             // v12 added company expense categories (dynamic expense-log picker).
             await m.createTable(expenseCategories);
           }
+          if (from < 13) {
+            // v13 cached the order-cancel positions policy (device cancel gate).
+            await m.addColumn(syncMeta, syncMeta.orderCancelPositions);
+          }
         },
       );
 
@@ -107,6 +111,8 @@ class AppDatabase extends _$AppDatabase {
   // ---------------------------------------------------------------------------
   Future<BranchRow?> getBranch() => select(branchCache).getSingleOrNull();
   Stream<BranchRow?> watchBranch() => select(branchCache).watchSingleOrNull();
+
+  Stream<SyncMetaRow?> watchSyncMeta() => select(syncMeta).watchSingleOrNull();
 
   Stream<List<CategoryRow>> watchCategories() =>
       (select(categories)..orderBy([(c) => OrderingTerm(expression: c.displayOrder)])).watch();
@@ -279,6 +285,7 @@ class AppDatabase extends _$AppDatabase {
     required List<int> deletedExpenseCategoryIds,
     required String? cursor,
     required DateTime now,
+    String? orderCancelPositions,
   }) {
     return transaction(() async {
       // Upserts (changed rows only — untouched rows survive).
@@ -341,10 +348,15 @@ class AppDatabase extends _$AppDatabase {
       }
 
       // Advance the cursor only — keep company/branch (absent = unchanged).
+      // The cancel-policy is refreshed when present (always emitted by pos_api),
+      // left untouched when null so a stray delta can't blank it.
       await into(syncMeta).insertOnConflictUpdate(SyncMetaCompanion(
         id: const Value(1),
         lastConfigSyncAt: Value(now),
         configSchemaVersion: Value(cursor),
+        orderCancelPositions: orderCancelPositions == null
+            ? const Value.absent()
+            : Value(orderCancelPositions),
       ));
     });
   }

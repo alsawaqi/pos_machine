@@ -3771,6 +3771,17 @@ class $SyncMetaTable extends SyncMeta
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _orderCancelPositionsMeta =
+      const VerificationMeta('orderCancelPositions');
+  @override
+  late final GeneratedColumn<String> orderCancelPositions =
+      GeneratedColumn<String>(
+        'order_cancel_positions',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3778,6 +3789,7 @@ class $SyncMetaTable extends SyncMeta
     branchId,
     lastConfigSyncAt,
     configSchemaVersion,
+    orderCancelPositions,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3824,6 +3836,15 @@ class $SyncMetaTable extends SyncMeta
         ),
       );
     }
+    if (data.containsKey('order_cancel_positions')) {
+      context.handle(
+        _orderCancelPositionsMeta,
+        orderCancelPositions.isAcceptableOrUnknown(
+          data['order_cancel_positions']!,
+          _orderCancelPositionsMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3853,6 +3874,10 @@ class $SyncMetaTable extends SyncMeta
         DriftSqlType.string,
         data['${effectivePrefix}config_schema_version'],
       ),
+      orderCancelPositions: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}order_cancel_positions'],
+      ),
     );
   }
 
@@ -3868,12 +3893,14 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
   final int? branchId;
   final DateTime? lastConfigSyncAt;
   final String? configSchemaVersion;
+  final String? orderCancelPositions;
   const SyncMetaRow({
     required this.id,
     this.companyId,
     this.branchId,
     this.lastConfigSyncAt,
     this.configSchemaVersion,
+    this.orderCancelPositions,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3890,6 +3917,9 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     }
     if (!nullToAbsent || configSchemaVersion != null) {
       map['config_schema_version'] = Variable<String>(configSchemaVersion);
+    }
+    if (!nullToAbsent || orderCancelPositions != null) {
+      map['order_cancel_positions'] = Variable<String>(orderCancelPositions);
     }
     return map;
   }
@@ -3909,6 +3939,9 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
       configSchemaVersion: configSchemaVersion == null && nullToAbsent
           ? const Value.absent()
           : Value(configSchemaVersion),
+      orderCancelPositions: orderCancelPositions == null && nullToAbsent
+          ? const Value.absent()
+          : Value(orderCancelPositions),
     );
   }
 
@@ -3927,6 +3960,9 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
       configSchemaVersion: serializer.fromJson<String?>(
         json['configSchemaVersion'],
       ),
+      orderCancelPositions: serializer.fromJson<String?>(
+        json['orderCancelPositions'],
+      ),
     );
   }
   @override
@@ -3938,6 +3974,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
       'branchId': serializer.toJson<int?>(branchId),
       'lastConfigSyncAt': serializer.toJson<DateTime?>(lastConfigSyncAt),
       'configSchemaVersion': serializer.toJson<String?>(configSchemaVersion),
+      'orderCancelPositions': serializer.toJson<String?>(orderCancelPositions),
     };
   }
 
@@ -3947,6 +3984,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     Value<int?> branchId = const Value.absent(),
     Value<DateTime?> lastConfigSyncAt = const Value.absent(),
     Value<String?> configSchemaVersion = const Value.absent(),
+    Value<String?> orderCancelPositions = const Value.absent(),
   }) => SyncMetaRow(
     id: id ?? this.id,
     companyId: companyId.present ? companyId.value : this.companyId,
@@ -3957,6 +3995,9 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     configSchemaVersion: configSchemaVersion.present
         ? configSchemaVersion.value
         : this.configSchemaVersion,
+    orderCancelPositions: orderCancelPositions.present
+        ? orderCancelPositions.value
+        : this.orderCancelPositions,
   );
   SyncMetaRow copyWithCompanion(SyncMetaCompanion data) {
     return SyncMetaRow(
@@ -3969,6 +4010,9 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
       configSchemaVersion: data.configSchemaVersion.present
           ? data.configSchemaVersion.value
           : this.configSchemaVersion,
+      orderCancelPositions: data.orderCancelPositions.present
+          ? data.orderCancelPositions.value
+          : this.orderCancelPositions,
     );
   }
 
@@ -3979,7 +4023,8 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
           ..write('companyId: $companyId, ')
           ..write('branchId: $branchId, ')
           ..write('lastConfigSyncAt: $lastConfigSyncAt, ')
-          ..write('configSchemaVersion: $configSchemaVersion')
+          ..write('configSchemaVersion: $configSchemaVersion, ')
+          ..write('orderCancelPositions: $orderCancelPositions')
           ..write(')'))
         .toString();
   }
@@ -3991,6 +4036,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     branchId,
     lastConfigSyncAt,
     configSchemaVersion,
+    orderCancelPositions,
   );
   @override
   bool operator ==(Object other) =>
@@ -4000,7 +4046,8 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
           other.companyId == this.companyId &&
           other.branchId == this.branchId &&
           other.lastConfigSyncAt == this.lastConfigSyncAt &&
-          other.configSchemaVersion == this.configSchemaVersion);
+          other.configSchemaVersion == this.configSchemaVersion &&
+          other.orderCancelPositions == this.orderCancelPositions);
 }
 
 class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
@@ -4009,12 +4056,14 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
   final Value<int?> branchId;
   final Value<DateTime?> lastConfigSyncAt;
   final Value<String?> configSchemaVersion;
+  final Value<String?> orderCancelPositions;
   const SyncMetaCompanion({
     this.id = const Value.absent(),
     this.companyId = const Value.absent(),
     this.branchId = const Value.absent(),
     this.lastConfigSyncAt = const Value.absent(),
     this.configSchemaVersion = const Value.absent(),
+    this.orderCancelPositions = const Value.absent(),
   });
   SyncMetaCompanion.insert({
     this.id = const Value.absent(),
@@ -4022,6 +4071,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
     this.branchId = const Value.absent(),
     this.lastConfigSyncAt = const Value.absent(),
     this.configSchemaVersion = const Value.absent(),
+    this.orderCancelPositions = const Value.absent(),
   });
   static Insertable<SyncMetaRow> custom({
     Expression<int>? id,
@@ -4029,6 +4079,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
     Expression<int>? branchId,
     Expression<DateTime>? lastConfigSyncAt,
     Expression<String>? configSchemaVersion,
+    Expression<String>? orderCancelPositions,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -4037,6 +4088,8 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
       if (lastConfigSyncAt != null) 'last_config_sync_at': lastConfigSyncAt,
       if (configSchemaVersion != null)
         'config_schema_version': configSchemaVersion,
+      if (orderCancelPositions != null)
+        'order_cancel_positions': orderCancelPositions,
     });
   }
 
@@ -4046,6 +4099,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
     Value<int?>? branchId,
     Value<DateTime?>? lastConfigSyncAt,
     Value<String?>? configSchemaVersion,
+    Value<String?>? orderCancelPositions,
   }) {
     return SyncMetaCompanion(
       id: id ?? this.id,
@@ -4053,6 +4107,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
       branchId: branchId ?? this.branchId,
       lastConfigSyncAt: lastConfigSyncAt ?? this.lastConfigSyncAt,
       configSchemaVersion: configSchemaVersion ?? this.configSchemaVersion,
+      orderCancelPositions: orderCancelPositions ?? this.orderCancelPositions,
     );
   }
 
@@ -4076,6 +4131,11 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
         configSchemaVersion.value,
       );
     }
+    if (orderCancelPositions.present) {
+      map['order_cancel_positions'] = Variable<String>(
+        orderCancelPositions.value,
+      );
+    }
     return map;
   }
 
@@ -4086,7 +4146,8 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
           ..write('companyId: $companyId, ')
           ..write('branchId: $branchId, ')
           ..write('lastConfigSyncAt: $lastConfigSyncAt, ')
-          ..write('configSchemaVersion: $configSchemaVersion')
+          ..write('configSchemaVersion: $configSchemaVersion, ')
+          ..write('orderCancelPositions: $orderCancelPositions')
           ..write(')'))
         .toString();
   }
@@ -9405,6 +9466,7 @@ typedef $$SyncMetaTableCreateCompanionBuilder =
       Value<int?> branchId,
       Value<DateTime?> lastConfigSyncAt,
       Value<String?> configSchemaVersion,
+      Value<String?> orderCancelPositions,
     });
 typedef $$SyncMetaTableUpdateCompanionBuilder =
     SyncMetaCompanion Function({
@@ -9413,6 +9475,7 @@ typedef $$SyncMetaTableUpdateCompanionBuilder =
       Value<int?> branchId,
       Value<DateTime?> lastConfigSyncAt,
       Value<String?> configSchemaVersion,
+      Value<String?> orderCancelPositions,
     });
 
 class $$SyncMetaTableFilterComposer
@@ -9446,6 +9509,11 @@ class $$SyncMetaTableFilterComposer
 
   ColumnFilters<String> get configSchemaVersion => $composableBuilder(
     column: $table.configSchemaVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get orderCancelPositions => $composableBuilder(
+    column: $table.orderCancelPositions,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -9483,6 +9551,11 @@ class $$SyncMetaTableOrderingComposer
     column: $table.configSchemaVersion,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get orderCancelPositions => $composableBuilder(
+    column: $table.orderCancelPositions,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SyncMetaTableAnnotationComposer
@@ -9510,6 +9583,11 @@ class $$SyncMetaTableAnnotationComposer
 
   GeneratedColumn<String> get configSchemaVersion => $composableBuilder(
     column: $table.configSchemaVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get orderCancelPositions => $composableBuilder(
+    column: $table.orderCancelPositions,
     builder: (column) => column,
   );
 }
@@ -9550,12 +9628,14 @@ class $$SyncMetaTableTableManager
                 Value<int?> branchId = const Value.absent(),
                 Value<DateTime?> lastConfigSyncAt = const Value.absent(),
                 Value<String?> configSchemaVersion = const Value.absent(),
+                Value<String?> orderCancelPositions = const Value.absent(),
               }) => SyncMetaCompanion(
                 id: id,
                 companyId: companyId,
                 branchId: branchId,
                 lastConfigSyncAt: lastConfigSyncAt,
                 configSchemaVersion: configSchemaVersion,
+                orderCancelPositions: orderCancelPositions,
               ),
           createCompanionCallback:
               ({
@@ -9564,12 +9644,14 @@ class $$SyncMetaTableTableManager
                 Value<int?> branchId = const Value.absent(),
                 Value<DateTime?> lastConfigSyncAt = const Value.absent(),
                 Value<String?> configSchemaVersion = const Value.absent(),
+                Value<String?> orderCancelPositions = const Value.absent(),
               }) => SyncMetaCompanion.insert(
                 id: id,
                 companyId: companyId,
                 branchId: branchId,
                 lastConfigSyncAt: lastConfigSyncAt,
                 configSchemaVersion: configSchemaVersion,
+                orderCancelPositions: orderCancelPositions,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

@@ -197,6 +197,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             discounts: catalog.discounts,
             loyaltyRules: catalog.loyaltyRules,
             customers: catalog.customers,
+            cancelOrderPositions: catalog.cancelOrderPositions,
             branchId: ref.read(sessionControllerProvider).branchId,
           );
         }
@@ -1020,6 +1021,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     required BuildContext historyDialogContext,
     required OrderHistoryRecord record,
   }) async {
+    // v2 #14 — company policy gate: only allowed staff positions may cancel an
+    // order at the POS (on top of the manager-fingerprint step below).
+    final position = ref.read(sessionServiceProvider).staff?.position;
+    if (!controller.positionCanCancelOrders(position)) {
+      if (historyDialogContext.mounted) {
+        Navigator.of(historyDialogContext).pop();
+      }
+      _showPopupMessage(
+        title: 'Cancellation Not Allowed',
+        message: 'Your role is not permitted to cancel orders on this terminal.',
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
     var hasManager = await _managerAuthorization.isManagerRegistered();
     var authorized = false;
     if (!mounted) return;
