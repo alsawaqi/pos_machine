@@ -1321,6 +1321,10 @@ class OrderHistoryRecord {
   final OrderType orderType;
   final DateTime createdAt;
   final OrderSnapshot snapshot;
+  // True when this record came from the server's branch history (cross-device)
+  // rather than the device's local store. Server records are terminal + not
+  // locally mutable, so the cancel/refund action is disabled for them.
+  final bool fromServer;
 
   const OrderHistoryRecord({
     required this.id,
@@ -1328,7 +1332,59 @@ class OrderHistoryRecord {
     required this.orderType,
     required this.createdAt,
     required this.snapshot,
+    this.fromServer = false,
   });
+
+  /// Build a history record from the pos_api `/device/orders/history` shape
+  /// (money is integer baisas). Only the fields the history view shows are
+  /// mapped; the rest of [OrderSnapshot] defaults (UI-only state). Marked
+  /// [fromServer] so the cancel action is gated off.
+  factory OrderHistoryRecord.fromServerJson(Map<String, dynamic> json) {
+    double omr(String key) => ((json[key] as num?)?.toDouble() ?? 0) / 1000.0;
+    final status = json['status']?.toString() ?? '';
+    final statusLabel =
+        status.isEmpty ? '' : status[0].toUpperCase() + status.substring(1);
+    final orderTypeStr = json['order_type']?.toString() ?? 'quick_order';
+    final serverId = (json['id'] as num?)?.toInt() ?? 0;
+    final total = omr('grand_total_baisas');
+
+    final items = ((json['items'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((raw) => <String, dynamic>{
+              'name': raw['product_name']?.toString() ?? 'Item',
+              'qty': (raw['qty'] as num?)?.toDouble() ?? 0,
+              'lineTotal':
+                  ((raw['line_total_baisas'] as num?)?.toDouble() ?? 0) / 1000.0,
+              'notes': raw['notes']?.toString() ?? '',
+            })
+        .toList();
+
+    final snapshot = OrderSnapshot.fromMap(<String, dynamic>{
+      'orderNumber': serverId,
+      'orderType': orderTypeStr,
+      'items': items,
+      'rawSubtotal': omr('subtotal_baisas'),
+      'subtotal': omr('subtotal_baisas'),
+      'discountAmount': omr('discount_total_baisas'),
+      'tax': omr('tax_total_baisas'),
+      'total': total,
+      'payableTotal': total,
+      'activePaymentBaseTotal': total,
+      'paymentStatus': statusLabel,
+      'paymentMethod': '',
+      'note': json['note']?.toString() ?? '',
+    });
+
+    return OrderHistoryRecord(
+      id: json['uuid']?.toString() ?? 'srv_$serverId',
+      orderNumber: serverId,
+      orderType: OrderTypeLabel.fromStorage(orderTypeStr),
+      createdAt:
+          DateTime.tryParse(json['opened_at']?.toString() ?? '') ?? DateTime.now(),
+      snapshot: snapshot,
+      fromServer: true,
+    );
+  }
 }
 
 class HeldOrderRecord {

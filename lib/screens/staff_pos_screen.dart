@@ -908,7 +908,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openOrderHistoryDialog() async {
-    await controller.refreshOrderHistory();
+    // Branch-wide history (cross-device) from the server when online; fall back
+    // to the device-local store offline. This is what lets a freshly-paired or
+    // second device at the branch see prior orders rung on other devices.
+    try {
+      final serverOrders = await ref.read(apiServiceProvider).fetchBranchOrders();
+      controller.applyServerOrderHistory(serverOrders);
+    } catch (_) {
+      await controller.refreshOrderHistory();
+    }
     if (!mounted) return;
 
     await showGeneralDialog<void>(
@@ -7384,7 +7392,8 @@ class _OrderHistoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final snapshot = record.snapshot;
-    final canCancel = !snapshot.isFullyCanceled;
+    // Server-sourced history is terminal + not locally mutable — no cancel.
+    final canCancel = !snapshot.isFullyCanceled && !record.fromServer;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -7428,10 +7437,11 @@ class _OrderHistoryCard extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _InfoBadge(
-                      icon: Icons.credit_card_rounded,
-                      label: snapshot.paymentMethod,
-                    ),
+                    if (snapshot.paymentMethod.isNotEmpty)
+                      _InfoBadge(
+                        icon: Icons.credit_card_rounded,
+                        label: snapshot.paymentMethod,
+                      ),
                     _InfoBadge(
                       icon: snapshot.cancellations.isEmpty
                           ? Icons.task_alt_rounded

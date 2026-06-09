@@ -171,6 +171,21 @@ class PosApiService {
         .toList();
   }
 
+  /// GET /device/orders/history — the branch's terminal (paid/void/refunded)
+  /// orders, newest first, so a freshly-paired or second device shows prior
+  /// sales rung at the branch (not just its own local store). Online-only.
+  Future<List<OrderHistoryRecord>> fetchBranchOrders({int perPage = 50}) async {
+    final body = await _send(
+      () => _dio.get('/device/orders/history', queryParameters: {'per_page': perPage}),
+    );
+    final list = body.dataMap['orders'];
+    if (list is! List) return const [];
+    return list
+        .whereType<Map>()
+        .map((m) => OrderHistoryRecord.fromServerJson(m.cast<String, dynamic>()))
+        .toList();
+  }
+
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------

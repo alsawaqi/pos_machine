@@ -1182,6 +1182,15 @@ class PosController extends ChangeNotifier {
     _notifySafely();
   }
 
+  /// Show the branch's server-authoritative order history (cross-device) instead
+  /// of the device-local store. The screen calls this when online; offline it
+  /// falls back to [refreshOrderHistory] (the local store). Records are marked
+  /// fromServer, so their cancel action is disabled.
+  void applyServerOrderHistory(List<OrderHistoryRecord> records) {
+    orderHistory = records;
+    _notifySafely();
+  }
+
   Future<void> refreshHeldOrders() async {
     heldOrders = await _orderStorage.loadHeldOrders();
     _notifySafely();
