@@ -60,6 +60,67 @@ Map<String, dynamic> buildExpenseLogEvent({
   };
 }
 
+/// One day-end count line as entered in the UI. Exactly one of [countedPieces]
+/// (piece-tracked ingredients — the server converts via units_per_piece) or
+/// [countedUnits] (base-unit ingredients) is set. Zero IS a valid count
+/// ("no bottles left").
+class StockCountLineInput {
+  const StockCountLineInput({
+    required this.ingredientId,
+    this.countedPieces,
+    this.countedUnits,
+  }) : assert(countedPieces != null || countedUnits != null);
+  final int ingredientId;
+  final double? countedPieces;
+  final double? countedUnits;
+}
+
+/// Build the Phase A `stock.count` event (Additions §2.8). Lines with negative
+/// amounts are dropped; a duplicate ingredient_id keeps the LAST entry (the
+/// server rejects duplicates). Payload:
+///   { lines: [{ ingredient_id, counted_pieces? | counted_units? }],
+///     note?, staff_id?, counted_at? }
+/// → result { stock_count_id, lines, lines_with_variance }
+Map<String, dynamic> buildStockCountEvent({
+  required List<StockCountLineInput> lines,
+  String? note,
+  int? staffId,
+  DateTime? countedAt,
+  DateTime? now,
+  String Function()? newUuid,
+}) {
+  final gen = newUuid ?? uuidV4;
+  final ts = (now ?? DateTime.now()).toUtc().toIso8601String();
+
+  final byIngredient = <int, Map<String, dynamic>>{};
+  for (final l in lines) {
+    final line = <String, dynamic>{'ingredient_id': l.ingredientId};
+    if (l.countedPieces != null) {
+      if (l.countedPieces! < 0) continue;
+      line['counted_pieces'] = l.countedPieces;
+    } else {
+      if (l.countedUnits == null || l.countedUnits! < 0) continue;
+      line['counted_units'] = l.countedUnits;
+    }
+    byIngredient[l.ingredientId] = line; // last entry wins
+  }
+
+  final payload = <String, dynamic>{
+    'lines': byIngredient.values.toList(),
+  };
+  if (note != null && note.isNotEmpty) payload['note'] = note;
+  if (staffId != null) payload['staff_id'] = staffId;
+  if (countedAt != null) {
+    payload['counted_at'] = countedAt.toUtc().toIso8601String();
+  }
+  return <String, dynamic>{
+    'client_event_id': gen(),
+    'event_type': 'stock.count',
+    'client_timestamp': ts,
+    'payload': payload,
+  };
+}
+
 /// Build the `restock.request` event. Duplicate ingredient lines are MERGED
 /// (summed) and non-positive quantities dropped — the server rejects a request
 /// that repeats an ingredient_id, so the client must dedupe first.

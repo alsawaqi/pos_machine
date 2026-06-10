@@ -51,6 +51,21 @@ class ExpenseRestockService {
     return _settledResult(data);
   }
 
+  /// Submit a Phase A day-end stock count and return the settled result
+  /// (stock_count_id, lines, lines_with_variance). Throws
+  /// [DeviceActionException] on a failed ACK (unknown ingredient, fractional
+  /// pieces on a whole-piece ingredient, missing ratio…).
+  Future<Map<String, dynamic>> submitStockCount({
+    required List<StockCountLineInput> lines,
+    int? staffId,
+    String? note,
+  }) async {
+    final data = await _api.pushSync([
+      buildStockCountEvent(lines: lines, staffId: staffId, note: note),
+    ]);
+    return _settledResult(data);
+  }
+
   /// Extract the single event's settled result. A `processed` or `duplicate`
   /// ACK is success (a re-push echoes the original result); a `failed` ACK
   /// raises [DeviceActionException] carrying the server error.

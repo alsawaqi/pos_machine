@@ -137,4 +137,64 @@ void main() {
       expect(p.containsKey('requested_at'), isFalse);
     });
   });
+
+  group('stock.count payload (Phase A)', () {
+    test('carries pieces / units lines + staff + note', () {
+      final event = buildStockCountEvent(
+        lines: const [
+          StockCountLineInput(ingredientId: 1, countedPieces: 6),
+          StockCountLineInput(ingredientId: 2, countedUnits: 4.5),
+        ],
+        staffId: 7,
+        note: 'evening close',
+        now: at,
+        newUuid: _seqUuid(),
+      );
+
+      expect(event['event_type'], 'stock.count');
+      expect(event['client_event_id'], 'uuid-0');
+      final p = event['payload'] as Map<String, dynamic>;
+      final lines = (p['lines'] as List).cast<Map<String, dynamic>>();
+      expect(lines, hasLength(2));
+      expect(lines[0]['ingredient_id'], 1);
+      expect(lines[0]['counted_pieces'], 6);
+      expect(lines[0].containsKey('counted_units'), isFalse);
+      expect(lines[1]['ingredient_id'], 2);
+      expect(lines[1]['counted_units'], 4.5);
+      expect(p['staff_id'], 7);
+      expect(p['note'], 'evening close');
+    });
+
+    test('zero is a valid count; negatives are dropped; last duplicate wins', () {
+      final event = buildStockCountEvent(
+        lines: const [
+          StockCountLineInput(ingredientId: 1, countedPieces: 5),
+          StockCountLineInput(ingredientId: 1, countedPieces: 0),
+          StockCountLineInput(ingredientId: 2, countedUnits: -1),
+        ],
+        now: at,
+        newUuid: _seqUuid(),
+      );
+      final p = event['payload'] as Map<String, dynamic>;
+      final lines = (p['lines'] as List).cast<Map<String, dynamic>>();
+      expect(lines, hasLength(1));
+      expect(lines[0]['ingredient_id'], 1);
+      expect(lines[0]['counted_pieces'], 0);
+      expect(p.containsKey('staff_id'), isFalse);
+      expect(p.containsKey('note'), isFalse);
+      expect(p.containsKey('counted_at'), isFalse);
+    });
+
+    test('counted_at can be set explicitly (UTC ISO8601)', () {
+      final counted = DateTime.utc(2026, 6, 8, 22, 15);
+      final event = buildStockCountEvent(
+        lines: const [StockCountLineInput(ingredientId: 3, countedUnits: 12)],
+        countedAt: counted,
+        now: at,
+        newUuid: _seqUuid(),
+      );
+      final p = event['payload'] as Map<String, dynamic>;
+      expect(p['counted_at'], '2026-06-08T22:15:00.000Z');
+    });
+  });
 }

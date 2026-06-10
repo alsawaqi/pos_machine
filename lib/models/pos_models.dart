@@ -823,20 +823,43 @@ class CustomerRef {
 }
 
 /// A company ingredient (id + name + unit) for the device restock-request
-/// picker. The picker shows [name]/[unit] but sends [id] (the integer
-/// ingredient_id the restock.request handler resolves).
+/// picker and the Phase A day-end count screen. The pickers show [name]/[unit]
+/// but send [id] (the integer ingredient_id the sync handlers resolve).
+///
+/// Phase A (Additions §2.3) piece model: when [pieceUnitLabel] +
+/// [unitsPerPiece] are set, staff count this ingredient in physical PIECES
+/// ("5 bottles") and the server converts via the ratio. A base unit of
+/// 'piece' is implicitly piece-countable with ratio 1.
 class IngredientRef {
   final int id;
   final String name;
   final String? nameAr;
   final String? unit;
+  final String? pieceUnitLabel;
+  final String? pieceUnitLabelAr;
+  final double? unitsPerPiece;
+  final bool allowFractionalPieces;
 
   const IngredientRef({
     required this.id,
     required this.name,
     this.nameAr,
     this.unit,
+    this.pieceUnitLabel,
+    this.pieceUnitLabelAr,
+    this.unitsPerPiece,
+    this.allowFractionalPieces = true,
   });
+
+  /// The label staff physically count in, or null when this ingredient is
+  /// counted directly in its base [unit].
+  String? get countableLabel {
+    if (pieceUnitLabel != null && unitsPerPiece != null) return pieceUnitLabel;
+    return unit == 'piece' ? 'piece' : null;
+  }
+
+  /// Whether the day-end count for this ingredient is entered in pieces.
+  bool get isPieceCounted => countableLabel != null;
 }
 
 /// The Soft POS (Mosambee) outcome for a single card tender, carried onto the

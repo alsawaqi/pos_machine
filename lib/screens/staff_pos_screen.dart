@@ -13,6 +13,7 @@ import '../widgets/animated_feedback_widgets.dart';
 import '../providers/providers.dart';
 import 'log_expense_screen.dart';
 import 'restock_request_screen.dart';
+import 'stock_count_screen.dart';
 import 'settings_screen.dart';
 import 'shift_close_screen.dart';
 import '../services/config_mapper.dart';
@@ -3467,6 +3468,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               onTap: () => Navigator.pop(ctx, 'restock_request'),
             ),
             ListTile(
+              leading: const Icon(Icons.checklist_rounded),
+              title: const Text('Day-end stock count'),
+              subtitle: const Text('Count the shelf and reconcile variances'),
+              onTap: () => Navigator.pop(ctx, 'stock_count'),
+            ),
+            ListTile(
               leading: const Icon(Icons.settings),
               title: const Text('Settings'),
               subtitle: const Text('Server address, printing'),
@@ -3502,6 +3509,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     } else if (action == 'restock_request') {
       await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const RestockRequestScreen()),
+      );
+    } else if (action == 'stock_count') {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const StockCountScreen()),
       );
     } else if (action == 'settings') {
       await Navigator.of(context).push(

@@ -428,13 +428,19 @@ class ConfigMapper {
             ))
         .toList();
 
-    // Company ingredient catalogue (id + name + unit) for the restock picker.
+    // Company ingredient catalogue (id + name + unit + Phase A piece model)
+    // for the restock picker and the day-end count screen.
     final ingredients = _list(data['ingredients'])
         .map((i) => IngredientsCompanion(
               id: Value(_int(i['id']) ?? 0),
               name: Value(_str(i['name'])),
               nameAr: Value(_strN(i['name_ar'])),
               unit: Value(_strN(i['unit'])),
+              pieceUnitLabel: Value(_strN(i['piece_unit_label'])),
+              pieceUnitLabelAr: Value(_strN(i['piece_unit_label_ar'])),
+              unitsPerPiece: Value(_dbl(i['units_per_piece'])),
+              allowFractionalPieces:
+                  Value(i['allow_fractional_pieces'] != false),
             ))
         .toList();
 
@@ -686,6 +692,10 @@ class ConfigMapper {
               name: i.name,
               nameAr: i.nameAr,
               unit: i.unit,
+              pieceUnitLabel: i.pieceUnitLabel,
+              pieceUnitLabelAr: i.pieceUnitLabelAr,
+              unitsPerPiece: i.unitsPerPiece,
+              allowFractionalPieces: i.allowFractionalPieces,
             ))
         .toList();
 

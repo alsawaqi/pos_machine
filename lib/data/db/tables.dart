@@ -308,6 +308,15 @@ class Ingredients extends Table {
   TextColumn get name => text().withDefault(const Constant(''))();
   TextColumn get nameAr => text().nullable()();
   TextColumn get unit => text().nullable()(); // kg, litre, piece, …
+  // Phase A (Additions §2.3) — the piece model, so the day-end count
+  // screen can ask for "bottles on the shelf" instead of litres.
+  // label + ratio come as a pair from /device/config; both null =
+  // not piece-tracked (unless unit itself is 'piece' → ratio 1).
+  TextColumn get pieceUnitLabel => text().nullable()();
+  TextColumn get pieceUnitLabelAr => text().nullable()();
+  RealColumn get unitsPerPiece => real().nullable()();
+  BoolColumn get allowFractionalPieces =>
+      boolean().withDefault(const Constant(true))();
 
   @override
   Set<Column> get primaryKey => {id};

@@ -36,7 +36,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -106,6 +106,13 @@ class AppDatabase extends _$AppDatabase {
           if (from < 14) {
             // v14 cached the per-branch custom receipt template.
             await m.addColumn(branchCache, branchCache.receiptTemplateJson);
+          }
+          if (from < 15) {
+            // v15 — Phase A ingredient piece model (day-end counts in pieces).
+            await m.addColumn(ingredients, ingredients.pieceUnitLabel);
+            await m.addColumn(ingredients, ingredients.pieceUnitLabelAr);
+            await m.addColumn(ingredients, ingredients.unitsPerPiece);
+            await m.addColumn(ingredients, ingredients.allowFractionalPieces);
           }
         },
       );

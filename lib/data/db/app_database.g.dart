@@ -7326,8 +7326,65 @@ class $IngredientsTable extends Ingredients
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _pieceUnitLabelMeta = const VerificationMeta(
+    'pieceUnitLabel',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, name, nameAr, unit];
+  late final GeneratedColumn<String> pieceUnitLabel = GeneratedColumn<String>(
+    'piece_unit_label',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pieceUnitLabelArMeta = const VerificationMeta(
+    'pieceUnitLabelAr',
+  );
+  @override
+  late final GeneratedColumn<String> pieceUnitLabelAr = GeneratedColumn<String>(
+    'piece_unit_label_ar',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _unitsPerPieceMeta = const VerificationMeta(
+    'unitsPerPiece',
+  );
+  @override
+  late final GeneratedColumn<double> unitsPerPiece = GeneratedColumn<double>(
+    'units_per_piece',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _allowFractionalPiecesMeta =
+      const VerificationMeta('allowFractionalPieces');
+  @override
+  late final GeneratedColumn<bool> allowFractionalPieces =
+      GeneratedColumn<bool>(
+        'allow_fractional_pieces',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("allow_fractional_pieces" IN (0, 1))',
+        ),
+        defaultValue: const Constant(true),
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    nameAr,
+    unit,
+    pieceUnitLabel,
+    pieceUnitLabelAr,
+    unitsPerPiece,
+    allowFractionalPieces,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -7361,6 +7418,42 @@ class $IngredientsTable extends Ingredients
         unit.isAcceptableOrUnknown(data['unit']!, _unitMeta),
       );
     }
+    if (data.containsKey('piece_unit_label')) {
+      context.handle(
+        _pieceUnitLabelMeta,
+        pieceUnitLabel.isAcceptableOrUnknown(
+          data['piece_unit_label']!,
+          _pieceUnitLabelMeta,
+        ),
+      );
+    }
+    if (data.containsKey('piece_unit_label_ar')) {
+      context.handle(
+        _pieceUnitLabelArMeta,
+        pieceUnitLabelAr.isAcceptableOrUnknown(
+          data['piece_unit_label_ar']!,
+          _pieceUnitLabelArMeta,
+        ),
+      );
+    }
+    if (data.containsKey('units_per_piece')) {
+      context.handle(
+        _unitsPerPieceMeta,
+        unitsPerPiece.isAcceptableOrUnknown(
+          data['units_per_piece']!,
+          _unitsPerPieceMeta,
+        ),
+      );
+    }
+    if (data.containsKey('allow_fractional_pieces')) {
+      context.handle(
+        _allowFractionalPiecesMeta,
+        allowFractionalPieces.isAcceptableOrUnknown(
+          data['allow_fractional_pieces']!,
+          _allowFractionalPiecesMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -7386,6 +7479,22 @@ class $IngredientsTable extends Ingredients
         DriftSqlType.string,
         data['${effectivePrefix}unit'],
       ),
+      pieceUnitLabel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}piece_unit_label'],
+      ),
+      pieceUnitLabelAr: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}piece_unit_label_ar'],
+      ),
+      unitsPerPiece: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}units_per_piece'],
+      ),
+      allowFractionalPieces: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}allow_fractional_pieces'],
+      )!,
     );
   }
 
@@ -7400,11 +7509,19 @@ class IngredientRow extends DataClass implements Insertable<IngredientRow> {
   final String name;
   final String? nameAr;
   final String? unit;
+  final String? pieceUnitLabel;
+  final String? pieceUnitLabelAr;
+  final double? unitsPerPiece;
+  final bool allowFractionalPieces;
   const IngredientRow({
     required this.id,
     required this.name,
     this.nameAr,
     this.unit,
+    this.pieceUnitLabel,
+    this.pieceUnitLabelAr,
+    this.unitsPerPiece,
+    required this.allowFractionalPieces,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7417,6 +7534,16 @@ class IngredientRow extends DataClass implements Insertable<IngredientRow> {
     if (!nullToAbsent || unit != null) {
       map['unit'] = Variable<String>(unit);
     }
+    if (!nullToAbsent || pieceUnitLabel != null) {
+      map['piece_unit_label'] = Variable<String>(pieceUnitLabel);
+    }
+    if (!nullToAbsent || pieceUnitLabelAr != null) {
+      map['piece_unit_label_ar'] = Variable<String>(pieceUnitLabelAr);
+    }
+    if (!nullToAbsent || unitsPerPiece != null) {
+      map['units_per_piece'] = Variable<double>(unitsPerPiece);
+    }
+    map['allow_fractional_pieces'] = Variable<bool>(allowFractionalPieces);
     return map;
   }
 
@@ -7428,6 +7555,16 @@ class IngredientRow extends DataClass implements Insertable<IngredientRow> {
           ? const Value.absent()
           : Value(nameAr),
       unit: unit == null && nullToAbsent ? const Value.absent() : Value(unit),
+      pieceUnitLabel: pieceUnitLabel == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pieceUnitLabel),
+      pieceUnitLabelAr: pieceUnitLabelAr == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pieceUnitLabelAr),
+      unitsPerPiece: unitsPerPiece == null && nullToAbsent
+          ? const Value.absent()
+          : Value(unitsPerPiece),
+      allowFractionalPieces: Value(allowFractionalPieces),
     );
   }
 
@@ -7441,6 +7578,12 @@ class IngredientRow extends DataClass implements Insertable<IngredientRow> {
       name: serializer.fromJson<String>(json['name']),
       nameAr: serializer.fromJson<String?>(json['nameAr']),
       unit: serializer.fromJson<String?>(json['unit']),
+      pieceUnitLabel: serializer.fromJson<String?>(json['pieceUnitLabel']),
+      pieceUnitLabelAr: serializer.fromJson<String?>(json['pieceUnitLabelAr']),
+      unitsPerPiece: serializer.fromJson<double?>(json['unitsPerPiece']),
+      allowFractionalPieces: serializer.fromJson<bool>(
+        json['allowFractionalPieces'],
+      ),
     );
   }
   @override
@@ -7451,6 +7594,10 @@ class IngredientRow extends DataClass implements Insertable<IngredientRow> {
       'name': serializer.toJson<String>(name),
       'nameAr': serializer.toJson<String?>(nameAr),
       'unit': serializer.toJson<String?>(unit),
+      'pieceUnitLabel': serializer.toJson<String?>(pieceUnitLabel),
+      'pieceUnitLabelAr': serializer.toJson<String?>(pieceUnitLabelAr),
+      'unitsPerPiece': serializer.toJson<double?>(unitsPerPiece),
+      'allowFractionalPieces': serializer.toJson<bool>(allowFractionalPieces),
     };
   }
 
@@ -7459,11 +7606,25 @@ class IngredientRow extends DataClass implements Insertable<IngredientRow> {
     String? name,
     Value<String?> nameAr = const Value.absent(),
     Value<String?> unit = const Value.absent(),
+    Value<String?> pieceUnitLabel = const Value.absent(),
+    Value<String?> pieceUnitLabelAr = const Value.absent(),
+    Value<double?> unitsPerPiece = const Value.absent(),
+    bool? allowFractionalPieces,
   }) => IngredientRow(
     id: id ?? this.id,
     name: name ?? this.name,
     nameAr: nameAr.present ? nameAr.value : this.nameAr,
     unit: unit.present ? unit.value : this.unit,
+    pieceUnitLabel: pieceUnitLabel.present
+        ? pieceUnitLabel.value
+        : this.pieceUnitLabel,
+    pieceUnitLabelAr: pieceUnitLabelAr.present
+        ? pieceUnitLabelAr.value
+        : this.pieceUnitLabelAr,
+    unitsPerPiece: unitsPerPiece.present
+        ? unitsPerPiece.value
+        : this.unitsPerPiece,
+    allowFractionalPieces: allowFractionalPieces ?? this.allowFractionalPieces,
   );
   IngredientRow copyWithCompanion(IngredientsCompanion data) {
     return IngredientRow(
@@ -7471,6 +7632,18 @@ class IngredientRow extends DataClass implements Insertable<IngredientRow> {
       name: data.name.present ? data.name.value : this.name,
       nameAr: data.nameAr.present ? data.nameAr.value : this.nameAr,
       unit: data.unit.present ? data.unit.value : this.unit,
+      pieceUnitLabel: data.pieceUnitLabel.present
+          ? data.pieceUnitLabel.value
+          : this.pieceUnitLabel,
+      pieceUnitLabelAr: data.pieceUnitLabelAr.present
+          ? data.pieceUnitLabelAr.value
+          : this.pieceUnitLabelAr,
+      unitsPerPiece: data.unitsPerPiece.present
+          ? data.unitsPerPiece.value
+          : this.unitsPerPiece,
+      allowFractionalPieces: data.allowFractionalPieces.present
+          ? data.allowFractionalPieces.value
+          : this.allowFractionalPieces,
     );
   }
 
@@ -7480,13 +7653,26 @@ class IngredientRow extends DataClass implements Insertable<IngredientRow> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('nameAr: $nameAr, ')
-          ..write('unit: $unit')
+          ..write('unit: $unit, ')
+          ..write('pieceUnitLabel: $pieceUnitLabel, ')
+          ..write('pieceUnitLabelAr: $pieceUnitLabelAr, ')
+          ..write('unitsPerPiece: $unitsPerPiece, ')
+          ..write('allowFractionalPieces: $allowFractionalPieces')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, nameAr, unit);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    nameAr,
+    unit,
+    pieceUnitLabel,
+    pieceUnitLabelAr,
+    unitsPerPiece,
+    allowFractionalPieces,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -7494,7 +7680,11 @@ class IngredientRow extends DataClass implements Insertable<IngredientRow> {
           other.id == this.id &&
           other.name == this.name &&
           other.nameAr == this.nameAr &&
-          other.unit == this.unit);
+          other.unit == this.unit &&
+          other.pieceUnitLabel == this.pieceUnitLabel &&
+          other.pieceUnitLabelAr == this.pieceUnitLabelAr &&
+          other.unitsPerPiece == this.unitsPerPiece &&
+          other.allowFractionalPieces == this.allowFractionalPieces);
 }
 
 class IngredientsCompanion extends UpdateCompanion<IngredientRow> {
@@ -7502,29 +7692,50 @@ class IngredientsCompanion extends UpdateCompanion<IngredientRow> {
   final Value<String> name;
   final Value<String?> nameAr;
   final Value<String?> unit;
+  final Value<String?> pieceUnitLabel;
+  final Value<String?> pieceUnitLabelAr;
+  final Value<double?> unitsPerPiece;
+  final Value<bool> allowFractionalPieces;
   const IngredientsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.nameAr = const Value.absent(),
     this.unit = const Value.absent(),
+    this.pieceUnitLabel = const Value.absent(),
+    this.pieceUnitLabelAr = const Value.absent(),
+    this.unitsPerPiece = const Value.absent(),
+    this.allowFractionalPieces = const Value.absent(),
   });
   IngredientsCompanion.insert({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.nameAr = const Value.absent(),
     this.unit = const Value.absent(),
+    this.pieceUnitLabel = const Value.absent(),
+    this.pieceUnitLabelAr = const Value.absent(),
+    this.unitsPerPiece = const Value.absent(),
+    this.allowFractionalPieces = const Value.absent(),
   });
   static Insertable<IngredientRow> custom({
     Expression<int>? id,
     Expression<String>? name,
     Expression<String>? nameAr,
     Expression<String>? unit,
+    Expression<String>? pieceUnitLabel,
+    Expression<String>? pieceUnitLabelAr,
+    Expression<double>? unitsPerPiece,
+    Expression<bool>? allowFractionalPieces,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (nameAr != null) 'name_ar': nameAr,
       if (unit != null) 'unit': unit,
+      if (pieceUnitLabel != null) 'piece_unit_label': pieceUnitLabel,
+      if (pieceUnitLabelAr != null) 'piece_unit_label_ar': pieceUnitLabelAr,
+      if (unitsPerPiece != null) 'units_per_piece': unitsPerPiece,
+      if (allowFractionalPieces != null)
+        'allow_fractional_pieces': allowFractionalPieces,
     });
   }
 
@@ -7533,12 +7744,21 @@ class IngredientsCompanion extends UpdateCompanion<IngredientRow> {
     Value<String>? name,
     Value<String?>? nameAr,
     Value<String?>? unit,
+    Value<String?>? pieceUnitLabel,
+    Value<String?>? pieceUnitLabelAr,
+    Value<double?>? unitsPerPiece,
+    Value<bool>? allowFractionalPieces,
   }) {
     return IngredientsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
       nameAr: nameAr ?? this.nameAr,
       unit: unit ?? this.unit,
+      pieceUnitLabel: pieceUnitLabel ?? this.pieceUnitLabel,
+      pieceUnitLabelAr: pieceUnitLabelAr ?? this.pieceUnitLabelAr,
+      unitsPerPiece: unitsPerPiece ?? this.unitsPerPiece,
+      allowFractionalPieces:
+          allowFractionalPieces ?? this.allowFractionalPieces,
     );
   }
 
@@ -7557,6 +7777,20 @@ class IngredientsCompanion extends UpdateCompanion<IngredientRow> {
     if (unit.present) {
       map['unit'] = Variable<String>(unit.value);
     }
+    if (pieceUnitLabel.present) {
+      map['piece_unit_label'] = Variable<String>(pieceUnitLabel.value);
+    }
+    if (pieceUnitLabelAr.present) {
+      map['piece_unit_label_ar'] = Variable<String>(pieceUnitLabelAr.value);
+    }
+    if (unitsPerPiece.present) {
+      map['units_per_piece'] = Variable<double>(unitsPerPiece.value);
+    }
+    if (allowFractionalPieces.present) {
+      map['allow_fractional_pieces'] = Variable<bool>(
+        allowFractionalPieces.value,
+      );
+    }
     return map;
   }
 
@@ -7566,7 +7800,11 @@ class IngredientsCompanion extends UpdateCompanion<IngredientRow> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('nameAr: $nameAr, ')
-          ..write('unit: $unit')
+          ..write('unit: $unit, ')
+          ..write('pieceUnitLabel: $pieceUnitLabel, ')
+          ..write('pieceUnitLabelAr: $pieceUnitLabelAr, ')
+          ..write('unitsPerPiece: $unitsPerPiece, ')
+          ..write('allowFractionalPieces: $allowFractionalPieces')
           ..write(')'))
         .toString();
   }
@@ -11415,6 +11653,10 @@ typedef $$IngredientsTableCreateCompanionBuilder =
       Value<String> name,
       Value<String?> nameAr,
       Value<String?> unit,
+      Value<String?> pieceUnitLabel,
+      Value<String?> pieceUnitLabelAr,
+      Value<double?> unitsPerPiece,
+      Value<bool> allowFractionalPieces,
     });
 typedef $$IngredientsTableUpdateCompanionBuilder =
     IngredientsCompanion Function({
@@ -11422,6 +11664,10 @@ typedef $$IngredientsTableUpdateCompanionBuilder =
       Value<String> name,
       Value<String?> nameAr,
       Value<String?> unit,
+      Value<String?> pieceUnitLabel,
+      Value<String?> pieceUnitLabelAr,
+      Value<double?> unitsPerPiece,
+      Value<bool> allowFractionalPieces,
     });
 
 class $$IngredientsTableFilterComposer
@@ -11450,6 +11696,26 @@ class $$IngredientsTableFilterComposer
 
   ColumnFilters<String> get unit => $composableBuilder(
     column: $table.unit,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pieceUnitLabel => $composableBuilder(
+    column: $table.pieceUnitLabel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pieceUnitLabelAr => $composableBuilder(
+    column: $table.pieceUnitLabelAr,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get unitsPerPiece => $composableBuilder(
+    column: $table.unitsPerPiece,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get allowFractionalPieces => $composableBuilder(
+    column: $table.allowFractionalPieces,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -11482,6 +11748,26 @@ class $$IngredientsTableOrderingComposer
     column: $table.unit,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get pieceUnitLabel => $composableBuilder(
+    column: $table.pieceUnitLabel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pieceUnitLabelAr => $composableBuilder(
+    column: $table.pieceUnitLabelAr,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get unitsPerPiece => $composableBuilder(
+    column: $table.unitsPerPiece,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get allowFractionalPieces => $composableBuilder(
+    column: $table.allowFractionalPieces,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$IngredientsTableAnnotationComposer
@@ -11504,6 +11790,26 @@ class $$IngredientsTableAnnotationComposer
 
   GeneratedColumn<String> get unit =>
       $composableBuilder(column: $table.unit, builder: (column) => column);
+
+  GeneratedColumn<String> get pieceUnitLabel => $composableBuilder(
+    column: $table.pieceUnitLabel,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get pieceUnitLabelAr => $composableBuilder(
+    column: $table.pieceUnitLabelAr,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get unitsPerPiece => $composableBuilder(
+    column: $table.unitsPerPiece,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get allowFractionalPieces => $composableBuilder(
+    column: $table.allowFractionalPieces,
+    builder: (column) => column,
+  );
 }
 
 class $$IngredientsTableTableManager
@@ -11541,11 +11847,19 @@ class $$IngredientsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String?> nameAr = const Value.absent(),
                 Value<String?> unit = const Value.absent(),
+                Value<String?> pieceUnitLabel = const Value.absent(),
+                Value<String?> pieceUnitLabelAr = const Value.absent(),
+                Value<double?> unitsPerPiece = const Value.absent(),
+                Value<bool> allowFractionalPieces = const Value.absent(),
               }) => IngredientsCompanion(
                 id: id,
                 name: name,
                 nameAr: nameAr,
                 unit: unit,
+                pieceUnitLabel: pieceUnitLabel,
+                pieceUnitLabelAr: pieceUnitLabelAr,
+                unitsPerPiece: unitsPerPiece,
+                allowFractionalPieces: allowFractionalPieces,
               ),
           createCompanionCallback:
               ({
@@ -11553,11 +11867,19 @@ class $$IngredientsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String?> nameAr = const Value.absent(),
                 Value<String?> unit = const Value.absent(),
+                Value<String?> pieceUnitLabel = const Value.absent(),
+                Value<String?> pieceUnitLabelAr = const Value.absent(),
+                Value<double?> unitsPerPiece = const Value.absent(),
+                Value<bool> allowFractionalPieces = const Value.absent(),
               }) => IngredientsCompanion.insert(
                 id: id,
                 name: name,
                 nameAr: nameAr,
                 unit: unit,
+                pieceUnitLabel: pieceUnitLabel,
+                pieceUnitLabelAr: pieceUnitLabelAr,
+                unitsPerPiece: unitsPerPiece,
+                allowFractionalPieces: allowFractionalPieces,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
