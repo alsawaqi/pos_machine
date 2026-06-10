@@ -36,6 +36,9 @@ class Categories extends Table {
   TextColumn get nameAr => text().nullable()();
   IntColumn get displayOrder => integer().withDefault(const Constant(0))();
   TextColumn get status => text().nullable()();
+  // Phase B — add-on groups bound at the CATEGORY level (JSON int array).
+  // A product's modifier sheet unions these with its own addonGroupIds.
+  TextColumn get addonGroupIdsJson => text().withDefault(const Constant('[]'))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -114,6 +117,10 @@ class AddonGroups extends Table {
   TextColumn get name => text().withDefault(const Constant(''))();
   TextColumn get nameAr => text().nullable()();
   TextColumn get selectionMode => text().nullable()(); // single | multiple
+  // Phase B — selection constraints. NULL = unbounded; min >= 1 makes the
+  // group REQUIRED (the customize sheet blocks Add until satisfied).
+  IntColumn get minSelections => integer().nullable()();
+  IntColumn get maxSelections => integer().nullable()();
   TextColumn get status => text().nullable()();
 
   @override
@@ -128,8 +135,41 @@ class Addons extends Table {
   TextColumn get nameAr => text().nullable()();
   // MONEY (baisas)
   IntColumn get priceDeltaBaisas => integer().withDefault(const Constant(0))();
+  // Phase B — pre-selected when the customize sheet opens.
+  BoolColumn get isDefault => boolean().withDefault(const Constant(false))();
   IntColumn get ingredientId => integer().nullable()();
   TextColumn get status => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+// Phase B (Additions §1.2) — company void reason codes: the cancel dialog
+// requires one when any exist; order.void sends the picked id back.
+@DataClassName('VoidReasonRow')
+class VoidReasons extends Table {
+  IntColumn get id => integer()();
+  TextColumn get code => text().withDefault(const Constant(''))();
+  TextColumn get name => text().withDefault(const Constant(''))();
+  TextColumn get nameAr => text().nullable()();
+  BoolColumn get affectsInventory => boolean().withDefault(const Constant(false))();
+  BoolColumn get requiresManager => boolean().withDefault(const Constant(true))();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+// Phase B — comp reasons (manager write-offs). max_amount caps a single comp.
+@DataClassName('CompReasonRow')
+class CompReasons extends Table {
+  IntColumn get id => integer()();
+  TextColumn get code => text().withDefault(const Constant(''))();
+  TextColumn get name => text().withDefault(const Constant(''))();
+  TextColumn get nameAr => text().nullable()();
+  // MONEY (baisas); null = no cap.
+  IntColumn get maxAmountBaisas => integer().nullable()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {id};

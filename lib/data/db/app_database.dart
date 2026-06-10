@@ -27,6 +27,8 @@ part 'app_database.g.dart';
     LoyaltyRules,
     CachedCustomers,
     Ingredients,
+    VoidReasons,
+    CompReasons,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -36,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -114,6 +116,16 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(ingredients, ingredients.unitsPerPiece);
             await m.addColumn(ingredients, ingredients.allowFractionalPieces);
           }
+          if (from < 16) {
+            // v16 — Phase B restaurant controls: void/comp reason lists,
+            // modifier-group constraints + defaults, category group bindings.
+            await m.createTable(voidReasons);
+            await m.createTable(compReasons);
+            await m.addColumn(addonGroups, addonGroups.minSelections);
+            await m.addColumn(addonGroups, addonGroups.maxSelections);
+            await m.addColumn(addons, addons.isDefault);
+            await m.addColumn(categories, categories.addonGroupIdsJson);
+          }
         },
       );
 
@@ -161,6 +173,13 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<List<IngredientRow>> watchIngredients() =>
       (select(ingredients)..orderBy([(i) => OrderingTerm(expression: i.name)])).watch();
+
+  // Phase B — void/comp reason lists for the cancel + comp dialogs.
+  Stream<List<VoidReasonRow>> watchVoidReasons() =>
+      (select(voidReasons)..orderBy([(r) => OrderingTerm(expression: r.sortOrder)])).watch();
+
+  Stream<List<CompReasonRow>> watchCompReasons() =>
+      (select(compReasons)..orderBy([(r) => OrderingTerm(expression: r.sortOrder)])).watch();
 
   Future<List<TaxRow>> getTaxes() =>
       (select(taxCache)..orderBy([(t) => OrderingTerm(expression: t.id)])).get();
@@ -219,6 +238,8 @@ class AppDatabase extends _$AppDatabase {
     required List<LoyaltyRulesCompanion> loyaltyRuleRows,
     required List<CachedCustomersCompanion> customerRows,
     required List<IngredientsCompanion> ingredientRows,
+    List<VoidReasonsCompanion> voidReasonRows = const [],
+    List<CompReasonsCompanion> compReasonRows = const [],
     required SyncMetaCompanion meta,
   }) {
     return transaction(() async {
@@ -237,6 +258,8 @@ class AppDatabase extends _$AppDatabase {
       await delete(loyaltyRules).go();
       await delete(cachedCustomers).go();
       await delete(ingredients).go();
+      await delete(voidReasons).go();
+      await delete(compReasons).go();
 
       await into(branchCache).insert(branch);
       await batch((b) {
@@ -254,6 +277,8 @@ class AppDatabase extends _$AppDatabase {
         b.insertAll(loyaltyRules, loyaltyRuleRows);
         b.insertAll(cachedCustomers, customerRows);
         b.insertAll(ingredients, ingredientRows);
+        b.insertAll(voidReasons, voidReasonRows);
+        b.insertAll(compReasons, compReasonRows);
       });
       await into(syncMeta).insertOnConflictUpdate(meta);
     });
@@ -282,6 +307,8 @@ class AppDatabase extends _$AppDatabase {
     required List<LoyaltyRulesCompanion> loyaltyRuleRows,
     required List<CachedCustomersCompanion> customerRows,
     required List<IngredientsCompanion> ingredientRows,
+    List<VoidReasonsCompanion> voidReasonRows = const [],
+    List<CompReasonsCompanion> compReasonRows = const [],
     required List<int> deletedCategoryIds,
     required List<int> deletedProductIds,
     required List<int> deletedFloorIds,
@@ -318,6 +345,8 @@ class AppDatabase extends _$AppDatabase {
         b.insertAllOnConflictUpdate(loyaltyRules, loyaltyRuleRows);
         b.insertAllOnConflictUpdate(cachedCustomers, customerRows);
         b.insertAllOnConflictUpdate(ingredients, ingredientRows);
+        b.insertAllOnConflictUpdate(voidReasons, voidReasonRows);
+        b.insertAllOnConflictUpdate(compReasons, compReasonRows);
       });
 
       // Purge soft-deleted ids.

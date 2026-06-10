@@ -191,17 +191,33 @@ OrderSyncPayload buildOrderSyncPayload(
   }
   discounts.addAll(lineDiscounts);
 
+  // ---- Phase B — the manager comp (one per order on the device). The wire
+  // supports many rows; the amount is the controller-frozen figure and must
+  // sum exactly to comp_total_baisas (server-enforced). ----
+  final compBaisas = omrToBaisas(snapshot.compAmount);
+  final comps = <Map<String, dynamic>>[];
+  if (compBaisas > 0 && snapshot.compReasonId != null) {
+    comps.add({
+      'comp_reason_id': snapshot.compReasonId,
+      'amount_baisas': compBaisas,
+      if (snapshot.compLineIndex != null) 'line_index': snapshot.compLineIndex,
+      'staff_id': ?staffId,
+    });
+  }
+
   final order = <String, dynamic>{
     'uuid': orderUuid,
     'order_type': mapOrderType(snapshot.orderType),
     'source': 'main_pos',
     'subtotal_baisas': omrToBaisas(snapshot.rawSubtotal),
     'discount_total_baisas': omrToBaisas(snapshot.discountAmount),
+    if (comps.isNotEmpty) 'comp_total_baisas': compBaisas,
     'tax_total_baisas': omrToBaisas(snapshot.tax),
     'grand_total_baisas': omrToBaisas(snapshot.total),
     'opened_at': ts,
     'lines': lines,
     if (discounts.isNotEmpty) 'discounts': discounts,
+    if (comps.isNotEmpty) 'comps': comps,
     'gps': ?gps,
     'staff_id': ?staffId,
     'table_id': ?tableId,
@@ -317,6 +333,9 @@ OrderSyncPayload buildOrderSyncPayload(
 Map<String, dynamic> buildOrderVoidEvent({
   required String orderUuid,
   String? reason,
+  // Phase B — the picked void reason code's id. The server snapshots it and
+  // KEEPS inventory consumed when the reason says the food was made.
+  int? voidReasonId,
   int? staffId,
   String? authorizedBy,
   DateTime? voidedAt,
@@ -335,6 +354,7 @@ Map<String, dynamic> buildOrderVoidEvent({
       'order_uuid': orderUuid,
       'voided_at': ts,
       if (cleanReason != null && cleanReason.isNotEmpty) 'reason': cleanReason,
+      'void_reason_id': ?voidReasonId,
       'staff_id': ?staffId,
       if (cleanBy != null && cleanBy.isNotEmpty) 'authorized_by': cleanBy,
     },

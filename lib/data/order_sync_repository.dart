@@ -75,6 +75,7 @@ class OrderSyncRepository {
     String orderUuid, {
     int? orderNumber,
     String? reason,
+    int? voidReasonId,
     int? staffId,
     String? authorizedBy,
   }) async {
@@ -83,6 +84,7 @@ class OrderSyncRepository {
     final event = buildOrderVoidEvent(
       orderUuid: orderUuid,
       reason: reason,
+      voidReasonId: voidReasonId,
       staffId: staffId,
       authorizedBy: authorizedBy,
     );

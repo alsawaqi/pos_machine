@@ -540,6 +540,77 @@ void main() {
       expect(payload.containsKey('reason'), isFalse);
       expect(payload.containsKey('authorized_by'), isFalse);
       expect(payload.containsKey('staff_id'), isFalse);
+      expect(payload.containsKey('void_reason_id'), isFalse);
+    });
+
+    test('carries the picked void reason code id (Phase B)', () {
+      final event = buildOrderVoidEvent(
+        orderUuid: 'order-77',
+        reason: 'Quality Issue',
+        voidReasonId: 4,
+        newUuid: _seqUuid(),
+      );
+      final payload = event['payload'] as Map<String, dynamic>;
+      expect(payload['void_reason_id'], 4);
+      expect(payload['reason'], 'Quality Issue');
+    });
+  });
+
+  group('comps (Phase B)', () {
+    test('a line comp rides order.create as comps[] + comp_total_baisas', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '10', 'name': 'Latte', 'qty': 2, 'unitPrice': 2.5, 'lineTotal': 5.0},
+          {'id': '11', 'name': 'Cake', 'qty': 1, 'unitPrice': 3.0, 'lineTotal': 3.0},
+        ],
+        rawSubtotal: 8.0,
+        tax: 0.25,
+        total: 5.25, // 8.0 − 3.0 comp + 0.25 tax
+      ).copyWith(
+        compAmount: 3.0,
+        compReasonId: 5,
+        compReasonName: 'Staff Meal',
+        compLineIndex: 1,
+      );
+
+      final payload = buildOrderSyncPayload(
+        snap,
+        staffId: 9,
+        newUuid: _seqUuid(),
+      );
+      final order =
+          payload.events[0]['payload']['order'] as Map<String, dynamic>;
+
+      expect(order['comp_total_baisas'], 3000);
+      final comps = (order['comps'] as List).cast<Map<String, dynamic>>();
+      expect(comps, hasLength(1));
+      expect(comps[0]['comp_reason_id'], 5);
+      expect(comps[0]['amount_baisas'], 3000);
+      expect(comps[0]['line_index'], 1);
+      expect(comps[0]['staff_id'], 9);
+      // Invariant: subtotal − discount − comp + tax == grand.
+      expect(
+        order['subtotal_baisas'] -
+            order['discount_total_baisas'] -
+            order['comp_total_baisas'] +
+            order['tax_total_baisas'],
+        order['grand_total_baisas'],
+      );
+    });
+
+    test('no comp → no comps key and no comp_total_baisas', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '10', 'name': 'Latte', 'qty': 1, 'unitPrice': 2.0, 'lineTotal': 2.0},
+        ],
+        rawSubtotal: 2.0,
+        total: 2.0,
+      );
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final order =
+          payload.events[0]['payload']['order'] as Map<String, dynamic>;
+      expect(order.containsKey('comps'), isFalse);
+      expect(order.containsKey('comp_total_baisas'), isFalse);
     });
   });
 }

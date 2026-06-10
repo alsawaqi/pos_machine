@@ -169,29 +169,118 @@ class AddonOption {
     required this.label,
     this.labelAr,
     required this.priceDelta,
+    this.isDefault = false,
   });
   final int id;
   final String label;
   final String? labelAr;
   final double priceDelta; // OMR added to the line when selected
+  // Phase B — starts selected when the customize sheet opens.
+  final bool isDefault;
 }
 
 /// A product's add-on group (e.g. "Size", "Milk", "Extras"), assigned per
 /// product in the merchant portal and fetched in the device config. [multiSelect]
 /// mirrors the API `selection_mode` ('multiple' vs 'single').
+///
+/// Phase B (Additions §1.2) — selection constraints: [minSelections] >= 1
+/// makes the group REQUIRED (the customize sheet blocks Add until satisfied);
+/// [maxSelections] caps how many options can be picked. Null = unbounded.
 class AddonGroup {
   const AddonGroup({
     required this.id,
     required this.name,
     this.nameAr,
     required this.multiSelect,
+    this.minSelections,
+    this.maxSelections,
     required this.options,
   });
   final int id;
   final String name;
   final String? nameAr;
   final bool multiSelect;
+  final int? minSelections;
+  final int? maxSelections;
   final List<AddonOption> options;
+
+  /// The effective minimum (a single-select group with min null is optional).
+  int get effectiveMin => minSelections ?? 0;
+
+  /// The effective maximum (single-select is implicitly capped at 1).
+  int get effectiveMax =>
+      maxSelections ?? (multiSelect ? options.length : 1);
+
+  bool get isRequired => effectiveMin >= 1;
+}
+
+/// Phase B — a company void reason code (the cancel dialog requires one when
+/// any exist; order.void sends [id] back so the server snapshots it and
+/// decides whether inventory stays consumed).
+class VoidReasonRef {
+  const VoidReasonRef({
+    required this.id,
+    required this.code,
+    required this.name,
+    this.nameAr,
+    this.affectsInventory = false,
+    this.requiresManager = true,
+  });
+  final int id;
+  final String code;
+  final String name;
+  final String? nameAr;
+  final bool affectsInventory;
+  final bool requiresManager;
+}
+
+/// Phase B — a comp reason (manager-approved write-off). [maxAmount] caps a
+/// single comp in OMR; null = no cap.
+class CompReasonRef {
+  const CompReasonRef({
+    required this.id,
+    required this.code,
+    required this.name,
+    this.nameAr,
+    this.maxAmount,
+  });
+  final int id;
+  final String code;
+  final String name;
+  final String? nameAr;
+  final double? maxAmount;
+}
+
+/// Phase B — the comp applied to the current order (one at a time on the
+/// device; the wire format supports many). [lineIndex] null = whole-order
+/// comp. The AMOUNT is always derived live from the cart (the comped line's
+/// discounted total, or the whole discounted subtotal) so cart edits can
+/// never leave a stale figure.
+class AppliedComp {
+  const AppliedComp({
+    required this.reasonId,
+    required this.reasonName,
+    this.lineIndex,
+    this.note,
+  });
+  final int reasonId;
+  final String reasonName;
+  final int? lineIndex;
+  final String? note;
+
+  Map<String, dynamic> toMap() => {
+        'reasonId': reasonId,
+        'reasonName': reasonName,
+        'lineIndex': lineIndex,
+        'note': note,
+      };
+
+  factory AppliedComp.fromMap(Map<String, dynamic> map) => AppliedComp(
+        reasonId: (map['reasonId'] as num?)?.toInt() ?? 0,
+        reasonName: map['reasonName']?.toString() ?? '',
+        lineIndex: (map['lineIndex'] as num?)?.toInt(),
+        note: map['note']?.toString(),
+      );
 }
 
 /// A company delivery provider (Talabat, Otlob, …) the cashier picks on a
@@ -1136,6 +1225,12 @@ class OrderSnapshot {
   final int loyaltyRedeemPoints;
   // Stamps spent on a visit_based (stamp-card) redemption. Null/0 = none.
   final int loyaltyRedeemStamps;
+  // Phase B — the manager comp applied (one per order on the device) + its
+  // frozen amount. 0/null = no comp. Emitted as comps[] + comp_total_baisas.
+  final double compAmount;
+  final int? compReasonId;
+  final String compReasonName;
+  final int? compLineIndex;
   final double subtotal;
   final double tax;
   final double total;
@@ -1201,6 +1296,10 @@ class OrderSnapshot {
     this.loyaltyRedeemRuleId,
     this.loyaltyRedeemPoints = 0,
     this.loyaltyRedeemStamps = 0,
+    this.compAmount = 0,
+    this.compReasonId,
+    this.compReasonName = '',
+    this.compLineIndex,
     required this.charityRoundUpPromptId,
     required this.recentProductId,
     required this.orderUpdateNonce,
@@ -1357,6 +1456,10 @@ class OrderSnapshot {
     int? loyaltyRedeemRuleId,
     int? loyaltyRedeemPoints,
     int? loyaltyRedeemStamps,
+    double? compAmount,
+    int? compReasonId,
+    String? compReasonName,
+    int? compLineIndex,
     double? subtotal,
     double? tax,
     double? total,
@@ -1396,6 +1499,10 @@ class OrderSnapshot {
       loyaltyRedeemRuleId: loyaltyRedeemRuleId ?? this.loyaltyRedeemRuleId,
       loyaltyRedeemPoints: loyaltyRedeemPoints ?? this.loyaltyRedeemPoints,
       loyaltyRedeemStamps: loyaltyRedeemStamps ?? this.loyaltyRedeemStamps,
+      compAmount: compAmount ?? this.compAmount,
+      compReasonId: compReasonId ?? this.compReasonId,
+      compReasonName: compReasonName ?? this.compReasonName,
+      compLineIndex: compLineIndex ?? this.compLineIndex,
       subtotal: subtotal ?? this.subtotal,
       tax: tax ?? this.tax,
       total: total ?? this.total,

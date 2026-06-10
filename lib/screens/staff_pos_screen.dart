@@ -200,6 +200,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             customers: catalog.customers,
             cancelOrderPositions: catalog.cancelOrderPositions,
             receiptTemplate: catalog.receiptTemplate,
+            voidReasons: catalog.voidReasons,
+            compReasons: catalog.compReasons,
+            categoryAddonGroupIds: catalog.categoryAddonGroupIds,
             branchId: ref.read(sessionControllerProvider).branchId,
           );
         }
@@ -317,6 +320,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     String orderUuid, {
     int? orderNumber,
     String? reason,
+    int? voidReasonId,
   }) {
     final staffId = ref.read(sessionServiceProvider).staff?.id;
     unawaited(
@@ -326,10 +330,204 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             orderUuid,
             orderNumber: orderNumber,
             reason: reason,
+            voidReasonId: voidReasonId,
             staffId: staffId,
             authorizedBy: 'Manager',
           )
           .catchError((_) {}),
+    );
+  }
+
+  /// Phase B — manager comp: write off one line or the whole order under a
+  /// company comp reason (Additions §1.2). Manager fingerprint approval is
+  /// ALWAYS required; the amount is derived (the line's discounted total, or
+  /// the whole discounted subtotal) and validated against the reason's cap.
+  Future<void> _openCompDialog() async {
+    if (controller.cart.isEmpty) {
+      _showPopupMessage(
+        title: 'Nothing to Comp',
+        message: 'Add items to the order first.',
+        tone: FeedbackTone.info,
+      );
+      return;
+    }
+
+    // An existing comp can be removed without re-authorization (it only
+    // RESTORES money owed); applying one always needs the manager.
+    if (controller.appliedComp != null) {
+      final keep = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Comp Applied'),
+          content: Text(
+            '"${controller.appliedComp!.reasonName}" is comping '
+            '${SunmiReceiptService.money(controller.compAmount)} on this order.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Remove comp'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Keep'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      if (keep == false) {
+        controller.removeComp();
+        _showPopupMessage(
+          title: 'Comp Removed',
+          message: 'The order is back to its full total.',
+          tone: FeedbackTone.info,
+        );
+      }
+      return;
+    }
+
+    var hasManager = await _managerAuthorization.isManagerRegistered();
+    if (!mounted) return;
+    var authorized = false;
+    if (!hasManager) {
+      hasManager = await _showFingerprintAuthorizationOverlay(
+        title: 'Register Manager Fingerprint',
+        message: 'Register the manager fingerprint once before comping items.',
+        action: _managerAuthorization.registerManagerFingerprint,
+      );
+      if (!mounted) return;
+      authorized = hasManager;
+    }
+    if (!authorized && hasManager) {
+      authorized = await _showFingerprintAuthorizationOverlay(
+        title: 'Manager Approval Required',
+        message: 'Comps always need manager approval.',
+        action: _managerAuthorization.authenticateCancellation,
+      );
+    }
+    if (!mounted) return;
+    if (!authorized) {
+      _showPopupMessage(
+        title: 'Comp Locked',
+        message: 'Manager fingerprint was not approved.',
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
+    int? lineIndex; // null = whole order
+    CompReasonRef? reason;
+    final applied = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final cart = controller.cart;
+          double amountFor(int? index) {
+            if (index == null) return controller.subtotal;
+            final item = cart[index];
+            final net =
+                item.lineTotal - controller.lineDiscountFor(item).amount;
+            return net.clamp(0.0, controller.subtotal).toDouble();
+          }
+
+          final amount = amountFor(lineIndex);
+          final cap = reason?.maxAmount;
+          final overCap = cap != null && amount > cap + 0.0005;
+
+          return AlertDialog(
+            title: const Text('Comp (Manager)'),
+            content: SizedBox(
+              width: 460,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('What is being comped?'),
+                  const SizedBox(height: 8),
+                  DropdownButton<int>(
+                    value: lineIndex ?? -1,
+                    isExpanded: true,
+                    items: [
+                      const DropdownMenuItem(
+                        value: -1,
+                        child: Text('Whole order'),
+                      ),
+                      for (var i = 0; i < cart.length; i++)
+                        DropdownMenuItem(
+                          value: i,
+                          child: Text(
+                            '${cart[i].product.name} ×${cart[i].qty}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (v) => setDialogState(
+                      () => lineIndex = (v == null || v == -1) ? null : v,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text('Reason'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final r in controller.compReasons)
+                        ChoiceChip(
+                          label: Text(r.name),
+                          selected: reason?.id == r.id,
+                          onSelected: (selected) => setDialogState(
+                            () => reason = selected ? r : null,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Comp amount: ${SunmiReceiptService.money(amount)}',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  if (overCap)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        'Exceeds the "${reason!.name}" cap of '
+                        '${SunmiReceiptService.money(cap)}.',
+                        style: const TextStyle(color: Color(0xFFB84524)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: (reason == null || overCap)
+                    ? null
+                    : () => Navigator.pop(ctx, true),
+                child: const Text('Apply comp'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (!mounted || applied != true || reason == null) return;
+
+    controller.applyComp(AppliedComp(
+      reasonId: reason!.id,
+      reasonName: reason!.name,
+      lineIndex: lineIndex,
+    ));
+    _showPopupMessage(
+      title: 'Comp Applied',
+      message:
+          '"${reason!.name}" — ${SunmiReceiptService.money(controller.compAmount)} written off.',
+      tone: FeedbackTone.success,
     );
   }
 
@@ -1147,12 +1345,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       pageBuilder: (context, animation, secondaryAnimation) {
         return _OrderCancellationPage(
           record: record,
+          voidReasons: controller.voidReasons,
           onSubmit:
-              ({required bool cancelFullOrder, required Set<int> itemIndexes}) {
+              ({
+                required bool cancelFullOrder,
+                required Set<int> itemIndexes,
+                VoidReasonRef? voidReason,
+              }) {
                 return controller.cancelCompletedOrder(
                   record,
                   cancelFullOrder: cancelFullOrder,
                   itemIndexes: itemIndexes,
+                  voidReason: voidReason,
                 );
               },
         );
@@ -1948,6 +2152,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           step: step,
           title: group.name,
           multiSelect: group.multiSelect,
+          // Phase B — merchant-configured constraints + defaults.
+          requiredSelection: group.isRequired,
+          minSelections: group.effectiveMin,
+          maxSelections: group.maxSelections,
+          defaultOptionIds: {
+            for (final option in group.options)
+              if (option.isDefault) option.id.toString(),
+          },
           options: group.options
               .map((option) => _ModifierOptionDefinition(
                     id: option.id.toString(),
@@ -2557,6 +2769,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 ],
                 const SizedBox(height: 10),
                 _paymentTotalRow('Net Subtotal', controller.subtotal),
+                // Phase B — the manager comp write-off (given away, not sold).
+                if (controller.compAmount > 0) ...[
+                  const SizedBox(height: 10),
+                  _paymentTotalRow(
+                    'Comp · ${controller.appliedComp?.reasonName ?? ''}',
+                    -controller.compAmount,
+                  ),
+                ],
                 for (final t in controller.taxLines) ...[
                   const SizedBox(height: 10),
                   _paymentTotalRow('${t.name} (${t.rateLabel}%)', t.amount),
@@ -2807,6 +3027,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 },
               ),
             ),
+            // Phase B — manager comp (write-off a line / the whole order).
+            // Shown only when the company configured comp reasons.
+            if (controller.compReasons.isNotEmpty) ...[
+              const SizedBox(width: 16),
+              Expanded(
+                child: _PaymentTopActionCard(
+                  icon: Icons.volunteer_activism_rounded,
+                  title: controller.appliedComp == null ? 'Comp' : 'Comp ✓',
+                  accent: const Color(0xFF7C5CCB),
+                  onTap: () {
+                    unawaited(_openCompDialog());
+                  },
+                ),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 20),
@@ -3683,6 +3918,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 ],
                 const SizedBox(height: 6),
                 _summaryRow('Net Subtotal', controller.subtotal),
+                // Phase B — the manager comp write-off (given away, not sold).
+                if (controller.compAmount > 0) ...[
+                  const SizedBox(height: 6),
+                  _summaryRow(
+                    'Comp · ${controller.appliedComp?.reasonName ?? ''}',
+                    -controller.compAmount,
+                  ),
+                ],
                 for (final t in controller.taxLines) ...[
                   const SizedBox(height: 6),
                   _summaryRow('${t.name} (${t.rateLabel}%)', t.amount),
@@ -4651,6 +4894,13 @@ class _ModifierGroupDefinition {
   final String title;
   final bool multiSelect;
   final bool requiredSelection;
+  // Phase B — selection constraints (Additions §1.2): the sheet blocks Add
+  // until every group holds at least [minSelections] options, and refuses
+  // picks beyond [maxSelections]. 0 / null-equivalent = unbounded.
+  final int minSelections;
+  final int? maxSelections;
+  // Option ids pre-selected when the sheet opens (merchant defaults).
+  final Set<String> defaultOptionIds;
   final List<_ModifierOptionDefinition> options;
 
   const _ModifierGroupDefinition({
@@ -4658,6 +4908,9 @@ class _ModifierGroupDefinition {
     required this.title,
     this.multiSelect = false,
     this.requiredSelection = false,
+    this.minSelections = 0,
+    this.maxSelections,
+    this.defaultOptionIds = const <String>{},
     required this.options,
   });
 }
@@ -4712,8 +4965,20 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
     };
 
     for (final group in widget.groups) {
-      if (group.requiredSelection && _selectedByGroup[group.title]!.isEmpty) {
-        _selectedByGroup[group.title]!.add(group.options.first.id);
+      final selected = _selectedByGroup[group.title]!;
+      // Phase B — pre-select the merchant defaults on a fresh line (an edit
+      // keeps what the cashier already picked). Cap at the group max.
+      if (selected.isEmpty && group.defaultOptionIds.isNotEmpty) {
+        for (final id in group.defaultOptionIds) {
+          if (group.maxSelections != null &&
+              selected.length >= group.maxSelections!) {
+            break;
+          }
+          if (group.options.any((o) => o.id == id)) selected.add(id);
+        }
+      }
+      if (group.requiredSelection && selected.isEmpty) {
+        selected.add(group.options.first.id);
       }
     }
   }
@@ -4746,8 +5011,13 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
   }
 
   bool get _canSubmit => widget.groups.every((group) {
-    if (!group.requiredSelection) return true;
-    return (_selectedByGroup[group.title] ?? const <String>{}).isNotEmpty;
+    final selected = _selectedByGroup[group.title] ?? const <String>{};
+    // Phase B — every group must reach its minimum (a legacy required
+    // group without an explicit min behaves as min 1).
+    final min = group.minSelections > 0
+        ? group.minSelections
+        : (group.requiredSelection ? 1 : 0);
+    return selected.length >= min;
   });
 
   double get _previewLineTotal {
@@ -4772,6 +5042,11 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
         if (selected.contains(option.id)) {
           selected.remove(option.id);
         } else {
+          // Phase B — refuse picks beyond the group's maximum.
+          if (group.maxSelections != null &&
+              selected.length >= group.maxSelections!) {
+            return;
+          }
           selected.add(option.id);
         }
         return;
@@ -8013,13 +8288,21 @@ typedef _OrderCancellationSubmit =
     Future<String> Function({
       required bool cancelFullOrder,
       required Set<int> itemIndexes,
+      VoidReasonRef? voidReason,
     });
 
 class _OrderCancellationPage extends StatefulWidget {
   final OrderHistoryRecord record;
   final _OrderCancellationSubmit onSubmit;
+  // Phase B — company void reason codes. Non-empty = a reason is REQUIRED
+  // before the cancel can be submitted (Additions §1.2).
+  final List<VoidReasonRef> voidReasons;
 
-  const _OrderCancellationPage({required this.record, required this.onSubmit});
+  const _OrderCancellationPage({
+    required this.record,
+    required this.onSubmit,
+    this.voidReasons = const <VoidReasonRef>[],
+  });
 
   @override
   State<_OrderCancellationPage> createState() => _OrderCancellationPageState();
@@ -8028,12 +8311,19 @@ class _OrderCancellationPage extends StatefulWidget {
 class _OrderCancellationPageState extends State<_OrderCancellationPage> {
   final Set<int> _selectedIndexes = <int>{};
   bool _busy = false;
+  VoidReasonRef? _selectedReason;
+  bool _reasonMissing = false;
 
   OrderSnapshot get _snapshot => widget.record.snapshot;
 
   Future<void> _submit({required bool fullOrder}) async {
     if (_busy) return;
     if (!fullOrder && _selectedIndexes.isEmpty) return;
+    // Phase B — the company configured void reasons: picking one is mandatory.
+    if (widget.voidReasons.isNotEmpty && _selectedReason == null) {
+      setState(() => _reasonMissing = true);
+      return;
+    }
 
     setState(() {
       _busy = true;
@@ -8042,6 +8332,7 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
     final message = await widget.onSubmit(
       cancelFullOrder: fullOrder,
       itemIndexes: fullOrder ? const <int>{} : Set<int>.from(_selectedIndexes),
+      voidReason: _selectedReason,
     );
     if (!mounted) return;
     Navigator.of(context).pop(message);
@@ -8120,6 +8411,39 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
                         ),
                       ],
                     ),
+                    // Phase B — required void reason chips (when configured).
+                    if (widget.voidReasons.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final r in widget.voidReasons)
+                            ChoiceChip(
+                              label: Text(r.name),
+                              selected: _selectedReason?.id == r.id,
+                              onSelected: _busy
+                                  ? null
+                                  : (selected) => setState(() {
+                                        _selectedReason = selected ? r : null;
+                                        _reasonMissing = false;
+                                      }),
+                            ),
+                        ],
+                      ),
+                      if (_reasonMissing)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Pick a cancellation reason first.',
+                            style: TextStyle(
+                              color: Color(0xFFB84524),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                    ],
                     const SizedBox(height: 20),
                     Expanded(
                       child: Row(

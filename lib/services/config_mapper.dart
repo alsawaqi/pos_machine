@@ -23,6 +23,9 @@ class CatalogSnapshot {
     this.ingredients = const <IngredientRef>[],
     this.cancelOrderPositions = const <String>['manager'],
     this.receiptTemplate,
+    this.voidReasons = const <VoidReasonRef>[],
+    this.compReasons = const <CompReasonRef>[],
+    this.categoryAddonGroupIds = const <int, List<int>>{},
   });
 
   final List<String> categories;
@@ -54,6 +57,12 @@ class CatalogSnapshot {
   final List<String> cancelOrderPositions;
   // Per-branch custom receipt template; null = device prints its default.
   final ReceiptTemplate? receiptTemplate;
+  // Phase B — void reason codes (the cancel dialog requires one when any
+  // exist) + comp reasons (manager write-offs) + category-level add-on group
+  // bindings (unioned with each product's own group ids).
+  final List<VoidReasonRef> voidReasons;
+  final List<CompReasonRef> compReasons;
+  final Map<int, List<int>> categoryAddonGroupIds;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -74,6 +83,8 @@ class ParsedConfig {
     required this.loyaltyRules,
     required this.customers,
     required this.ingredients,
+    this.voidReasons = const [],
+    this.compReasons = const [],
     required this.meta,
   });
 
@@ -92,6 +103,9 @@ class ParsedConfig {
   final List<LoyaltyRulesCompanion> loyaltyRules;
   final List<CachedCustomersCompanion> customers;
   final List<IngredientsCompanion> ingredients;
+  // Phase B — void + comp reason code lists.
+  final List<VoidReasonsCompanion> voidReasons;
+  final List<CompReasonsCompanion> compReasons;
   final SyncMetaCompanion meta;
 }
 
@@ -268,6 +282,10 @@ class ConfigMapper {
               nameAr: Value(_strN(c['name_ar'])),
               displayOrder: Value(_int(c['display_order']) ?? 0),
               status: Value(_strN(c['status'])),
+              // Phase B — category-bound add-on groups (union with each
+              // product's own ids at modifier-sheet time).
+              addonGroupIdsJson:
+                  Value(jsonEncode(_intList(c['addon_group_ids']))),
             ))
         .toList();
 
@@ -324,6 +342,9 @@ class ConfigMapper {
         name: Value(_str(g['name'])),
         nameAr: Value(_strN(g['name_ar'])),
         selectionMode: Value(_strN(g['selection_mode'])),
+        // Phase B — selection constraints (null = unbounded).
+        minSelections: Value(_int(g['min_selections'])),
+        maxSelections: Value(_int(g['max_selections'])),
         status: Value(_strN(g['status'])),
       ));
       for (final a in _list(g['addons'])) {
@@ -333,11 +354,36 @@ class ConfigMapper {
           name: Value(_str(a['name'])),
           nameAr: Value(_strN(a['name_ar'])),
           priceDeltaBaisas: Value(_int(a['price_delta_baisas']) ?? 0),
+          // Phase B — pre-selected default in the customize sheet.
+          isDefault: Value(a['is_default'] == true),
           ingredientId: Value(_int(a['ingredient_id'])),
           status: Value(_strN(a['status'])),
         ));
       }
     }
+
+    // Phase B — void + comp reason code lists.
+    final voidReasons = _list(data['void_reasons'])
+        .map((r) => VoidReasonsCompanion(
+              id: Value(_int(r['id']) ?? 0),
+              code: Value(_str(r['code'])),
+              name: Value(_str(r['name'])),
+              nameAr: Value(_strN(r['name_ar'])),
+              affectsInventory: Value(r['affects_inventory'] == true),
+              requiresManager: Value(r['requires_manager'] != false),
+              sortOrder: Value(_int(r['sort_order']) ?? 0),
+            ))
+        .toList();
+    final compReasons = _list(data['comp_reasons'])
+        .map((r) => CompReasonsCompanion(
+              id: Value(_int(r['id']) ?? 0),
+              code: Value(_str(r['code'])),
+              name: Value(_str(r['name'])),
+              nameAr: Value(_strN(r['name_ar'])),
+              maxAmountBaisas: Value(_int(r['max_amount_baisas'])),
+              sortOrder: Value(_int(r['sort_order']) ?? 0),
+            ))
+        .toList();
 
     final taxes = _list(data['taxes'])
         .map((t) => TaxCacheCompanion(
@@ -473,6 +519,8 @@ class ConfigMapper {
       loyaltyRules: loyaltyRules,
       customers: customers,
       ingredients: ingredients,
+      voidReasons: voidReasons,
+      compReasons: compReasons,
       meta: metaCompanion,
     );
   }
@@ -522,6 +570,8 @@ class ConfigMapper {
     List<CustomerRow> customerRows = const [],
     List<IngredientRow> ingredientRows = const [],
     SyncMetaRow? meta,
+    List<VoidReasonRow> voidReasonRows = const [],
+    List<CompReasonRow> compReasonRows = const [],
   ]) {
     final sortedCats = [...cats]
       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
@@ -610,6 +660,7 @@ class ConfigMapper {
         label: a.name,
         labelAr: a.nameAr,
         priceDelta: a.priceDeltaBaisas / 1000.0,
+        isDefault: a.isDefault,
       ));
     }
     final addonGroups = addonGroupRows
@@ -619,7 +670,40 @@ class ConfigMapper {
               name: g.name,
               nameAr: g.nameAr,
               multiSelect: (g.selectionMode ?? 'single') == 'multiple',
+              minSelections: g.minSelections,
+              maxSelections: g.maxSelections,
               options: optionsByGroup[g.id] ?? const <AddonOption>[],
+            ))
+        .toList();
+
+    // Phase B — category-level group bindings, decoded once per catalog.
+    final categoryAddonGroupIds = <int, List<int>>{
+      for (final c in cats)
+        if (c.addonGroupIdsJson.isNotEmpty && c.addonGroupIdsJson != '[]')
+          c.id: _intsFromJson(c.addonGroupIdsJson),
+    };
+
+    // Phase B — void/comp reason lists for the cancel + comp flows.
+    final voidReasonDefs = ([...voidReasonRows]
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder)))
+        .map((r) => VoidReasonRef(
+              id: r.id,
+              code: r.code,
+              name: r.name,
+              nameAr: r.nameAr,
+              affectsInventory: r.affectsInventory,
+              requiresManager: r.requiresManager,
+            ))
+        .toList();
+    final compReasonDefs = ([...compReasonRows]
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder)))
+        .map((r) => CompReasonRef(
+              id: r.id,
+              code: r.code,
+              name: r.name,
+              nameAr: r.nameAr,
+              maxAmount:
+                  r.maxAmountBaisas != null ? r.maxAmountBaisas! / 1000.0 : null,
             ))
         .toList();
 
@@ -715,7 +799,21 @@ class ConfigMapper {
       ingredients: ingredients,
       cancelOrderPositions: _cancelPositionsFromMeta(meta),
       receiptTemplate: receiptTemplate,
+      voidReasons: voidReasonDefs,
+      compReasons: compReasonDefs,
+      categoryAddonGroupIds: categoryAddonGroupIds,
     );
+  }
+
+  /// Decode a JSON int array ("[1,2]") → ints; tolerant of junk.
+  static List<int> _intsFromJson(String json) {
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is List) {
+        return decoded.map((e) => (e as num?)?.toInt()).whereType<int>().toList();
+      }
+    } catch (_) {}
+    return const [];
   }
 
   /// Decode the cached per-branch receipt template JSON → [ReceiptTemplate].

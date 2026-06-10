@@ -68,7 +68,7 @@ void main() {
     test('toCatalog() builds AddonGroups (OMR deltas) and attaches ids', () {
       final catalog = ConfigMapper.toCatalog(
         null,
-        [const CategoryRow(id: 1, name: 'Coffee', displayOrder: 0)],
+        [const CategoryRow(id: 1, name: 'Coffee', displayOrder: 0, addonGroupIdsJson: '[]')],
         [
           const ProductRow(
             id: 10,
@@ -102,12 +102,14 @@ void main() {
             addOnGroupId: 5,
             name: 'Large',
             priceDeltaBaisas: 500,
+            isDefault: false,
           ),
           const AddonRow(
             id: 101,
             addOnGroupId: 6,
             name: 'Extra shot',
             priceDeltaBaisas: 300,
+            isDefault: false,
           ),
         ],
       );
@@ -152,6 +154,7 @@ void main() {
             addOnGroupId: 5,
             name: 'Large',
             priceDeltaBaisas: 500,
+            isDefault: false,
           ),
           const AddonRow(
             id: 101,
@@ -159,6 +162,7 @@ void main() {
             name: 'Retired',
             priceDeltaBaisas: 300,
             status: 'inactive',
+            isDefault: false,
           ),
         ],
       );

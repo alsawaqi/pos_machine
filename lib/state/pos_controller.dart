@@ -241,6 +241,17 @@ class PosController extends ChangeNotifier {
   /// Null = print the built-in default receipt. Passed to [SunmiReceiptService].
   ReceiptTemplate? receiptTemplate;
 
+  /// Phase B — company void reason codes (the cancel dialog requires one when
+  /// any exist) + comp reasons (manager write-offs) + the category-level
+  /// add-on group bindings unioned in [addonGroupsForProduct].
+  List<VoidReasonRef> voidReasons = const <VoidReasonRef>[];
+  List<CompReasonRef> compReasons = const <CompReasonRef>[];
+  Map<int, List<int>> categoryAddonGroupIds = const <int, List<int>>{};
+
+  /// Phase B — the manager comp applied to the current order (one at a time;
+  /// the amount is DERIVED live — see [compAmount]). Null = no comp.
+  AppliedComp? appliedComp;
+
   /// Whether a staff member with [position] may cancel an order under the
   /// current company policy. Case-insensitive; an unknown / null position is
   /// denied. With no policy cached, the default managers-only list applies.
@@ -347,6 +358,7 @@ class PosController extends ChangeNotifier {
     String orderUuid, {
     int? orderNumber,
     String? reason,
+    int? voidReasonId,
   })? onOrderVoided;
 
   /// Whether to print a Sunmi receipt on completion (driven by Settings; the
@@ -428,6 +440,9 @@ class PosController extends ChangeNotifier {
     List<CustomerRef> customers = const <CustomerRef>[],
     List<String> cancelOrderPositions = const <String>['manager'],
     ReceiptTemplate? receiptTemplate,
+    List<VoidReasonRef> voidReasons = const <VoidReasonRef>[],
+    List<CompReasonRef> compReasons = const <CompReasonRef>[],
+    Map<int, List<int>> categoryAddonGroupIds = const <int, List<int>>{},
     int? branchId,
   }) {
     this.categories = categories;
@@ -445,6 +460,9 @@ class PosController extends ChangeNotifier {
     this.cancelOrderPositions =
         cancelOrderPositions.isEmpty ? const <String>['manager'] : cancelOrderPositions;
     this.receiptTemplate = receiptTemplate;
+    this.voidReasons = voidReasons;
+    this.compReasons = compReasons;
+    this.categoryAddonGroupIds = categoryAddonGroupIds;
     // Company taxes drive the cart tax lines + total. Stored in the shared
     // source so the persisted / printed order agrees with the live cart.
     activeCompanyTaxes = taxes;
@@ -526,8 +544,20 @@ class PosController extends ChangeNotifier {
       (p) => p.id == product.id,
       orElse: () => product,
     );
-    final ids =
+    final ownIds =
         live.addonGroupIds.isNotEmpty ? live.addonGroupIds : product.addonGroupIds;
+    // Phase B — union the product's own groups with any bound to its
+    // category ("attach a group to a category; the more specific binding
+    // wins" — a duplicate id simply dedupes here).
+    final categoryId = live.categoryId ?? product.categoryId;
+    final categoryIds = categoryId != null
+        ? (categoryAddonGroupIds[categoryId] ?? const <int>[])
+        : const <int>[];
+    final ids = <int>[
+      ...ownIds,
+      for (final id in categoryIds)
+        if (!ownIds.contains(id)) id,
+    ];
     if (ids.isEmpty) return const <AddonGroup>[];
     final byId = {for (final g in addonGroups) g.id: g};
     return [
@@ -674,12 +704,49 @@ class PosController extends ChangeNotifier {
     (rawSubtotal - discountAmount).clamp(0.0, double.infinity).toDouble(),
   );
 
+  /// Phase B — the comp write-off (OMR), derived LIVE from the cart so edits
+  /// can never leave a stale figure: a line comp = that line's discounted
+  /// total; a whole-order comp = the whole discounted subtotal. A comped line
+  /// that was removed clears the comp (returns 0).
+  double get compAmount {
+    final comp = appliedComp;
+    if (comp == null) return 0;
+    final lineIndex = comp.lineIndex;
+    if (lineIndex == null) return subtotal;
+    if (lineIndex < 0 || lineIndex >= _cart.length) return 0;
+    final item = _cart[lineIndex];
+    final net = item.lineTotal - lineDiscountFor(item).amount;
+    return _roundMoney(net.clamp(0.0, subtotal).toDouble());
+  }
+
+  /// The taxed base after the comp — comped food is given away, not sold, so
+  /// no tax is charged on it (a fully comped order totals 0.000).
+  double get _taxedBase => _roundMoney(
+    (subtotal - compAmount).clamp(0.0, double.infinity).toDouble(),
+  );
+
   /// Per-tax breakdown (one line per active company tax) for the cart + receipt.
-  List<TaxLineAmount> get taxLines => taxLinesFor(subtotal);
+  List<TaxLineAmount> get taxLines => taxLinesFor(_taxedBase);
 
-  double get tax => taxTotalFor(subtotal);
+  double get tax => taxTotalFor(_taxedBase);
 
-  double get total => _roundMoney(subtotal + tax);
+  double get total => _roundMoney(_taxedBase + tax);
+
+  /// Phase B — apply a manager comp (one per order; replaces any prior one).
+  /// The CALLER is responsible for manager authorization + cap validation
+  /// against the picked reason's maxAmount.
+  void applyComp(AppliedComp comp) {
+    appliedComp = comp;
+    _resetCharityRoundUp();
+    _broadcast();
+  }
+
+  void removeComp() {
+    if (appliedComp == null) return;
+    appliedComp = null;
+    _resetCharityRoundUp();
+    _broadcast();
+  }
 
   List<SplitPaymentRecord> get splitPayments =>
       List.unmodifiable(_splitPayments);
@@ -775,6 +842,10 @@ class PosController extends ChangeNotifier {
       loyaltyRedeemRuleId: loyaltyRedeemRuleId,
       loyaltyRedeemPoints: loyaltyRedeemPoints,
       loyaltyRedeemStamps: loyaltyRedeemStamps,
+      compAmount: compAmount,
+      compReasonId: appliedComp?.reasonId,
+      compReasonName: appliedComp?.reasonName ?? '',
+      compLineIndex: appliedComp?.lineIndex,
       subtotal: subtotal,
       tax: tax,
       total: total,
@@ -1347,6 +1418,9 @@ class PosController extends ChangeNotifier {
     OrderHistoryRecord record, {
     required bool cancelFullOrder,
     required Set<int> itemIndexes,
+    // Phase B — the picked void reason (required by the dialog when the
+    // company has reason codes). Threaded onto the order.void event.
+    VoidReasonRef? voidReason,
   }) async {
     final snapshot = record.snapshot;
     if (snapshot.isFullyCanceled) {
@@ -1444,7 +1518,8 @@ class PosController extends ChangeNotifier {
         onOrderVoided?.call(
           serverUuid,
           orderNumber: record.orderNumber,
-          reason: 'Canceled by manager at POS',
+          reason: voidReason?.name ?? 'Canceled by manager at POS',
+          voidReasonId: voidReason?.id,
         );
       }
       return 'Order #${record.orderNumber} was fully canceled.';
@@ -2367,6 +2442,7 @@ class PosController extends ChangeNotifier {
     _lastCardCharge = null;
     loyaltyRedeemRuleId = null;
     loyaltyRedeemPoints = 0;
+    appliedComp = null;
     showPendingReconciliationPrompt = false;
     _activePaymentBaseOverride = null;
     selectedOrderType = nextOrderType;

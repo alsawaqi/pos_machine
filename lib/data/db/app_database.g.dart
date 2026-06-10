@@ -630,6 +630,19 @@ class $CategoriesTable extends Categories
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _addonGroupIdsJsonMeta = const VerificationMeta(
+    'addonGroupIdsJson',
+  );
+  @override
+  late final GeneratedColumn<String> addonGroupIdsJson =
+      GeneratedColumn<String>(
+        'addon_group_ids_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -637,6 +650,7 @@ class $CategoriesTable extends Categories
     nameAr,
     displayOrder,
     status,
+    addonGroupIdsJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -680,6 +694,15 @@ class $CategoriesTable extends Categories
         status.isAcceptableOrUnknown(data['status']!, _statusMeta),
       );
     }
+    if (data.containsKey('addon_group_ids_json')) {
+      context.handle(
+        _addonGroupIdsJsonMeta,
+        addonGroupIdsJson.isAcceptableOrUnknown(
+          data['addon_group_ids_json']!,
+          _addonGroupIdsJsonMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -709,6 +732,10 @@ class $CategoriesTable extends Categories
         DriftSqlType.string,
         data['${effectivePrefix}status'],
       ),
+      addonGroupIdsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}addon_group_ids_json'],
+      )!,
     );
   }
 
@@ -724,12 +751,14 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
   final String? nameAr;
   final int displayOrder;
   final String? status;
+  final String addonGroupIdsJson;
   const CategoryRow({
     required this.id,
     required this.name,
     this.nameAr,
     required this.displayOrder,
     this.status,
+    required this.addonGroupIdsJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -743,6 +772,7 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
     if (!nullToAbsent || status != null) {
       map['status'] = Variable<String>(status);
     }
+    map['addon_group_ids_json'] = Variable<String>(addonGroupIdsJson);
     return map;
   }
 
@@ -757,6 +787,7 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
       status: status == null && nullToAbsent
           ? const Value.absent()
           : Value(status),
+      addonGroupIdsJson: Value(addonGroupIdsJson),
     );
   }
 
@@ -771,6 +802,7 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
       nameAr: serializer.fromJson<String?>(json['nameAr']),
       displayOrder: serializer.fromJson<int>(json['displayOrder']),
       status: serializer.fromJson<String?>(json['status']),
+      addonGroupIdsJson: serializer.fromJson<String>(json['addonGroupIdsJson']),
     );
   }
   @override
@@ -782,6 +814,7 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
       'nameAr': serializer.toJson<String?>(nameAr),
       'displayOrder': serializer.toJson<int>(displayOrder),
       'status': serializer.toJson<String?>(status),
+      'addonGroupIdsJson': serializer.toJson<String>(addonGroupIdsJson),
     };
   }
 
@@ -791,12 +824,14 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
     Value<String?> nameAr = const Value.absent(),
     int? displayOrder,
     Value<String?> status = const Value.absent(),
+    String? addonGroupIdsJson,
   }) => CategoryRow(
     id: id ?? this.id,
     name: name ?? this.name,
     nameAr: nameAr.present ? nameAr.value : this.nameAr,
     displayOrder: displayOrder ?? this.displayOrder,
     status: status.present ? status.value : this.status,
+    addonGroupIdsJson: addonGroupIdsJson ?? this.addonGroupIdsJson,
   );
   CategoryRow copyWithCompanion(CategoriesCompanion data) {
     return CategoryRow(
@@ -807,6 +842,9 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
           ? data.displayOrder.value
           : this.displayOrder,
       status: data.status.present ? data.status.value : this.status,
+      addonGroupIdsJson: data.addonGroupIdsJson.present
+          ? data.addonGroupIdsJson.value
+          : this.addonGroupIdsJson,
     );
   }
 
@@ -817,13 +855,15 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
           ..write('name: $name, ')
           ..write('nameAr: $nameAr, ')
           ..write('displayOrder: $displayOrder, ')
-          ..write('status: $status')
+          ..write('status: $status, ')
+          ..write('addonGroupIdsJson: $addonGroupIdsJson')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, nameAr, displayOrder, status);
+  int get hashCode =>
+      Object.hash(id, name, nameAr, displayOrder, status, addonGroupIdsJson);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -832,7 +872,8 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
           other.name == this.name &&
           other.nameAr == this.nameAr &&
           other.displayOrder == this.displayOrder &&
-          other.status == this.status);
+          other.status == this.status &&
+          other.addonGroupIdsJson == this.addonGroupIdsJson);
 }
 
 class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
@@ -841,12 +882,14 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
   final Value<String?> nameAr;
   final Value<int> displayOrder;
   final Value<String?> status;
+  final Value<String> addonGroupIdsJson;
   const CategoriesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.nameAr = const Value.absent(),
     this.displayOrder = const Value.absent(),
     this.status = const Value.absent(),
+    this.addonGroupIdsJson = const Value.absent(),
   });
   CategoriesCompanion.insert({
     this.id = const Value.absent(),
@@ -854,6 +897,7 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
     this.nameAr = const Value.absent(),
     this.displayOrder = const Value.absent(),
     this.status = const Value.absent(),
+    this.addonGroupIdsJson = const Value.absent(),
   });
   static Insertable<CategoryRow> custom({
     Expression<int>? id,
@@ -861,6 +905,7 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
     Expression<String>? nameAr,
     Expression<int>? displayOrder,
     Expression<String>? status,
+    Expression<String>? addonGroupIdsJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -868,6 +913,7 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
       if (nameAr != null) 'name_ar': nameAr,
       if (displayOrder != null) 'display_order': displayOrder,
       if (status != null) 'status': status,
+      if (addonGroupIdsJson != null) 'addon_group_ids_json': addonGroupIdsJson,
     });
   }
 
@@ -877,6 +923,7 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
     Value<String?>? nameAr,
     Value<int>? displayOrder,
     Value<String?>? status,
+    Value<String>? addonGroupIdsJson,
   }) {
     return CategoriesCompanion(
       id: id ?? this.id,
@@ -884,6 +931,7 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
       nameAr: nameAr ?? this.nameAr,
       displayOrder: displayOrder ?? this.displayOrder,
       status: status ?? this.status,
+      addonGroupIdsJson: addonGroupIdsJson ?? this.addonGroupIdsJson,
     );
   }
 
@@ -905,6 +953,9 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
+    if (addonGroupIdsJson.present) {
+      map['addon_group_ids_json'] = Variable<String>(addonGroupIdsJson.value);
+    }
     return map;
   }
 
@@ -915,7 +966,8 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
           ..write('name: $name, ')
           ..write('nameAr: $nameAr, ')
           ..write('displayOrder: $displayOrder, ')
-          ..write('status: $status')
+          ..write('status: $status, ')
+          ..write('addonGroupIdsJson: $addonGroupIdsJson')
           ..write(')'))
         .toString();
   }
@@ -2714,6 +2766,28 @@ class $AddonGroupsTable extends AddonGroups
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _minSelectionsMeta = const VerificationMeta(
+    'minSelections',
+  );
+  @override
+  late final GeneratedColumn<int> minSelections = GeneratedColumn<int>(
+    'min_selections',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _maxSelectionsMeta = const VerificationMeta(
+    'maxSelections',
+  );
+  @override
+  late final GeneratedColumn<int> maxSelections = GeneratedColumn<int>(
+    'max_selections',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _statusMeta = const VerificationMeta('status');
   @override
   late final GeneratedColumn<String> status = GeneratedColumn<String>(
@@ -2729,6 +2803,8 @@ class $AddonGroupsTable extends AddonGroups
     name,
     nameAr,
     selectionMode,
+    minSelections,
+    maxSelections,
     status,
   ];
   @override
@@ -2767,6 +2843,24 @@ class $AddonGroupsTable extends AddonGroups
         ),
       );
     }
+    if (data.containsKey('min_selections')) {
+      context.handle(
+        _minSelectionsMeta,
+        minSelections.isAcceptableOrUnknown(
+          data['min_selections']!,
+          _minSelectionsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('max_selections')) {
+      context.handle(
+        _maxSelectionsMeta,
+        maxSelections.isAcceptableOrUnknown(
+          data['max_selections']!,
+          _maxSelectionsMeta,
+        ),
+      );
+    }
     if (data.containsKey('status')) {
       context.handle(
         _statusMeta,
@@ -2798,6 +2892,14 @@ class $AddonGroupsTable extends AddonGroups
         DriftSqlType.string,
         data['${effectivePrefix}selection_mode'],
       ),
+      minSelections: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}min_selections'],
+      ),
+      maxSelections: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}max_selections'],
+      ),
       status: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}status'],
@@ -2816,12 +2918,16 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
   final String name;
   final String? nameAr;
   final String? selectionMode;
+  final int? minSelections;
+  final int? maxSelections;
   final String? status;
   const AddonGroupRow({
     required this.id,
     required this.name,
     this.nameAr,
     this.selectionMode,
+    this.minSelections,
+    this.maxSelections,
     this.status,
   });
   @override
@@ -2834,6 +2940,12 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
     }
     if (!nullToAbsent || selectionMode != null) {
       map['selection_mode'] = Variable<String>(selectionMode);
+    }
+    if (!nullToAbsent || minSelections != null) {
+      map['min_selections'] = Variable<int>(minSelections);
+    }
+    if (!nullToAbsent || maxSelections != null) {
+      map['max_selections'] = Variable<int>(maxSelections);
     }
     if (!nullToAbsent || status != null) {
       map['status'] = Variable<String>(status);
@@ -2851,6 +2963,12 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
       selectionMode: selectionMode == null && nullToAbsent
           ? const Value.absent()
           : Value(selectionMode),
+      minSelections: minSelections == null && nullToAbsent
+          ? const Value.absent()
+          : Value(minSelections),
+      maxSelections: maxSelections == null && nullToAbsent
+          ? const Value.absent()
+          : Value(maxSelections),
       status: status == null && nullToAbsent
           ? const Value.absent()
           : Value(status),
@@ -2867,6 +2985,8 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
       name: serializer.fromJson<String>(json['name']),
       nameAr: serializer.fromJson<String?>(json['nameAr']),
       selectionMode: serializer.fromJson<String?>(json['selectionMode']),
+      minSelections: serializer.fromJson<int?>(json['minSelections']),
+      maxSelections: serializer.fromJson<int?>(json['maxSelections']),
       status: serializer.fromJson<String?>(json['status']),
     );
   }
@@ -2878,6 +2998,8 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
       'name': serializer.toJson<String>(name),
       'nameAr': serializer.toJson<String?>(nameAr),
       'selectionMode': serializer.toJson<String?>(selectionMode),
+      'minSelections': serializer.toJson<int?>(minSelections),
+      'maxSelections': serializer.toJson<int?>(maxSelections),
       'status': serializer.toJson<String?>(status),
     };
   }
@@ -2887,6 +3009,8 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
     String? name,
     Value<String?> nameAr = const Value.absent(),
     Value<String?> selectionMode = const Value.absent(),
+    Value<int?> minSelections = const Value.absent(),
+    Value<int?> maxSelections = const Value.absent(),
     Value<String?> status = const Value.absent(),
   }) => AddonGroupRow(
     id: id ?? this.id,
@@ -2895,6 +3019,12 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
     selectionMode: selectionMode.present
         ? selectionMode.value
         : this.selectionMode,
+    minSelections: minSelections.present
+        ? minSelections.value
+        : this.minSelections,
+    maxSelections: maxSelections.present
+        ? maxSelections.value
+        : this.maxSelections,
     status: status.present ? status.value : this.status,
   );
   AddonGroupRow copyWithCompanion(AddonGroupsCompanion data) {
@@ -2905,6 +3035,12 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
       selectionMode: data.selectionMode.present
           ? data.selectionMode.value
           : this.selectionMode,
+      minSelections: data.minSelections.present
+          ? data.minSelections.value
+          : this.minSelections,
+      maxSelections: data.maxSelections.present
+          ? data.maxSelections.value
+          : this.maxSelections,
       status: data.status.present ? data.status.value : this.status,
     );
   }
@@ -2916,13 +3052,23 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
           ..write('name: $name, ')
           ..write('nameAr: $nameAr, ')
           ..write('selectionMode: $selectionMode, ')
+          ..write('minSelections: $minSelections, ')
+          ..write('maxSelections: $maxSelections, ')
           ..write('status: $status')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, nameAr, selectionMode, status);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    nameAr,
+    selectionMode,
+    minSelections,
+    maxSelections,
+    status,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2931,6 +3077,8 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
           other.name == this.name &&
           other.nameAr == this.nameAr &&
           other.selectionMode == this.selectionMode &&
+          other.minSelections == this.minSelections &&
+          other.maxSelections == this.maxSelections &&
           other.status == this.status);
 }
 
@@ -2939,12 +3087,16 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
   final Value<String> name;
   final Value<String?> nameAr;
   final Value<String?> selectionMode;
+  final Value<int?> minSelections;
+  final Value<int?> maxSelections;
   final Value<String?> status;
   const AddonGroupsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.nameAr = const Value.absent(),
     this.selectionMode = const Value.absent(),
+    this.minSelections = const Value.absent(),
+    this.maxSelections = const Value.absent(),
     this.status = const Value.absent(),
   });
   AddonGroupsCompanion.insert({
@@ -2952,6 +3104,8 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
     this.name = const Value.absent(),
     this.nameAr = const Value.absent(),
     this.selectionMode = const Value.absent(),
+    this.minSelections = const Value.absent(),
+    this.maxSelections = const Value.absent(),
     this.status = const Value.absent(),
   });
   static Insertable<AddonGroupRow> custom({
@@ -2959,6 +3113,8 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
     Expression<String>? name,
     Expression<String>? nameAr,
     Expression<String>? selectionMode,
+    Expression<int>? minSelections,
+    Expression<int>? maxSelections,
     Expression<String>? status,
   }) {
     return RawValuesInsertable({
@@ -2966,6 +3122,8 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
       if (name != null) 'name': name,
       if (nameAr != null) 'name_ar': nameAr,
       if (selectionMode != null) 'selection_mode': selectionMode,
+      if (minSelections != null) 'min_selections': minSelections,
+      if (maxSelections != null) 'max_selections': maxSelections,
       if (status != null) 'status': status,
     });
   }
@@ -2975,6 +3133,8 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
     Value<String>? name,
     Value<String?>? nameAr,
     Value<String?>? selectionMode,
+    Value<int?>? minSelections,
+    Value<int?>? maxSelections,
     Value<String?>? status,
   }) {
     return AddonGroupsCompanion(
@@ -2982,6 +3142,8 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
       name: name ?? this.name,
       nameAr: nameAr ?? this.nameAr,
       selectionMode: selectionMode ?? this.selectionMode,
+      minSelections: minSelections ?? this.minSelections,
+      maxSelections: maxSelections ?? this.maxSelections,
       status: status ?? this.status,
     );
   }
@@ -3001,6 +3163,12 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
     if (selectionMode.present) {
       map['selection_mode'] = Variable<String>(selectionMode.value);
     }
+    if (minSelections.present) {
+      map['min_selections'] = Variable<int>(minSelections.value);
+    }
+    if (maxSelections.present) {
+      map['max_selections'] = Variable<int>(maxSelections.value);
+    }
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
@@ -3014,6 +3182,8 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
           ..write('name: $name, ')
           ..write('nameAr: $nameAr, ')
           ..write('selectionMode: $selectionMode, ')
+          ..write('minSelections: $minSelections, ')
+          ..write('maxSelections: $maxSelections, ')
           ..write('status: $status')
           ..write(')'))
         .toString();
@@ -3076,6 +3246,21 @@ class $AddonsTable extends Addons with TableInfo<$AddonsTable, AddonRow> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _isDefaultMeta = const VerificationMeta(
+    'isDefault',
+  );
+  @override
+  late final GeneratedColumn<bool> isDefault = GeneratedColumn<bool>(
+    'is_default',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_default" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _ingredientIdMeta = const VerificationMeta(
     'ingredientId',
   );
@@ -3103,6 +3288,7 @@ class $AddonsTable extends Addons with TableInfo<$AddonsTable, AddonRow> {
     name,
     nameAr,
     priceDeltaBaisas,
+    isDefault,
     ingredientId,
     status,
   ];
@@ -3153,6 +3339,12 @@ class $AddonsTable extends Addons with TableInfo<$AddonsTable, AddonRow> {
         ),
       );
     }
+    if (data.containsKey('is_default')) {
+      context.handle(
+        _isDefaultMeta,
+        isDefault.isAcceptableOrUnknown(data['is_default']!, _isDefaultMeta),
+      );
+    }
     if (data.containsKey('ingredient_id')) {
       context.handle(
         _ingredientIdMeta,
@@ -3197,6 +3389,10 @@ class $AddonsTable extends Addons with TableInfo<$AddonsTable, AddonRow> {
         DriftSqlType.int,
         data['${effectivePrefix}price_delta_baisas'],
       )!,
+      isDefault: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_default'],
+      )!,
       ingredientId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}ingredient_id'],
@@ -3220,6 +3416,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
   final String name;
   final String? nameAr;
   final int priceDeltaBaisas;
+  final bool isDefault;
   final int? ingredientId;
   final String? status;
   const AddonRow({
@@ -3228,6 +3425,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     required this.name,
     this.nameAr,
     required this.priceDeltaBaisas,
+    required this.isDefault,
     this.ingredientId,
     this.status,
   });
@@ -3241,6 +3439,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
       map['name_ar'] = Variable<String>(nameAr);
     }
     map['price_delta_baisas'] = Variable<int>(priceDeltaBaisas);
+    map['is_default'] = Variable<bool>(isDefault);
     if (!nullToAbsent || ingredientId != null) {
       map['ingredient_id'] = Variable<int>(ingredientId);
     }
@@ -3259,6 +3458,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
           ? const Value.absent()
           : Value(nameAr),
       priceDeltaBaisas: Value(priceDeltaBaisas),
+      isDefault: Value(isDefault),
       ingredientId: ingredientId == null && nullToAbsent
           ? const Value.absent()
           : Value(ingredientId),
@@ -3279,6 +3479,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
       name: serializer.fromJson<String>(json['name']),
       nameAr: serializer.fromJson<String?>(json['nameAr']),
       priceDeltaBaisas: serializer.fromJson<int>(json['priceDeltaBaisas']),
+      isDefault: serializer.fromJson<bool>(json['isDefault']),
       ingredientId: serializer.fromJson<int?>(json['ingredientId']),
       status: serializer.fromJson<String?>(json['status']),
     );
@@ -3292,6 +3493,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
       'name': serializer.toJson<String>(name),
       'nameAr': serializer.toJson<String?>(nameAr),
       'priceDeltaBaisas': serializer.toJson<int>(priceDeltaBaisas),
+      'isDefault': serializer.toJson<bool>(isDefault),
       'ingredientId': serializer.toJson<int?>(ingredientId),
       'status': serializer.toJson<String?>(status),
     };
@@ -3303,6 +3505,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     String? name,
     Value<String?> nameAr = const Value.absent(),
     int? priceDeltaBaisas,
+    bool? isDefault,
     Value<int?> ingredientId = const Value.absent(),
     Value<String?> status = const Value.absent(),
   }) => AddonRow(
@@ -3311,6 +3514,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     name: name ?? this.name,
     nameAr: nameAr.present ? nameAr.value : this.nameAr,
     priceDeltaBaisas: priceDeltaBaisas ?? this.priceDeltaBaisas,
+    isDefault: isDefault ?? this.isDefault,
     ingredientId: ingredientId.present ? ingredientId.value : this.ingredientId,
     status: status.present ? status.value : this.status,
   );
@@ -3325,6 +3529,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
       priceDeltaBaisas: data.priceDeltaBaisas.present
           ? data.priceDeltaBaisas.value
           : this.priceDeltaBaisas,
+      isDefault: data.isDefault.present ? data.isDefault.value : this.isDefault,
       ingredientId: data.ingredientId.present
           ? data.ingredientId.value
           : this.ingredientId,
@@ -3340,6 +3545,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
           ..write('name: $name, ')
           ..write('nameAr: $nameAr, ')
           ..write('priceDeltaBaisas: $priceDeltaBaisas, ')
+          ..write('isDefault: $isDefault, ')
           ..write('ingredientId: $ingredientId, ')
           ..write('status: $status')
           ..write(')'))
@@ -3353,6 +3559,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     name,
     nameAr,
     priceDeltaBaisas,
+    isDefault,
     ingredientId,
     status,
   );
@@ -3365,6 +3572,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
           other.name == this.name &&
           other.nameAr == this.nameAr &&
           other.priceDeltaBaisas == this.priceDeltaBaisas &&
+          other.isDefault == this.isDefault &&
           other.ingredientId == this.ingredientId &&
           other.status == this.status);
 }
@@ -3375,6 +3583,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
   final Value<String> name;
   final Value<String?> nameAr;
   final Value<int> priceDeltaBaisas;
+  final Value<bool> isDefault;
   final Value<int?> ingredientId;
   final Value<String?> status;
   const AddonsCompanion({
@@ -3383,6 +3592,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     this.name = const Value.absent(),
     this.nameAr = const Value.absent(),
     this.priceDeltaBaisas = const Value.absent(),
+    this.isDefault = const Value.absent(),
     this.ingredientId = const Value.absent(),
     this.status = const Value.absent(),
   });
@@ -3392,6 +3602,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     this.name = const Value.absent(),
     this.nameAr = const Value.absent(),
     this.priceDeltaBaisas = const Value.absent(),
+    this.isDefault = const Value.absent(),
     this.ingredientId = const Value.absent(),
     this.status = const Value.absent(),
   }) : addOnGroupId = Value(addOnGroupId);
@@ -3401,6 +3612,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     Expression<String>? name,
     Expression<String>? nameAr,
     Expression<int>? priceDeltaBaisas,
+    Expression<bool>? isDefault,
     Expression<int>? ingredientId,
     Expression<String>? status,
   }) {
@@ -3410,6 +3622,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
       if (name != null) 'name': name,
       if (nameAr != null) 'name_ar': nameAr,
       if (priceDeltaBaisas != null) 'price_delta_baisas': priceDeltaBaisas,
+      if (isDefault != null) 'is_default': isDefault,
       if (ingredientId != null) 'ingredient_id': ingredientId,
       if (status != null) 'status': status,
     });
@@ -3421,6 +3634,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     Value<String>? name,
     Value<String?>? nameAr,
     Value<int>? priceDeltaBaisas,
+    Value<bool>? isDefault,
     Value<int?>? ingredientId,
     Value<String?>? status,
   }) {
@@ -3430,6 +3644,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
       name: name ?? this.name,
       nameAr: nameAr ?? this.nameAr,
       priceDeltaBaisas: priceDeltaBaisas ?? this.priceDeltaBaisas,
+      isDefault: isDefault ?? this.isDefault,
       ingredientId: ingredientId ?? this.ingredientId,
       status: status ?? this.status,
     );
@@ -3453,6 +3668,9 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     if (priceDeltaBaisas.present) {
       map['price_delta_baisas'] = Variable<int>(priceDeltaBaisas.value);
     }
+    if (isDefault.present) {
+      map['is_default'] = Variable<bool>(isDefault.value);
+    }
     if (ingredientId.present) {
       map['ingredient_id'] = Variable<int>(ingredientId.value);
     }
@@ -3470,6 +3688,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
           ..write('name: $name, ')
           ..write('nameAr: $nameAr, ')
           ..write('priceDeltaBaisas: $priceDeltaBaisas, ')
+          ..write('isDefault: $isDefault, ')
           ..write('ingredientId: $ingredientId, ')
           ..write('status: $status')
           ..write(')'))
@@ -7810,6 +8029,852 @@ class IngredientsCompanion extends UpdateCompanion<IngredientRow> {
   }
 }
 
+class $VoidReasonsTable extends VoidReasons
+    with TableInfo<$VoidReasonsTable, VoidReasonRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $VoidReasonsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+    'code',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _nameArMeta = const VerificationMeta('nameAr');
+  @override
+  late final GeneratedColumn<String> nameAr = GeneratedColumn<String>(
+    'name_ar',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _affectsInventoryMeta = const VerificationMeta(
+    'affectsInventory',
+  );
+  @override
+  late final GeneratedColumn<bool> affectsInventory = GeneratedColumn<bool>(
+    'affects_inventory',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("affects_inventory" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _requiresManagerMeta = const VerificationMeta(
+    'requiresManager',
+  );
+  @override
+  late final GeneratedColumn<bool> requiresManager = GeneratedColumn<bool>(
+    'requires_manager',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("requires_manager" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    code,
+    name,
+    nameAr,
+    affectsInventory,
+    requiresManager,
+    sortOrder,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'void_reasons';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<VoidReasonRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('code')) {
+      context.handle(
+        _codeMeta,
+        code.isAcceptableOrUnknown(data['code']!, _codeMeta),
+      );
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('name_ar')) {
+      context.handle(
+        _nameArMeta,
+        nameAr.isAcceptableOrUnknown(data['name_ar']!, _nameArMeta),
+      );
+    }
+    if (data.containsKey('affects_inventory')) {
+      context.handle(
+        _affectsInventoryMeta,
+        affectsInventory.isAcceptableOrUnknown(
+          data['affects_inventory']!,
+          _affectsInventoryMeta,
+        ),
+      );
+    }
+    if (data.containsKey('requires_manager')) {
+      context.handle(
+        _requiresManagerMeta,
+        requiresManager.isAcceptableOrUnknown(
+          data['requires_manager']!,
+          _requiresManagerMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  VoidReasonRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return VoidReasonRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      code: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}code'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      nameAr: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name_ar'],
+      ),
+      affectsInventory: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}affects_inventory'],
+      )!,
+      requiresManager: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}requires_manager'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+    );
+  }
+
+  @override
+  $VoidReasonsTable createAlias(String alias) {
+    return $VoidReasonsTable(attachedDatabase, alias);
+  }
+}
+
+class VoidReasonRow extends DataClass implements Insertable<VoidReasonRow> {
+  final int id;
+  final String code;
+  final String name;
+  final String? nameAr;
+  final bool affectsInventory;
+  final bool requiresManager;
+  final int sortOrder;
+  const VoidReasonRow({
+    required this.id,
+    required this.code,
+    required this.name,
+    this.nameAr,
+    required this.affectsInventory,
+    required this.requiresManager,
+    required this.sortOrder,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['code'] = Variable<String>(code);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || nameAr != null) {
+      map['name_ar'] = Variable<String>(nameAr);
+    }
+    map['affects_inventory'] = Variable<bool>(affectsInventory);
+    map['requires_manager'] = Variable<bool>(requiresManager);
+    map['sort_order'] = Variable<int>(sortOrder);
+    return map;
+  }
+
+  VoidReasonsCompanion toCompanion(bool nullToAbsent) {
+    return VoidReasonsCompanion(
+      id: Value(id),
+      code: Value(code),
+      name: Value(name),
+      nameAr: nameAr == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nameAr),
+      affectsInventory: Value(affectsInventory),
+      requiresManager: Value(requiresManager),
+      sortOrder: Value(sortOrder),
+    );
+  }
+
+  factory VoidReasonRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return VoidReasonRow(
+      id: serializer.fromJson<int>(json['id']),
+      code: serializer.fromJson<String>(json['code']),
+      name: serializer.fromJson<String>(json['name']),
+      nameAr: serializer.fromJson<String?>(json['nameAr']),
+      affectsInventory: serializer.fromJson<bool>(json['affectsInventory']),
+      requiresManager: serializer.fromJson<bool>(json['requiresManager']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'code': serializer.toJson<String>(code),
+      'name': serializer.toJson<String>(name),
+      'nameAr': serializer.toJson<String?>(nameAr),
+      'affectsInventory': serializer.toJson<bool>(affectsInventory),
+      'requiresManager': serializer.toJson<bool>(requiresManager),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+    };
+  }
+
+  VoidReasonRow copyWith({
+    int? id,
+    String? code,
+    String? name,
+    Value<String?> nameAr = const Value.absent(),
+    bool? affectsInventory,
+    bool? requiresManager,
+    int? sortOrder,
+  }) => VoidReasonRow(
+    id: id ?? this.id,
+    code: code ?? this.code,
+    name: name ?? this.name,
+    nameAr: nameAr.present ? nameAr.value : this.nameAr,
+    affectsInventory: affectsInventory ?? this.affectsInventory,
+    requiresManager: requiresManager ?? this.requiresManager,
+    sortOrder: sortOrder ?? this.sortOrder,
+  );
+  VoidReasonRow copyWithCompanion(VoidReasonsCompanion data) {
+    return VoidReasonRow(
+      id: data.id.present ? data.id.value : this.id,
+      code: data.code.present ? data.code.value : this.code,
+      name: data.name.present ? data.name.value : this.name,
+      nameAr: data.nameAr.present ? data.nameAr.value : this.nameAr,
+      affectsInventory: data.affectsInventory.present
+          ? data.affectsInventory.value
+          : this.affectsInventory,
+      requiresManager: data.requiresManager.present
+          ? data.requiresManager.value
+          : this.requiresManager,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VoidReasonRow(')
+          ..write('id: $id, ')
+          ..write('code: $code, ')
+          ..write('name: $name, ')
+          ..write('nameAr: $nameAr, ')
+          ..write('affectsInventory: $affectsInventory, ')
+          ..write('requiresManager: $requiresManager, ')
+          ..write('sortOrder: $sortOrder')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    code,
+    name,
+    nameAr,
+    affectsInventory,
+    requiresManager,
+    sortOrder,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is VoidReasonRow &&
+          other.id == this.id &&
+          other.code == this.code &&
+          other.name == this.name &&
+          other.nameAr == this.nameAr &&
+          other.affectsInventory == this.affectsInventory &&
+          other.requiresManager == this.requiresManager &&
+          other.sortOrder == this.sortOrder);
+}
+
+class VoidReasonsCompanion extends UpdateCompanion<VoidReasonRow> {
+  final Value<int> id;
+  final Value<String> code;
+  final Value<String> name;
+  final Value<String?> nameAr;
+  final Value<bool> affectsInventory;
+  final Value<bool> requiresManager;
+  final Value<int> sortOrder;
+  const VoidReasonsCompanion({
+    this.id = const Value.absent(),
+    this.code = const Value.absent(),
+    this.name = const Value.absent(),
+    this.nameAr = const Value.absent(),
+    this.affectsInventory = const Value.absent(),
+    this.requiresManager = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+  });
+  VoidReasonsCompanion.insert({
+    this.id = const Value.absent(),
+    this.code = const Value.absent(),
+    this.name = const Value.absent(),
+    this.nameAr = const Value.absent(),
+    this.affectsInventory = const Value.absent(),
+    this.requiresManager = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+  });
+  static Insertable<VoidReasonRow> custom({
+    Expression<int>? id,
+    Expression<String>? code,
+    Expression<String>? name,
+    Expression<String>? nameAr,
+    Expression<bool>? affectsInventory,
+    Expression<bool>? requiresManager,
+    Expression<int>? sortOrder,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (code != null) 'code': code,
+      if (name != null) 'name': name,
+      if (nameAr != null) 'name_ar': nameAr,
+      if (affectsInventory != null) 'affects_inventory': affectsInventory,
+      if (requiresManager != null) 'requires_manager': requiresManager,
+      if (sortOrder != null) 'sort_order': sortOrder,
+    });
+  }
+
+  VoidReasonsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? code,
+    Value<String>? name,
+    Value<String?>? nameAr,
+    Value<bool>? affectsInventory,
+    Value<bool>? requiresManager,
+    Value<int>? sortOrder,
+  }) {
+    return VoidReasonsCompanion(
+      id: id ?? this.id,
+      code: code ?? this.code,
+      name: name ?? this.name,
+      nameAr: nameAr ?? this.nameAr,
+      affectsInventory: affectsInventory ?? this.affectsInventory,
+      requiresManager: requiresManager ?? this.requiresManager,
+      sortOrder: sortOrder ?? this.sortOrder,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (code.present) {
+      map['code'] = Variable<String>(code.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (nameAr.present) {
+      map['name_ar'] = Variable<String>(nameAr.value);
+    }
+    if (affectsInventory.present) {
+      map['affects_inventory'] = Variable<bool>(affectsInventory.value);
+    }
+    if (requiresManager.present) {
+      map['requires_manager'] = Variable<bool>(requiresManager.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('VoidReasonsCompanion(')
+          ..write('id: $id, ')
+          ..write('code: $code, ')
+          ..write('name: $name, ')
+          ..write('nameAr: $nameAr, ')
+          ..write('affectsInventory: $affectsInventory, ')
+          ..write('requiresManager: $requiresManager, ')
+          ..write('sortOrder: $sortOrder')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CompReasonsTable extends CompReasons
+    with TableInfo<$CompReasonsTable, CompReasonRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CompReasonsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+    'code',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _nameArMeta = const VerificationMeta('nameAr');
+  @override
+  late final GeneratedColumn<String> nameAr = GeneratedColumn<String>(
+    'name_ar',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _maxAmountBaisasMeta = const VerificationMeta(
+    'maxAmountBaisas',
+  );
+  @override
+  late final GeneratedColumn<int> maxAmountBaisas = GeneratedColumn<int>(
+    'max_amount_baisas',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    code,
+    name,
+    nameAr,
+    maxAmountBaisas,
+    sortOrder,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'comp_reasons';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CompReasonRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('code')) {
+      context.handle(
+        _codeMeta,
+        code.isAcceptableOrUnknown(data['code']!, _codeMeta),
+      );
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('name_ar')) {
+      context.handle(
+        _nameArMeta,
+        nameAr.isAcceptableOrUnknown(data['name_ar']!, _nameArMeta),
+      );
+    }
+    if (data.containsKey('max_amount_baisas')) {
+      context.handle(
+        _maxAmountBaisasMeta,
+        maxAmountBaisas.isAcceptableOrUnknown(
+          data['max_amount_baisas']!,
+          _maxAmountBaisasMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CompReasonRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CompReasonRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      code: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}code'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      nameAr: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name_ar'],
+      ),
+      maxAmountBaisas: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}max_amount_baisas'],
+      ),
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+    );
+  }
+
+  @override
+  $CompReasonsTable createAlias(String alias) {
+    return $CompReasonsTable(attachedDatabase, alias);
+  }
+}
+
+class CompReasonRow extends DataClass implements Insertable<CompReasonRow> {
+  final int id;
+  final String code;
+  final String name;
+  final String? nameAr;
+  final int? maxAmountBaisas;
+  final int sortOrder;
+  const CompReasonRow({
+    required this.id,
+    required this.code,
+    required this.name,
+    this.nameAr,
+    this.maxAmountBaisas,
+    required this.sortOrder,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['code'] = Variable<String>(code);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || nameAr != null) {
+      map['name_ar'] = Variable<String>(nameAr);
+    }
+    if (!nullToAbsent || maxAmountBaisas != null) {
+      map['max_amount_baisas'] = Variable<int>(maxAmountBaisas);
+    }
+    map['sort_order'] = Variable<int>(sortOrder);
+    return map;
+  }
+
+  CompReasonsCompanion toCompanion(bool nullToAbsent) {
+    return CompReasonsCompanion(
+      id: Value(id),
+      code: Value(code),
+      name: Value(name),
+      nameAr: nameAr == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nameAr),
+      maxAmountBaisas: maxAmountBaisas == null && nullToAbsent
+          ? const Value.absent()
+          : Value(maxAmountBaisas),
+      sortOrder: Value(sortOrder),
+    );
+  }
+
+  factory CompReasonRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CompReasonRow(
+      id: serializer.fromJson<int>(json['id']),
+      code: serializer.fromJson<String>(json['code']),
+      name: serializer.fromJson<String>(json['name']),
+      nameAr: serializer.fromJson<String?>(json['nameAr']),
+      maxAmountBaisas: serializer.fromJson<int?>(json['maxAmountBaisas']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'code': serializer.toJson<String>(code),
+      'name': serializer.toJson<String>(name),
+      'nameAr': serializer.toJson<String?>(nameAr),
+      'maxAmountBaisas': serializer.toJson<int?>(maxAmountBaisas),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+    };
+  }
+
+  CompReasonRow copyWith({
+    int? id,
+    String? code,
+    String? name,
+    Value<String?> nameAr = const Value.absent(),
+    Value<int?> maxAmountBaisas = const Value.absent(),
+    int? sortOrder,
+  }) => CompReasonRow(
+    id: id ?? this.id,
+    code: code ?? this.code,
+    name: name ?? this.name,
+    nameAr: nameAr.present ? nameAr.value : this.nameAr,
+    maxAmountBaisas: maxAmountBaisas.present
+        ? maxAmountBaisas.value
+        : this.maxAmountBaisas,
+    sortOrder: sortOrder ?? this.sortOrder,
+  );
+  CompReasonRow copyWithCompanion(CompReasonsCompanion data) {
+    return CompReasonRow(
+      id: data.id.present ? data.id.value : this.id,
+      code: data.code.present ? data.code.value : this.code,
+      name: data.name.present ? data.name.value : this.name,
+      nameAr: data.nameAr.present ? data.nameAr.value : this.nameAr,
+      maxAmountBaisas: data.maxAmountBaisas.present
+          ? data.maxAmountBaisas.value
+          : this.maxAmountBaisas,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CompReasonRow(')
+          ..write('id: $id, ')
+          ..write('code: $code, ')
+          ..write('name: $name, ')
+          ..write('nameAr: $nameAr, ')
+          ..write('maxAmountBaisas: $maxAmountBaisas, ')
+          ..write('sortOrder: $sortOrder')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, code, name, nameAr, maxAmountBaisas, sortOrder);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CompReasonRow &&
+          other.id == this.id &&
+          other.code == this.code &&
+          other.name == this.name &&
+          other.nameAr == this.nameAr &&
+          other.maxAmountBaisas == this.maxAmountBaisas &&
+          other.sortOrder == this.sortOrder);
+}
+
+class CompReasonsCompanion extends UpdateCompanion<CompReasonRow> {
+  final Value<int> id;
+  final Value<String> code;
+  final Value<String> name;
+  final Value<String?> nameAr;
+  final Value<int?> maxAmountBaisas;
+  final Value<int> sortOrder;
+  const CompReasonsCompanion({
+    this.id = const Value.absent(),
+    this.code = const Value.absent(),
+    this.name = const Value.absent(),
+    this.nameAr = const Value.absent(),
+    this.maxAmountBaisas = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+  });
+  CompReasonsCompanion.insert({
+    this.id = const Value.absent(),
+    this.code = const Value.absent(),
+    this.name = const Value.absent(),
+    this.nameAr = const Value.absent(),
+    this.maxAmountBaisas = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+  });
+  static Insertable<CompReasonRow> custom({
+    Expression<int>? id,
+    Expression<String>? code,
+    Expression<String>? name,
+    Expression<String>? nameAr,
+    Expression<int>? maxAmountBaisas,
+    Expression<int>? sortOrder,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (code != null) 'code': code,
+      if (name != null) 'name': name,
+      if (nameAr != null) 'name_ar': nameAr,
+      if (maxAmountBaisas != null) 'max_amount_baisas': maxAmountBaisas,
+      if (sortOrder != null) 'sort_order': sortOrder,
+    });
+  }
+
+  CompReasonsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? code,
+    Value<String>? name,
+    Value<String?>? nameAr,
+    Value<int?>? maxAmountBaisas,
+    Value<int>? sortOrder,
+  }) {
+    return CompReasonsCompanion(
+      id: id ?? this.id,
+      code: code ?? this.code,
+      name: name ?? this.name,
+      nameAr: nameAr ?? this.nameAr,
+      maxAmountBaisas: maxAmountBaisas ?? this.maxAmountBaisas,
+      sortOrder: sortOrder ?? this.sortOrder,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (code.present) {
+      map['code'] = Variable<String>(code.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (nameAr.present) {
+      map['name_ar'] = Variable<String>(nameAr.value);
+    }
+    if (maxAmountBaisas.present) {
+      map['max_amount_baisas'] = Variable<int>(maxAmountBaisas.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CompReasonsCompanion(')
+          ..write('id: $id, ')
+          ..write('code: $code, ')
+          ..write('name: $name, ')
+          ..write('nameAr: $nameAr, ')
+          ..write('maxAmountBaisas: $maxAmountBaisas, ')
+          ..write('sortOrder: $sortOrder')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -7835,6 +8900,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $IngredientsTable ingredients = $IngredientsTable(this);
+  late final $VoidReasonsTable voidReasons = $VoidReasonsTable(this);
+  late final $CompReasonsTable compReasons = $CompReasonsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -7857,6 +8924,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     loyaltyRules,
     cachedCustomers,
     ingredients,
+    voidReasons,
+    compReasons,
   ];
 }
 
@@ -8140,6 +9209,7 @@ typedef $$CategoriesTableCreateCompanionBuilder =
       Value<String?> nameAr,
       Value<int> displayOrder,
       Value<String?> status,
+      Value<String> addonGroupIdsJson,
     });
 typedef $$CategoriesTableUpdateCompanionBuilder =
     CategoriesCompanion Function({
@@ -8148,6 +9218,7 @@ typedef $$CategoriesTableUpdateCompanionBuilder =
       Value<String?> nameAr,
       Value<int> displayOrder,
       Value<String?> status,
+      Value<String> addonGroupIdsJson,
     });
 
 class $$CategoriesTableFilterComposer
@@ -8181,6 +9252,11 @@ class $$CategoriesTableFilterComposer
 
   ColumnFilters<String> get status => $composableBuilder(
     column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get addonGroupIdsJson => $composableBuilder(
+    column: $table.addonGroupIdsJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -8218,6 +9294,11 @@ class $$CategoriesTableOrderingComposer
     column: $table.status,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get addonGroupIdsJson => $composableBuilder(
+    column: $table.addonGroupIdsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CategoriesTableAnnotationComposer
@@ -8245,6 +9326,11 @@ class $$CategoriesTableAnnotationComposer
 
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get addonGroupIdsJson => $composableBuilder(
+    column: $table.addonGroupIdsJson,
+    builder: (column) => column,
+  );
 }
 
 class $$CategoriesTableTableManager
@@ -8283,12 +9369,14 @@ class $$CategoriesTableTableManager
                 Value<String?> nameAr = const Value.absent(),
                 Value<int> displayOrder = const Value.absent(),
                 Value<String?> status = const Value.absent(),
+                Value<String> addonGroupIdsJson = const Value.absent(),
               }) => CategoriesCompanion(
                 id: id,
                 name: name,
                 nameAr: nameAr,
                 displayOrder: displayOrder,
                 status: status,
+                addonGroupIdsJson: addonGroupIdsJson,
               ),
           createCompanionCallback:
               ({
@@ -8297,12 +9385,14 @@ class $$CategoriesTableTableManager
                 Value<String?> nameAr = const Value.absent(),
                 Value<int> displayOrder = const Value.absent(),
                 Value<String?> status = const Value.absent(),
+                Value<String> addonGroupIdsJson = const Value.absent(),
               }) => CategoriesCompanion.insert(
                 id: id,
                 name: name,
                 nameAr: nameAr,
                 displayOrder: displayOrder,
                 status: status,
+                addonGroupIdsJson: addonGroupIdsJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -9186,6 +10276,8 @@ typedef $$AddonGroupsTableCreateCompanionBuilder =
       Value<String> name,
       Value<String?> nameAr,
       Value<String?> selectionMode,
+      Value<int?> minSelections,
+      Value<int?> maxSelections,
       Value<String?> status,
     });
 typedef $$AddonGroupsTableUpdateCompanionBuilder =
@@ -9194,6 +10286,8 @@ typedef $$AddonGroupsTableUpdateCompanionBuilder =
       Value<String> name,
       Value<String?> nameAr,
       Value<String?> selectionMode,
+      Value<int?> minSelections,
+      Value<int?> maxSelections,
       Value<String?> status,
     });
 
@@ -9223,6 +10317,16 @@ class $$AddonGroupsTableFilterComposer
 
   ColumnFilters<String> get selectionMode => $composableBuilder(
     column: $table.selectionMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get minSelections => $composableBuilder(
+    column: $table.minSelections,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get maxSelections => $composableBuilder(
+    column: $table.maxSelections,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9261,6 +10365,16 @@ class $$AddonGroupsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get minSelections => $composableBuilder(
+    column: $table.minSelections,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get maxSelections => $composableBuilder(
+    column: $table.maxSelections,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get status => $composableBuilder(
     column: $table.status,
     builder: (column) => ColumnOrderings(column),
@@ -9287,6 +10401,16 @@ class $$AddonGroupsTableAnnotationComposer
 
   GeneratedColumn<String> get selectionMode => $composableBuilder(
     column: $table.selectionMode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get minSelections => $composableBuilder(
+    column: $table.minSelections,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get maxSelections => $composableBuilder(
+    column: $table.maxSelections,
     builder: (column) => column,
   );
 
@@ -9329,12 +10453,16 @@ class $$AddonGroupsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String?> nameAr = const Value.absent(),
                 Value<String?> selectionMode = const Value.absent(),
+                Value<int?> minSelections = const Value.absent(),
+                Value<int?> maxSelections = const Value.absent(),
                 Value<String?> status = const Value.absent(),
               }) => AddonGroupsCompanion(
                 id: id,
                 name: name,
                 nameAr: nameAr,
                 selectionMode: selectionMode,
+                minSelections: minSelections,
+                maxSelections: maxSelections,
                 status: status,
               ),
           createCompanionCallback:
@@ -9343,12 +10471,16 @@ class $$AddonGroupsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String?> nameAr = const Value.absent(),
                 Value<String?> selectionMode = const Value.absent(),
+                Value<int?> minSelections = const Value.absent(),
+                Value<int?> maxSelections = const Value.absent(),
                 Value<String?> status = const Value.absent(),
               }) => AddonGroupsCompanion.insert(
                 id: id,
                 name: name,
                 nameAr: nameAr,
                 selectionMode: selectionMode,
+                minSelections: minSelections,
+                maxSelections: maxSelections,
                 status: status,
               ),
           withReferenceMapper: (p0) => p0
@@ -9383,6 +10515,7 @@ typedef $$AddonsTableCreateCompanionBuilder =
       Value<String> name,
       Value<String?> nameAr,
       Value<int> priceDeltaBaisas,
+      Value<bool> isDefault,
       Value<int?> ingredientId,
       Value<String?> status,
     });
@@ -9393,6 +10526,7 @@ typedef $$AddonsTableUpdateCompanionBuilder =
       Value<String> name,
       Value<String?> nameAr,
       Value<int> priceDeltaBaisas,
+      Value<bool> isDefault,
       Value<int?> ingredientId,
       Value<String?> status,
     });
@@ -9428,6 +10562,11 @@ class $$AddonsTableFilterComposer
 
   ColumnFilters<int> get priceDeltaBaisas => $composableBuilder(
     column: $table.priceDeltaBaisas,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDefault => $composableBuilder(
+    column: $table.isDefault,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9476,6 +10615,11 @@ class $$AddonsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isDefault => $composableBuilder(
+    column: $table.isDefault,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get ingredientId => $composableBuilder(
     column: $table.ingredientId,
     builder: (column) => ColumnOrderings(column),
@@ -9514,6 +10658,9 @@ class $$AddonsTableAnnotationComposer
     column: $table.priceDeltaBaisas,
     builder: (column) => column,
   );
+
+  GeneratedColumn<bool> get isDefault =>
+      $composableBuilder(column: $table.isDefault, builder: (column) => column);
 
   GeneratedColumn<int> get ingredientId => $composableBuilder(
     column: $table.ingredientId,
@@ -9557,6 +10704,7 @@ class $$AddonsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String?> nameAr = const Value.absent(),
                 Value<int> priceDeltaBaisas = const Value.absent(),
+                Value<bool> isDefault = const Value.absent(),
                 Value<int?> ingredientId = const Value.absent(),
                 Value<String?> status = const Value.absent(),
               }) => AddonsCompanion(
@@ -9565,6 +10713,7 @@ class $$AddonsTableTableManager
                 name: name,
                 nameAr: nameAr,
                 priceDeltaBaisas: priceDeltaBaisas,
+                isDefault: isDefault,
                 ingredientId: ingredientId,
                 status: status,
               ),
@@ -9575,6 +10724,7 @@ class $$AddonsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String?> nameAr = const Value.absent(),
                 Value<int> priceDeltaBaisas = const Value.absent(),
+                Value<bool> isDefault = const Value.absent(),
                 Value<int?> ingredientId = const Value.absent(),
                 Value<String?> status = const Value.absent(),
               }) => AddonsCompanion.insert(
@@ -9583,6 +10733,7 @@ class $$AddonsTableTableManager
                 name: name,
                 nameAr: nameAr,
                 priceDeltaBaisas: priceDeltaBaisas,
+                isDefault: isDefault,
                 ingredientId: ingredientId,
                 status: status,
               ),
@@ -11906,6 +13057,457 @@ typedef $$IngredientsTableProcessedTableManager =
       IngredientRow,
       PrefetchHooks Function()
     >;
+typedef $$VoidReasonsTableCreateCompanionBuilder =
+    VoidReasonsCompanion Function({
+      Value<int> id,
+      Value<String> code,
+      Value<String> name,
+      Value<String?> nameAr,
+      Value<bool> affectsInventory,
+      Value<bool> requiresManager,
+      Value<int> sortOrder,
+    });
+typedef $$VoidReasonsTableUpdateCompanionBuilder =
+    VoidReasonsCompanion Function({
+      Value<int> id,
+      Value<String> code,
+      Value<String> name,
+      Value<String?> nameAr,
+      Value<bool> affectsInventory,
+      Value<bool> requiresManager,
+      Value<int> sortOrder,
+    });
+
+class $$VoidReasonsTableFilterComposer
+    extends Composer<_$AppDatabase, $VoidReasonsTable> {
+  $$VoidReasonsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get nameAr => $composableBuilder(
+    column: $table.nameAr,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get affectsInventory => $composableBuilder(
+    column: $table.affectsInventory,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get requiresManager => $composableBuilder(
+    column: $table.requiresManager,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$VoidReasonsTableOrderingComposer
+    extends Composer<_$AppDatabase, $VoidReasonsTable> {
+  $$VoidReasonsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get nameAr => $composableBuilder(
+    column: $table.nameAr,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get affectsInventory => $composableBuilder(
+    column: $table.affectsInventory,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get requiresManager => $composableBuilder(
+    column: $table.requiresManager,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$VoidReasonsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $VoidReasonsTable> {
+  $$VoidReasonsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get nameAr =>
+      $composableBuilder(column: $table.nameAr, builder: (column) => column);
+
+  GeneratedColumn<bool> get affectsInventory => $composableBuilder(
+    column: $table.affectsInventory,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get requiresManager => $composableBuilder(
+    column: $table.requiresManager,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+}
+
+class $$VoidReasonsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $VoidReasonsTable,
+          VoidReasonRow,
+          $$VoidReasonsTableFilterComposer,
+          $$VoidReasonsTableOrderingComposer,
+          $$VoidReasonsTableAnnotationComposer,
+          $$VoidReasonsTableCreateCompanionBuilder,
+          $$VoidReasonsTableUpdateCompanionBuilder,
+          (
+            VoidReasonRow,
+            BaseReferences<_$AppDatabase, $VoidReasonsTable, VoidReasonRow>,
+          ),
+          VoidReasonRow,
+          PrefetchHooks Function()
+        > {
+  $$VoidReasonsTableTableManager(_$AppDatabase db, $VoidReasonsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$VoidReasonsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$VoidReasonsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$VoidReasonsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> code = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> nameAr = const Value.absent(),
+                Value<bool> affectsInventory = const Value.absent(),
+                Value<bool> requiresManager = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+              }) => VoidReasonsCompanion(
+                id: id,
+                code: code,
+                name: name,
+                nameAr: nameAr,
+                affectsInventory: affectsInventory,
+                requiresManager: requiresManager,
+                sortOrder: sortOrder,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> code = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> nameAr = const Value.absent(),
+                Value<bool> affectsInventory = const Value.absent(),
+                Value<bool> requiresManager = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+              }) => VoidReasonsCompanion.insert(
+                id: id,
+                code: code,
+                name: name,
+                nameAr: nameAr,
+                affectsInventory: affectsInventory,
+                requiresManager: requiresManager,
+                sortOrder: sortOrder,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$VoidReasonsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $VoidReasonsTable,
+      VoidReasonRow,
+      $$VoidReasonsTableFilterComposer,
+      $$VoidReasonsTableOrderingComposer,
+      $$VoidReasonsTableAnnotationComposer,
+      $$VoidReasonsTableCreateCompanionBuilder,
+      $$VoidReasonsTableUpdateCompanionBuilder,
+      (
+        VoidReasonRow,
+        BaseReferences<_$AppDatabase, $VoidReasonsTable, VoidReasonRow>,
+      ),
+      VoidReasonRow,
+      PrefetchHooks Function()
+    >;
+typedef $$CompReasonsTableCreateCompanionBuilder =
+    CompReasonsCompanion Function({
+      Value<int> id,
+      Value<String> code,
+      Value<String> name,
+      Value<String?> nameAr,
+      Value<int?> maxAmountBaisas,
+      Value<int> sortOrder,
+    });
+typedef $$CompReasonsTableUpdateCompanionBuilder =
+    CompReasonsCompanion Function({
+      Value<int> id,
+      Value<String> code,
+      Value<String> name,
+      Value<String?> nameAr,
+      Value<int?> maxAmountBaisas,
+      Value<int> sortOrder,
+    });
+
+class $$CompReasonsTableFilterComposer
+    extends Composer<_$AppDatabase, $CompReasonsTable> {
+  $$CompReasonsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get nameAr => $composableBuilder(
+    column: $table.nameAr,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get maxAmountBaisas => $composableBuilder(
+    column: $table.maxAmountBaisas,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CompReasonsTableOrderingComposer
+    extends Composer<_$AppDatabase, $CompReasonsTable> {
+  $$CompReasonsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get nameAr => $composableBuilder(
+    column: $table.nameAr,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get maxAmountBaisas => $composableBuilder(
+    column: $table.maxAmountBaisas,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CompReasonsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CompReasonsTable> {
+  $$CompReasonsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get nameAr =>
+      $composableBuilder(column: $table.nameAr, builder: (column) => column);
+
+  GeneratedColumn<int> get maxAmountBaisas => $composableBuilder(
+    column: $table.maxAmountBaisas,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+}
+
+class $$CompReasonsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CompReasonsTable,
+          CompReasonRow,
+          $$CompReasonsTableFilterComposer,
+          $$CompReasonsTableOrderingComposer,
+          $$CompReasonsTableAnnotationComposer,
+          $$CompReasonsTableCreateCompanionBuilder,
+          $$CompReasonsTableUpdateCompanionBuilder,
+          (
+            CompReasonRow,
+            BaseReferences<_$AppDatabase, $CompReasonsTable, CompReasonRow>,
+          ),
+          CompReasonRow,
+          PrefetchHooks Function()
+        > {
+  $$CompReasonsTableTableManager(_$AppDatabase db, $CompReasonsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CompReasonsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CompReasonsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CompReasonsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> code = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> nameAr = const Value.absent(),
+                Value<int?> maxAmountBaisas = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+              }) => CompReasonsCompanion(
+                id: id,
+                code: code,
+                name: name,
+                nameAr: nameAr,
+                maxAmountBaisas: maxAmountBaisas,
+                sortOrder: sortOrder,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> code = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> nameAr = const Value.absent(),
+                Value<int?> maxAmountBaisas = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+              }) => CompReasonsCompanion.insert(
+                id: id,
+                code: code,
+                name: name,
+                nameAr: nameAr,
+                maxAmountBaisas: maxAmountBaisas,
+                sortOrder: sortOrder,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CompReasonsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CompReasonsTable,
+      CompReasonRow,
+      $$CompReasonsTableFilterComposer,
+      $$CompReasonsTableOrderingComposer,
+      $$CompReasonsTableAnnotationComposer,
+      $$CompReasonsTableCreateCompanionBuilder,
+      $$CompReasonsTableUpdateCompanionBuilder,
+      (
+        CompReasonRow,
+        BaseReferences<_$AppDatabase, $CompReasonsTable, CompReasonRow>,
+      ),
+      CompReasonRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -11944,4 +13546,8 @@ class $AppDatabaseManager {
       $$CachedCustomersTableTableManager(_db, _db.cachedCustomers);
   $$IngredientsTableTableManager get ingredients =>
       $$IngredientsTableTableManager(_db, _db.ingredients);
+  $$VoidReasonsTableTableManager get voidReasons =>
+      $$VoidReasonsTableTableManager(_db, _db.voidReasons);
+  $$CompReasonsTableTableManager get compReasons =>
+      $$CompReasonsTableTableManager(_db, _db.compReasons);
 }

@@ -116,6 +116,18 @@ class SunmiReceiptService {
         ),
       );
     }
+    // Phase B — the manager comp write-off, printed as its own line so it is
+    // never confused with a discount on the customer's copy.
+    if (order.compAmount > 0) {
+      await SunmiPrinter.printText(
+        row(
+          order.compReasonName.isEmpty
+              ? 'Comp'
+              : 'Comp (${order.compReasonName})',
+          '-${money(order.compAmount)}',
+        ),
+      );
+    }
     await SunmiPrinter.printText(row('Subtotal', money(order.subtotal)));
     await SunmiPrinter.printText(row('Tax (5%)', money(order.tax)));
     await SunmiPrinter.printText(
