@@ -10237,6 +10237,9 @@ class _InAppKeyboardDialogState extends State<_InAppKeyboardDialog> {
             ['0'],
           ]
         : const <List<String>>[
+            // P-F1 — vehicle plates are alphanumeric: the full layout leads
+            // with a digit row (it previously had letters only).
+            ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
             ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
             ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
             ['Z', 'X', 'C', 'V', 'B', 'N', 'M'],
