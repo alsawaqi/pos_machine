@@ -103,21 +103,24 @@ class PosApiService {
   }
 
   /// GET /device/config — full branch-scoped config bundle. Returns the raw
-  /// `data` map, the device's terminal_id, and `meta.generated_at` (the server
-  /// cursor the device persists + replays as `?since=` on the next delta call).
-  Future<({Map<String, dynamic> data, String? terminalId, String? generatedAt})> fetchConfig() async {
+  /// `data` map, the device's terminal_id, `meta.generated_at` (the server
+  /// cursor the device persists + replays as `?since=` on the next delta
+  /// call), and `meta.websocket` (Phase C3 — where to dial Reverb; null =
+  /// live push not configured server-side).
+  Future<({Map<String, dynamic> data, String? terminalId, String? generatedAt, Map<String, dynamic>? websocket})> fetchConfig() async {
     final body = await _send(() => _dio.get('/device/config'));
     return (
       data: body.dataMap,
       terminalId: body.metaMap['terminal_id'] as String?,
       generatedAt: body.metaMap['generated_at'] as String?,
+      websocket: (body.metaMap['websocket'] as Map?)?.cast<String, dynamic>(),
     );
   }
 
   /// GET `/device/config/delta?since=...` — only rows changed since the cursor,
   /// plus `data.deleted{}` (per-entity ids to purge). `meta.generated_at` is the
   /// next cursor. `since` is the previous sync's generated_at (ISO-8601).
-  Future<({Map<String, dynamic> data, String? terminalId, String? generatedAt})> fetchConfigDelta(String since) async {
+  Future<({Map<String, dynamic> data, String? terminalId, String? generatedAt, Map<String, dynamic>? websocket})> fetchConfigDelta(String since) async {
     final body = await _send(
       () => _dio.get('/device/config/delta', queryParameters: {'since': since}),
     );
@@ -125,7 +128,30 @@ class PosApiService {
       data: body.dataMap,
       terminalId: body.metaMap['terminal_id'] as String?,
       generatedAt: body.metaMap['generated_at'] as String?,
+      websocket: (body.metaMap['websocket'] as Map?)?.cast<String, dynamic>(),
     );
+  }
+
+  /// POST /broadcasting/auth — sign a private-channel subscription for this
+  /// device (Phase C3). Reverb's response is a bare `{auth: "key:signature"}`
+  /// (no data envelope). The signature binds to the socket_id, so it must be
+  /// re-requested on every reconnect.
+  Future<String> authorizeBroadcast({
+    required String socketId,
+    required String channelName,
+  }) async {
+    final body = await _send(() => _dio.post('/broadcasting/auth', data: {
+          'socket_id': socketId,
+          'channel_name': channelName,
+        }));
+    final auth = body.body['auth'];
+    if (auth is! String || auth.isEmpty) {
+      throw ApiException(
+        message: 'Broadcast subscription was not authorized.',
+        code: 'broadcast_auth',
+      );
+    }
+    return auth;
   }
 
   /// POST /device/sync/push — push a batch of offline sync events (order.create

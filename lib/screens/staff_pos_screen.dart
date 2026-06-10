@@ -179,6 +179,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await controller.openRearDisplay();
       // Flush any orders queued in a previous session (e.g. completed offline).
       unawaited(ref.read(orderSyncRepositoryProvider).flush().catchError((_) => 0));
+      // Phase C3 — subscribe to the branch Reverb channel for live config push.
+      ref.read(liveSyncProvider).start();
     });
 
     // Bridge: feed the branch catalog (from the Drift cache, refreshed from

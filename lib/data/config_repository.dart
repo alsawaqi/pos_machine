@@ -39,6 +39,8 @@ class ConfigRepository {
       meta: parsed.meta,
     );
     await _session.saveTerminalId(config.terminalId);
+    // Phase C3 — where to dial Reverb (null = live push off server-side).
+    await _session.saveWebsocketConfig(config.websocket);
   }
 
   /// Incremental sync (Phase 7): a DELTA when we hold a cursor from a prior
@@ -95,6 +97,7 @@ class ConfigRepository {
         orderCancelPositions: c.meta.orderCancelPositions.value,
       );
       await _session.saveTerminalId(res.terminalId);
+      await _session.saveWebsocketConfig(res.websocket);
     } catch (_) {
       // Self-heal: drop back to a full sync on any delta failure.
       await fetchAndCache();

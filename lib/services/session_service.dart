@@ -82,6 +82,7 @@ class SessionService {
   static const _kBranchId = 'branch_id';
   static const _kStaff = 'staff_session_json';
   static const _kShift = 'open_shift_json';
+  static const _kWebsocket = 'websocket_config_json';
 
   String? _deviceToken; // in-memory cache for the dio interceptor
 
@@ -154,6 +155,27 @@ class SessionService {
     await _prefs.setString(_kTerminalId, terminalId);
   }
 
+  /// Phase C3 — the Reverb endpoint from /device/config meta.websocket
+  /// ({app_key, host, port, scheme}). Null = the server has live push off →
+  /// clear, so the device stops dialing.
+  Map<String, dynamic>? get websocketConfig {
+    final raw = _prefs.getString(_kWebsocket);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return (jsonDecode(raw) as Map).cast<String, dynamic>();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveWebsocketConfig(Map<String, dynamic>? config) async {
+    if (config == null) {
+      await _prefs.remove(_kWebsocket);
+    } else {
+      await _prefs.setString(_kWebsocket, jsonEncode(config));
+    }
+  }
+
   Future<void> saveStaff(StaffSessionData staff) async {
     await _prefs.setString(_kStaff, jsonEncode(staff.toJson()));
   }
@@ -185,5 +207,6 @@ class SessionService {
     await _prefs.remove(_kBranchId);
     await _prefs.remove(_kKioskId);
     await _prefs.remove(_kTerminalId);
+    await _prefs.remove(_kWebsocket);
   }
 }

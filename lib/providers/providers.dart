@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -11,6 +13,7 @@ import '../services/api_models.dart';
 import '../services/config_mapper.dart';
 import '../services/expense_restock_service.dart';
 import '../services/geofence_service.dart';
+import '../services/live_sync.dart';
 import '../services/pos_api_service.dart';
 import '../services/session_service.dart';
 import '../services/settings_service.dart';
@@ -165,6 +168,64 @@ final connectivityProvider = StreamProvider<bool>((ref) async* {
   final connectivity = Connectivity();
   yield _isOnline(await connectivity.checkConnectivity());
   yield* connectivity.onConnectivityChanged.map(_isOnline);
+});
+
+// --- live sync (Phase C3, §9.3/§11.5) ---------------------------------------
+/// Reverb subscription on the device. Joins `private-branch.{id}` (company
+/// fallback) with device-token auth; ANY domain event on the channel —
+/// including echoes of this device's own pushes — triggers a DEBOUNCED delta
+/// config sync, so another terminal's sale, an admin stock edit, or a held
+/// order placed across the room shows up here within seconds. The endpoint
+/// comes from /device/config meta.websocket (persisted by ConfigRepository);
+/// unconfigured installs simply never connect. Started from StaffPosScreen;
+/// connectivity gates connect/teardown.
+final liveSyncProvider = Provider<LiveSyncService>((ref) {
+  Timer? debounce;
+
+  final service = LiveSyncService(
+    endpointGetter: () =>
+        WebsocketEndpoint.fromJson(ref.read(sessionServiceProvider).websocketConfig),
+    apiBaseUrlGetter: () => ref.read(settingsServiceProvider).effectiveBaseUrl,
+    channelGetter: () {
+      final session = ref.read(sessionServiceProvider);
+      if (!session.isConfigured) return null;
+      return channelFor(
+        branchId: session.branchId,
+        companyId: session.companyId,
+      );
+    },
+    authorize: ({required socketId, required channelName}) =>
+        ref.read(apiServiceProvider).authorizeBroadcast(
+              socketId: socketId,
+              channelName: channelName,
+            ),
+    onLiveEvent: (_) {
+      // Trailing-edge debounce: a completion burst (create+pay+donation, plus
+      // our own echo) coalesces into ONE delta sync.
+      debounce?.cancel();
+      debounce = Timer(const Duration(seconds: 3), () {
+        unawaited(
+          ref.read(configRepositoryProvider).syncConfig().catchError((_) {}),
+        );
+      });
+    },
+  );
+
+  ref.listen(connectivityProvider, (previous, next) {
+    final online = next.asData?.value;
+    if (online == true) {
+      service.notifyOnline();
+    } else if (online == false) {
+      service.notifyOffline();
+    }
+  });
+
+  ref.onDispose(() {
+    debounce?.cancel();
+    unawaited(service.stop());
+  });
+
+  return service;
 });
 
 // --- geofence --------------------------------------------------------------
