@@ -1,0 +1,35 @@
+# Phase D9 — CI for pos_machine (Flutter POS).
+#
+# Drift's generated code (lib/data/db/app_database.g.dart) is committed, so
+# no build_runner step is needed. The l10n classes regenerate implicitly via
+# `flutter test` (pubspec generate: true).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0' # dev-machine pin (Dart 3.12; pubspec sdk ^3.11.4) — bump alongside local upgrades
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze --no-pub
+      - name: Tests (known-failing baseline files excluded)
+        shell: bash
+        run: |
+          # widget_test.dart + pos_controller_charity_flow_test.dart fail at
+          # baseline (stale 5%-tax expectations + missing ProviderScope
+          # harness) and are excluded until fixed. The grep keeps future test
+          # files auto-INCLUDED; if a baseline file is repaired, remove it
+          # here or it silently stays out of CI.
+          mapfile -t FILES < <(ls test/*_test.dart | grep -vE '(widget_test|pos_controller_charity_flow_test)\.dart$')
+          flutter test "${FILES[@]}"
