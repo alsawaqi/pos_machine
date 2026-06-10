@@ -800,10 +800,16 @@ class PosController extends ChangeNotifier {
     (subtotal - compAmount).clamp(0.0, double.infinity).toDouble(),
   );
 
-  /// Per-tax breakdown (one line per active company tax) for the cart + receipt.
-  List<TaxLineAmount> get taxLines => taxLinesFor(_taxedBase);
+  /// P-F1 — delivery-provider orders carry NO tax at all (merchant policy:
+  /// the provider's listed price is final). The server never recomputes tax —
+  /// it only checks the additive invariant — so zeroing here is authoritative.
+  bool get _isTaxExempt => selectedOrderType == OrderType.delivery;
 
-  double get tax => taxTotalFor(_taxedBase);
+  /// Per-tax breakdown (one line per active company tax) for the cart + receipt.
+  List<TaxLineAmount> get taxLines =>
+      _isTaxExempt ? const <TaxLineAmount>[] : taxLinesFor(_taxedBase);
+
+  double get tax => _isTaxExempt ? 0 : taxTotalFor(_taxedBase);
 
   double get total => _roundMoney(_taxedBase + tax);
 

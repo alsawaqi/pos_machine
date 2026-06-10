@@ -1297,10 +1297,15 @@ class OrderSessionDraft {
     (rawSubtotal - discountAmount).clamp(0.0, double.infinity).toDouble(),
   );
 
-  double get tax => taxTotalFor(subtotal);
+  // P-F1 — delivery-provider orders are tax-exempt (the provider's listed
+  // price is final); mirrors PosController._isTaxExempt for held drafts.
+  bool get _isTaxExempt => orderType == OrderType.delivery;
+
+  double get tax => _isTaxExempt ? 0 : taxTotalFor(subtotal);
 
   /// Per-tax breakdown for the cart / receipt (one line per active company tax).
-  List<TaxLineAmount> get taxLines => taxLinesFor(subtotal);
+  List<TaxLineAmount> get taxLines =>
+      _isTaxExempt ? const <TaxLineAmount>[] : taxLinesFor(subtotal);
 
   double get total => _roundStoredMoney(subtotal + tax);
 
