@@ -1607,6 +1607,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       pageBuilder: (context, animation, secondaryAnimation) {
         return _OrderCancellationPage(
           record: record,
+          // P-F1 — server-history records void whole-order only (the wire has
+          // no cross-device partial cancel).
+          fullOrderOnly: record.fromServer,
           voidReasons: controller.voidReasons,
           onSubmit:
               ({
@@ -8894,8 +8897,11 @@ class _OrderHistoryCard extends StatelessWidget {
     final l10n = L10n.of(context);
     final isAr = Localizations.localeOf(context).languageCode == 'ar';
     final snapshot = record.snapshot;
-    // Server-sourced history is terminal + not locally mutable — no cancel.
-    final canCancel = !snapshot.isFullyCanceled && !record.fromServer;
+    // P-F1 — paid server-history records ARE cancellable (full-order void,
+    // mirrored to pos_api); only genuinely terminal states stay locked.
+    final canCancel = !snapshot.isFullyCanceled &&
+        !record.isServerTerminal &&
+        (!record.fromServer || snapshot.serverOrderUuid.isNotEmpty);
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -9333,11 +9339,15 @@ class _OrderCancellationPage extends StatefulWidget {
   // Phase B — company void reason codes. Non-empty = a reason is REQUIRED
   // before the cancel can be submitted (Additions §1.2).
   final List<VoidReasonRef> voidReasons;
+  // P-F1 — server-history records: per-item selection is unavailable, only
+  // the full-order cancel applies.
+  final bool fullOrderOnly;
 
   const _OrderCancellationPage({
     required this.record,
     required this.onSubmit,
     this.voidReasons = const <VoidReasonRef>[],
+    this.fullOrderOnly = false,
   });
 
   @override
@@ -9486,6 +9496,27 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
                           ),
                         ),
                     ],
+                    if (widget.fullOrderOnly) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.info_outline_rounded,
+                            size: 16,
+                            color: Color(0xFF566973),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            l10n.posCancelPageServerFullOnly,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF566973),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     Expanded(
                       child: Row(
@@ -9539,7 +9570,10 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
                                           index,
                                         ),
                                         canceled: canceled,
-                                        onChanged: canceled || _busy
+                                        onChanged:
+                                            canceled ||
+                                                _busy ||
+                                                widget.fullOrderOnly
                                             ? null
                                             : (selected) {
                                                 setState(() {

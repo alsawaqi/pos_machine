@@ -3570,6 +3570,12 @@ abstract class L10n {
   /// **'Pick a cancellation reason first.'**
   String get posCancelPageReasonRequired;
 
+  /// No description provided for @posCancelPageServerFullOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Synced orders can only be canceled in full.'**
+  String get posCancelPageServerFullOnly;
+
   /// No description provided for @posCancelPageOrderItems.
   ///
   /// In en, this message translates to:

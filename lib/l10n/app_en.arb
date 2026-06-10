@@ -1406,6 +1406,7 @@
   },
   "posCancelPageSubtitle": "Manager approved. Cancel the full order or select the completed items to cancel.",
   "posCancelPageReasonRequired": "Pick a cancellation reason first.",
+  "posCancelPageServerFullOnly": "Synced orders can only be canceled in full.",
   "posCancelPageOrderItems": "Order Items",
   "posCancelPageCancellableCount": "{count} cancellable",
   "@posCancelPageCancellableCount": {

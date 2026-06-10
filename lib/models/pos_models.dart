@@ -1720,8 +1720,9 @@ class OrderHistoryRecord {
   final DateTime createdAt;
   final OrderSnapshot snapshot;
   // True when this record came from the server's branch history (cross-device)
-  // rather than the device's local store. Server records are terminal + not
-  // locally mutable, so the cancel/refund action is disabled for them.
+  // rather than the device's local store. A paid server record CAN be canceled
+  // (full-order only — the cancel mirrors an order.void to pos_api); see
+  // [isServerTerminal] for the states that stay locked.
   final bool fromServer;
 
   const OrderHistoryRecord({
@@ -1733,10 +1734,22 @@ class OrderHistoryRecord {
     this.fromServer = false,
   });
 
+  /// P-F1 — a server-history record whose status is already terminal beyond
+  /// paid (void / refunded): nothing further can be done to it from the
+  /// device, so the cancel action stays disabled.
+  bool get isServerTerminal {
+    if (!fromServer) return false;
+    final status = snapshot.paymentStatus.toLowerCase();
+    return status == 'void' ||
+        status == 'voided' ||
+        status == 'refunded' ||
+        status == 'canceled';
+  }
+
   /// Build a history record from the pos_api `/device/orders/history` shape
   /// (money is integer baisas). Only the fields the history view shows are
   /// mapped; the rest of [OrderSnapshot] defaults (UI-only state). Marked
-  /// [fromServer] so the cancel action is gated off.
+  /// [fromServer]: cancellable in full while paid, locked once void/refunded.
   factory OrderHistoryRecord.fromServerJson(Map<String, dynamic> json) {
     double omr(String key) => ((json[key] as num?)?.toDouble() ?? 0) / 1000.0;
     final status = json['status']?.toString() ?? '';
@@ -1786,6 +1799,10 @@ class OrderHistoryRecord {
       'paymentStatus': statusLabel,
       'paymentMethod': '',
       'note': json['note']?.toString() ?? '',
+      // P-F1 — carry the server uuid so a cross-device cancel can mirror an
+      // order.void back to pos_api (the handler is branch-scoped, not
+      // creating-device-scoped).
+      'serverOrderUuid': json['uuid']?.toString() ?? '',
     });
 
     return OrderHistoryRecord(

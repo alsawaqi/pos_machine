@@ -2180,6 +2180,10 @@ class L10nAr extends L10n {
   String get posCancelPageReasonRequired => 'اختر سبب الإلغاء أولًا.';
 
   @override
+  String get posCancelPageServerFullOnly =>
+      'الطلبات المتزامنة تُلغى بالكامل فقط.';
+
+  @override
   String get posCancelPageOrderItems => 'أصناف الطلب';
 
   @override

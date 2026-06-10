@@ -1741,8 +1741,59 @@ class PosController extends ChangeNotifier {
     VoidReasonRef? voidReason,
   }) async {
     final snapshot = record.snapshot;
-    if (snapshot.isFullyCanceled) {
+    if (snapshot.isFullyCanceled || record.isServerTerminal) {
       return _l10n.ctrlMsgOrderAlreadyCanceled(record.orderNumber);
+    }
+
+    // P-F1 — a server-history record (cross-device) cancels FULL-ORDER only:
+    // the wire supports a whole-order order.void, pos_api's handler is
+    // branch-scoped (any device of the branch may void), and the record
+    // lives in memory, not in this device's local store.
+    if (record.fromServer) {
+      if (!cancelFullOrder) return _l10n.ctrlMsgNoCancellableItems;
+      final serverUuid = snapshot.serverOrderUuid;
+      if (serverUuid.isEmpty) return _l10n.ctrlMsgNoCancellableItems;
+
+      final now = DateTime.now();
+      final updatedSnapshot = snapshot.copyWith(
+        paymentStatus: 'Canceled',
+        note: _l10n.ctrlMsgOrderCanceledByManagerNote,
+        cancellations: [
+          ...snapshot.cancellations,
+          OrderCancellationRecord(
+            id: 'cancel_${record.orderNumber}_${now.microsecondsSinceEpoch}',
+            fullOrder: true,
+            itemName: 'Full order',
+            quantity: snapshot.items.fold<int>(
+              0,
+              (sum, item) => sum + ((item['qty'] as num?)?.toInt() ?? 0),
+            ),
+            amount: snapshot.payableTotal,
+            canceledAt: now,
+            authorizedBy: 'Manager',
+          ),
+        ],
+      );
+      final updatedRecord = OrderHistoryRecord(
+        id: record.id,
+        orderNumber: record.orderNumber,
+        orderType: record.orderType,
+        createdAt: record.createdAt,
+        snapshot: updatedSnapshot,
+        fromServer: true,
+      );
+      orderHistory = [
+        for (final r in orderHistory) r.id == record.id ? updatedRecord : r,
+      ];
+      _notifySafely();
+
+      onOrderVoided?.call(
+        serverUuid,
+        orderNumber: record.orderNumber,
+        reason: voidReason?.name ?? 'Canceled by manager at POS',
+        voidReasonId: voidReason?.id,
+      );
+      return _l10n.ctrlMsgOrderFullyCanceled(record.orderNumber);
     }
 
     final now = DateTime.now();
