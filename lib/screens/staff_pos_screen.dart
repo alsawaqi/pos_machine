@@ -156,6 +156,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     super.initState();
     controller = PosController();
     controller.onOrderCompleted = _handleOrderCompleted;
+    controller.onOrderHeld = _handleOrderHeld;
     controller.onOrderVoided = _handleOrderVoided;
     // Keep the printing toggles in sync with Settings.
     final settings = ref.read(settingsControllerProvider);
@@ -313,6 +314,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     } catch (_) {
       // The outbox persists the order before any network call, so it is queued
       // even if this throws; flush() retries on the next reconnect.
+    }
+  }
+
+  /// Phase C2 — mirror a held order to pos_api via the durable outbox (an
+  /// order.hold). Fire-and-forget: the local hold already succeeded, and the
+  /// outbox persists + retries the mirror independently of the network.
+  Future<void> _handleOrderHeld(OrderSessionDraft draft) async {
+    final staffId = ref.read(sessionServiceProvider).staff?.id;
+    try {
+      await ref.read(orderSyncRepositoryProvider).enqueueHold(
+            draft,
+            staffId: staffId,
+            tableId: int.tryParse(draft.diningTableId),
+          );
+    } catch (_) {
+      // The outbox persists the mirror before any network call; flush()
+      // retries it on the next reconnect.
     }
   }
 
@@ -1107,6 +1125,41 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   title: 'Held Order Resumed',
                   message: message,
                   tone: FeedbackTone.success,
+                );
+              }
+            },
+            onDiscard: (record) async {
+              // Phase C2 — confirm, then delete locally + void the server
+              // mirror so it leaves every terminal's held list.
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  title: const Text('Discard Held Order?'),
+                  content: Text(
+                    'Reference ${record.orderReference} will be removed and '
+                    'cannot be resumed afterwards.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(false),
+                      child: const Text('Keep It'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(true),
+                      child: const Text('Discard'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed != true || !context.mounted) return;
+              final message = await controller.discardHeldOrder(record);
+              if (!context.mounted) return;
+              Navigator.of(context).pop(false);
+              if (mounted) {
+                _showPopupMessage(
+                  title: 'Held Order Discarded',
+                  message: message,
+                  tone: FeedbackTone.warning,
                 );
               }
             },
@@ -7584,8 +7637,13 @@ class _StorageOverlayShell extends StatelessWidget {
 class _HeldOrdersPanel extends StatelessWidget {
   final List<HeldOrderRecord> records;
   final Future<void> Function(HeldOrderRecord record) onResume;
+  final Future<void> Function(HeldOrderRecord record) onDiscard;
 
-  const _HeldOrdersPanel({required this.records, required this.onResume});
+  const _HeldOrdersPanel({
+    required this.records,
+    required this.onResume,
+    required this.onDiscard,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -7604,7 +7662,11 @@ class _HeldOrdersPanel extends StatelessWidget {
       separatorBuilder: (context, index) => const SizedBox(height: 14),
       itemBuilder: (context, index) {
         final record = records[index];
-        return _HeldOrderCard(record: record, onResume: () => onResume(record));
+        return _HeldOrderCard(
+          record: record,
+          onResume: () => onResume(record),
+          onDiscard: () => onDiscard(record),
+        );
       },
     );
   }
@@ -7792,8 +7854,13 @@ class _StorageEmptyState extends StatelessWidget {
 class _HeldOrderCard extends StatelessWidget {
   final HeldOrderRecord record;
   final VoidCallback onResume;
+  final VoidCallback onDiscard;
 
-  const _HeldOrderCard({required this.record, required this.onResume});
+  const _HeldOrderCard({
+    required this.record,
+    required this.onResume,
+    required this.onDiscard,
+  });
 
   double get _rawSubtotal =>
       record.draft.items.fold<double>(0, (sum, item) => sum + item.lineTotal);
@@ -7902,9 +7969,24 @@ class _HeldOrderCard extends StatelessWidget {
           const SizedBox(width: 20),
           SizedBox(
             width: 176,
-            child: _FilledActionButton(
-              label: 'Continue Order',
-              onTap: onResume,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _FilledActionButton(
+                  label: 'Continue Order',
+                  onTap: onResume,
+                ),
+                const SizedBox(height: 10),
+                // Phase C2 — discard (voids the server mirror too).
+                SizedBox(
+                  height: 52,
+                  child: _OutlineActionButton(
+                    label: 'Discard',
+                    icon: Icons.delete_outline_rounded,
+                    onTap: onDiscard,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

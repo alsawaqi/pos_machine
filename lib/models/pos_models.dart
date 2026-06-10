@@ -1114,6 +1114,11 @@ class OrderSessionDraft {
   final DiscountConfiguration discount;
   final int splitCount;
   final String note;
+  // Phase C2 — the server order uuid minted at HOLD time, so the hold mirror
+  // (order.hold), any re-hold, the final order.create, and a discard's
+  // order.void all converge on ONE pos_orders row. Empty = never mirrored
+  // (legacy hold, or a demo-only cart).
+  final String serverOrderUuid;
 
   const OrderSessionDraft({
     this.orderNumber,
@@ -1129,6 +1134,7 @@ class OrderSessionDraft {
     required this.discount,
     required this.splitCount,
     this.note = '',
+    this.serverOrderUuid = '',
   });
 
   factory OrderSessionDraft.fromMap(Map<String, dynamic> map) {
@@ -1158,6 +1164,7 @@ class OrderSessionDraft {
       ),
       splitCount: (map['splitCount'] as num?)?.toInt() ?? 1,
       note: map['note']?.toString() ?? '',
+      serverOrderUuid: map['serverOrderUuid']?.toString() ?? '',
     );
   }
 
@@ -1200,6 +1207,7 @@ class OrderSessionDraft {
       'discount': discount.toMap(),
       'splitCount': splitCount,
       'note': note,
+      if (serverOrderUuid.isNotEmpty) 'serverOrderUuid': serverOrderUuid,
     };
     if (orderNumber != null) {
       map['orderNumber'] = orderNumber;

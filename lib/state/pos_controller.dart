@@ -351,6 +351,18 @@ class PosController extends ChangeNotifier {
   /// or fail order completion.
   void Function(OrderSnapshot snapshot)? onOrderCompleted;
 
+  /// Phase C2 — invoked when an order is placed on hold (after the local save).
+  /// The screen wires this to the hold-mirror outbox (order.hold) so the held
+  /// order survives a device wipe and shows on the branch's other terminals.
+  /// Fire-and-forget — holding never blocks on, or fails because of, the
+  /// network.
+  void Function(OrderSessionDraft draft)? onOrderHeld;
+
+  /// Phase C2 — the server order uuid for the CURRENT cart, minted at hold
+  /// time (and restored on resume) so hold → re-hold → completion → void all
+  /// share one uuid. Null = this cart was never held.
+  String? _activeServerOrderUuid;
+
   /// Invoked when a completed order is FULLY canceled — the screen wires this to
   /// the outbox so an `order.void` reaches pos_api (which unwinds the sale's
   /// inventory / loyalty / round-up / commission). Fire-and-forget; never blocks
@@ -882,7 +894,7 @@ class PosController extends ChangeNotifier {
     );
   }
 
-  OrderSessionDraft createDraft() {
+  OrderSessionDraft createDraft({String serverOrderUuid = ''}) {
     final activeTable = activeDiningTableDefinition;
     final floor = activeTable == null
         ? null
@@ -901,6 +913,7 @@ class PosController extends ChangeNotifier {
       discount: discount,
       splitCount: splitCount,
       note: displayNote,
+      serverOrderUuid: serverOrderUuid,
     );
   }
 
@@ -1392,9 +1405,16 @@ class PosController extends ChangeNotifier {
     if (_cart.isEmpty || isProcessingPayment) return null;
 
     try {
-      final draft = createDraft();
+      // Phase C2 — mint the server uuid at hold time (or keep the resumed
+      // one) so the mirror, re-holds, the final order.create and a discard's
+      // order.void all converge on one pos_orders row.
+      final draft =
+          createDraft(serverOrderUuid: _activeServerOrderUuid ??= uuidV4());
       await _orderStorage.saveHeldOrder(draft);
       await refreshHeldOrders();
+      // Mirror server-side via the durable outbox (fire-and-forget).
+      onOrderHeld?.call(draft);
+      _activeServerOrderUuid = null; // consumed by the draft
       if (printKitchenTickets) {
         // Phase C1 — holding IS the "send to kitchen" moment today, so the
         // kitchen gets its ticket now (fail-safe; before the reset below so
@@ -1442,6 +1462,11 @@ class PosController extends ChangeNotifier {
       ..addAll(
         record.draft.items.map((item) => CartItem.fromMap(item.toMap())),
       );
+    // Phase C2 — carry the held mirror's uuid into this cart so completion
+    // (order.create) upserts the server's held row instead of duplicating it.
+    _activeServerOrderUuid = record.draft.serverOrderUuid.isEmpty
+        ? null
+        : record.draft.serverOrderUuid;
     currentOrderReference = record.orderReference.isNotEmpty
         ? record.orderReference
         : record.draft.orderReference;
@@ -1468,6 +1493,25 @@ class PosController extends ChangeNotifier {
     await refreshHeldOrders();
     _broadcast();
     return 'Resumed held reference $currentOrderReference.';
+  }
+
+  /// Phase C2 — discard a held order (blueprint §6.7 "Cancel: voids the
+  /// order"). Deletes the local draft and, when it was mirrored server-side,
+  /// emits an order.void (an unpaid void has no inventory unwind) so the
+  /// mirror leaves the branch's active list. The CALLER owns any
+  /// confirmation / manager gate.
+  Future<String> discardHeldOrder(HeldOrderRecord record) async {
+    await _orderStorage.deleteHeldOrder(record.id);
+    await refreshHeldOrders();
+    final uuid = record.draft.serverOrderUuid;
+    if (uuid.isNotEmpty) {
+      onOrderVoided?.call(
+        uuid,
+        orderNumber: record.orderNumber,
+        reason: 'Held order discarded',
+      );
+    }
+    return 'Held reference ${record.orderReference} was discarded.';
   }
 
   Future<void> refreshOrderHistory() async {
@@ -1985,7 +2029,11 @@ class PosController extends ChangeNotifier {
     _assignFinalOrderNumber();
     // Stamp the server order_uuid now, so the saved record + the order.create
     // push share it — a later full-cancel can then emit a matching order.void.
-    final completedSnapshot = snapshot().copyWith(serverOrderUuid: uuidV4());
+    // A cart resumed from hold keeps its mirror's uuid (Phase C2), so the
+    // server upserts the held row open instead of duplicating it.
+    final completedSnapshot =
+        snapshot().copyWith(serverOrderUuid: _activeServerOrderUuid ?? uuidV4());
+    _activeServerOrderUuid = null;
     if (printReceipts) {
       // Fail-safe: a printer error must never abort the local save or the
       // pos_api push below.
@@ -2518,6 +2566,10 @@ class PosController extends ChangeNotifier {
     String note = '',
   }) {
     _cart.clear();
+    // Phase C2 — a leftover uuid (resumed-then-cleared cart) is dropped, not
+    // voided: the server mirror stays held and remains resumable/discardable
+    // from the held list of any branch terminal.
+    _activeServerOrderUuid = null;
     paymentStatus = 'Waiting';
     selectedPaymentMethod = 'Cash';
     lastPaymentMessage = '';

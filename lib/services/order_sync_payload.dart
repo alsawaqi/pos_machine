@@ -323,6 +323,91 @@ OrderSyncPayload buildOrderSyncPayload(
   return OrderSyncPayload(orderUuid: orderUuid, events: events);
 }
 
+/// Phase C2 — build the single `order.hold` event that mirrors a held cart
+/// server-side (blueprint §6.7). The payload is order.create's `order` shape;
+/// pos_api upserts by uuid: status=held, a re-hold replaces the mirror, the
+/// final order.create (same uuid) flips it open, order.void discards it. No
+/// GPS is sent — the server deliberately skips the geofence on holds (no money
+/// or stock moves). Returns null when the draft has no pushable lines (a
+/// demo-only cart cannot reference server products). Pure — unit-testable.
+Map<String, dynamic>? buildOrderHoldEvent(
+  OrderSessionDraft draft, {
+  required String orderUuid,
+  int? staffId,
+  int? tableId,
+  DateTime? now,
+  String Function()? newUuid,
+}) {
+  if (orderUuid.isEmpty) return null;
+  final gen = newUuid ?? uuidV4;
+  final ts = (now ?? DateTime.now()).toUtc().toIso8601String();
+
+  final lines = <Map<String, dynamic>>[];
+  for (final item in draft.items) {
+    final productId = int.tryParse(item.product.id);
+    if (productId == null) continue; // non-catalog (demo) product — cannot ref
+
+    final addons = <Map<String, dynamic>>[];
+    for (final m in item.modifiers) {
+      final addOnId = int.tryParse(m.id);
+      if (addOnId == null) continue; // sample/demo modifier — not a real add-on
+      addons.add({
+        'add_on_id': addOnId,
+        'price_delta_baisas': omrToBaisas(m.price),
+      });
+    }
+
+    final notes = item.normalizedNotes;
+    lines.add({
+      'product_id': productId,
+      'qty': item.qty,
+      'unit_price_baisas': omrToBaisas(item.unitPrice),
+      'line_total_baisas': omrToBaisas(item.lineTotal),
+      if (notes.isNotEmpty) 'notes': notes,
+      if (addons.isNotEmpty) 'addons': addons,
+    });
+  }
+  if (lines.isEmpty) return null;
+
+  // The draft's order-level discount (auto line discounts are derived at
+  // completion, not held). Invariant: raw − discount + tax == total, matching
+  // the draft's own getters.
+  final discountBaisas = omrToBaisas(draft.discountAmount);
+
+  final order = <String, dynamic>{
+    'uuid': orderUuid,
+    'order_type': mapOrderType(draft.orderType.storageValue),
+    'source': 'main_pos',
+    'subtotal_baisas': omrToBaisas(draft.rawSubtotal),
+    'discount_total_baisas': discountBaisas,
+    'tax_total_baisas': omrToBaisas(draft.tax),
+    'grand_total_baisas': omrToBaisas(draft.total),
+    'opened_at': ts,
+    'lines': lines,
+    if (discountBaisas > 0)
+      'discounts': [
+        {
+          'name':
+              draft.discount.label.isEmpty ? 'Discount' : draft.discount.label,
+          'amount_baisas': discountBaisas,
+          if (draft.discount.discountId != null)
+            'discount_id': draft.discount.discountId,
+          if (draft.discount.amountType != null)
+            'amount_type': draft.discount.amountType,
+        }
+      ],
+    'staff_id': ?staffId,
+    'table_id': ?tableId,
+  };
+
+  return <String, dynamic>{
+    'client_event_id': gen(),
+    'event_type': 'order.hold',
+    'client_timestamp': ts,
+    'payload': {'order': order},
+  };
+}
+
 /// Build a single `order.void` event for [orderUuid] (the server matches by the
 /// order_uuid that order.create used). The server voids the WHOLE order and
 /// unwinds its inventory / loyalty / round-up / commission, idempotently. The

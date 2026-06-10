@@ -613,6 +613,134 @@ void main() {
       expect(order.containsKey('comp_total_baisas'), isFalse);
     });
   });
+
+  // Phase C2 — the order.hold mirror built from a held draft (blueprint §6.7).
+  group('buildOrderHoldEvent', () {
+    OrderSessionDraft draft({
+      List<CartItem>? items,
+      DiscountConfiguration discount = const DiscountConfiguration(),
+      String serverOrderUuid = 'hold-uuid-1',
+    }) {
+      return OrderSessionDraft(
+        orderReference: 'REF-1450',
+        orderType: OrderType.dineIn,
+        selectedCategory: 'Coffee',
+        customerReferenceNumber: '',
+        items: items ??
+            [
+              CartItem(
+                product: const Product(
+                  id: '10',
+                  name: 'Latte',
+                  category: 'Coffee',
+                  price: 2.0,
+                ),
+                qty: 2,
+                modifiers: const [
+                  CartItemModifier(
+                      id: '100', group: 'Size', label: 'Large', price: 0.5),
+                ],
+                notes: 'extra hot',
+              ),
+            ],
+        discount: discount,
+        splitCount: 1,
+        serverOrderUuid: serverOrderUuid,
+      );
+    }
+
+    test('builds order.hold with the draft uuid, lines, add-ons and notes', () {
+      final event = buildOrderHoldEvent(
+        draft(),
+        orderUuid: 'hold-uuid-1',
+        staffId: 7,
+        tableId: 4,
+        newUuid: _seqUuid(),
+      );
+
+      expect(event, isNotNull);
+      expect(event!['event_type'], 'order.hold');
+      expect(event['client_event_id'], 'uuid-0');
+
+      final order = event['payload']['order'] as Map<String, dynamic>;
+      expect(order['uuid'], 'hold-uuid-1');
+      expect(order['order_type'], 'dine_in');
+      expect(order['source'], 'main_pos');
+      expect(order['staff_id'], 7);
+      expect(order['table_id'], 4);
+      // No GPS on holds — the server deliberately skips the geofence.
+      expect(order.containsKey('gps'), isFalse);
+
+      final lines = order['lines'] as List;
+      expect(lines, hasLength(1));
+      final line = lines.first as Map<String, dynamic>;
+      expect(line['product_id'], 10);
+      expect(line['qty'], 2);
+      expect(line['unit_price_baisas'], 2500); // 2.0 base + 0.5 add-on
+      expect(line['line_total_baisas'], 5000);
+      expect(line['notes'], 'extra hot');
+      expect((line['addons'] as List).single,
+          {'add_on_id': 100, 'price_delta_baisas': 500});
+
+      // Money invariant: raw − discount + tax == grand (no taxes registered
+      // in the test harness → tax 0).
+      expect(order['subtotal_baisas'], 5000);
+      expect(order['discount_total_baisas'], 0);
+      expect(order['tax_total_baisas'], 0);
+      expect(order['grand_total_baisas'], 5000);
+      expect(order.containsKey('discounts'), isFalse);
+    });
+
+    test('order-level discount rides as one discounts[] row', () {
+      final event = buildOrderHoldEvent(
+        draft(
+          discount: const DiscountConfiguration(
+            kind: DiscountKind.fixedAmount,
+            value: 1.0,
+            label: 'Staff meal',
+            discountId: 33,
+          ),
+        ),
+        orderUuid: 'hold-uuid-1',
+        newUuid: _seqUuid(),
+      );
+
+      final order = event!['payload']['order'] as Map<String, dynamic>;
+      expect(order['discount_total_baisas'], 1000);
+      expect(order['grand_total_baisas'], 4000);
+      final discounts = order['discounts'] as List;
+      expect(discounts.single, {
+        'name': 'Staff meal',
+        'amount_baisas': 1000,
+        'discount_id': 33,
+        'amount_type': 'fixed',
+      });
+    });
+
+    test('a demo-only cart (non-numeric product ids) returns null', () {
+      final event = buildOrderHoldEvent(
+        draft(
+          items: [
+            CartItem(
+              product: const Product(
+                id: 'demo_latte',
+                name: 'Latte',
+                category: 'Coffee',
+                price: 2.0,
+              ),
+            ),
+          ],
+        ),
+        orderUuid: 'hold-uuid-1',
+      );
+
+      expect(event, isNull);
+    });
+
+    test('a draft without a server uuid returns null', () {
+      expect(buildOrderHoldEvent(draft(), orderUuid: ''), isNull);
+    });
+  });
 }
 
 SplitPaymentRecord _split(int index, String method, double base,

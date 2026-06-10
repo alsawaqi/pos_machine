@@ -99,6 +99,40 @@ class OrderSyncRepository {
     await flush();
   }
 
+  /// Phase C2 — mirror a held (parked) order server-side (blueprint §6.7).
+  /// Persisted to its OWN durable outbox row keyed `[uuid]:hold` so it never
+  /// collides with the eventual completion row (plain `[uuid]`), and so a
+  /// RE-hold of the same order replaces the row in place (PK upsert). The
+  /// replace explicitly resets syncedAt/attempts/lastError — a re-hold after
+  /// the first mirror synced must push again (the server upserts by uuid).
+  /// No-op for a cart with no pushable lines (demo-only) or a draft without a
+  /// server uuid.
+  Future<void> enqueueHold(
+    OrderSessionDraft draft, {
+    int? staffId,
+    int? tableId,
+  }) async {
+    final event = buildOrderHoldEvent(
+      draft,
+      orderUuid: draft.serverOrderUuid,
+      staffId: staffId,
+      tableId: tableId,
+    );
+    if (event == null) return;
+
+    await _db.enqueueOutbox(OrderOutboxCompanion(
+      orderUuid: Value('${draft.serverOrderUuid}:hold'),
+      eventsJson: Value(jsonEncode([event])),
+      orderNumber: Value(draft.orderNumber ?? 0),
+      createdAt: Value(DateTime.now()),
+      attempts: const Value(0),
+      lastError: const Value(null),
+      syncedAt: const Value(null),
+    ));
+
+    await flush();
+  }
+
   /// Push every pending order. Best-effort and safe to call repeatedly: a
   /// network failure leaves the row queued for the next attempt; a server-side
   /// rejection of an event is recorded (lastError) for visibility. Returns the
