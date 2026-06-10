@@ -2161,6 +2161,24 @@ class L10nEn extends L10n {
   String get posDiningTableActionsTooltip => 'Table actions';
 
   @override
+  String get posManagerPinTitle => 'Manager PIN';
+
+  @override
+  String get posManagerPinSubtitle =>
+      'Enter a manager\'s PIN to approve this action.';
+
+  @override
+  String get posManagerPinInvalid =>
+      'PIN not accepted. Check it and try again.';
+
+  @override
+  String get posManagerPinOffline =>
+      'PIN approval needs a connection — use the fingerprint instead.';
+
+  @override
+  String get posManagerPinVerify => 'Verify';
+
+  @override
   String get posCancelPageOrderItems => 'Order Items';
 
   @override

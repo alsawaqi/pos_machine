@@ -2190,6 +2190,23 @@ class L10nAr extends L10n {
   String get posDiningTableActionsTooltip => 'إجراءات الطاولة';
 
   @override
+  String get posManagerPinTitle => 'الرمز السري للمدير';
+
+  @override
+  String get posManagerPinSubtitle =>
+      'أدخل الرمز السري للمدير للموافقة على هذا الإجراء.';
+
+  @override
+  String get posManagerPinInvalid => 'لم يُقبل الرمز. تحقق منه وحاول مجددًا.';
+
+  @override
+  String get posManagerPinOffline =>
+      'التحقق من الرمز يتطلب اتصالًا بالخادم — استخدم البصمة بدلًا منه.';
+
+  @override
+  String get posManagerPinVerify => 'تحقق';
+
+  @override
   String get posCancelPageOrderItems => 'أصناف الطلب';
 
   @override

@@ -10,6 +10,7 @@ import '../models/pos_models.dart';
 import '../services/display_strings.dart';
 import '../services/local_order_storage_service.dart';
 import '../services/manager_authorization_service.dart';
+import '../services/pos_api_service.dart' show ApiException, PosApiService;
 import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
@@ -444,25 +445,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
-    var hasManager = await _managerAuthorization.isManagerRegistered();
-    if (!mounted) return;
-    var authorized = false;
-    if (!hasManager) {
-      hasManager = await _showFingerprintAuthorizationOverlay(
-        title: l10n.posManagerRegisterFingerprintTitle,
-        message: l10n.posCompRegisterManagerMessage,
-        action: _managerAuthorization.registerManagerFingerprint,
-      );
-      if (!mounted) return;
-      authorized = hasManager;
-    }
-    if (!authorized && hasManager) {
-      authorized = await _showFingerprintAuthorizationOverlay(
-        title: l10n.posManagerApprovalRequiredTitle,
-        message: l10n.posCompManagerApprovalMessage,
-        action: _managerAuthorization.authenticateCancellation,
-      );
-    }
+    // P-F1 — fingerprint with manager-PIN fallback.
+    final authorized = await _authorizeManager(
+      subtitle: l10n.posCompManagerApprovalMessage,
+    );
     if (!mounted) return;
     if (!authorized) {
       _showPopupMessage(
@@ -1066,25 +1052,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (controller.isProcessingPayment || controller.cart.isEmpty) return;
     final l10n = L10n.of(context);
 
-    var hasManager = await _managerAuthorization.isManagerRegistered();
-    if (!mounted) return;
-    var authorized = false;
-    if (!hasManager) {
-      hasManager = await _showFingerprintAuthorizationOverlay(
-        title: l10n.posManagerRegisterFingerprintTitle,
-        message: l10n.posPayGiftRegisterManagerMessage,
-        action: _managerAuthorization.registerManagerFingerprint,
-      );
-      if (!mounted) return;
-      authorized = hasManager;
-    }
-    if (!authorized && hasManager) {
-      authorized = await _showFingerprintAuthorizationOverlay(
-        title: l10n.posManagerApprovalRequiredTitle,
-        message: l10n.posPayGiftManagerApprovalMessage,
-        action: _managerAuthorization.authenticateCancellation,
-      );
-    }
+    // P-F1 — fingerprint with manager-PIN fallback.
+    final authorized = await _authorizeManager(
+      subtitle: l10n.posPayGiftManagerApprovalMessage,
+    );
     if (!mounted) return;
     if (!authorized) {
       _showPopupMessage(
@@ -1392,7 +1363,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// receipt reprint stays free).
   Future<void> _handleKitchenTicketReprint(OrderHistoryRecord record) async {
     final l10n = L10n.of(context);
-    final ok = await _managerAuthorization.authenticateManagerApproval(
+    final ok = await _authorizeManager(
       subtitle: l10n.posKitchenReprintSubtitle,
       description: l10n.posKitchenReprintDescription(record.orderNumber),
     );
@@ -1491,38 +1462,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
-    var hasManager = await _managerAuthorization.isManagerRegistered();
-    var authorized = false;
-    if (!mounted) return;
-
-    if (!hasManager) {
-      hasManager = await _showFingerprintAuthorizationOverlay(
-        title: l10n.posManagerRegisterFingerprintTitle,
-        message: l10n.posCancelReqRegisterManagerMessage,
-        action: _managerAuthorization.registerManagerFingerprint,
-      );
-      if (!mounted) return;
-      if (!hasManager) {
-        if (historyDialogContext.mounted) {
-          Navigator.of(historyDialogContext).pop();
-        }
-        _showPopupMessage(
-          title: l10n.posCancelReqManagerRequiredTitle,
-          message: l10n.posManagerNotRegisteredMessage,
-          tone: FeedbackTone.warning,
-        );
-        return;
-      }
-      authorized = true;
-    }
-
-    if (!authorized && hasManager) {
-      authorized = await _showFingerprintAuthorizationOverlay(
-        title: l10n.posManagerApprovalRequiredTitle,
-        message: l10n.posCancelReqUnlockMessage,
-        action: _managerAuthorization.authenticateCancellation,
-      );
-    }
+    // P-F1 — fingerprint with manager-PIN fallback.
+    final authorized = await _authorizeManager(
+      subtitle: l10n.posCancelReqUnlockMessage,
+    );
     if (!mounted) return;
 
     if (!authorized) {
@@ -1551,6 +1494,38 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       message: message,
       tone: FeedbackTone.success,
     );
+  }
+
+  /// P-F1 — THE manager-authorization gate, used by every sensitive flow
+  /// (comp, gift, cancel, reprints, approval-required discounts, reports):
+  /// fingerprint first when one is registered (works offline), then a
+  /// manager-PIN fallback verified by pos_api against the merchant's
+  /// manager_approval_positions policy (online-only). A device with no
+  /// registered fingerprint goes straight to the PIN dialog.
+  Future<bool> _authorizeManager({
+    String? subtitle,
+    String? description,
+  }) async {
+    if (await _managerAuthorization.isManagerRegistered()) {
+      if (!mounted) return false;
+      final ok = await _managerAuthorization.authenticateManagerApproval(
+        subtitle: subtitle,
+        description: description,
+      );
+      if (ok) return true;
+      if (!mounted) return false;
+    }
+    if (!mounted) return false;
+    return _openManagerPinDialog();
+  }
+
+  Future<bool> _openManagerPinDialog() async {
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => _ManagerPinDialog(api: ref.read(apiServiceProvider)),
+    );
+    return approved ?? false;
   }
 
   Future<bool> _showFingerprintAuthorizationOverlay({
@@ -2440,7 +2415,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Future<void> _applyMerchantDiscount(MerchantDiscount d) async {
     final l10n = L10n.of(context);
     if (d.requiresManagerApproval) {
-      final ok = await _managerAuthorization.authenticateManagerApproval(
+      final ok = await _authorizeManager(
         subtitle: l10n.posDiscountApproveSubtitle,
         description: l10n.posDiscountApproveDescription(d.name),
       );
@@ -4295,7 +4270,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
-    final ok = await _managerAuthorization.authenticateManagerApproval(
+    final ok = await _authorizeManager(
       subtitle: l10n.posMidShiftAuthSubtitle,
       description: l10n.posMidShiftAuthDesc,
     );
@@ -4358,7 +4333,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
-    final ok = await _managerAuthorization.authenticateManagerApproval(
+    final ok = await _authorizeManager(
       subtitle: l10n.posMenuShiftSummaryShort,
       description: l10n.posMenuShiftSummaryAuthDesc,
     );
@@ -9182,6 +9157,191 @@ class _InfoBadge extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// P-F1 — the manager-PIN fallback dialog: masked PIN entry on an on-screen
+/// keypad, verified server-side (pos_api checks the PIN against active staff
+/// whose position is in the merchant's manager_approval_positions policy).
+/// Pops true on approval; null/false = declined. Online-only — offline the
+/// fingerprint remains the approval path.
+class _ManagerPinDialog extends StatefulWidget {
+  final PosApiService api;
+
+  const _ManagerPinDialog({required this.api});
+
+  @override
+  State<_ManagerPinDialog> createState() => _ManagerPinDialogState();
+}
+
+class _ManagerPinDialogState extends State<_ManagerPinDialog> {
+  String _pin = '';
+  bool _busy = false;
+  String? _error;
+
+  void _append(String digit) {
+    if (_busy || _pin.length >= 8) return;
+    setState(() {
+      _pin = '$_pin$digit';
+      _error = null;
+    });
+  }
+
+  void _backspace() {
+    if (_busy || _pin.isEmpty) return;
+    setState(() => _pin = _pin.substring(0, _pin.length - 1));
+  }
+
+  Future<void> _verify() async {
+    if (_busy || _pin.length < 4) return;
+    final l10n = L10n.of(context);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final approver = await widget.api.verifyManagerPin(_pin);
+      if (!mounted) return;
+      if (approver == null) {
+        setState(() {
+          _busy = false;
+          _pin = '';
+          _error = l10n.posManagerPinInvalid;
+        });
+        return;
+      }
+      Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.isNetwork ? l10n.posManagerPinOffline : e.message;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
+    final dots = List<Widget>.generate(
+      _pin.length,
+      (_) => Container(
+        width: 14,
+        height: 14,
+        margin: const EdgeInsets.symmetric(horizontal: 5),
+        decoration: const BoxDecoration(
+          color: Color(0xFF1E8D54),
+          shape: BoxShape.circle,
+        ),
+      ),
+    );
+
+    Widget key(String label, {VoidCallback? onTap, IconData? icon}) =>
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Material(
+              color: const Color(0xFFF2F7FA),
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: _busy ? null : (onTap ?? () => _append(label)),
+                child: SizedBox(
+                  height: 52,
+                  child: Center(
+                    child: icon != null
+                        ? Icon(icon, size: 20, color: const Color(0xFF39505B))
+                        : Text(
+                            label,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF20323C),
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+    return AlertDialog(
+      title: Text(l10n.posManagerPinTitle),
+      content: SizedBox(
+        width: 340,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              l10n.posManagerPinSubtitle,
+              style: const TextStyle(fontSize: 13.5, height: 1.35),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2F7FA),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: _pin.isEmpty
+                  ? const Icon(
+                      Icons.lock_outline_rounded,
+                      size: 18,
+                      color: Color(0xFF8B9DA8),
+                    )
+                  : Row(mainAxisAlignment: MainAxisAlignment.center, children: dots),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFFB84524),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12.5,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            // Keypad stays LTR in Arabic (digit order never mirrors).
+            Directionality(
+              textDirection: TextDirection.ltr,
+              child: Column(
+                children: [
+                  Row(children: [key('1'), key('2'), key('3')]),
+                  Row(children: [key('4'), key('5'), key('6')]),
+                  Row(children: [key('7'), key('8'), key('9')]),
+                  Row(children: [
+                    key('', icon: Icons.backspace_outlined, onTap: _backspace),
+                    key('0'),
+                    key('', icon: Icons.check_rounded, onTap: _verify),
+                  ]),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(false),
+          child: Text(l10n.commonCancel),
+        ),
+        FilledButton(
+          onPressed: _busy || _pin.length < 4 ? null : _verify,
+          child: _busy
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(l10n.posManagerPinVerify),
+        ),
+      ],
     );
   }
 }

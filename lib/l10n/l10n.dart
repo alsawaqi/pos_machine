@@ -3588,6 +3588,36 @@ abstract class L10n {
   /// **'Table actions'**
   String get posDiningTableActionsTooltip;
 
+  /// No description provided for @posManagerPinTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Manager PIN'**
+  String get posManagerPinTitle;
+
+  /// No description provided for @posManagerPinSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a manager\'s PIN to approve this action.'**
+  String get posManagerPinSubtitle;
+
+  /// No description provided for @posManagerPinInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'PIN not accepted. Check it and try again.'**
+  String get posManagerPinInvalid;
+
+  /// No description provided for @posManagerPinOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'PIN approval needs a connection — use the fingerprint instead.'**
+  String get posManagerPinOffline;
+
+  /// No description provided for @posManagerPinVerify.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify'**
+  String get posManagerPinVerify;
+
   /// No description provided for @posCancelPageOrderItems.
   ///
   /// In en, this message translates to:

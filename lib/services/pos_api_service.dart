@@ -102,6 +102,30 @@ class PosApiService {
     return StaffSessionData.fromJson(staff);
   }
 
+  /// POST /device/auth/verify-manager-pin — P-F1 manager PIN fallback for the
+  /// fingerprint gates. The server checks the PIN against ACTIVE staff of
+  /// this company whose position is in the merchant's
+  /// manager_approval_positions policy (default managers only) — any such
+  /// staff member, not necessarily the logged-in operator. Returns the
+  /// approver's display name, or null when the PIN is rejected (the server
+  /// deliberately never reveals WHY). Throttled server-side with the staff
+  /// login bucket; network errors rethrow so the caller can say "offline".
+  Future<String?> verifyManagerPin(String pin) async {
+    try {
+      final body = await _send(
+        () => _dio.post('/device/auth/verify-manager-pin', data: {'pin': pin}),
+      );
+      if (body.body['ok'] == true) {
+        final staff = (body.body['staff'] as Map?)?.cast<String, dynamic>();
+        return staff?['name']?.toString() ?? '';
+      }
+      return null;
+    } on ApiException catch (e) {
+      if (e.code == 'invalid_pin') return null;
+      rethrow;
+    }
+  }
+
   /// GET /device/config — full branch-scoped config bundle. Returns the raw
   /// `data` map, the device's terminal_id, `meta.generated_at` (the server
   /// cursor the device persists + replays as `?since=` on the next delta
