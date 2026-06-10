@@ -257,5 +257,1257 @@
       }
     }
   },
-  "stockCountEmptyState": "No ingredients available yet.\nSync the device to load the catalogue."
+  "stockCountEmptyState": "No ingredients available yet.\nSync the device to load the catalogue.",
+  "displayOrderTypeQuickOrder": "Quick Order",
+  "displayOrderTypeToGo": "To Go",
+  "displayOrderTypeDelivery": "Delivery",
+  "displayOrderTypeDineIn": "Dine In",
+  "displayStatusWaiting": "Waiting",
+  "displayStatusPaid": "Paid",
+  "displayStatusPaidPendingRecon": "Paid (pending reconciliation)",
+  "displayStatusAwaitingConfirmation": "Awaiting confirmation",
+  "displayStatusCardNotConfirmed": "Card charge not confirmed",
+  "displayStatusPaymentCanceled": "Payment canceled",
+  "displayStatusPreparingPayment": "Preparing payment",
+  "displayStatusProcessingPayment": "Processing payment",
+  "displayStatusSplitPending": "Split payment pending",
+  "displayStatusCanceled": "Canceled",
+  "displayStatusPartiallyCanceled": "Partially Canceled",
+  "displayStatusVoid": "Void",
+  "displayStatusRefunded": "Refunded",
+  "displayMethodCash": "Cash",
+  "displayMethodCard": "Credit Card",
+  "displayMethodSplit": "Split Payment",
+  "cdProcessingSelectionTitle": "Processing Selection",
+  "cdPreparingPaymentTitle": "Preparing Payment",
+  "cdProcessingSelectionMessage": "Please wait while we confirm your choice and open the payment terminal.",
+  "cdPreparingPaymentMessage": "Please wait while the payment terminal is opening.",
+  "cdHeaderPaymentCompleted": "Payment completed successfully",
+  "cdHeaderReviewCharity": "Review the optional charity round-up before payment",
+  "cdHeaderItemsWillAppear": "Your items and total will appear here",
+  "cdHeaderItemLineCount": "{count, plural, =1{1 item line in the current order} other{{count} item lines in the current order}}",
+  "@cdHeaderItemLineCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cdHeaderTableItemLineCount": "Table {table} | {count, plural, =1{1 item line in the current order} other{{count} item lines in the current order}}",
+  "@cdHeaderTableItemLineCount": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cdHeroRoundUpForCharity": "Round up for charity",
+  "cdHeroReadyForOrder": "Ready for your order",
+  "cdHeroOrderTotal": "Order total",
+  "cdHeroCharityNote": "The extra rounded amount will be donated to charity.",
+  "cdHeroReviewNote": "Please review your items and total before payment.",
+  "cdSubtotalLabel": "Subtotal",
+  "cdTaxLabel": "Tax",
+  "cdPaymentLabel": "Payment",
+  "cdOrderDetailsTitle": "Order Details",
+  "cdOrderDetailsSubtitle": "Live order view for the customer-facing display",
+  "cdBannerThankYou": "Thank you for your visit. Your order has been completed.",
+  "cdBannerReviewWhileCashier": "Please review the order details while the cashier prepares payment.",
+  "cdTapToPayTitle": "Tap Here To Pay",
+  "cdTapToPaySubtitle": "Your payment is ready. Please tap your card or phone on the customer-facing NFC area.",
+  "cdContactlessReadyTitle": "Ready for contactless payment",
+  "cdContactlessHoldHint": "Hold the card, phone, or wearable near the rear NFC area until the terminal confirms the transaction.",
+  "cdChipCard": "Card",
+  "cdChipPhone": "Phone",
+  "cdChipWearable": "Wearable",
+  "cdTotalToPay": "Total to pay",
+  "cdIncludesCharityRoundUp": "Includes {amount} charity round-up.",
+  "@cdIncludesCharityRoundUp": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "cdPresentToContinue": "Present your card, phone, or wearable to continue the payment.",
+  "cdTapFooterKeepNear": "Keep the card or phone near the customer-facing NFC area until the terminal confirms the payment.",
+  "cdCharityTitle": "Round Up For Charity?",
+  "cdCharityQuestion": "Would you like to round your payment to the next whole OMR? Only the extra amount will be donated to charity.",
+  "cdCharityEncouragement": "A small round-up can make a meaningful donation while keeping your payment simple.",
+  "cdCharityTileOrderTotal": "Order Total",
+  "cdCharityTileOrderTotalCaption": "Current order amount",
+  "cdCharityTileRoundUp": "Round Up",
+  "cdCharityTileRoundUpCaption": "Extra donation amount",
+  "cdCharityTileNewTotal": "New Total",
+  "cdCharityTileNewTotalCaption": "Final amount to pay",
+  "cdCharityNo": "No",
+  "cdCharityNoSubtitleShort": "Keep original total",
+  "cdCharityNoSubtitle": "Pay the original order total",
+  "cdCharityYes": "Yes",
+  "cdCharityYesSubtitleShort": "Round up to donate",
+  "cdCharityYesSubtitle": "Round up and donate the extra amount",
+  "cdTouchOkCount": "Touch OK x{count}",
+  "@cdTouchOkCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cdTouchTestTitle": "Touch Test",
+  "cdTouchTestHint": "Tap here to verify",
+  "cdTouchDetectedAt": "Rear touch detected at {time} (#{count})",
+  "@cdTouchDetectedAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cdBadgeUpdatingChoice": "UPDATING CHOICE",
+  "cdBadgeSecureCardPayment": "SECURE CARD PAYMENT",
+  "cdQuantity": "Quantity: {qty}",
+  "@cdQuantity": {
+    "placeholders": {
+      "qty": {
+        "type": "int"
+      }
+    }
+  },
+  "cdNoItemsYet": "No items yet",
+  "cdEmptyStateHint": "The display will update as soon as the cashier adds products.",
+  "cdFinalBadge": "FINAL",
+  "cdSummaryPaid": "Thank you. Your payment has been completed.",
+  "cdSummaryAwaitingCashier": "A cashier will confirm the order and complete payment when ready.",
+  "ctrlMsgChooseTableDineIn": "Choose a table to start or continue a dine-in order.",
+  "ctrlMsgEditingTableOnFloor": "Editing {table} in {floor}.",
+  "@ctrlMsgEditingTableOnFloor": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      },
+      "floor": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlMsgAddItemsForTable": "Add items for {table}.",
+  "@ctrlMsgAddItemsForTable": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlMsgAssignItemsToTable": "Assigning the current items to {table}.",
+  "@ctrlMsgAssignItemsToTable": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlFloorFallbackDining": "Dining",
+  "ctrlMsgOrderHeld": "Reference {reference} was placed on hold.",
+  "@ctrlMsgOrderHeld": {
+    "placeholders": {
+      "reference": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlMsgHoldFailed": "Unable to hold the order right now.",
+  "ctrlMsgOrderResumed": "Resumed held reference {reference}.",
+  "@ctrlMsgOrderResumed": {
+    "placeholders": {
+      "reference": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlMsgHeldOrderDiscarded": "Held reference {reference} was discarded.",
+  "@ctrlMsgHeldOrderDiscarded": {
+    "placeholders": {
+      "reference": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlMsgOrderAlreadyCanceled": "Order #{n} is already fully canceled.",
+  "@ctrlMsgOrderAlreadyCanceled": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "ctrlMsgNoCancellableItems": "No cancellable items were selected.",
+  "ctrlMsgOrderCanceledByManagerNote": "Order canceled by manager.",
+  "ctrlMsgItemsCanceledByManagerNote": "{count, plural, =1{1 item canceled by manager.} other{{count} items canceled by manager.}}",
+  "@ctrlMsgItemsCanceledByManagerNote": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ctrlMsgOrderFullyCanceled": "Order #{n} was fully canceled.",
+  "@ctrlMsgOrderFullyCanceled": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "ctrlMsgItemsCanceledFromOrder": "{count, plural, =1{1 item canceled} other{{count} items canceled}} from order #{n}.",
+  "@ctrlMsgItemsCanceledFromOrder": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "ctrlMsgPaymentCanceledWithMethod": "{method} payment canceled.",
+  "@ctrlMsgPaymentCanceledWithMethod": {
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlMsgCustomerResponseTimeout": "Timed out waiting for the customer response.",
+  "ctrlMsgTenderedCashTooLow": "Tendered cash must be at least {amount}.",
+  "@ctrlMsgTenderedCashTooLow": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlMsgCashierCompletingSplitCash": "The cashier is completing split bill cash payment {index} of {total}.",
+  "@ctrlMsgCashierCompletingSplitCash": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "ctrlMsgCashierCompletingCash": "The cashier is completing a cash payment.",
+  "ctrlMsgCashPaymentRecorded": "Cash payment recorded successfully.",
+  "ctrlMsgCashPaymentCompleted": "Cash payment completed. Thank you.",
+  "ctrlMsgTapToPayRoundUp": "Thank you for rounding up for charity. Tap your card or phone on the rear NFC area to pay.",
+  "ctrlMsgTapToPay": "Tap your card or phone on the rear NFC area to pay.",
+  "ctrlMsgCardPendingReconRecorded": "Card recorded as pending reconciliation. The bank settlement will confirm it.",
+  "ctrlMsgPaymentPendingBankThanks": "Payment recorded pending bank confirmation. Thank you.",
+  "ctrlMsgCardApprovedRoundUpThanks": "{message} Thank you for supporting charity.",
+  "@ctrlMsgCardApprovedRoundUpThanks": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlMsgPaymentApprovedRoundUpNote": "Payment approved. Your round-up donation will go to charity. Thank you.",
+  "ctrlMsgPaymentApprovedNote": "Payment approved. Thank you.",
+  "ctrlMsgClearSplitBillFirst": "Clear Split Bill before using cash and card split payment.",
+  "ctrlMsgEnterCashBelowTotal": "Enter a cash amount less than {amount} before using split payment.",
+  "@ctrlMsgEnterCashBelowTotal": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlMsgSplitPaymentCanceled": "Split payment canceled.",
+  "ctrlMsgTapForRemainingSplitRoundUp": "Thank you for rounding up for charity. Tap your card or phone for the remaining split payment.",
+  "ctrlMsgTapForRemainingSplit": "Tap your card or phone for the remaining split payment.",
+  "ctrlMsgSplitRecordedCardPending": "Split payment recorded. Cash {cash}; card {card} pending reconciliation.",
+  "@ctrlMsgSplitRecordedCardPending": {
+    "placeholders": {
+      "cash": {
+        "type": "String"
+      },
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlMsgSplitCompletedCashCard": "Split payment completed. Cash {cash} and card {card} recorded.",
+  "@ctrlMsgSplitCompletedCashCard": {
+    "placeholders": {
+      "cash": {
+        "type": "String"
+      },
+      "card": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlMsgCashReceivedCardPendingNote": "Cash received; card payment recorded pending bank confirmation. Thank you.",
+  "ctrlMsgSplitCompletedRoundUpNote": "Split payment completed with a card round-up donation. Thank you.",
+  "ctrlMsgSplitCompletedNote": "Split payment completed. Thank you.",
+  "ctrlMsgSplitProgressRecorded": "Split payment {index} of {total} recorded. Continue with guest {next}.",
+  "@ctrlMsgSplitProgressRecorded": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "next": {
+        "type": "int"
+      }
+    }
+  },
+  "ctrlMsgGuestPaidCollectNext": "Guest {index} paid {amount}. Collect split payment {next} of {total}.",
+  "@ctrlMsgGuestPaidCollectNext": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "next": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "ctrlMsgSplitCompletedSummary": "Split payment completed. {total} payments recorded for {amount}.",
+  "@ctrlMsgSplitCompletedSummary": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlMsgSplitBillCompletedNote": "Split bill completed with {total} payments. Thank you.",
+  "@ctrlMsgSplitBillCompletedNote": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "ctrlMsgRoundUpPromptQuestion": "Would you like to round up {amount} to charity?",
+  "@ctrlMsgRoundUpPromptQuestion": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlOverlayPreparingCashPayment": "Preparing Cash Payment",
+  "ctrlOverlayPreparingSecurePayment": "Preparing Secure Payment",
+  "ctrlMsgPreparingRoundedCash": "Thank you. We are preparing the rounded amount for cash payment.",
+  "ctrlMsgPreparingRoundedCard": "Thank you. We are preparing the rounded amount for card payment.",
+  "ctrlMsgPreparingOriginalCash": "Thank you. We are preparing the original amount for cash payment.",
+  "ctrlMsgPreparingOriginalCard": "Thank you. We are preparing the original amount for card payment.",
+  "ctrlMsgCardUnconfirmedReviewing": "The card charge could not be confirmed. Staff is reviewing the payment.",
+  "ctrlOverlayConnectingTerminal": "Connecting To Payment Terminal",
+  "ctrlOverlayWaitingPaymentResult": "Waiting For Payment Result",
+  "ctrlMsgTerminalOpening": "Payment Terminal is opening securely. Please wait while the payment terminal prepares the transaction.",
+  "ctrlMsgRoundedSentToTerminal": "The rounded amount has been sent to Payment Terminal. Please follow the terminal instructions while we wait for the final response.",
+  "ctrlMsgTotalSentToTerminal": "The order total has been sent to Payment Terminal. Please follow the terminal instructions while we wait for the final response.",
+  "managerAuthRegisterTitle": "Register Manager Fingerprint",
+  "managerAuthRegisterSubtitle": "Manager authorization setup",
+  "managerAuthRegisterDescription": "Place the manager fingerprint on the device sensor.",
+  "managerAuthApprovalRequiredTitle": "Manager Approval Required",
+  "managerAuthCancelOrderSubtitle": "Cancel completed order",
+  "managerAuthCancelOrderDescription": "Place your fingerprint to unlock order cancellation.",
+  "managerAuthDefaultSubtitle": "Manager approval",
+  "managerAuthDefaultDescription": "Place the manager fingerprint to approve.",
+  "posCompNothingTitle": "Nothing to Comp",
+  "posCompNothingMessage": "Add items to the order first.",
+  "posCompAppliedTitle": "Comp Applied",
+  "posCompExistingMessage": "\"{reason}\" is comping {amount} on this order.",
+  "@posCompExistingMessage": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posCompRemoveButton": "Remove comp",
+  "posCompKeepButton": "Keep",
+  "posCompRemovedTitle": "Comp Removed",
+  "posCompRemovedMessage": "The order is back to its full total.",
+  "posCompRegisterManagerMessage": "Register the manager fingerprint once before comping items.",
+  "posCompManagerApprovalMessage": "Comps always need manager approval.",
+  "posCompLockedTitle": "Comp Locked",
+  "posCompDialogTitle": "Comp (Manager)",
+  "posCompWhatLabel": "What is being comped?",
+  "posCompWholeOrderOption": "Whole order",
+  "posCompReasonLabel": "Reason",
+  "posCompAmountLabel": "Comp amount: {amount}",
+  "@posCompAmountLabel": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posCompExceedsCapMessage": "Exceeds the \"{reason}\" cap of {cap}.",
+  "@posCompExceedsCapMessage": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      },
+      "cap": {
+        "type": "String"
+      }
+    }
+  },
+  "posCompApplyButton": "Apply comp",
+  "posCompAppliedMessage": "\"{reason}\" — {amount} written off.",
+  "@posCompAppliedMessage": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posManagerRegisterFingerprintTitle": "Register Manager Fingerprint",
+  "posManagerApprovalRequiredTitle": "Manager Approval Required",
+  "posManagerFingerprintNotApprovedMessage": "Manager fingerprint was not approved.",
+  "posManagerRegisterSensorMessage": "Place the manager finger on the sensor to enable cancellation.",
+  "posManagerRegisteredTitle": "Manager Registered",
+  "posManagerRegistrationNotCompletedTitle": "Registration Not Completed",
+  "posManagerRegisteredMessage": "Manager fingerprint approval is ready for order cancellation.",
+  "posManagerNotRegisteredMessage": "The manager fingerprint was not registered on this terminal.",
+  "posPayTenderedTooLowTitle": "Tendered Amount Too Low",
+  "posPayTenderedTooLowMessage": "Tendered cash must be at least {amount}.",
+  "@posPayTenderedTooLowMessage": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posPayClearSplitFirstTitle": "Clear Split Bill First",
+  "posPayClearSplitFirstMessage": "Cash and card split payment can be used after clearing guest split bill.",
+  "posPayEnterCashPortionTitle": "Enter Cash Portion",
+  "posPayEnterCashPortionMessage": "Enter the cash amount first. It must be less than {amount} so the rest can go to card.",
+  "@posPayEnterCashPortionMessage": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posHoldOrderHeldTitle": "Order Held",
+  "posHeldOrdersTitle": "Held Orders",
+  "posHeldOrdersSubtitle": "Resume any paused ticket and continue from where you left off.",
+  "posHeldResumedTitle": "Held Order Resumed",
+  "posHeldDiscardConfirmTitle": "Discard Held Order?",
+  "posHeldDiscardConfirmMessage": "Reference {reference} will be removed and cannot be resumed afterwards.",
+  "@posHeldDiscardConfirmMessage": {
+    "placeholders": {
+      "reference": {
+        "type": "String"
+      }
+    }
+  },
+  "posHeldKeepButton": "Keep It",
+  "posHeldDiscardButton": "Discard",
+  "posHeldDiscardedTitle": "Held Order Discarded",
+  "posHistoryTitle": "Order History",
+  "posHistorySubtitle": "Review completed orders, their payment details, and reprint receipts whenever needed.",
+  "posHistoryReceiptPrintedTitle": "Receipt Printed",
+  "posHistoryReceiptPrintedMessage": "Previous receipt for order #{orderNumber} was sent to the printer.",
+  "@posHistoryReceiptPrintedMessage": {
+    "placeholders": {
+      "orderNumber": {
+        "type": "int"
+      }
+    }
+  },
+  "posKitchenReprintSubtitle": "Reprint kitchen ticket",
+  "posKitchenReprintDescription": "Place the manager fingerprint to reprint the kitchen ticket for order #{orderNumber}.",
+  "@posKitchenReprintDescription": {
+    "placeholders": {
+      "orderNumber": {
+        "type": "int"
+      }
+    }
+  },
+  "posKitchenApprovalRequiredTitle": "Approval Required",
+  "posKitchenApprovalDeniedMessage": "Manager approval was not granted for the kitchen reprint.",
+  "posKitchenTicketPrintedTitle": "Kitchen Ticket Printed",
+  "posKitchenTicketPrintedMessage": "Kitchen ticket for order #{orderNumber} was sent to the printer.",
+  "@posKitchenTicketPrintedMessage": {
+    "placeholders": {
+      "orderNumber": {
+        "type": "int"
+      }
+    }
+  },
+  "posCancelReqNotAllowedTitle": "Cancellation Not Allowed",
+  "posCancelReqNotAllowedMessage": "Your role is not permitted to cancel orders on this terminal.",
+  "posCancelReqRegisterManagerMessage": "Register the manager fingerprint once before cancelling this completed order.",
+  "posCancelReqManagerRequiredTitle": "Manager Fingerprint Required",
+  "posCancelReqUnlockMessage": "Place the manager fingerprint to unlock cancellation.",
+  "posCancelReqLockedTitle": "Cancellation Locked",
+  "posCancelReqOrderCanceledTitle": "Order Canceled",
+  "posCancelReqItemsCanceledTitle": "Items Canceled",
+  "posCancelReqDialogTitle": "Cancel Order",
+  "posSearchProductsTitle": "Search Products",
+  "posSearchProductsHint": "Type product name or category",
+  "posSearchTablesTitle": "Search Tables",
+  "posSearchTablesHint": "Search by table name or ticket",
+  "posCustomerSearchOption": "Search customer",
+  "posCustomerSearchOptionSubtitle": "Find by name / phone / plate, see loyalty",
+  "posCustomerEnterNumberOption": "Enter number",
+  "posCustomerClearOption": "Clear customer",
+  "posCustomerAttachedTitle": "Customer Attached",
+  "posCustomerAttachedWithPoints": "{name}  ·  {count, plural, =1{1 point} other{{count} points}}",
+  "@posCustomerAttachedWithPoints": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "posCustomerAttachedSummary": "{name}  ·  {summary}",
+  "@posCustomerAttachedSummary": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "summary": {
+        "type": "String"
+      }
+    }
+  },
+  "posCustomerNumberTitle": "Customer Number",
+  "posCustomerNumberHint": "Enter number, then fetch loyalty",
+  "posCustomerNotFoundTitle": "No Customer Found",
+  "posCustomerNotFoundMessage": "No customer matches \"{query}\". Kept as an order reference.",
+  "@posCustomerNotFoundMessage": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "posLoyaltySummaryPoints": "{count, plural, =1{1 pt} other{{count} pts}}",
+  "@posLoyaltySummaryPoints": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "posLoyaltySummaryStamps": "{count, plural, =1{1 stamp} other{{count} stamps}}",
+  "@posLoyaltySummaryStamps": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "posLoyaltyNoneYet": "no loyalty yet",
+  "posLoyaltyRedeemButton": "Redeem",
+  "posLoyaltyRewardRedeemedTitle": "Reward Redeemed",
+  "posLoyaltyStampRedeemedMessage": "{count, plural, =1{1 stamp} other{{count} stamps}} → {amount} off.",
+  "@posLoyaltyStampRedeemedMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posLoyaltyNoCustomerTitle": "No Customer",
+  "posLoyaltyNoCustomerMessage": "Attach a customer first to redeem loyalty.",
+  "posLoyaltyNothingToRedeemTitle": "Nothing to Redeem",
+  "posLoyaltyNothingToRedeemMessage": "No redeemable points or stamps for this order yet.",
+  "posLoyaltyCannotRedeemTitle": "Cannot Redeem",
+  "posLoyaltyCannotRedeemMessage": "The order total is too low to redeem a block.",
+  "posLoyaltyPointsRedeemedTitle": "Points Redeemed",
+  "posLoyaltyPointsRedeemedMessage": "{count, plural, =1{1 point} other{{count} points}} → {amount} off.",
+  "@posLoyaltyPointsRedeemedMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posPlateTitle": "Vehicle Plate",
+  "posPlateHint": "Enter the car plate number",
+  "posMsgNoDeliveryProvidersTitle": "No Delivery Providers",
+  "posMsgNoDeliveryProvidersMessage": "No delivery providers are set up yet. Add them in the merchant portal.",
+  "posMsgCashPaymentCompleteTitle": "Cash Payment Complete",
+  "posMsgPaymentApprovedTitle": "Payment Approved",
+  "posMsgSplitPaymentRecordedTitle": "Split Payment Recorded",
+  "posMsgPaymentCanceledTitle": "Payment Canceled",
+  "posMsgPaymentFailedTitle": "Payment Failed",
+  "posMsgPaymentUpdateTitle": "Payment Update",
+  "posDiningTablePaidTitle": "{table} Paid",
+  "@posDiningTablePaidTitle": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiningTicketPaidMessage": "Ticket #{ticket} was paid successfully. Clear the table when it is ready for the next guest.",
+  "@posDiningTicketPaidMessage": {
+    "placeholders": {
+      "ticket": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiningPaidTotalLabel": "Paid Total",
+  "posDiningFloorLabel": "Floor",
+  "posDiningClearTableButton": "Clear Table",
+  "posDiningTableClearedTitle": "{table} Cleared",
+  "@posDiningTableClearedTitle": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiningTableClearedMessage": "{table} is now available for the next guest.",
+  "@posDiningTableClearedMessage": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiscountSheetTitle": "Apply a discount",
+  "posDiscountRedeemPointsOption": "Redeem loyalty points",
+  "posDiscountRedeemPointsSubtitle": "{count, plural, =1{1 point available} other{{count} points available}}  ·  {rule}",
+  "@posDiscountRedeemPointsSubtitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "rule": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiscountRedeemStampOption": "Redeem stamp reward",
+  "posDiscountStampRewardSubtitle": "{count, plural, =1{1 stamp} other{{count} stamps}} → {amount} off  ·  {rule}",
+  "@posDiscountStampRewardSubtitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "amount": {
+        "type": "String"
+      },
+      "rule": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiscountManagerApprovalTag": "manager approval",
+  "posDiscountCustomAmountOption": "Custom amount",
+  "posDiscountRemoveOption": "Remove discount",
+  "posDiscountClearedTitle": "Discount Cleared",
+  "posDiscountClearedMessage": "The order discount has been removed.",
+  "posDiscountPercentOff": "{percent}% off",
+  "@posDiscountPercentOff": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiscountAmountOff": "{amount} off",
+  "@posDiscountAmountOff": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiscountApproveSubtitle": "Approve discount",
+  "posDiscountApproveDescription": "Place the manager fingerprint to approve \"{name}\".",
+  "@posDiscountApproveDescription": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiscountApprovalRequiredTitle": "Approval Required",
+  "posDiscountApprovalDeniedMessage": "Manager approval was not granted for \"{name}\".",
+  "@posDiscountApprovalDeniedMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiscountAppliedTitle": "Discount Applied",
+  "posDiscountAppliedMessage": "{name} is now active.",
+  "@posDiscountAppliedMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiscountDefaultLabel": "Order discount",
+  "posSplitInProgressTitle": "Split Payment In Progress",
+  "posSplitInProgressMessage": "Finish all split payments before changing the guest count.",
+  "posSplitClearedTitle": "Split Bill Cleared",
+  "posSplitClearedMessage": "The order is back to a single payment.",
+  "posSplitReadyTitle": "Split Bill Ready",
+  "posSplitReadyMessage": "The order is split into {count, plural, =1{1 share} other{{count} shares}} of {amount} each.",
+  "@posSplitReadyMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posCharityConfirmRoundUpTitle": "Confirm Charity Round-Up",
+  "posCharityConfirmRoundUpBody": "Choose whether to add the optional charity donation before the payment terminal opens. The customer display will show the same totals.",
+  "posCharityOrderTotal": "Order Total",
+  "posCharityRoundUp": "Round Up",
+  "posCharityNewTotal": "New Total",
+  "posCharityKeepOriginalTotal": "No, keep original total",
+  "posCharityRoundUpYes": "Yes, round up for charity",
+  "posReconCardNotConfirmedTitle": "Card charge not confirmed",
+  "posReconCardNotConfirmedBody": "The terminal did not confirm the {amount} card charge (e.g. an NFC timeout).\n\nIf the customer was charged, record it as PENDING RECONCILIATION — it will be matched against the bank settlement file. Otherwise cancel and try the charge again.",
+  "@posReconCardNotConfirmedBody": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posReconCancelRetry": "Cancel — retry charge",
+  "posReconMarkPaidPending": "Mark paid — pending reconciliation",
+  "posPaymentPreparingTitle": "Preparing Payment",
+  "posPaymentPreparingMessage": "Please wait while the payment terminal opens.",
+  "posPaymentSecureCardBadge": "SECURE CARD PAYMENT",
+  "posPaymentRecordingCashTitle": "Recording Cash Payment",
+  "posPaymentRecordingCashMessage": "Please wait while the cash payment is completed.",
+  "posPaymentCashCheckoutBadge": "CASH CHECKOUT",
+  "posPaymentTitle": "Payment",
+  "posPaymentNewOrder": "New Order",
+  "posPaymentOrderRef": "Ref {reference}",
+  "@posPaymentOrderRef": {
+    "placeholders": {
+      "reference": {
+        "type": "String"
+      }
+    }
+  },
+  "posPaymentTableChip": "Table {table}",
+  "@posPaymentTableChip": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "posPaymentOrderItems": "Order Items",
+  "posPaymentSubtotal": "Subtotal",
+  "posPaymentDiscountFallback": "Discount",
+  "posPaymentNetSubtotal": "Net Subtotal",
+  "posPaymentCompRow": "Comp · {reason}",
+  "@posPaymentCompRow": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "posPaymentTaxLine": "{name} ({rate}%)",
+  "@posPaymentTaxLine": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "rate": {
+        "type": "String"
+      }
+    }
+  },
+  "posPaymentGuestShareRow": "Guest {n} Share",
+  "@posPaymentGuestShareRow": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "posPaymentShareDue": "Share Due",
+  "posPaymentTotalDue": "Total Due",
+  "posPaymentCustomerNumberLabel": "Customer Number (Optional)",
+  "posPaymentCustomerNumberHint": "Add a customer number for reference",
+  "posPaymentVehiclePlateLabel": "Vehicle Plate (Optional)",
+  "posPaymentVehiclePlateHint": "Add a vehicle plate for drive-thru",
+  "posPaymentDeliveryProviderLabel": "Delivery Provider",
+  "posPaymentDeliveryProviderHint": "Choose a delivery provider",
+  "posPaymentRedeemLoyalty": "Redeem Loyalty",
+  "posPaymentAddDiscount": "Add Discount",
+  "posPaymentSplitBill": "Split Bill",
+  "posPaymentComp": "Comp",
+  "posPaymentCompApplied": "Comp ✓",
+  "posPaymentTendered": "Tendered",
+  "posPaymentCardBalance": "Card Balance",
+  "posPaymentChange": "Change",
+  "posPaymentQuickCash": "{amount} OMR",
+  "@posPaymentQuickCash": {
+    "placeholders": {
+      "amount": {
+        "type": "int"
+      }
+    }
+  },
+  "posPaymentCollectingGuest": "Collecting guest {n} of {total}: {amount}.",
+  "@posPaymentCollectingGuest": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posPaymentCash": "Cash",
+  "posPaymentCard": "Card",
+  "posPaymentSplitPayment": "Split\nPayment",
+  "posNavHome": "Home",
+  "posNavReport": "Report",
+  "posNavHistory": "History",
+  "posNavReportsComingTitle": "Reports Coming Next",
+  "posNavReportsComingBody": "We will connect detailed reporting once the local order archive is fully connected to the database flow.",
+  "posNavAlreadyHomeBody": "You are already on the main POS screen.",
+  "posNavBrandTagline": "Better ordering",
+  "posNavStaffFallback": "Staff",
+  "posNavOrderHistory": "Order History",
+  "posNavHeldOrders": "Held Orders",
+  "posNavLoyalty": "Loyalty",
+  "posNavReceiptPrintedTitle": "Receipt Printed",
+  "posNavReceiptPrintedBody": "The current order receipt was sent to the printer.",
+  "posMenuCloseShift": "Close shift",
+  "posMenuCloseShiftSub": "Count the drawer and reconcile cash",
+  "posMenuLogExpense": "Log expense",
+  "posMenuLogExpenseSub": "Record a petty-cash expense",
+  "posMenuRequestRestock": "Request restock",
+  "posMenuRequestRestockSub": "Ask the branch to restock ingredients",
+  "posMenuStockCount": "Day-end stock count",
+  "posMenuStockCountSub": "Count the shelf and reconcile variances",
+  "posMenuShiftSummary": "Shift summary (Z-report)",
+  "posMenuShiftSummarySub": "Reprint the last closed shift — manager only",
+  "posMenuSettings": "Settings",
+  "posMenuSettingsSub": "Server address, printing",
+  "posMenuLogoutSub": "Return to the staff PIN screen",
+  "posMenuNoShiftSummaryTitle": "No Shift Summary Yet",
+  "posMenuNoShiftSummaryBody": "Close a shift first — its summary is kept for reprinting.",
+  "posMenuShiftSummaryShort": "Shift summary",
+  "posMenuShiftSummaryAuthDesc": "Place the manager fingerprint to reprint the last shift summary.",
+  "posMenuApprovalRequiredTitle": "Approval Required",
+  "posMenuApprovalNotGrantedBody": "Manager approval was not granted for the shift summary.",
+  "posMenuShiftSummaryPrintedTitle": "Shift Summary Printed",
+  "posMenuShiftSummaryPrintedBody": "The last shift summary was sent to the printer.",
+  "posMenuLogoutConfirmTitle": "Log out?",
+  "posMenuLogoutConfirmBody": "You will return to the staff PIN screen. The device stays set up.",
+  "posOrderPanelTitle": "Current Order",
+  "posOrderPanelNewOrder": "New",
+  "posOrderPanelRef": "Ref {reference}",
+  "@posOrderPanelRef": {
+    "placeholders": {
+      "reference": {
+        "type": "String"
+      }
+    }
+  },
+  "posOrderPanelTableChip": "Table {table}",
+  "@posOrderPanelTableChip": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "posOrderPanelFloorPlan": "Floor Plan",
+  "posOrderPanelClear": "Clear",
+  "posOrderPanelSubtotal": "Subtotal",
+  "posOrderPanelDiscount": "Discount",
+  "posOrderPanelNetSubtotal": "Net Subtotal",
+  "posOrderPanelComp": "Comp · {reason}",
+  "@posOrderPanelComp": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "posOrderPanelPerShare": "Per Share ({count})",
+  "@posOrderPanelPerShare": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "posOrderPanelTotal": "Total",
+  "posOrderPanelBackToFloor": "Back To Floor",
+  "posOrderPanelHold": "Hold",
+  "posOrderPanelClearTable": "Clear Table",
+  "posOrderPanelVoid": "Void",
+  "posCatalogCategories": "Categories",
+  "posCatalogProducts": "Products",
+  "posCatalogFavourites": "Favourites",
+  "posCatalogFavouritesComingTitle": "Favourites Coming Next",
+  "posCatalogFavouritesComingBody": "We will wire favourite products to the local database in the next pass.",
+  "posCatalogSearchHint": "Search",
+  "posCatalogViewList": "List",
+  "posCatalogViewGrid": "Grid",
+  "posClockAm": "AM",
+  "posClockPm": "PM",
+  "posClockMonthJan": "Jan",
+  "posClockMonthFeb": "Feb",
+  "posClockMonthMar": "Mar",
+  "posClockMonthApr": "Apr",
+  "posClockMonthMay": "May",
+  "posClockMonthJun": "Jun",
+  "posClockMonthJul": "Jul",
+  "posClockMonthAug": "Aug",
+  "posClockMonthSep": "Sep",
+  "posClockMonthOct": "Oct",
+  "posClockMonthNov": "Nov",
+  "posClockMonthDec": "Dec",
+  "posClockDate": "{month} {day}, {year}",
+  "@posClockDate": {
+    "placeholders": {
+      "month": {
+        "type": "String"
+      },
+      "day": {
+        "type": "int"
+      },
+      "year": {
+        "type": "int"
+      }
+    }
+  },
+  "posCartEmptyTitle": "Tap any product to start the order",
+  "posCartEmptySubtitle": "The cart, actions, and totals will appear here.",
+  "posCartAddOn": "Add On",
+  "posCartQtyTimesName": "{qty}x {name}",
+  "@posCartQtyTimesName": {
+    "placeholders": {
+      "qty": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "posCartQtyTimesPrice": "{qty} x {price}",
+  "@posCartQtyTimesPrice": {
+    "placeholders": {
+      "qty": {
+        "type": "int"
+      },
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "posCustomizeTitle": "Customize {name}",
+  "@posCustomizeTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "posCustomizeSubtitle": "Select add-ons and leave notes for this order line.",
+  "posCustomizeNotesLabel": "Notes",
+  "posCustomizeNotesHint": "Add preparation notes for the kitchen or cashier",
+  "posCustomizeApply": "Apply {amount}",
+  "@posCustomizeApply": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posProductsEmptySearchTitle": "No products match your search.",
+  "posProductsEmptyCategoryTitle": "No products available here yet.",
+  "posProductsEmptySearchSubtitle": "Try another product name or clear the current search.",
+  "posProductsEmptyCategorySubtitle": "Choose another category or add products to this category later.",
+  "posProductsClearSearch": "Clear Search",
+  "posProductSoldOutBadge": "SOLD OUT",
+  "posProductLowStockBadge": "LOW STOCK",
+  "posProductAdd": "Add",
+  "posPayBtnProcessing": "Processing Payment",
+  "posPayBtnProcessToPay": "Process to Pay",
+  "posPayBtnCompletingOrder": "Completing order",
+  "posPayBtnPayAmount": "PAY {amount}",
+  "@posPayBtnPayAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiningTicketNumber": "Ticket #{number}",
+  "@posDiningTicketNumber": {
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiningRefNumber": "Ref {reference}",
+  "@posDiningRefNumber": {
+    "placeholders": {
+      "reference": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiningSeats": "Seats {count}",
+  "@posDiningSeats": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "posDiningStatusAvailable": "AVAILABLE",
+  "posDiningStatusOccupied": "OCCUPIED",
+  "posDiningStatusPaidClear": "PAID / CLEAR",
+  "posStorageHeldEmptyTitle": "No held orders yet",
+  "posStorageHeldEmptyMessage": "Any order you place on hold will appear here so the staff can continue it later.",
+  "posStorageHistoryEmptyTitle": "No completed orders yet",
+  "posStorageHistoryEmptyMessage": "Completed payments will be archived here so the staff can review them or print receipts again.",
+  "posFingerprintBannerTitle": "Manager cancellation approval",
+  "posFingerprintBannerMessage": "Register once, then use fingerprint approval before opening completed order cancellation.",
+  "posFingerprintRegisterManager": "Register Manager",
+  "posFingerprintWaiting": "Waiting for fingerprint",
+  "posStorageHeldRef": "Ref {ref}",
+  "@posStorageHeldRef": {
+    "placeholders": {
+      "ref": {
+        "type": "String"
+      }
+    }
+  },
+  "posStorageItemsCount": "{count, plural, =1{1 item} other{{count} items}}",
+  "@posStorageItemsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "posStorageSplitBadge": "Split {n}",
+  "@posStorageSplitBadge": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "posStorageItemQtyName": "{qty}x {name}",
+  "@posStorageItemQtyName": {
+    "placeholders": {
+      "qty": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "posStorageContinueOrder": "Continue Order",
+  "posStorageDiscard": "Discard",
+  "posStorageOrderNumber": "Order #{n}",
+  "@posStorageOrderNumber": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "posStorageSplitsCount": "{count, plural, =1{1 split} other{{count} splits}}",
+  "@posStorageSplitsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "posStorageCanceledAmount": "Canceled {amount}",
+  "@posStorageCanceledAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posStorageKitchen": "Kitchen",
+  "posStorageCanceled": "Canceled",
+  "posCancelPageTitle": "Cancel Order #{n}",
+  "@posCancelPageTitle": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "posCancelPageSubtitle": "Manager approved. Cancel the full order or select the completed items to cancel.",
+  "posCancelPageReasonRequired": "Pick a cancellation reason first.",
+  "posCancelPageOrderItems": "Order Items",
+  "posCancelPageCancellableCount": "{count} cancellable",
+  "@posCancelPageCancellableCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "posCancelPageSaving": "Saving...",
+  "posCancelPageCancelSelected": "Cancel Selected ({count})",
+  "@posCancelPageCancelSelected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "posCancelPageCancelFullOrder": "Cancel Full Order",
+  "posCancelPageOrderSummary": "Order Summary",
+  "posCancelPagePaidTotal": "Paid total",
+  "posCancelPageCanceledMetric": "Canceled",
+  "posCancelPagePaymentMetric": "Payment",
+  "posCancelPageCancellationLog": "Cancellation Log",
+  "posCancelPageNoCancellations": "No cancellations recorded.",
+  "posCancelPageItemFallback": "Item",
+  "posCancelPageItemQtyName": "{qty} x {name}",
+  "@posCancelPageItemQtyName": {
+    "placeholders": {
+      "qty": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "posDeliveryPickerTitle": "Choose Delivery Provider",
+  "posDeliveryPickerSubtitle": "Product prices update to the selected provider.",
+  "posKeyboardSpace": "SPACE",
+  "posKeyboardClear": "Clear",
+  "posKeyboardBackspace": "Backspace",
+  "posCustomerSearchFailed": "Search failed. Check the connection.",
+  "posCustomerSearchHint": "Name, phone, or plate",
+  "posCustomerSearchButton": "Search",
+  "posCustomerSearchNoResults": "No customers found.",
+  "posCustomerSearchPoints": "{count, plural, =1{1 point} other{{count} points}}",
+  "@posCustomerSearchPoints": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "posRedeemTitle": "Redeem points",
+  "posRedeemPerBlock": "{points} points = {value} per block",
+  "@posRedeemPerBlock": {
+    "placeholders": {
+      "points": {
+        "type": "int"
+      },
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "posRedeemSummary": "{points} points  →  {value} off",
+  "@posRedeemSummary": {
+    "placeholders": {
+      "points": {
+        "type": "int"
+      },
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "posRedeemConfirm": "Redeem",
+  "posDiscountDlgTitle": "Add Discount",
+  "posDiscountDlgPercentageSection": "Percentage Discounts",
+  "posDiscountDlgFixedSection": "Fixed Discounts",
+  "posDiscountDlgClear": "Clear Discount",
+  "posDiscountDlgApply": "Apply {label}",
+  "@posDiscountDlgApply": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "posSplitDlgTitle": "Split Bill",
+  "posSplitDlgSingleBill": "Single Bill",
+  "posSplitDlgGuests": "{count, plural, =1{1 Guest} other{{count} Guests}}",
+  "@posSplitDlgGuests": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "posSplitDlgEachGuestPays": "Each guest pays",
+  "posSplitDlgSinglePaymentTotal": "Single payment total",
+  "posSplitDlgApplySplit": "Apply Split",
+  "posSplitDlgUseSingleBill": "Use Single Bill",
+  "displayMethodCardShort": "Card"
 }

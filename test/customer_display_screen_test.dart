@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:pos_machine/l10n/l10n.dart';
 import 'package:pos_machine/screens/customer_display_screen.dart';
 
 const rearChannel = MethodChannel('pos_machine/rear_display_channel');
@@ -48,7 +49,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const MaterialApp(home: CustomerDisplayScreen()));
+      await tester.pumpWidget(_localizedCustomerDisplayApp());
       await tester.pump();
 
       await _sendOrderSnapshot({
@@ -113,7 +114,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const MaterialApp(home: CustomerDisplayScreen()));
+      await tester.pumpWidget(_localizedCustomerDisplayApp());
       await tester.pump();
 
       await _sendOrderSnapshot({
@@ -151,7 +152,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const MaterialApp(home: CustomerDisplayScreen()));
+      await tester.pumpWidget(_localizedCustomerDisplayApp());
       await tester.pump();
 
       await _sendOrderSnapshot({
@@ -189,7 +190,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const MaterialApp(home: CustomerDisplayScreen()));
+      await tester.pumpWidget(_localizedCustomerDisplayApp());
       await tester.pump();
 
       await _sendOrderSnapshot({
@@ -227,7 +228,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const MaterialApp(home: CustomerDisplayScreen()));
+      await tester.pumpWidget(_localizedCustomerDisplayApp());
       await tester.pump();
 
       await _sendOrderSnapshot({
@@ -268,7 +269,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const MaterialApp(home: CustomerDisplayScreen()));
+      await tester.pumpWidget(_localizedCustomerDisplayApp());
       await tester.pump();
 
       await _sendOrderSnapshot({
@@ -317,7 +318,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const MaterialApp(home: CustomerDisplayScreen()));
+    await tester.pumpWidget(_localizedCustomerDisplayApp());
     await tester.pump();
 
     await _sendOrderSnapshot({
@@ -359,7 +360,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      await tester.pumpWidget(const MaterialApp(home: CustomerDisplayScreen()));
+      await tester.pumpWidget(_localizedCustomerDisplayApp());
       await tester.pump();
 
       final items = List.generate(5, (index) {
@@ -394,6 +395,15 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('5 item lines in the current order'), findsOneWidget);
     },
+  );
+}
+
+Widget _localizedCustomerDisplayApp() {
+  return const MaterialApp(
+    locale: Locale('en'),
+    supportedLocales: L10n.supportedLocales,
+    localizationsDelegates: L10n.localizationsDelegates,
+    home: CustomerDisplayScreen(),
   );
 }
 

@@ -3,7 +3,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
+import '../services/display_strings.dart';
 import '../services/sunmi_receipt_service.dart';
 import '../widgets/animated_feedback_widgets.dart';
 
@@ -113,19 +115,22 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   bool get _showCharityPrompt => order.showCharityRoundUpPrompt;
   bool get _showLoadingOverlay =>
       _sendingCustomerDecision || order.showPaymentLaunchOverlay;
-  String get _loadingOverlayTitle => _sendingCustomerDecision
-      ? 'Processing Selection'
-      : order.paymentOverlayTitle.isEmpty
-      ? 'Preparing Payment'
-      : order.paymentOverlayTitle;
+  String get _loadingOverlayTitle {
+    final l10n = L10n.of(context);
+    return _sendingCustomerDecision
+        ? l10n.cdProcessingSelectionTitle
+        : order.paymentOverlayTitle.isEmpty
+        ? l10n.cdPreparingPaymentTitle
+        : order.paymentOverlayTitle;
+  }
+
   String get _loadingOverlayMessage {
+    final l10n = L10n.of(context);
     if (_sendingCustomerDecision) {
-      return 'Please wait while we confirm your choice and open the payment terminal.';
+      return l10n.cdProcessingSelectionMessage;
     }
 
-    return order.note.isEmpty
-        ? 'Please wait while the payment terminal is opening.'
-        : order.note;
+    return order.note.isEmpty ? l10n.cdPreparingPaymentMessage : order.note;
   }
 
   bool get _isPaid => order.paymentStatus == 'Paid';
@@ -212,6 +217,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   }
 
   Widget _buildHeader({bool compact = false, bool showPaymentMethod = true}) {
+    final l10n = L10n.of(context);
     final padding = compact
         ? const EdgeInsets.symmetric(horizontal: 22, vertical: 14)
         : const EdgeInsets.symmetric(horizontal: 26, vertical: 20);
@@ -238,14 +244,17 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
               SizedBox(height: compact ? 4 : 6),
               Text(
                 _isPaid
-                    ? 'Payment completed successfully'
+                    ? l10n.cdHeaderPaymentCompleted
                     : _showCharityPrompt
-                    ? 'Review the optional charity round-up before payment'
+                    ? l10n.cdHeaderReviewCharity
                     : order.items.isEmpty
-                    ? 'Your items and total will appear here'
+                    ? l10n.cdHeaderItemsWillAppear
                     : order.diningTableName.trim().isEmpty
-                    ? '${order.items.length} item lines in the current order'
-                    : 'Table ${order.diningTableName.trim()} | ${order.items.length} item lines in the current order',
+                    ? l10n.cdHeaderItemLineCount(order.items.length)
+                    : l10n.cdHeaderTableItemLineCount(
+                        order.diningTableName.trim(),
+                        order.items.length,
+                      ),
                 style: TextStyle(
                   fontSize: subtitleSize,
                   fontWeight: FontWeight.w600,
@@ -256,14 +265,14 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
           ),
           const Spacer(),
           _StatusPill(
-            label: order.paymentStatus,
+            label: localizedPaymentStatus(l10n, order.paymentStatus),
             active: order.paymentStatus != 'Waiting',
             success: _isPaid,
           ),
           if (showPaymentMethod) ...[
             SizedBox(width: spacing),
             _StatusPill(
-              label: order.paymentMethod,
+              label: localizedPaymentMethod(l10n, order.paymentMethod),
               active: true,
               icon: Icons.payments_outlined,
             ),
@@ -274,6 +283,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   }
 
   Widget _buildHeroSummary() {
+    final l10n = L10n.of(context);
     return _customerGlass(
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -305,10 +315,10 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                         children: [
                           Text(
                             _showCharityPrompt
-                                ? 'Round up for charity'
+                                ? l10n.cdHeroRoundUpForCharity
                                 : order.items.isEmpty
-                                ? 'Ready for your order'
-                                : 'Order total',
+                                ? l10n.cdHeroReadyForOrder
+                                : l10n.cdHeroOrderTotal,
                             style: TextStyle(
                               fontSize: labelFont,
                               fontWeight: FontWeight.w700,
@@ -405,8 +415,8 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                         child: Text(
                           order.note.isEmpty
                               ? _showCharityPrompt
-                                    ? 'The extra rounded amount will be donated to charity.'
-                                    : 'Please review your items and total before payment.'
+                                    ? l10n.cdHeroCharityNote
+                                    : l10n.cdHeroReviewNote
                               : order.note,
                           maxLines: tight ? 2 : 3,
                           overflow: TextOverflow.ellipsis,
@@ -457,7 +467,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                             children: [
                               Expanded(
                                 child: _MiniMetricTile(
-                                  label: 'Subtotal',
+                                  label: l10n.cdSubtotalLabel,
                                   value: SunmiReceiptService.money(
                                     order.subtotal,
                                   ),
@@ -467,7 +477,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: _MiniMetricTile(
-                                  label: 'Tax',
+                                  label: l10n.cdTaxLabel,
                                   value: SunmiReceiptService.money(order.tax),
                                   icon: Icons.percent_rounded,
                                 ),
@@ -475,8 +485,11 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: _MiniMetricTile(
-                                  label: 'Payment',
-                                  value: order.paymentMethod,
+                                  label: l10n.cdPaymentLabel,
+                                  value: localizedPaymentMethod(
+                                    l10n,
+                                    order.paymentMethod,
+                                  ),
                                   icon: Icons.credit_score_outlined,
                                 ),
                               ),
@@ -495,7 +508,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                   children: [
                                     Expanded(
                                       child: _MetricCard(
-                                        label: 'Subtotal',
+                                        label: l10n.cdSubtotalLabel,
                                         value: SunmiReceiptService.money(
                                           order.subtotal,
                                         ),
@@ -505,7 +518,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: _MetricCard(
-                                        label: 'Tax',
+                                        label: l10n.cdTaxLabel,
                                         value: SunmiReceiptService.money(
                                           order.tax,
                                         ),
@@ -516,8 +529,11 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 _MetricCard(
-                                  label: 'Payment',
-                                  value: order.paymentMethod,
+                                  label: l10n.cdPaymentLabel,
+                                  value: localizedPaymentMethod(
+                                    l10n,
+                                    order.paymentMethod,
+                                  ),
                                   wide: true,
                                   compact: true,
                                   icon: Icons.credit_score_outlined,
@@ -533,7 +549,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                 children: [
                                   Expanded(
                                     child: _MetricCard(
-                                      label: 'Subtotal',
+                                      label: l10n.cdSubtotalLabel,
                                       value: SunmiReceiptService.money(
                                         order.subtotal,
                                       ),
@@ -543,7 +559,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: _MetricCard(
-                                      label: 'Tax',
+                                      label: l10n.cdTaxLabel,
                                       value: SunmiReceiptService.money(
                                         order.tax,
                                       ),
@@ -554,8 +570,11 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                               ),
                               const SizedBox(height: 10),
                               _MetricCard(
-                                label: 'Payment',
-                                value: order.paymentMethod,
+                                label: l10n.cdPaymentLabel,
+                                value: localizedPaymentMethod(
+                                  l10n,
+                                  order.paymentMethod,
+                                ),
                                 wide: true,
                                 compact: true,
                                 icon: Icons.credit_score_outlined,
@@ -573,7 +592,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                               children: [
                                 Expanded(
                                   child: _MetricCard(
-                                    label: 'Subtotal',
+                                    label: l10n.cdSubtotalLabel,
                                     value: SunmiReceiptService.money(
                                       order.subtotal,
                                     ),
@@ -582,7 +601,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: _MetricCard(
-                                    label: 'Tax',
+                                    label: l10n.cdTaxLabel,
                                     value: SunmiReceiptService.money(order.tax),
                                   ),
                                 ),
@@ -590,8 +609,11 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                             ),
                             SizedBox(height: tight ? 8 : 12),
                             _MetricCard(
-                              label: 'Payment',
-                              value: order.paymentMethod,
+                              label: l10n.cdPaymentLabel,
+                              value: localizedPaymentMethod(
+                                l10n,
+                                order.paymentMethod,
+                              ),
                               wide: true,
                               icon: Icons.credit_score_outlined,
                             ),
@@ -612,17 +634,18 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   }
 
   Widget _buildItemsPanel() {
+    final l10n = L10n.of(context);
     return _customerGlass(
       padding: const EdgeInsets.all(26),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
               Expanded(
                 child: Text(
-                  'Order Details',
-                  style: TextStyle(
+                  l10n.cdOrderDetailsTitle,
+                  style: const TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w900,
                     color: _headline,
@@ -632,9 +655,9 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Live order view for the customer-facing display',
-            style: TextStyle(
+          Text(
+            l10n.cdOrderDetailsSubtitle,
+            style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
               color: _body,
@@ -716,6 +739,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   }
 
   Widget _buildBottomBanner() {
+    final l10n = L10n.of(context);
     return _customerGlass(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
       child: Row(
@@ -744,8 +768,8 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
           Expanded(
             child: Text(
               _isPaid
-                  ? 'Thank you for your visit. Your order has been completed.'
-                  : 'Please review the order details while the cashier prepares payment.',
+                  ? l10n.cdBannerThankYou
+                  : l10n.cdBannerReviewWhileCashier,
               style: const TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
@@ -759,6 +783,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   }
 
   Widget _buildTapPromptCard() {
+    final l10n = L10n.of(context);
     final amountToPay = order.payableTotal > 0
         ? order.payableTotal
         : _charityBaseAmount;
@@ -851,7 +876,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Tap Here To Pay',
+                                  l10n.cdTapToPayTitle,
                                   style: TextStyle(
                                     fontSize: titleSize,
                                     fontWeight: FontWeight.w900,
@@ -861,7 +886,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                 ),
                                 SizedBox(height: compact ? 6 : 8),
                                 Text(
-                                  'Your payment is ready. Please tap your card or phone on the customer-facing NFC area.',
+                                  l10n.cdTapToPaySubtitle,
                                   style: TextStyle(
                                     fontSize: subtitleSize,
                                     height: 1.4,
@@ -897,7 +922,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'Ready for contactless payment',
+                                        l10n.cdContactlessReadyTitle,
                                         style: TextStyle(
                                           fontSize: infoTitleSize,
                                           fontWeight: FontWeight.w800,
@@ -907,7 +932,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                       SizedBox(height: compact ? 10 : 12),
                                       Text(
                                         order.note.isEmpty
-                                            ? 'Hold the card, phone, or wearable near the rear NFC area until the terminal confirms the transaction.'
+                                            ? l10n.cdContactlessHoldHint
                                             : order.note,
                                         style: TextStyle(
                                           fontSize: infoBodySize,
@@ -920,18 +945,18 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                       Wrap(
                                         spacing: chipSpacing,
                                         runSpacing: chipSpacing,
-                                        children: const [
+                                        children: [
                                           _TapHintChip(
                                             icon: Icons.credit_card_rounded,
-                                            label: 'Card',
+                                            label: l10n.cdChipCard,
                                           ),
                                           _TapHintChip(
                                             icon: Icons.phone_android_rounded,
-                                            label: 'Phone',
+                                            label: l10n.cdChipPhone,
                                           ),
                                           _TapHintChip(
                                             icon: Icons.watch_rounded,
-                                            label: 'Wearable',
+                                            label: l10n.cdChipWearable,
                                           ),
                                         ],
                                       ),
@@ -989,7 +1014,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                       ),
                       SizedBox(height: compact ? 16 : 20),
                       Text(
-                        'Total to pay',
+                        l10n.cdTotalToPay,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: amountLabelSize,
@@ -1011,7 +1036,11 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                       SizedBox(height: compact ? 10 : 12),
                       if (showsCharityTotal) ...[
                         Text(
-                          'Includes ${SunmiReceiptService.money(order.charityRoundUpAmount)} charity round-up.',
+                          l10n.cdIncludesCharityRoundUp(
+                            SunmiReceiptService.money(
+                              order.charityRoundUpAmount,
+                            ),
+                          ),
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: captionSize,
@@ -1023,7 +1052,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                         SizedBox(height: compact ? 10 : 12),
                       ],
                       Text(
-                        'Present your card, phone, or wearable to continue the payment.',
+                        l10n.cdPresentToContinue,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: tapBodySize,
@@ -1044,6 +1073,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   }
 
   Widget _buildTapToPayFooter() {
+    final l10n = L10n.of(context);
     return _customerGlass(
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
       child: Row(
@@ -1062,10 +1092,10 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
             child: const Icon(Icons.nfc_rounded, color: _accentDeep),
           ),
           const SizedBox(width: 16),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Keep the card or phone near the customer-facing NFC area until the terminal confirms the payment.',
-              style: TextStyle(
+              l10n.cdTapFooterKeepNear,
+              style: const TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
                 color: _headline,
@@ -1078,6 +1108,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   }
 
   Widget _buildCharityPromptCard() {
+    final l10n = L10n.of(context);
     return _customerGlass(
       padding: const EdgeInsets.all(18),
       child: LayoutBuilder(
@@ -1158,7 +1189,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Round Up For Charity?',
+                                      l10n.cdCharityTitle,
                                       style: TextStyle(
                                         fontSize: titleSize,
                                         fontWeight: FontWeight.w900,
@@ -1168,7 +1199,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                     ),
                                     SizedBox(height: compact ? 4 : 6),
                                     Text(
-                                      'Would you like to round your payment to the next whole OMR? Only the extra amount will be donated to charity.',
+                                      l10n.cdCharityQuestion,
                                       maxLines: compact ? 3 : (dense ? 2 : 3),
                                       overflow: TextOverflow.fade,
                                       style: TextStyle(
@@ -1261,7 +1292,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                       ),
                                       Expanded(
                                         child: Text(
-                                          'A small round-up can make a meaningful donation while keeping your payment simple.',
+                                          l10n.cdCharityEncouragement,
                                           style: TextStyle(
                                             fontSize: compact
                                                 ? 10.5
@@ -1283,8 +1314,9 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
 
                                     final tiles = [
                                       _CharityBreakdownTile(
-                                        label: 'Order Total',
-                                        caption: 'Current order amount',
+                                        label: l10n.cdCharityTileOrderTotal,
+                                        caption: l10n
+                                            .cdCharityTileOrderTotalCaption,
                                         amount: _charityBaseAmount,
                                         icon: Icons.receipt_long_rounded,
                                         accent: const Color(0xFF0C6782),
@@ -1296,8 +1328,9 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                         dense: dense,
                                       ),
                                       _CharityBreakdownTile(
-                                        label: 'Round Up',
-                                        caption: 'Extra donation amount',
+                                        label: l10n.cdCharityTileRoundUp,
+                                        caption:
+                                            l10n.cdCharityTileRoundUpCaption,
                                         amount: order.charityRoundUpAmount,
                                         icon: Icons.volunteer_activism_rounded,
                                         accent: const Color(0xFFAC7600),
@@ -1309,8 +1342,9 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                         dense: dense,
                                       ),
                                       _CharityBreakdownTile(
-                                        label: 'New Total',
-                                        caption: 'Final amount to pay',
+                                        label: l10n.cdCharityTileNewTotal,
+                                        caption:
+                                            l10n.cdCharityTileNewTotalCaption,
                                         amount: order.charityRoundUpTotal > 0
                                             ? order.charityRoundUpTotal
                                             : _charityBaseAmount,
@@ -1370,10 +1404,10 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                       children: [
                         Expanded(
                           child: _CustomerDecisionButton(
-                            title: 'No',
+                            title: l10n.cdCharityNo,
                             subtitle: compactControls
-                                ? 'Keep original total'
-                                : 'Pay the original order total',
+                                ? l10n.cdCharityNoSubtitleShort
+                                : l10n.cdCharityNoSubtitle,
                             icon: Icons.payments_outlined,
                             filled: false,
                             busy: _sendingCustomerDecision,
@@ -1385,10 +1419,10 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                         SizedBox(width: compact ? 12 : (dense ? 14 : 16)),
                         Expanded(
                           child: _CustomerDecisionButton(
-                            title: 'Yes',
+                            title: l10n.cdCharityYes,
                             subtitle: compactControls
-                                ? 'Round up to donate'
-                                : 'Round up and donate the extra amount',
+                                ? l10n.cdCharityYesSubtitleShort
+                                : l10n.cdCharityYesSubtitle,
                             icon: Icons.favorite_rounded,
                             filled: true,
                             busy: _sendingCustomerDecision,
@@ -1410,6 +1444,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   }
 
   Widget _buildTouchTestChip() {
+    final l10n = L10n.of(context);
     final hasPassed = _touchTestTapCount > 0;
 
     return Material(
@@ -1452,7 +1487,9 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    hasPassed ? 'Touch OK x$_touchTestTapCount' : 'Touch Test',
+                    hasPassed
+                        ? l10n.cdTouchOkCount(_touchTestTapCount)
+                        : l10n.cdTouchTestTitle,
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
@@ -1461,7 +1498,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    hasPassed ? _lastTouchTestMessage : 'Tap here to verify',
+                    hasPassed ? _lastTouchTestMessage : l10n.cdTouchTestHint,
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -1478,11 +1515,12 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   }
 
   Future<void> _runTouchTest() async {
+    final l10n = L10n.of(context);
     final nextCount = _touchTestTapCount + 1;
     final now = TimeOfDay.now();
     final formattedTime =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    final message = 'Rear touch detected at $formattedTime (#$nextCount)';
+    final message = l10n.cdTouchDetectedAt(formattedTime, nextCount);
 
     setState(() {
       _touchTestTapCount = nextCount;
@@ -1549,6 +1587,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   }
 
   Widget _buildLoadingOverlay() {
+    final l10n = L10n.of(context);
     return Positioned.fill(
       child: AbsorbPointer(
         absorbing: true,
@@ -1568,8 +1607,8 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                     title: _loadingOverlayTitle,
                     message: _loadingOverlayMessage,
                     badge: _sendingCustomerDecision
-                        ? 'UPDATING CHOICE'
-                        : 'SECURE CARD PAYMENT',
+                        ? l10n.cdBadgeUpdatingChoice
+                        : l10n.cdBadgeSecureCardPayment,
                     icon: _sendingCustomerDecision
                         ? Icons.volunteer_activism_rounded
                         : Icons.credit_card_rounded,
@@ -1869,6 +1908,7 @@ class _SummaryBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 14 : 18,
@@ -1899,9 +1939,7 @@ class _SummaryBanner extends StatelessWidget {
           SizedBox(width: compact ? 10 : 12),
           Expanded(
             child: Text(
-              isPaid
-                  ? 'Thank you. Your payment has been completed.'
-                  : 'A cashier will confirm the order and complete payment when ready.',
+              isPaid ? l10n.cdSummaryPaid : l10n.cdSummaryAwaitingCashier,
               maxLines: compact ? 2 : null,
               overflow: compact ? TextOverflow.ellipsis : TextOverflow.visible,
               style: TextStyle(
@@ -1966,6 +2004,7 @@ class _DisplayItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final imageAsset = item['imageAsset']?.toString();
     final qty = (item['qty'] as num?)?.toInt() ?? 0;
     final total = (item['lineTotal'] as num?)?.toDouble() ?? 0;
@@ -2054,7 +2093,7 @@ class _DisplayItemCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Quantity: $qty',
+                  l10n.cdQuantity(qty),
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -2127,6 +2166,7 @@ class _CustomerEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Center(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
@@ -2144,26 +2184,26 @@ class _CustomerEmptyState extends StatelessWidget {
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(
+          children: [
+            const Icon(
               Icons.receipt_long_outlined,
               size: 50,
               color: _CustomerDisplayScreenState._accentDeep,
             ),
-            SizedBox(height: 14),
+            const SizedBox(height: 14),
             Text(
-              'No items yet',
-              style: TextStyle(
+              l10n.cdNoItemsYet,
+              style: const TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
                 color: _CustomerDisplayScreenState._headline,
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
-              'The display will update as soon as the cashier adds products.',
+              l10n.cdEmptyStateHint,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
                 color: _CustomerDisplayScreenState._body,
@@ -2242,6 +2282,7 @@ class _CharityBreakdownTileState extends State<_CharityBreakdownTile>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final animation = _pulseController ?? const AlwaysStoppedAnimation(0.0);
     final labelSize = widget.compact ? 12.0 : (widget.dense ? 13.0 : 14.0);
     final amountSize = widget.compact ? 21.0 : (widget.dense ? 24.0 : 28.0);
@@ -2352,7 +2393,7 @@ class _CharityBreakdownTileState extends State<_CharityBreakdownTile>
                               ),
                             ),
                             child: Text(
-                              'FINAL',
+                              l10n.cdFinalBadge,
                               style: TextStyle(
                                 fontSize: widget.compact
                                     ? 9

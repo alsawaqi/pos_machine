@@ -1,9 +1,19 @@
+import 'dart:ui' show Locale;
+
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../l10n/l10n.dart';
 
 class ManagerAuthorizationService {
   static const _channel = MethodChannel('com.example.manager_biometrics');
   static const _registeredKey = 'manager_biometric_registered';
+
+  /// Wired by the owning screen (`_managerAuthorization.localize = () =>
+  /// ref.read(l10nProvider);`) so prompts resolve without a BuildContext.
+  L10n Function()? localize;
+
+  L10n get _l10n => localize?.call() ?? lookupL10n(const Locale('en'));
 
   Future<bool> isManagerRegistered() async {
     final preferences = await SharedPreferences.getInstance();
@@ -12,10 +22,10 @@ class ManagerAuthorizationService {
 
   Future<bool> registerManagerFingerprint() async {
     final approved = await _authenticate(
-      title: 'Register Manager Fingerprint',
-      subtitle: 'Manager authorization setup',
-      description: 'Place the manager fingerprint on the device sensor.',
-      negativeButton: 'Cancel',
+      title: _l10n.managerAuthRegisterTitle,
+      subtitle: _l10n.managerAuthRegisterSubtitle,
+      description: _l10n.managerAuthRegisterDescription,
+      negativeButton: _l10n.commonCancel,
     );
     if (!approved) return false;
 
@@ -27,25 +37,25 @@ class ManagerAuthorizationService {
   Future<bool> authenticateCancellation() async {
     if (!await isManagerRegistered()) return false;
     return _authenticate(
-      title: 'Manager Approval Required',
-      subtitle: 'Cancel completed order',
-      description: 'Place your fingerprint to unlock order cancellation.',
-      negativeButton: 'Cancel',
+      title: _l10n.managerAuthApprovalRequiredTitle,
+      subtitle: _l10n.managerAuthCancelOrderSubtitle,
+      description: _l10n.managerAuthCancelOrderDescription,
+      negativeButton: _l10n.commonCancel,
     );
   }
 
   /// Generic manager approval (e.g. an approval-required discount). Returns
   /// false when no manager is registered or the biometric is declined/absent.
   Future<bool> authenticateManagerApproval({
-    String subtitle = 'Manager approval',
-    String description = 'Place the manager fingerprint to approve.',
+    String? subtitle,
+    String? description,
   }) async {
     if (!await isManagerRegistered()) return false;
     return _authenticate(
-      title: 'Manager Approval Required',
-      subtitle: subtitle,
-      description: description,
-      negativeButton: 'Cancel',
+      title: _l10n.managerAuthApprovalRequiredTitle,
+      subtitle: subtitle ?? _l10n.managerAuthDefaultSubtitle,
+      description: description ?? _l10n.managerAuthDefaultDescription,
+      negativeButton: _l10n.commonCancel,
     );
   }
 

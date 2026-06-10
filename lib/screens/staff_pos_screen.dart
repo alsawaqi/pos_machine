@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
+import '../services/display_strings.dart';
 import '../services/manager_authorization_service.dart';
 import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
@@ -159,6 +161,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.onOrderCompleted = _handleOrderCompleted;
     controller.onOrderHeld = _handleOrderHeld;
     controller.onOrderVoided = _handleOrderVoided;
+    // Phase C4 — controller/service-authored messages resolve through the
+    // device language without a BuildContext (see l10nProvider). Stored
+    // messages keep the language they were authored in until the next action.
+    controller.localize = () => ref.read(l10nProvider);
+    _managerAuthorization.localize = () => ref.read(l10nProvider);
     // Keep the printing toggles in sync with Settings.
     final settings = ref.read(settingsControllerProvider);
     controller.printReceipts = settings.printReceipts;
@@ -367,10 +374,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// ALWAYS required; the amount is derived (the line's discounted total, or
   /// the whole discounted subtotal) and validated against the reason's cap.
   Future<void> _openCompDialog() async {
+    final l10n = L10n.of(context);
     if (controller.cart.isEmpty) {
       _showPopupMessage(
-        title: 'Nothing to Comp',
-        message: 'Add items to the order first.',
+        title: l10n.posCompNothingTitle,
+        message: l10n.posCompNothingMessage,
         tone: FeedbackTone.info,
       );
       return;
@@ -382,19 +390,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       final keep = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Comp Applied'),
+          title: Text(l10n.posCompAppliedTitle),
           content: Text(
-            '"${controller.appliedComp!.reasonName}" is comping '
-            '${SunmiReceiptService.money(controller.compAmount)} on this order.',
+            l10n.posCompExistingMessage(
+              controller.appliedComp!.reasonName,
+              SunmiReceiptService.money(controller.compAmount),
+            ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Remove comp'),
+              child: Text(l10n.posCompRemoveButton),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Keep'),
+              child: Text(l10n.posCompKeepButton),
             ),
           ],
         ),
@@ -403,8 +413,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       if (keep == false) {
         controller.removeComp();
         _showPopupMessage(
-          title: 'Comp Removed',
-          message: 'The order is back to its full total.',
+          title: l10n.posCompRemovedTitle,
+          message: l10n.posCompRemovedMessage,
           tone: FeedbackTone.info,
         );
       }
@@ -416,8 +426,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     var authorized = false;
     if (!hasManager) {
       hasManager = await _showFingerprintAuthorizationOverlay(
-        title: 'Register Manager Fingerprint',
-        message: 'Register the manager fingerprint once before comping items.',
+        title: l10n.posManagerRegisterFingerprintTitle,
+        message: l10n.posCompRegisterManagerMessage,
         action: _managerAuthorization.registerManagerFingerprint,
       );
       if (!mounted) return;
@@ -425,16 +435,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
     if (!authorized && hasManager) {
       authorized = await _showFingerprintAuthorizationOverlay(
-        title: 'Manager Approval Required',
-        message: 'Comps always need manager approval.',
+        title: l10n.posManagerApprovalRequiredTitle,
+        message: l10n.posCompManagerApprovalMessage,
         action: _managerAuthorization.authenticateCancellation,
       );
     }
     if (!mounted) return;
     if (!authorized) {
       _showPopupMessage(
-        title: 'Comp Locked',
-        message: 'Manager fingerprint was not approved.',
+        title: l10n.posCompLockedTitle,
+        message: l10n.posManagerFingerprintNotApprovedMessage,
         tone: FeedbackTone.warning,
       );
       return;
@@ -460,22 +470,22 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           final overCap = cap != null && amount > cap + 0.0005;
 
           return AlertDialog(
-            title: const Text('Comp (Manager)'),
+            title: Text(l10n.posCompDialogTitle),
             content: SizedBox(
               width: 460,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('What is being comped?'),
+                  Text(l10n.posCompWhatLabel),
                   const SizedBox(height: 8),
                   DropdownButton<int>(
                     value: lineIndex ?? -1,
                     isExpanded: true,
                     items: [
-                      const DropdownMenuItem(
+                      DropdownMenuItem(
                         value: -1,
-                        child: Text('Whole order'),
+                        child: Text(l10n.posCompWholeOrderOption),
                       ),
                       for (var i = 0; i < cart.length; i++)
                         DropdownMenuItem(
@@ -491,7 +501,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  const Text('Reason'),
+                  Text(l10n.posCompReasonLabel),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
@@ -509,15 +519,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    'Comp amount: ${SunmiReceiptService.money(amount)}',
+                    l10n.posCompAmountLabel(SunmiReceiptService.money(amount)),
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   if (overCap)
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
                       child: Text(
-                        'Exceeds the "${reason!.name}" cap of '
-                        '${SunmiReceiptService.money(cap)}.',
+                        l10n.posCompExceedsCapMessage(
+                          reason!.name,
+                          SunmiReceiptService.money(cap),
+                        ),
                         style: const TextStyle(color: Color(0xFFB84524)),
                       ),
                     ),
@@ -527,13 +539,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
+                child: Text(l10n.commonCancel),
               ),
               FilledButton(
                 onPressed: (reason == null || overCap)
                     ? null
                     : () => Navigator.pop(ctx, true),
-                child: const Text('Apply comp'),
+                child: Text(l10n.posCompApplyButton),
               ),
             ],
           );
@@ -548,9 +560,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       lineIndex: lineIndex,
     ));
     _showPopupMessage(
-      title: 'Comp Applied',
-      message:
-          '"${reason!.name}" — ${SunmiReceiptService.money(controller.compAmount)} written off.',
+      title: l10n.posCompAppliedTitle,
+      message: l10n.posCompAppliedMessage(
+        reason!.name,
+        SunmiReceiptService.money(controller.compAmount),
+      ),
       tone: FeedbackTone.success,
     );
   }
@@ -982,12 +996,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Future<void> _submitCashPayment() async {
     if (controller.isProcessingPayment) return;
+    final l10n = L10n.of(context);
     final tendered = _tenderedCashAmount;
     if (tendered < controller.activePaymentBaseTotal) {
       _showPopupMessage(
-        title: 'Tendered Amount Too Low',
-        message:
-            'Tendered cash must be at least ${SunmiReceiptService.money(controller.activePaymentBaseTotal)}.',
+        title: l10n.posPayTenderedTooLowTitle,
+        message: l10n.posPayTenderedTooLowMessage(
+          SunmiReceiptService.money(controller.activePaymentBaseTotal),
+        ),
         tone: FeedbackTone.warning,
       );
       return;
@@ -1021,11 +1037,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Future<void> _submitMixedPayment() async {
     if (controller.isProcessingPayment) return;
+    final l10n = L10n.of(context);
     if (controller.splitCount > 1 || controller.hasRecordedSplitPayments) {
       _showPopupMessage(
-        title: 'Clear Split Bill First',
-        message:
-            'Cash and card split payment can be used after clearing guest split bill.',
+        title: l10n.posPayClearSplitFirstTitle,
+        message: l10n.posPayClearSplitFirstMessage,
         tone: FeedbackTone.warning,
       );
       return;
@@ -1035,9 +1051,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (cashAmount <= 0 ||
         cashAmount + 0.0005 >= controller.activePaymentBaseTotal) {
       _showPopupMessage(
-        title: 'Enter Cash Portion',
-        message:
-            'Enter the cash amount first. It must be less than ${SunmiReceiptService.money(controller.activePaymentBaseTotal)} so the rest can go to card.',
+        title: l10n.posPayEnterCashPortionTitle,
+        message: l10n.posPayEnterCashPortionMessage(
+          SunmiReceiptService.money(controller.activePaymentBaseTotal),
+        ),
         tone: FeedbackTone.warning,
       );
       return;
@@ -1088,6 +1105,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _handleHoldOrder() async {
+    final l10n = L10n.of(context);
     final message = await controller.holdCurrentOrder();
     if (!mounted || message == null) return;
 
@@ -1097,26 +1115,26 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       _customerNumberController.clear();
     });
     _showPopupMessage(
-      title: 'Order Held',
+      title: l10n.posHoldOrderHeldTitle,
       message: message,
       tone: FeedbackTone.success,
     );
   }
 
   Future<void> _openHeldOrdersDialog() async {
+    final l10n = L10n.of(context);
     await controller.refreshHeldOrders();
     if (!mounted) return;
 
     final resumed = await showGeneralDialog<bool>(
       context: context,
       barrierDismissible: true,
-      barrierLabel: 'Held Orders',
+      barrierLabel: l10n.posHeldOrdersTitle,
       barrierColor: Colors.black.withValues(alpha: 0.32),
       pageBuilder: (context, animation, secondaryAnimation) {
         return _StorageOverlayShell(
-          title: 'Held Orders',
-          subtitle:
-              'Resume any paused ticket and continue from where you left off.',
+          title: l10n.posHeldOrdersTitle,
+          subtitle: l10n.posHeldOrdersSubtitle,
           child: _HeldOrdersPanel(
             records: controller.heldOrders,
             onResume: (record) async {
@@ -1125,7 +1143,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               Navigator.of(context).pop(true);
               if (message != null && mounted) {
                 _showPopupMessage(
-                  title: 'Held Order Resumed',
+                  title: l10n.posHeldResumedTitle,
                   message: message,
                   tone: FeedbackTone.success,
                 );
@@ -1137,19 +1155,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               final confirmed = await showDialog<bool>(
                 context: context,
                 builder: (dialogContext) => AlertDialog(
-                  title: const Text('Discard Held Order?'),
+                  title: Text(l10n.posHeldDiscardConfirmTitle),
                   content: Text(
-                    'Reference ${record.orderReference} will be removed and '
-                    'cannot be resumed afterwards.',
+                    l10n.posHeldDiscardConfirmMessage(record.orderReference),
                   ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(dialogContext).pop(false),
-                      child: const Text('Keep It'),
+                      child: Text(l10n.posHeldKeepButton),
                     ),
                     FilledButton(
                       onPressed: () => Navigator.of(dialogContext).pop(true),
-                      child: const Text('Discard'),
+                      child: Text(l10n.posHeldDiscardButton),
                     ),
                   ],
                 ),
@@ -1160,7 +1177,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               Navigator.of(context).pop(false);
               if (mounted) {
                 _showPopupMessage(
-                  title: 'Held Order Discarded',
+                  title: l10n.posHeldDiscardedTitle,
                   message: message,
                   tone: FeedbackTone.warning,
                 );
@@ -1195,6 +1212,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openOrderHistoryDialog() async {
+    final l10n = L10n.of(context);
     // Branch-wide history (cross-device) from the server when online; fall back
     // to the device-local store offline. This is what lets a freshly-paired or
     // second device at the branch see prior orders rung on other devices.
@@ -1209,13 +1227,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     await showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
-      barrierLabel: 'Order History',
+      barrierLabel: l10n.posHistoryTitle,
       barrierColor: Colors.black.withValues(alpha: 0.32),
       pageBuilder: (context, animation, secondaryAnimation) {
         return _StorageOverlayShell(
-          title: 'Order History',
-          subtitle:
-              'Review completed orders, their payment details, and reprint receipts whenever needed.',
+          title: l10n.posHistoryTitle,
+          subtitle: l10n.posHistorySubtitle,
           child: _OrderHistoryPanel(
             records: controller.orderHistory,
             onRegisterManager: _registerManagerFingerprint,
@@ -1223,9 +1240,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               await controller.printHistoricalReceipt(record);
               if (!mounted) return;
               _showPopupMessage(
-                title: 'Receipt Printed',
-                message:
-                    'Previous receipt for order #${record.orderNumber} was sent to the printer.',
+                title: l10n.posHistoryReceiptPrintedTitle,
+                message: l10n.posHistoryReceiptPrintedMessage(
+                  record.orderNumber,
+                ),
                 tone: FeedbackTone.success,
               );
             },
@@ -1266,16 +1284,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// "kitchen ticket reprint requires Manager permission"; the customer
   /// receipt reprint stays free).
   Future<void> _handleKitchenTicketReprint(OrderHistoryRecord record) async {
+    final l10n = L10n.of(context);
     final ok = await _managerAuthorization.authenticateManagerApproval(
-      subtitle: 'Reprint kitchen ticket',
-      description:
-          'Place the manager fingerprint to reprint the kitchen ticket for order #${record.orderNumber}.',
+      subtitle: l10n.posKitchenReprintSubtitle,
+      description: l10n.posKitchenReprintDescription(record.orderNumber),
     );
     if (!mounted) return;
     if (!ok) {
       _showPopupMessage(
-        title: 'Approval Required',
-        message: 'Manager approval was not granted for the kitchen reprint.',
+        title: l10n.posKitchenApprovalRequiredTitle,
+        message: l10n.posKitchenApprovalDeniedMessage,
         tone: FeedbackTone.warning,
       );
       return;
@@ -1284,26 +1302,28 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     await controller.printHistoricalKitchenTicket(record);
     if (!mounted) return;
     _showPopupMessage(
-      title: 'Kitchen Ticket Printed',
-      message:
-          'Kitchen ticket for order #${record.orderNumber} was sent to the printer.',
+      title: l10n.posKitchenTicketPrintedTitle,
+      message: l10n.posKitchenTicketPrintedMessage(record.orderNumber),
       tone: FeedbackTone.success,
     );
   }
 
   Future<void> _registerManagerFingerprint() async {
+    final l10n = L10n.of(context);
     final registered = await _showFingerprintAuthorizationOverlay(
-      title: 'Register Manager Fingerprint',
-      message: 'Place the manager finger on the sensor to enable cancellation.',
+      title: l10n.posManagerRegisterFingerprintTitle,
+      message: l10n.posManagerRegisterSensorMessage,
       action: _managerAuthorization.registerManagerFingerprint,
     );
     if (!mounted) return;
 
     _showPopupMessage(
-      title: registered ? 'Manager Registered' : 'Registration Not Completed',
+      title: registered
+          ? l10n.posManagerRegisteredTitle
+          : l10n.posManagerRegistrationNotCompletedTitle,
       message: registered
-          ? 'Manager fingerprint approval is ready for order cancellation.'
-          : 'The manager fingerprint was not registered on this terminal.',
+          ? l10n.posManagerRegisteredMessage
+          : l10n.posManagerNotRegisteredMessage,
       tone: registered ? FeedbackTone.success : FeedbackTone.warning,
     );
   }
@@ -1312,6 +1332,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     required BuildContext historyDialogContext,
     required OrderHistoryRecord record,
   }) async {
+    final l10n = L10n.of(context);
     // v2 #14 — company policy gate: only allowed staff positions may cancel an
     // order at the POS (on top of the manager-fingerprint step below).
     final position = ref.read(sessionServiceProvider).staff?.position;
@@ -1320,8 +1341,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         Navigator.of(historyDialogContext).pop();
       }
       _showPopupMessage(
-        title: 'Cancellation Not Allowed',
-        message: 'Your role is not permitted to cancel orders on this terminal.',
+        title: l10n.posCancelReqNotAllowedTitle,
+        message: l10n.posCancelReqNotAllowedMessage,
         tone: FeedbackTone.warning,
       );
       return;
@@ -1333,9 +1354,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
     if (!hasManager) {
       hasManager = await _showFingerprintAuthorizationOverlay(
-        title: 'Register Manager Fingerprint',
-        message:
-            'Register the manager fingerprint once before cancelling this completed order.',
+        title: l10n.posManagerRegisterFingerprintTitle,
+        message: l10n.posCancelReqRegisterManagerMessage,
         action: _managerAuthorization.registerManagerFingerprint,
       );
       if (!mounted) return;
@@ -1344,9 +1364,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           Navigator.of(historyDialogContext).pop();
         }
         _showPopupMessage(
-          title: 'Manager Fingerprint Required',
-          message:
-              'The manager fingerprint was not registered on this terminal.',
+          title: l10n.posCancelReqManagerRequiredTitle,
+          message: l10n.posManagerNotRegisteredMessage,
           tone: FeedbackTone.warning,
         );
         return;
@@ -1356,8 +1375,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
     if (!authorized && hasManager) {
       authorized = await _showFingerprintAuthorizationOverlay(
-        title: 'Manager Approval Required',
-        message: 'Place the manager fingerprint to unlock cancellation.',
+        title: l10n.posManagerApprovalRequiredTitle,
+        message: l10n.posCancelReqUnlockMessage,
         action: _managerAuthorization.authenticateCancellation,
       );
     }
@@ -1368,8 +1387,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         Navigator.of(historyDialogContext).pop();
       }
       _showPopupMessage(
-        title: 'Cancellation Locked',
-        message: 'Manager fingerprint was not approved.',
+        title: l10n.posCancelReqLockedTitle,
+        message: l10n.posManagerFingerprintNotApprovedMessage,
         tone: FeedbackTone.warning,
       );
       return;
@@ -1383,7 +1402,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (!mounted || message == null || message.isEmpty) return;
 
     _showPopupMessage(
-      title: message.contains('fully') ? 'Order Canceled' : 'Items Canceled',
+      title: message.contains('fully')
+          ? l10n.posCancelReqOrderCanceledTitle
+          : l10n.posCancelReqItemsCanceledTitle,
       message: message,
       tone: FeedbackTone.success,
     );
@@ -1430,7 +1451,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     return showGeneralDialog<String>(
       context: context,
       barrierDismissible: true,
-      barrierLabel: 'Cancel Order',
+      barrierLabel: L10n.of(context).posCancelReqDialogTitle,
       barrierColor: Colors.black.withValues(alpha: 0.36),
       pageBuilder: (context, animation, secondaryAnimation) {
         return _OrderCancellationPage(
@@ -1476,13 +1497,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openSearchKeyboard() async {
+    final l10n = L10n.of(context);
     final value = await showDialog<String>(
       context: context,
       barrierDismissible: true,
       builder: (context) => _InAppKeyboardDialog(
-        title: 'Search Products',
+        title: l10n.posSearchProductsTitle,
         initialValue: controller.productSearchQuery,
-        hintText: 'Type product name or category',
+        hintText: l10n.posSearchProductsHint,
       ),
     );
 
@@ -1492,6 +1514,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   /// Customer field tap: search the live book (with loyalty), or enter a number.
   Future<void> _openCustomerChooser() async {
+    final l10n = L10n.of(context);
     final choice = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -1500,20 +1523,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.person_search_rounded),
-              title: const Text('Search customer'),
-              subtitle: const Text('Find by name / phone / plate, see loyalty'),
+              title: Text(l10n.posCustomerSearchOption),
+              subtitle: Text(l10n.posCustomerSearchOptionSubtitle),
               onTap: () => Navigator.pop(ctx, 'search'),
             ),
             ListTile(
               leading: const Icon(Icons.dialpad_rounded),
-              title: const Text('Enter number'),
+              title: Text(l10n.posCustomerEnterNumberOption),
               onTap: () => Navigator.pop(ctx, 'manual'),
             ),
             if (controller.selectedCustomer != null ||
                 controller.customerReferenceNumber.isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.person_off_outlined),
-                title: const Text('Clear customer'),
+                title: Text(l10n.posCustomerClearOption),
                 onTap: () => Navigator.pop(ctx, 'clear'),
               ),
           ],
@@ -1533,6 +1556,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openCustomerSearch() async {
+    final l10n = L10n.of(context);
     final result = await showDialog<CustomerSearchResult>(
       context: context,
       builder: (_) => _CustomerSearchDialog(
@@ -1555,20 +1579,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         ? result.pointsForRule(controller.activeEarnRule!.id)
         : 0;
     _showPopupMessage(
-      title: 'Customer Attached',
-      message: '${result.name}${pts > 0 ? '  ·  $pts points' : ''}',
+      title: l10n.posCustomerAttachedTitle,
+      message: pts > 0
+          ? l10n.posCustomerAttachedWithPoints(result.name, pts)
+          : result.name,
       tone: FeedbackTone.success,
     );
   }
 
   Future<void> _openCustomerNumberKeyboard() async {
+    final l10n = L10n.of(context);
     final value = await showDialog<String>(
       context: context,
       barrierDismissible: true,
       builder: (context) => _InAppKeyboardDialog(
-        title: 'Customer Number',
+        title: l10n.posCustomerNumberTitle,
         initialValue: _customerNumberController.text,
-        hintText: 'Enter number, then fetch loyalty',
+        hintText: l10n.posCustomerNumberHint,
         numbersOnly: true,
       ),
     );
@@ -1605,8 +1632,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
     if (match == null) {
       _showPopupMessage(
-        title: 'No Customer Found',
-        message: 'No customer matches "$q". Kept as an order reference.',
+        title: l10n.posCustomerNotFoundTitle,
+        message: l10n.posCustomerNotFoundMessage(q),
         tone: FeedbackTone.info,
       );
       return;
@@ -1616,31 +1643,33 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     setState(() =>
         _customerNumberController.text = controller.customerReferenceNumber);
     _showPopupMessage(
-      title: 'Customer Attached',
-      message: '${match.name}  ·  ${_loyaltySummary(match)}',
+      title: l10n.posCustomerAttachedTitle,
+      message:
+          l10n.posCustomerAttachedSummary(match.name, _loyaltySummary(l10n, match)),
       tone: FeedbackTone.success,
     );
   }
 
   /// A short loyalty summary (total points + stamps across rules) for the
   /// attach confirmation — the "check loyalty" readout.
-  String _loyaltySummary(CustomerSearchResult c) {
+  String _loyaltySummary(L10n l10n, CustomerSearchResult c) {
     final pts = c.loyalty.fold<int>(0, (s, b) => s + b.points);
     final stamps = c.loyalty.fold<int>(0, (s, b) => s + b.stamps);
     final parts = <String>[];
-    if (pts > 0) parts.add('$pts pts');
-    if (stamps > 0) parts.add('$stamps stamps');
-    return parts.isEmpty ? 'no loyalty yet' : parts.join('  ·  ');
+    if (pts > 0) parts.add(l10n.posLoyaltySummaryPoints(pts));
+    if (stamps > 0) parts.add(l10n.posLoyaltySummaryStamps(stamps));
+    return parts.isEmpty ? l10n.posLoyaltyNoneYet : parts.join('  ·  ');
   }
 
   Future<void> _openVehiclePlateKeyboard() async {
+    final l10n = L10n.of(context);
     final value = await showDialog<String>(
       context: context,
       barrierDismissible: true,
       builder: (context) => _InAppKeyboardDialog(
-        title: 'Vehicle Plate',
+        title: l10n.posPlateTitle,
         initialValue: _vehiclePlateController.text,
-        hintText: 'Enter the car plate number',
+        hintText: l10n.posPlateHint,
       ),
     );
 
@@ -1664,11 +1693,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openDeliveryProviderPicker() async {
+    final l10n = L10n.of(context);
     final providers = controller.deliveryProviders;
     if (providers.isEmpty) {
       _showPlaceholderMessage(
-        'No Delivery Providers',
-        'No delivery providers are set up yet. Add them in the merchant portal.',
+        l10n.posMsgNoDeliveryProvidersTitle,
+        l10n.posMsgNoDeliveryProvidersMessage,
       );
       return;
     }
@@ -1684,13 +1714,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openDiningSearchKeyboard() async {
+    final l10n = L10n.of(context);
     final value = await showDialog<String>(
       context: context,
       barrierDismissible: true,
       builder: (context) => _InAppKeyboardDialog(
-        title: 'Search Tables',
+        title: l10n.posSearchTablesTitle,
         initialValue: controller.diningTableSearchQuery,
-        hintText: 'Search by table name or ticket',
+        hintText: l10n.posSearchTablesHint,
       ),
     );
 
@@ -1702,6 +1733,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     DiningTableDefinition table,
     DiningTableSession session,
   ) async {
+    final l10n = L10n.of(context);
     final snapshot = session.paidSnapshot;
 
     await showDialog<void>(
@@ -1725,7 +1757,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        '${table.name} Paid',
+                        l10n.posDiningTablePaidTitle(table.name),
                         style: const TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w900,
@@ -1741,7 +1773,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Ticket #${session.orderNumber ?? snapshot?.orderNumber ?? '-'} was paid successfully. Clear the table when it is ready for the next guest.',
+                  l10n.posDiningTicketPaidMessage(
+                      '${session.orderNumber ?? snapshot?.orderNumber ?? '-'}'),
                   style: TextStyle(
                     fontSize: 15,
                     height: 1.45,
@@ -1755,7 +1788,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     Expanded(
                       child: _glassInsetCard(
                         child: _fallbackAmountBlock(
-                          title: 'Paid Total',
+                          title: l10n.posDiningPaidTotalLabel,
                           amount: snapshot?.payableTotal ?? session.total,
                           tint: const Color(0xFFDDF5EA),
                         ),
@@ -1765,7 +1798,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     Expanded(
                       child: _glassInsetCard(
                         child: _fallbackAmountBlock(
-                          title: 'Floor',
+                          title: l10n.posDiningFloorLabel,
                           amount: 0,
                           tint: const Color(0xFFEAF2F8),
                           valueText: controller.diningFloors
@@ -1782,7 +1815,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   children: [
                     Expanded(
                       child: _OutlineActionButton(
-                        label: 'Close',
+                        label: l10n.commonClose,
                         icon: Icons.close_rounded,
                         onTap: () => Navigator.of(context).pop(),
                       ),
@@ -1790,15 +1823,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _FilledActionButton(
-                        label: 'Clear Table',
+                        label: l10n.posDiningClearTableButton,
                         onTap: () async {
                           Navigator.of(context).pop();
                           await controller.clearDiningTableById(table.id);
                           if (!mounted) return;
                           _showPopupMessage(
-                            title: '${table.name} Cleared',
+                            title: l10n.posDiningTableClearedTitle(table.name),
                             message:
-                                '${table.name} is now available for the next guest.',
+                                l10n.posDiningTableClearedMessage(table.name),
                             tone: FeedbackTone.success,
                           );
                         },
@@ -1818,6 +1851,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// the cached catalog) first, plus a custom amount and a remove option. With
   /// no applicable rules it falls straight through to the manual editor.
   Future<void> _openDiscountDialog() async {
+    final l10n = L10n.of(context);
     final branchId = ref.read(sessionControllerProvider).branchId ?? 0;
     final now = DateTime.now();
     final applicable = controller.availableDiscounts
@@ -1838,31 +1872,36 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 16, 8),
               child: Align(
-                alignment: Alignment.centerLeft,
+                alignment: AlignmentDirectional.centerStart,
                 child: Text(
-                  'Apply a discount',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                  l10n.posDiscountSheetTitle,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 16),
                 ),
               ),
             ),
             if (redeem != null)
               ListTile(
                 leading: const Icon(Icons.card_giftcard_rounded),
-                title: const Text('Redeem loyalty points'),
+                title: Text(l10n.posDiscountRedeemPointsOption),
                 subtitle: Text(
-                  '${redeem.points} points available  ·  ${redeem.rule.name}',
+                  l10n.posDiscountRedeemPointsSubtitle(
+                      redeem.points, redeem.rule.name),
                 ),
                 onTap: () => Navigator.pop(ctx, (type: 'redeem', rule: null)),
               ),
             if (redeemStamp != null)
               ListTile(
                 leading: const Icon(Icons.workspace_premium_rounded),
-                title: const Text('Redeem stamp reward'),
+                title: Text(l10n.posDiscountRedeemStampOption),
                 subtitle: Text(
-                  '${redeemStamp.stamps} stamps → ${SunmiReceiptService.money(redeemStamp.valueOmr)} off  ·  ${redeemStamp.rule.name}',
+                  l10n.posDiscountStampRewardSubtitle(
+                      redeemStamp.stamps,
+                      SunmiReceiptService.money(redeemStamp.valueOmr),
+                      redeemStamp.rule.name),
                 ),
                 onTap: () => Navigator.pop(ctx, (type: 'redeem_stamp', rule: null)),
               ),
@@ -1871,9 +1910,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 leading: const Icon(Icons.local_offer_outlined),
                 title: Text(d.name),
                 subtitle: Text(
-                  _discountSubtitle(d) +
+                  _discountSubtitle(l10n, d) +
                       (d.requiresManagerApproval
-                          ? '  ·  manager approval'
+                          ? '  ·  ${l10n.posDiscountManagerApprovalTag}'
                           : ''),
                 ),
                 onTap: () => Navigator.pop(ctx, (type: 'rule', rule: d)),
@@ -1881,13 +1920,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             const Divider(height: 0),
             ListTile(
               leading: const Icon(Icons.tune),
-              title: const Text('Custom amount'),
+              title: Text(l10n.posDiscountCustomAmountOption),
               onTap: () => Navigator.pop(ctx, (type: 'custom', rule: null)),
             ),
             if (controller.discount.isActive)
               ListTile(
                 leading: const Icon(Icons.delete_outline),
-                title: const Text('Remove discount'),
+                title: Text(l10n.posDiscountRemoveOption),
                 onTap: () => Navigator.pop(ctx, (type: 'remove', rule: null)),
               ),
           ],
@@ -1902,8 +1941,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       case 'remove':
         controller.clearDiscount();
         _showPopupMessage(
-          title: 'Discount Cleared',
-          message: 'The order discount has been removed.',
+          title: l10n.posDiscountClearedTitle,
+          message: l10n.posDiscountClearedMessage,
           tone: FeedbackTone.info,
         );
       case 'rule':
@@ -1974,23 +2013,27 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// Confirm + apply a visit_based stamp reward (spends stampsRequired stamps
   /// for a one-off discount; the stamps ride as loyalty_redeem on pay).
   Future<void> _redeemStamp() async {
+    final l10n = L10n.of(context);
     final redeem = _redeemableStamp();
     if (redeem == null) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Redeem stamp reward'),
+        title: Text(l10n.posDiscountRedeemStampOption),
         content: Text(
-          '${redeem.stamps} stamps → ${SunmiReceiptService.money(redeem.valueOmr)} off  ·  ${redeem.rule.name}',
+          l10n.posDiscountStampRewardSubtitle(
+              redeem.stamps,
+              SunmiReceiptService.money(redeem.valueOmr),
+              redeem.rule.name),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Redeem'),
+            child: Text(l10n.posLoyaltyRedeemButton),
           ),
         ],
       ),
@@ -2004,9 +2047,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       label: 'Stamp reward',
     );
     _showPopupMessage(
-      title: 'Reward Redeemed',
-      message:
-          '${redeem.stamps} stamps → ${SunmiReceiptService.money(redeem.valueOmr)} off.',
+      title: l10n.posLoyaltyRewardRedeemedTitle,
+      message: l10n.posLoyaltyStampRedeemedMessage(
+          redeem.stamps, SunmiReceiptService.money(redeem.valueOmr)),
       tone: FeedbackTone.success,
     );
   }
@@ -2014,18 +2057,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// Entry point for the payment-console "Redeem Loyalty" action: surfaces
   /// points + stamp redemption (via the discount sheet) or a helpful message.
   Future<void> _openLoyaltyRedeem() async {
+    final l10n = L10n.of(context);
     if (controller.selectedCustomer == null) {
       _showPopupMessage(
-        title: 'No Customer',
-        message: 'Attach a customer first to redeem loyalty.',
+        title: l10n.posLoyaltyNoCustomerTitle,
+        message: l10n.posLoyaltyNoCustomerMessage,
         tone: FeedbackTone.info,
       );
       return;
     }
     if (_redeemable() == null && _redeemableStamp() == null) {
       _showPopupMessage(
-        title: 'Nothing to Redeem',
-        message: 'No redeemable points or stamps for this order yet.',
+        title: l10n.posLoyaltyNothingToRedeemTitle,
+        message: l10n.posLoyaltyNothingToRedeemMessage,
         tone: FeedbackTone.info,
       );
       return;
@@ -2034,6 +2078,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openRedeemDialog() async {
+    final l10n = L10n.of(context);
     final redeem = _redeemable();
     if (redeem == null) return;
     final rule = redeem.rule;
@@ -2045,8 +2090,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final maxBlocks = byBalance < byTotal ? byBalance : byTotal;
     if (maxBlocks < 1) {
       _showPopupMessage(
-        title: 'Cannot Redeem',
-        message: 'The order total is too low to redeem a block.',
+        title: l10n.posLoyaltyCannotRedeemTitle,
+        message: l10n.posLoyaltyCannotRedeemMessage,
         tone: FeedbackTone.warning,
       );
       return;
@@ -2069,28 +2114,32 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       label: 'Loyalty redemption',
     );
     _showPopupMessage(
-      title: 'Points Redeemed',
-      message:
-          '${blocks * rule.redemptionPoints} points → ${SunmiReceiptService.money(blocks * rule.redemptionValue)} off.',
+      title: l10n.posLoyaltyPointsRedeemedTitle,
+      message: l10n.posLoyaltyPointsRedeemedMessage(
+          blocks * rule.redemptionPoints,
+          SunmiReceiptService.money(blocks * rule.redemptionValue)),
       tone: FeedbackTone.success,
     );
   }
 
-  String _discountSubtitle(MerchantDiscount d) => d.amountType == 'percent'
-      ? '${(d.percent ?? 0).toStringAsFixed(0)}% off'
-      : '${SunmiReceiptService.money(d.fixedAmount ?? 0)} off';
+  String _discountSubtitle(L10n l10n, MerchantDiscount d) =>
+      d.amountType == 'percent'
+          ? l10n.posDiscountPercentOff((d.percent ?? 0).toStringAsFixed(0))
+          : l10n.posDiscountAmountOff(
+              SunmiReceiptService.money(d.fixedAmount ?? 0));
 
   Future<void> _applyMerchantDiscount(MerchantDiscount d) async {
+    final l10n = L10n.of(context);
     if (d.requiresManagerApproval) {
       final ok = await _managerAuthorization.authenticateManagerApproval(
-        subtitle: 'Approve discount',
-        description: 'Place the manager fingerprint to approve "${d.name}".',
+        subtitle: l10n.posDiscountApproveSubtitle,
+        description: l10n.posDiscountApproveDescription(d.name),
       );
       if (!mounted) return;
       if (!ok) {
         _showPopupMessage(
-          title: 'Approval Required',
-          message: 'Manager approval was not granted for "${d.name}".',
+          title: l10n.posDiscountApprovalRequiredTitle,
+          message: l10n.posDiscountApprovalDeniedMessage(d.name),
           tone: FeedbackTone.warning,
         );
         return;
@@ -2098,13 +2147,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
     controller.applyDiscount(d.toConfiguration());
     _showPopupMessage(
-      title: 'Discount Applied',
-      message: '${d.name} is now active.',
+      title: l10n.posDiscountAppliedTitle,
+      message: l10n.posDiscountAppliedMessage(d.name),
       tone: FeedbackTone.success,
     );
   }
 
   Future<void> _openManualDiscountDialog() async {
+    final l10n = L10n.of(context);
     final value = await showDialog<DiscountConfiguration>(
       context: context,
       barrierDismissible: true,
@@ -2116,26 +2166,27 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (value.isActive) {
       controller.applyDiscount(value);
       _showPopupMessage(
-        title: 'Discount Applied',
-        message:
-            '${value.label.isEmpty ? 'Order discount' : value.label} is now active.',
+        title: l10n.posDiscountAppliedTitle,
+        message: l10n.posDiscountAppliedMessage(
+            value.label.isEmpty ? l10n.posDiscountDefaultLabel : value.label),
         tone: FeedbackTone.success,
       );
     } else {
       controller.clearDiscount();
       _showPopupMessage(
-        title: 'Discount Cleared',
-        message: 'The order discount has been removed.',
+        title: l10n.posDiscountClearedTitle,
+        message: l10n.posDiscountClearedMessage,
         tone: FeedbackTone.info,
       );
     }
   }
 
   Future<void> _openSplitBillDialog() async {
+    final l10n = L10n.of(context);
     if (controller.hasRecordedSplitPayments) {
       _showPopupMessage(
-        title: 'Split Payment In Progress',
-        message: 'Finish all split payments before changing the guest count.',
+        title: l10n.posSplitInProgressTitle,
+        message: l10n.posSplitInProgressMessage,
         tone: FeedbackTone.warning,
       );
       return;
@@ -2155,16 +2206,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (split <= 1) {
       controller.clearSplit();
       _showPopupMessage(
-        title: 'Split Bill Cleared',
-        message: 'The order is back to a single payment.',
+        title: l10n.posSplitClearedTitle,
+        message: l10n.posSplitClearedMessage,
         tone: FeedbackTone.info,
       );
     } else {
       controller.setSplitCount(split);
       _showPopupMessage(
-        title: 'Split Bill Ready',
-        message:
-            'The order is split into $split shares of ${SunmiReceiptService.money(controller.activePaymentBaseTotal)} each.',
+        title: l10n.posSplitReadyTitle,
+        message: l10n.posSplitReadyMessage(split,
+            SunmiReceiptService.money(controller.activePaymentBaseTotal)),
         tone: FeedbackTone.success,
       );
     }
@@ -2215,15 +2266,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   String _paymentMessageTitle() {
+    final l10n = L10n.of(context);
     return switch (controller.paymentStatus) {
       'Paid' =>
         controller.selectedPaymentMethod == 'Cash'
-            ? 'Cash Payment Complete'
-            : 'Payment Approved',
-      'Split payment pending' => 'Split Payment Recorded',
-      'Payment canceled' => 'Payment Canceled',
-      'Payment failed' => 'Payment Failed',
-      _ => 'Payment Update',
+            ? l10n.posMsgCashPaymentCompleteTitle
+            : l10n.posMsgPaymentApprovedTitle,
+      'Split payment pending' => l10n.posMsgSplitPaymentRecordedTitle,
+      'Payment canceled' => l10n.posMsgPaymentCanceledTitle,
+      'Payment failed' => l10n.posMsgPaymentFailedTitle,
+      _ => l10n.posMsgPaymentUpdateTitle,
     };
   }
 
@@ -2401,6 +2453,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildStaffCharityFallbackOverlay() {
+    final l10n = L10n.of(context);
     return Stack(
       children: [
         ModalBarrier(
@@ -2417,9 +2470,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Confirm Charity Round-Up',
-                    style: TextStyle(
+                  Text(
+                    l10n.posCharityConfirmRoundUpTitle,
+                    style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w900,
                       color: Color(0xFF16242B),
@@ -2427,7 +2480,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Choose whether to add the optional charity donation before the payment terminal opens. The customer display will show the same totals.',
+                    l10n.posCharityConfirmRoundUpBody,
                     style: TextStyle(
                       fontSize: 15,
                       height: 1.45,
@@ -2441,7 +2494,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       Expanded(
                         child: _glassInsetCard(
                           child: _fallbackAmountBlock(
-                            title: 'Order Total',
+                            title: l10n.posCharityOrderTotal,
                             amount: controller.activePaymentBaseTotal,
                             tint: const Color(0xFFE9F7FB),
                           ),
@@ -2451,7 +2504,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       Expanded(
                         child: _glassInsetCard(
                           child: _fallbackAmountBlock(
-                            title: 'Round Up',
+                            title: l10n.posCharityRoundUp,
                             amount: controller.charityRoundUpAmount,
                             tint: const Color(0xFFFCEBC6),
                           ),
@@ -2461,7 +2514,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       Expanded(
                         child: _glassInsetCard(
                           child: _fallbackAmountBlock(
-                            title: 'New Total',
+                            title: l10n.posCharityNewTotal,
                             amount: controller.charityRoundUpTotal > 0
                                 ? controller.charityRoundUpTotal
                                 : controller.activePaymentBaseTotal,
@@ -2479,7 +2532,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       children: [
                         Expanded(
                           child: _buildCharityFallbackAction(
-                            label: 'No, keep original total',
+                            label: l10n.posCharityKeepOriginalTotal,
                             filled: false,
                             onTap: () =>
                                 controller.confirmCharityRoundUp(false),
@@ -2488,7 +2541,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                         const SizedBox(width: 14),
                         Expanded(
                           child: _buildCharityFallbackAction(
-                            label: 'Yes, round up for charity',
+                            label: l10n.posCharityRoundUpYes,
                             filled: true,
                             onTap: () => controller.confirmCharityRoundUp(true),
                           ),
@@ -2500,7 +2553,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   Center(
                     child: _OutlinePillButton(
                       icon: Icons.close_rounded,
-                      label: 'Cancel',
+                      label: l10n.commonCancel,
                       onTap: controller.cancelCharityRoundUpPrompt,
                     ),
                   ),
@@ -2518,6 +2571,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// the card leg as pending reconciliation (settled later against the bank
   /// file). Wired to controller.confirmPendingReconciliation.
   Widget _buildPendingReconciliationOverlay() {
+    final l10n = L10n.of(context);
     return Material(
       color: Colors.black.withValues(alpha: 0.62),
       child: Center(
@@ -2549,10 +2603,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       ),
                     ),
                     const SizedBox(width: 14),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Card charge not confirmed',
-                        style: TextStyle(
+                        l10n.posReconCardNotConfirmedTitle,
+                        style: const TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
                           color: Color(0xFF16242B),
@@ -2563,12 +2617,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'The terminal did not confirm the '
-                  '${SunmiReceiptService.money(controller.pendingReconciliationAmount)} '
-                  'card charge (e.g. an NFC timeout).\n\n'
-                  'If the customer was charged, record it as PENDING '
-                  'RECONCILIATION — it will be matched against the bank '
-                  'settlement file. Otherwise cancel and try the charge again.',
+                  l10n.posReconCardNotConfirmedBody(
+                    SunmiReceiptService.money(
+                      controller.pendingReconciliationAmount,
+                    ),
+                  ),
                   style: TextStyle(
                     fontSize: 15,
                     height: 1.5,
@@ -2581,7 +2634,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   children: [
                     Expanded(
                       child: _pendingReconButton(
-                        label: 'Cancel — retry charge',
+                        label: l10n.posReconCancelRetry,
                         filled: false,
                         onTap: () =>
                             controller.confirmPendingReconciliation(false),
@@ -2590,7 +2643,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     const SizedBox(width: 14),
                     Expanded(
                       child: _pendingReconButton(
-                        label: 'Mark paid — pending reconciliation',
+                        label: l10n.posReconMarkPaidPending,
                         filled: true,
                         onTap: () =>
                             controller.confirmPendingReconciliation(true),
@@ -2643,6 +2696,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildStaffPaymentLaunchOverlay() {
+    final l10n = L10n.of(context);
     return AbsorbPointer(
       absorbing: true,
       child: DecoratedBox(
@@ -2654,12 +2708,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               constraints: const BoxConstraints(maxWidth: 420),
               child: ProfessionalProcessingCard(
                 title: controller.paymentOverlayTitle.isEmpty
-                    ? 'Preparing Payment'
+                    ? l10n.posPaymentPreparingTitle
                     : controller.paymentOverlayTitle,
                 message: controller.displayNote.isEmpty
-                    ? 'Please wait while the payment terminal opens.'
+                    ? l10n.posPaymentPreparingMessage
                     : controller.displayNote,
-                badge: 'SECURE CARD PAYMENT',
+                badge: l10n.posPaymentSecureCardBadge,
                 icon: Icons.credit_card_rounded,
                 accent: const Color(0xFF0B6D8A),
                 accentGlow: const Color(0xFF1599B8),
@@ -2672,6 +2726,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildStaffCashProcessingOverlay() {
+    final l10n = L10n.of(context);
     return AbsorbPointer(
       absorbing: true,
       child: DecoratedBox(
@@ -2682,11 +2737,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: ProfessionalProcessingCard(
-                title: 'Recording Cash Payment',
+                title: l10n.posPaymentRecordingCashTitle,
                 message: controller.displayNote.isEmpty
-                    ? 'Please wait while the cash payment is completed.'
+                    ? l10n.posPaymentRecordingCashMessage
                     : controller.displayNote,
-                badge: 'CASH CHECKOUT',
+                badge: l10n.posPaymentCashCheckoutBadge,
                 icon: Icons.payments_rounded,
                 accent: const Color(0xFF1AA148),
                 accentGlow: const Color(0xFF40BE6C),
@@ -2709,6 +2764,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildPaymentHeader() {
+    final l10n = L10n.of(context);
     return _glassPanel(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       child: Row(
@@ -2718,9 +2774,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             onTap: _closePaymentPage,
           ),
           const SizedBox(width: 14),
-          const Text(
-            'Payment',
-            style: TextStyle(
+          Text(
+            l10n.posPaymentTitle,
+            style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w900,
               color: Color(0xFF17252C),
@@ -2737,8 +2793,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ),
             child: Text(
               controller.currentOrderReference.isEmpty
-                  ? 'New Order'
-                  : 'Ref ${controller.currentOrderReference}',
+                  ? l10n.posPaymentNewOrder
+                  : l10n.posPaymentOrderRef(controller.currentOrderReference),
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
@@ -2757,7 +2813,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 boxShadow: _softShadow,
               ),
               child: Text(
-                'Table $_activeDiningTableLabel',
+                l10n.posPaymentTableChip(_activeDiningTableLabel),
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
@@ -2799,15 +2855,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildPaymentOrderPanel() {
+    final l10n = L10n.of(context);
     return _glassPanel(
       tint: Colors.white.withValues(alpha: 0.72),
       padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Order Items',
-            style: TextStyle(
+          Text(
+            l10n.posPaymentOrderItems,
+            style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w900,
               color: Color(0xFF192831),
@@ -2847,34 +2904,45 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ),
             child: Column(
               children: [
-                _paymentTotalRow('Subtotal', controller.rawSubtotal),
+                _paymentTotalRow(
+                  l10n.posPaymentSubtotal,
+                  controller.rawSubtotal,
+                ),
                 if (controller.discountAmount > 0) ...[
                   const SizedBox(height: 10),
                   _paymentTotalRow(
                     controller.discount.label.isEmpty
-                        ? 'Discount'
+                        ? l10n.posPaymentDiscountFallback
                         : controller.discount.label,
                     -controller.discountAmount,
                   ),
                 ],
                 const SizedBox(height: 10),
-                _paymentTotalRow('Net Subtotal', controller.subtotal),
+                _paymentTotalRow(
+                  l10n.posPaymentNetSubtotal,
+                  controller.subtotal,
+                ),
                 // Phase B — the manager comp write-off (given away, not sold).
                 if (controller.compAmount > 0) ...[
                   const SizedBox(height: 10),
                   _paymentTotalRow(
-                    'Comp · ${controller.appliedComp?.reasonName ?? ''}',
+                    l10n.posPaymentCompRow(
+                      controller.appliedComp?.reasonName ?? '',
+                    ),
                     -controller.compAmount,
                   ),
                 ],
                 for (final t in controller.taxLines) ...[
                   const SizedBox(height: 10),
-                  _paymentTotalRow('${t.name} (${t.rateLabel}%)', t.amount),
+                  _paymentTotalRow(
+                    l10n.posPaymentTaxLine(t.name, t.rateLabel),
+                    t.amount,
+                  ),
                 ],
                 if (controller.splitCount > 1) ...[
                   const SizedBox(height: 10),
                   _paymentTotalRow(
-                    'Guest ${controller.activeSplitIndex} Share',
+                    l10n.posPaymentGuestShareRow(controller.activeSplitIndex),
                     controller.activePaymentBaseTotal,
                   ),
                 ],
@@ -2885,7 +2953,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        controller.splitCount > 1 ? 'Share Due' : 'Total Due',
+                        controller.splitCount > 1
+                            ? l10n.posPaymentShareDue
+                            : l10n.posPaymentTotalDue,
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
@@ -2914,12 +2984,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildCustomerReferenceField() {
+    final l10n = L10n.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Customer Number (Optional)',
-          style: TextStyle(
+        Text(
+          l10n.posPaymentCustomerNumberLabel,
+          style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w900,
             color: Color(0xFF192831),
@@ -2946,7 +3017,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 Expanded(
                   child: Text(
                     _customerNumberController.text.isEmpty
-                        ? 'Add a customer number for reference'
+                        ? l10n.posPaymentCustomerNumberHint
                         : _customerNumberController.text,
                     style: TextStyle(
                       fontSize: 13,
@@ -2968,12 +3039,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildVehiclePlateField() {
+    final l10n = L10n.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Vehicle Plate (Optional)',
-          style: TextStyle(
+        Text(
+          l10n.posPaymentVehiclePlateLabel,
+          style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w900,
             color: Color(0xFF192831),
@@ -3001,7 +3073,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 Expanded(
                   child: Text(
                     _vehiclePlateController.text.isEmpty
-                        ? 'Add a vehicle plate for drive-thru'
+                        ? l10n.posPaymentVehiclePlateHint
                         : _vehiclePlateController.text,
                     style: TextStyle(
                       fontSize: 13,
@@ -3024,13 +3096,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildDeliveryProviderField() {
+    final l10n = L10n.of(context);
     final provider = controller.selectedDeliveryProvider;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Delivery Provider',
-          style: TextStyle(
+        Text(
+          l10n.posPaymentDeliveryProviderLabel,
+          style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w900,
             color: Color(0xFF192831),
@@ -3058,7 +3131,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 Expanded(
                   child: Text(
                     provider == null
-                        ? 'Choose a delivery provider'
+                        ? l10n.posPaymentDeliveryProviderHint
                         : provider.name,
                     style: TextStyle(
                       fontSize: 13,
@@ -3080,6 +3153,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildPaymentConsole() {
+    final l10n = L10n.of(context);
     final quickAmounts = _quickCashAmounts();
 
     return Column(
@@ -3090,7 +3164,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             Expanded(
               child: _PaymentTopActionCard(
                 icon: Icons.workspace_premium_rounded,
-                title: 'Redeem Loyalty',
+                title: l10n.posPaymentRedeemLoyalty,
                 onTap: () {
                   unawaited(_openLoyaltyRedeem());
                 },
@@ -3100,8 +3174,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             Expanded(
               child: _PaymentTopActionCard(
                 icon: Icons.percent_rounded,
-                title: 'Add Discount',
-                accent: Color(0xFFFF8A2B),
+                title: l10n.posPaymentAddDiscount,
+                accent: const Color(0xFFFF8A2B),
                 onTap: () {
                   unawaited(_openDiscountDialog());
                 },
@@ -3111,7 +3185,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             Expanded(
               child: _PaymentTopActionCard(
                 icon: Icons.call_split_rounded,
-                title: 'Split Bill',
+                title: l10n.posPaymentSplitBill,
                 onTap: () {
                   unawaited(_openSplitBillDialog());
                 },
@@ -3124,7 +3198,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               Expanded(
                 child: _PaymentTopActionCard(
                   icon: Icons.volunteer_activism_rounded,
-                  title: controller.appliedComp == null ? 'Comp' : 'Comp ✓',
+                  title: controller.appliedComp == null
+                      ? l10n.posPaymentComp
+                      : l10n.posPaymentCompApplied,
                   accent: const Color(0xFF7C5CCB),
                   onTap: () {
                     unawaited(_openCompDialog());
@@ -3164,9 +3240,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                               children: [
                                 Row(
                                   children: [
-                                    const Text(
-                                      'Tendered',
-                                      style: TextStyle(
+                                    Text(
+                                      l10n.posPaymentTendered,
+                                      style: const TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w800,
                                         color: Color(0xFF6B7A86),
@@ -3196,8 +3272,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   children: [
                                     Text(
                                       _showMixedCardBalance
-                                          ? 'Card Balance'
-                                          : 'Change',
+                                          ? l10n.posPaymentCardBalance
+                                          : l10n.posPaymentChange,
                                       style: const TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w800,
@@ -3231,13 +3307,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 .map(
                                   (amount) => Expanded(
                                     child: Padding(
-                                      padding: EdgeInsets.only(
-                                        right: amount == quickAmounts.last
+                                      padding: EdgeInsetsDirectional.only(
+                                        end: amount == quickAmounts.last
                                             ? 0
                                             : 10,
                                       ),
                                       child: _QuickCashButton(
-                                        label: '$amount OMR',
+                                        label: l10n.posPaymentQuickCash(amount),
                                         onTap: () =>
                                             _setQuickCashAmount(amount),
                                       ),
@@ -3266,7 +3342,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                       ),
                                     ),
                                     child: Text(
-                                      'Collecting guest ${controller.activeSplitIndex} of ${controller.splitCount}: ${SunmiReceiptService.money(controller.activePaymentBaseTotal)}.',
+                                      l10n.posPaymentCollectingGuest(
+                                        controller.activeSplitIndex,
+                                        controller.splitCount,
+                                        SunmiReceiptService.money(
+                                          controller.activePaymentBaseTotal,
+                                        ),
+                                      ),
                                       style: const TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w700,
@@ -3275,63 +3357,76 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                     ),
                                   ),
                                 Expanded(
-                                  child: Row(
-                                    children: [
-                                      _buildPaymentKeyCell('1'),
-                                      const SizedBox(width: 12),
-                                      _buildPaymentKeyCell('2'),
-                                      const SizedBox(width: 12),
-                                      _buildPaymentKeyCell('3'),
-                                    ],
+                                  // Keep the digit grid LTR-stable under RTL.
+                                  child: Directionality(
+                                    textDirection: TextDirection.ltr,
+                                    child: Row(
+                                      children: [
+                                        _buildPaymentKeyCell('1'),
+                                        const SizedBox(width: 12),
+                                        _buildPaymentKeyCell('2'),
+                                        const SizedBox(width: 12),
+                                        _buildPaymentKeyCell('3'),
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 12),
                                 Expanded(
-                                  child: Row(
-                                    children: [
-                                      _buildPaymentKeyCell('4'),
-                                      const SizedBox(width: 12),
-                                      _buildPaymentKeyCell('5'),
-                                      const SizedBox(width: 12),
-                                      _buildPaymentKeyCell('6'),
-                                    ],
+                                  child: Directionality(
+                                    textDirection: TextDirection.ltr,
+                                    child: Row(
+                                      children: [
+                                        _buildPaymentKeyCell('4'),
+                                        const SizedBox(width: 12),
+                                        _buildPaymentKeyCell('5'),
+                                        const SizedBox(width: 12),
+                                        _buildPaymentKeyCell('6'),
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 12),
                                 Expanded(
-                                  child: Row(
-                                    children: [
-                                      _buildPaymentKeyCell('7'),
-                                      const SizedBox(width: 12),
-                                      _buildPaymentKeyCell('8'),
-                                      const SizedBox(width: 12),
-                                      _buildPaymentKeyCell('9'),
-                                    ],
+                                  child: Directionality(
+                                    textDirection: TextDirection.ltr,
+                                    child: Row(
+                                      children: [
+                                        _buildPaymentKeyCell('7'),
+                                        const SizedBox(width: 12),
+                                        _buildPaymentKeyCell('8'),
+                                        const SizedBox(width: 12),
+                                        _buildPaymentKeyCell('9'),
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 12),
                                 Expanded(
-                                  child: Row(
-                                    children: [
-                                      _buildPaymentKeyCell(
-                                        '.',
-                                        buttonKey: const ValueKey(
-                                          'payment-key-decimal',
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      _buildPaymentKeyCell('0'),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: _PaymentKeyButton(
+                                  child: Directionality(
+                                    textDirection: TextDirection.ltr,
+                                    child: Row(
+                                      children: [
+                                        _buildPaymentKeyCell(
+                                          '.',
                                           buttonKey: const ValueKey(
-                                            'payment-key-backspace',
+                                            'payment-key-decimal',
                                           ),
-                                          icon: Icons.backspace_outlined,
-                                          onTap: _backspaceCashKey,
                                         ),
-                                      ),
-                                    ],
+                                        const SizedBox(width: 12),
+                                        _buildPaymentKeyCell('0'),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: _PaymentKeyButton(
+                                            buttonKey: const ValueKey(
+                                              'payment-key-backspace',
+                                            ),
+                                            icon: Icons.backspace_outlined,
+                                            onTap: _backspaceCashKey,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ],
@@ -3349,7 +3444,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           AspectRatio(
                             aspectRatio: 1,
                             child: _PaymentMethodActionButton(
-                              label: 'Cash',
+                              label: l10n.posPaymentCash,
                               icon: Icons.payments_outlined,
                               gradient: const LinearGradient(
                                 begin: Alignment.topLeft,
@@ -3363,7 +3458,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           AspectRatio(
                             aspectRatio: 1,
                             child: _PaymentMethodActionButton(
-                              label: 'Card',
+                              label: l10n.posPaymentCard,
                               icon: Icons.credit_card_rounded,
                               gradient: const LinearGradient(
                                 begin: Alignment.topLeft,
@@ -3381,7 +3476,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                               children: [
                                 Expanded(
                                   child: _PaymentBottomActionButton(
-                                    label: 'Cancel',
+                                    label: l10n.commonCancel,
                                     icon: Icons.close_rounded,
                                     onTap: _closePaymentPage,
                                   ),
@@ -3389,7 +3484,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 const SizedBox(width: 14),
                                 Expanded(
                                   child: _PaymentBottomActionButton(
-                                    label: 'Split\nPayment',
+                                    label: l10n.posPaymentSplitPayment,
                                     icon: Icons.call_split_rounded,
                                     filled: true,
                                     onTap: _submitMixedPayment,
@@ -3536,14 +3631,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         children: [
           Expanded(
             flex: 13,
-            child: _buildOrderTypeGroup(alignment: Alignment.centerLeft),
+            child: _buildOrderTypeGroup(
+              alignment: AlignmentDirectional.centerStart,
+            ),
           ),
           const SizedBox(width: 12),
           _buildBrandBlock(),
           const SizedBox(width: 12),
           Expanded(
             flex: 10,
-            child: _buildSecondaryNavGroup(alignment: Alignment.centerRight),
+            child: _buildSecondaryNavGroup(
+              alignment: AlignmentDirectional.centerEnd,
+            ),
           ),
           const SizedBox(width: 8),
           _buildTimeBlock(),
@@ -3553,7 +3652,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           Flexible(
             flex: 5,
             child: Align(
-              alignment: Alignment.centerRight,
+              alignment: AlignmentDirectional.centerEnd,
               child: _buildProfileBlock(),
             ),
           ),
@@ -3562,7 +3661,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  Widget _buildOrderTypeGroup({required Alignment alignment}) {
+  Widget _buildOrderTypeGroup({required AlignmentGeometry alignment}) {
+    final l10n = L10n.of(context);
     return Align(
       alignment: alignment,
       child: FittedBox(
@@ -3574,11 +3674,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               .entries
               .map(
                 (entry) => Padding(
-                  padding: EdgeInsets.only(
-                    right: entry.key == _primaryOrderTypes.length - 1 ? 0 : 8,
+                  padding: EdgeInsetsDirectional.only(
+                    end: entry.key == _primaryOrderTypes.length - 1 ? 0 : 8,
                   ),
                   child: _HeaderNavChip(
-                    title: entry.value.label,
+                    title: localizedOrderType(l10n, entry.value),
                     icon: _orderTypeIcon(entry.value),
                     selected: controller.selectedOrderType == entry.value,
                     onTap: () {
@@ -3593,7 +3693,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  Widget _buildSecondaryNavGroup({required Alignment alignment}) {
+  Widget _buildSecondaryNavGroup({required AlignmentGeometry alignment}) {
+    final l10n = L10n.of(context);
+    // The stored _NavItemData titles stay English IDENTITY values (the switch
+    // below compares them); only the rendered chip label is localized.
+    String navChipTitle(String identity) => switch (identity) {
+      'Home' => l10n.posNavHome,
+      'Report' => l10n.posNavReport,
+      'History' => l10n.posNavHistory,
+      _ => identity,
+    };
     return Align(
       alignment: alignment,
       child: FittedBox(
@@ -3605,11 +3714,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               .entries
               .map(
                 (entry) => Padding(
-                  padding: EdgeInsets.only(
-                    right: entry.key == _secondaryNavItems.length - 1 ? 0 : 8,
+                  padding: EdgeInsetsDirectional.only(
+                    end: entry.key == _secondaryNavItems.length - 1 ? 0 : 8,
                   ),
                   child: _HeaderNavChip(
-                    title: entry.value.title,
+                    title: navChipTitle(entry.value.title),
                     icon: entry.value.icon,
                     selected: false,
                     onTap: () {
@@ -3619,14 +3728,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           break;
                         case 'Report':
                           _showPlaceholderMessage(
-                            'Reports Coming Next',
-                            'We will connect detailed reporting once the local order archive is fully connected to the database flow.',
+                            l10n.posNavReportsComingTitle,
+                            l10n.posNavReportsComingBody,
                           );
                           break;
                         default:
                           _showPlaceholderMessage(
-                            'Home',
-                            'You are already on the main POS screen.',
+                            l10n.posNavHome,
+                            l10n.posNavAlreadyHomeBody,
                           );
                       }
                     },
@@ -3649,12 +3758,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildBrandBlock() {
+    final l10n = L10n.of(context);
     return Container(
       width: 156,
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: _chipDecoration(selected: false),
-      child: const FittedBox(
+      child: FittedBox(
         fit: BoxFit.scaleDown,
         alignment: Alignment.center,
         child: Column(
@@ -3662,7 +3772,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           crossAxisAlignment: CrossAxisAlignment.center,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
+            const Text(
               'MITHQAL 2.0',
               maxLines: 1,
               style: TextStyle(
@@ -3672,11 +3782,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 letterSpacing: 0.4,
               ),
             ),
-            SizedBox(height: 2),
+            const SizedBox(height: 2),
             Text(
-              'Better ordering',
+              l10n.posNavBrandTagline,
               maxLines: 1,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Color(0xFF9EA7B0),
                 fontSize: 10,
                 fontWeight: FontWeight.w500,
@@ -3693,8 +3803,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildProfileBlock() {
+    final l10n = L10n.of(context);
     final staff = ref.read(sessionControllerProvider).staff;
-    final name = (staff?.name.isNotEmpty ?? false) ? staff!.name : 'Staff';
+    final name = (staff?.name.isNotEmpty ?? false)
+        ? staff!.name
+        : l10n.posNavStaffFallback;
     final position = staff?.position ?? '';
     final positionLabel = position.isEmpty
         ? ''
@@ -3710,7 +3823,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           decoration: _chipDecoration(selected: false),
           child: FittedBox(
             fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
+            alignment: AlignmentDirectional.centerStart,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -3769,62 +3882,65 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Future<void> _openStaffMenu() async {
     final action = await showModalBottomSheet<String>(
       context: context,
-      builder: (ctx) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.point_of_sale_rounded),
-              title: const Text('Close shift'),
-              subtitle: const Text('Count the drawer and reconcile cash'),
-              onTap: () => Navigator.pop(ctx, 'close_shift'),
+      builder: (ctx) {
+        final l10n = L10n.of(ctx);
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.point_of_sale_rounded),
+                  title: Text(l10n.posMenuCloseShift),
+                  subtitle: Text(l10n.posMenuCloseShiftSub),
+                  onTap: () => Navigator.pop(ctx, 'close_shift'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.receipt_long_rounded),
+                  title: Text(l10n.posMenuLogExpense),
+                  subtitle: Text(l10n.posMenuLogExpenseSub),
+                  onTap: () => Navigator.pop(ctx, 'log_expense'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.inventory_2_rounded),
+                  title: Text(l10n.posMenuRequestRestock),
+                  subtitle: Text(l10n.posMenuRequestRestockSub),
+                  onTap: () => Navigator.pop(ctx, 'restock_request'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.checklist_rounded),
+                  title: Text(l10n.posMenuStockCount),
+                  subtitle: Text(l10n.posMenuStockCountSub),
+                  onTap: () => Navigator.pop(ctx, 'stock_count'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.summarize_rounded),
+                  title: Text(l10n.posMenuShiftSummary),
+                  subtitle: Text(l10n.posMenuShiftSummarySub),
+                  onTap: () => Navigator.pop(ctx, 'shift_summary'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.settings),
+                  title: Text(l10n.posMenuSettings),
+                  subtitle: Text(l10n.posMenuSettingsSub),
+                  onTap: () => Navigator.pop(ctx, 'settings'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.logout),
+                  title: Text(l10n.commonLogout),
+                  subtitle: Text(l10n.posMenuLogoutSub),
+                  onTap: () => Navigator.pop(ctx, 'logout'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.close),
+                  title: Text(l10n.commonCancel),
+                  onTap: () => Navigator.pop(ctx, null),
+                ),
+              ],
             ),
-            ListTile(
-              leading: const Icon(Icons.receipt_long_rounded),
-              title: const Text('Log expense'),
-              subtitle: const Text('Record a petty-cash expense'),
-              onTap: () => Navigator.pop(ctx, 'log_expense'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.inventory_2_rounded),
-              title: const Text('Request restock'),
-              subtitle: const Text('Ask the branch to restock ingredients'),
-              onTap: () => Navigator.pop(ctx, 'restock_request'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.checklist_rounded),
-              title: const Text('Day-end stock count'),
-              subtitle: const Text('Count the shelf and reconcile variances'),
-              onTap: () => Navigator.pop(ctx, 'stock_count'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.summarize_rounded),
-              title: const Text('Shift summary (Z-report)'),
-              subtitle: const Text('Reprint the last closed shift — manager only'),
-              onTap: () => Navigator.pop(ctx, 'shift_summary'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text('Settings'),
-              subtitle: const Text('Server address, printing'),
-              onTap: () => Navigator.pop(ctx, 'settings'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: const Text('Log out'),
-              subtitle: const Text('Return to the staff PIN screen'),
-              onTap: () => Navigator.pop(ctx, 'logout'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.close),
-              title: const Text('Cancel'),
-              onTap: () => Navigator.pop(ctx, null),
-            ),
-          ],
           ),
-        ),
-      ),
+        );
+      },
     );
     if (!mounted) return;
     if (action == 'logout') {
@@ -3857,27 +3973,27 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// Phase C6 — manager-gated reprint of the LAST closed shift's Z-report
   /// (blueprint Phase 9 #88: "Daily sales summary (Manager only)").
   Future<void> _reprintLastShiftSummary() async {
+    final l10n = L10n.of(context);
     final snapshot = ref.read(sessionServiceProvider).lastShiftSummary;
     final ticket = ShiftSummaryTicket.fromJson(snapshot, isReprint: true);
     if (ticket == null) {
       _showPopupMessage(
-        title: 'No Shift Summary Yet',
-        message: 'Close a shift first — its summary is kept for reprinting.',
+        title: l10n.posMenuNoShiftSummaryTitle,
+        message: l10n.posMenuNoShiftSummaryBody,
         tone: FeedbackTone.warning,
       );
       return;
     }
 
     final ok = await _managerAuthorization.authenticateManagerApproval(
-      subtitle: 'Shift summary',
-      description:
-          'Place the manager fingerprint to reprint the last shift summary.',
+      subtitle: l10n.posMenuShiftSummaryShort,
+      description: l10n.posMenuShiftSummaryAuthDesc,
     );
     if (!mounted) return;
     if (!ok) {
       _showPopupMessage(
-        title: 'Approval Required',
-        message: 'Manager approval was not granted for the shift summary.',
+        title: l10n.posMenuApprovalRequiredTitle,
+        message: l10n.posMenuApprovalNotGrantedBody,
         tone: FeedbackTone.warning,
       );
       return;
@@ -3886,8 +4002,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     await SunmiReceiptService.printShiftSummary(ticket);
     if (!mounted) return;
     _showPopupMessage(
-      title: 'Shift Summary Printed',
-      message: 'The last shift summary was sent to the printer.',
+      title: l10n.posMenuShiftSummaryPrintedTitle,
+      message: l10n.posMenuShiftSummaryPrintedBody,
       tone: FeedbackTone.success,
     );
   }
@@ -3895,22 +4011,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Future<void> _confirmLogout() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Log out?'),
-        content: const Text(
-          'You will return to the staff PIN screen. The device stays set up.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Log out'),
-          ),
-        ],
-      ),
+      builder: (ctx) {
+        final l10n = L10n.of(ctx);
+        return AlertDialog(
+          title: Text(l10n.posMenuLogoutConfirmTitle),
+          content: Text(l10n.posMenuLogoutConfirmBody),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l10n.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l10n.commonLogout),
+            ),
+          ],
+        );
+      },
     );
     if (confirmed == true) {
       await ref.read(sessionControllerProvider.notifier).logoutStaff();
@@ -3918,6 +4035,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildCurrentOrderPanel() {
+    final l10n = L10n.of(context);
     return _glassPanel(
       tint: const Color(0xCCB9F1F4),
       padding: const EdgeInsets.all(16),
@@ -3931,9 +4049,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   spacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    const Text(
-                      'Current Order',
-                      style: TextStyle(
+                    Text(
+                      l10n.posOrderPanelTitle,
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF16252A),
@@ -3949,10 +4067,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     ),
                     _OrderMetaChip(
                       label:
-                          '${controller.currentOrderReference.isEmpty ? 'New' : 'Ref ${controller.currentOrderReference}'} | ${controller.selectedOrderType.label}',
+                          '${controller.currentOrderReference.isEmpty ? l10n.posOrderPanelNewOrder : l10n.posOrderPanelRef(controller.currentOrderReference)} | ${localizedOrderType(l10n, controller.selectedOrderType)}',
                     ),
                     if (_isEditingDiningTable) ...[
-                      _OrderMetaChip(label: 'Table $_activeDiningTableLabel'),
+                      _OrderMetaChip(
+                        label: l10n.posOrderPanelTableChip(
+                          _activeDiningTableLabel,
+                        ),
+                      ),
                       if (controller.activeDiningTableDefinition != null)
                         _OrderMetaChip(
                           label: controller.diningFloors
@@ -3975,7 +4097,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 icon: _isEditingDiningTable
                     ? Icons.grid_view_rounded
                     : Icons.cleaning_services_outlined,
-                label: _isEditingDiningTable ? 'Floor Plan' : 'Clear',
+                label: _isEditingDiningTable
+                    ? l10n.posOrderPanelFloorPlan
+                    : l10n.posOrderPanelClear,
                 onTap: _isEditingDiningTable
                     ? () {
                         unawaited(controller.returnToDiningFloorPlan());
@@ -4042,23 +4166,25 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           _glassInsetCard(
             child: Column(
               children: [
-                _summaryRow('Subtotal', controller.rawSubtotal),
+                _summaryRow(l10n.posOrderPanelSubtotal, controller.rawSubtotal),
                 if (controller.discountAmount > 0) ...[
                   const SizedBox(height: 6),
                   _summaryRow(
                     controller.discount.label.isEmpty
-                        ? 'Discount'
+                        ? l10n.posOrderPanelDiscount
                         : controller.discount.label,
                     -controller.discountAmount,
                   ),
                 ],
                 const SizedBox(height: 6),
-                _summaryRow('Net Subtotal', controller.subtotal),
+                _summaryRow(l10n.posOrderPanelNetSubtotal, controller.subtotal),
                 // Phase B — the manager comp write-off (given away, not sold).
                 if (controller.compAmount > 0) ...[
                   const SizedBox(height: 6),
                   _summaryRow(
-                    'Comp · ${controller.appliedComp?.reasonName ?? ''}',
+                    l10n.posOrderPanelComp(
+                      controller.appliedComp?.reasonName ?? '',
+                    ),
                     -controller.compAmount,
                   ),
                 ],
@@ -4069,12 +4195,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 if (controller.splitCount > 1) ...[
                   const SizedBox(height: 6),
                   _summaryRow(
-                    'Per Share (${controller.splitCount})',
+                    l10n.posOrderPanelPerShare(controller.splitCount),
                     controller.activePaymentBaseTotal,
                   ),
                 ],
                 const SizedBox(height: 6),
-                _summaryRow('Total', controller.total, emphasize: true),
+                _summaryRow(
+                  l10n.posOrderPanelTotal,
+                  controller.total,
+                  emphasize: true,
+                ),
               ],
             ),
           ),
@@ -4085,7 +4215,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 child: _isEditingDiningTable
                     ? _ActionSquareCard(
                         icon: Icons.grid_view_rounded,
-                        title: 'Back To Floor',
+                        title: l10n.posOrderPanelBackToFloor,
                         tint: Color(0xFFDDF1FF),
                         foreground: Color(0xFF1C4257),
                         iconColor: Color(0xFF1B6B91),
@@ -4095,7 +4225,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       )
                     : _ActionSquareCard(
                         icon: Icons.pause_circle_outline_rounded,
-                        title: 'Hold',
+                        title: l10n.posOrderPanelHold,
                         tint: Color(0xFFFFD7A4),
                         iconColor: Color(0xFFA56A15),
                         onTap: () {
@@ -4109,7 +4239,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   icon: _isEditingDiningTable
                       ? Icons.delete_sweep_rounded
                       : Icons.delete_outline_rounded,
-                  title: _isEditingDiningTable ? 'Clear Table' : 'Void',
+                  title: _isEditingDiningTable
+                      ? l10n.posOrderPanelClearTable
+                      : l10n.posOrderPanelVoid,
                   tint: Color(0xFFF6F0F0),
                   foreground: Color(0xFF1F2A31),
                   iconColor: Color(0xFF6B757C),
@@ -4128,6 +4260,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildCategoriesPanel() {
+    final l10n = L10n.of(context);
     return _glassPanel(
       padding: const EdgeInsets.all(16),
       tint: const Color(0x1CFFFFFF),
@@ -4142,9 +4275,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Categories',
-            style: TextStyle(
+          Text(
+            l10n.posCatalogCategories,
+            style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
               color: Colors.white,
@@ -4171,11 +4304,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           const SizedBox(height: 12),
           _WideActionTile(
             icon: Icons.star_border_rounded,
-            title: 'Favourites',
+            title: l10n.posCatalogFavourites,
             onTap: () {
               _showPlaceholderMessage(
-                'Favourites Coming Next',
-                'We will wire favourite products to the local database in the next pass.',
+                l10n.posCatalogFavouritesComingTitle,
+                l10n.posCatalogFavouritesComingBody,
               );
             },
           ),
@@ -4185,6 +4318,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildProductsPanel() {
+    final l10n = L10n.of(context);
     final products = controller.visibleProducts;
 
     return _glassPanel(
@@ -4201,9 +4335,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Products',
-            style: TextStyle(
+          Text(
+            l10n.posCatalogProducts,
+            style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
               color: Colors.white,
@@ -4216,7 +4350,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 child: _SearchPill(
                   width: double.infinity,
                   hint: controller.productSearchQuery.isEmpty
-                      ? 'Search'
+                      ? l10n.posCatalogSearchHint
                       : controller.productSearchQuery,
                   active: controller.productSearchQuery.isNotEmpty,
                   onTap: () {
@@ -4227,7 +4361,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               const SizedBox(width: 12),
               _TinyToggleChip(
                 icon: Icons.format_list_bulleted_rounded,
-                label: 'List',
+                label: l10n.posCatalogViewList,
                 selected: controller.productViewMode == ProductViewMode.list,
                 onTap: () =>
                     controller.setProductViewMode(ProductViewMode.list),
@@ -4235,7 +4369,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               const SizedBox(width: 8),
               _TinyToggleChip(
                 icon: Icons.grid_view_rounded,
-                label: 'Grid',
+                label: l10n.posCatalogViewGrid,
                 selected: controller.productViewMode == ProductViewMode.grid,
                 onTap: () =>
                     controller.setProductViewMode(ProductViewMode.grid),
@@ -4324,6 +4458,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildBottomBar() {
+    final l10n = L10n.of(context);
     return Row(
       children: [
         SizedBox(
@@ -4346,14 +4481,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 Expanded(
                   child: _FooterActionCard(
                     icon: Icons.print_outlined,
-                    title: 'Print',
+                    title: l10n.commonPrint,
                     onTap: () async {
                       await controller.printOnly();
                       if (!mounted) return;
                       _showPopupMessage(
-                        title: 'Receipt Printed',
-                        message:
-                            'The current order receipt was sent to the printer.',
+                        title: l10n.posNavReceiptPrintedTitle,
+                        message: l10n.posNavReceiptPrintedBody,
                         tone: FeedbackTone.success,
                       );
                     },
@@ -4363,7 +4497,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 Expanded(
                   child: _FooterActionCard(
                     icon: Icons.history_rounded,
-                    title: 'Order History',
+                    title: l10n.posNavOrderHistory,
                     onTap: () {
                       unawaited(_openOrderHistoryDialog());
                     },
@@ -4373,7 +4507,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 Expanded(
                   child: _FooterActionCard(
                     icon: Icons.pause_circle_outline_rounded,
-                    title: 'Held Orders',
+                    title: l10n.posNavHeldOrders,
                     onTap: () {
                       unawaited(_openHeldOrdersDialog());
                     },
@@ -4383,7 +4517,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 Expanded(
                   child: _FooterActionCard(
                     icon: Icons.loyalty_outlined,
-                    title: 'Loyalty',
+                    title: l10n.posNavLoyalty,
                     onTap: () {
                       unawaited(_openLoyaltyRedeem());
                     },
@@ -4434,11 +4568,12 @@ class _ClockBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return SizedBox(
       width: 132,
       child: FittedBox(
         fit: BoxFit.scaleDown,
-        alignment: Alignment.centerRight,
+        alignment: AlignmentDirectional.centerEnd,
         child: ValueListenableBuilder<DateTime>(
           valueListenable: nowListenable,
           builder: (context, now, _) {
@@ -4448,7 +4583,7 @@ class _ClockBlock extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  _formatTime(now),
+                  _formatTime(l10n, now),
                   maxLines: 1,
                   style: const TextStyle(
                     fontSize: 18,
@@ -4458,7 +4593,7 @@ class _ClockBlock extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _formatDate(now),
+                  _formatDate(l10n, now),
                   maxLines: 1,
                   style: const TextStyle(
                     fontSize: 11,
@@ -4474,33 +4609,33 @@ class _ClockBlock extends StatelessWidget {
     );
   }
 
-  String _formatTime(DateTime value) {
+  String _formatTime(L10n l10n, DateTime value) {
     final hour = value.hour == 0
         ? 12
         : (value.hour > 12 ? value.hour - 12 : value.hour);
     final minute = value.minute.toString().padLeft(2, '0');
     final second = value.second.toString().padLeft(2, '0');
-    final meridiem = value.hour >= 12 ? 'PM' : 'AM';
+    final meridiem = value.hour >= 12 ? l10n.posClockPm : l10n.posClockAm;
     return '${hour.toString().padLeft(2, '0')}:$minute:$second $meridiem';
   }
 
-  String _formatDate(DateTime value) {
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
+  String _formatDate(L10n l10n, DateTime value) {
+    final months = [
+      l10n.posClockMonthJan,
+      l10n.posClockMonthFeb,
+      l10n.posClockMonthMar,
+      l10n.posClockMonthApr,
+      l10n.posClockMonthMay,
+      l10n.posClockMonthJun,
+      l10n.posClockMonthJul,
+      l10n.posClockMonthAug,
+      l10n.posClockMonthSep,
+      l10n.posClockMonthOct,
+      l10n.posClockMonthNov,
+      l10n.posClockMonthDec,
     ];
 
-    return '${months[value.month - 1]} ${value.day}, ${value.year}';
+    return l10n.posClockDate(months[value.month - 1], value.day, value.year);
   }
 }
 
@@ -4668,6 +4803,7 @@ class _EmptyOrderState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.58),
@@ -4681,31 +4817,31 @@ class _EmptyOrderState extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 30),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              children: const [
-                Icon(
+              children: [
+                const Icon(
                   Icons.receipt_long_rounded,
                   size: 34,
                   color: Color(0xFF35505A),
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
-                  'Tap any product to start the order',
+                  l10n.posCartEmptyTitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF2A3F48),
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
-                  'The cart, actions, and totals will appear here.',
+                  l10n.posCartEmptySubtitle,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                     color: Color(0xFF4A5E68),
@@ -4742,6 +4878,7 @@ class _OrderItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final detailLines = item.detailLines;
     final subtitle =
         item.firstModifierLabel('Size (Required)') ?? item.product.category;
@@ -4859,19 +4996,19 @@ class _OrderItemCard extends StatelessWidget {
                             color: Colors.white.withValues(alpha: 0.86),
                           ),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'Add On',
-                              style: TextStyle(
+                              l10n.posCartAddOn,
+                              style: const TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
                                 color: Color(0xFF28363E),
                               ),
                             ),
-                            SizedBox(width: 4),
-                            Icon(
+                            const SizedBox(width: 4),
+                            const Icon(
                               Icons.add_circle_outline_rounded,
                               size: 16,
                               color: Color(0xFF2F3E46),
@@ -4947,6 +5084,7 @@ class _PaymentOrderItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final detailLines = item.detailLines;
 
     return Container(
@@ -4965,7 +5103,7 @@ class _PaymentOrderItemCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  '${item.qty}x ${item.product.name}',
+                  l10n.posCartQtyTimesName(item.qty, item.product.name),
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
@@ -4995,7 +5133,10 @@ class _PaymentOrderItemCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '${item.qty} x ${SunmiReceiptService.money(item.unitPrice)}',
+            l10n.posCartQtyTimesPrice(
+              item.qty,
+              SunmiReceiptService.money(item.unitPrice),
+            ),
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -5207,6 +5348,7 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 56, vertical: 40),
@@ -5236,7 +5378,7 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Customize ${widget.item.product.name}',
+                          l10n.posCustomizeTitle(widget.item.product.name),
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w900,
@@ -5244,9 +5386,9 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        const Text(
-                          'Select add-ons and leave notes for this order line.',
-                          style: TextStyle(
+                        Text(
+                          l10n.posCustomizeSubtitle,
+                          style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: Color(0xFF73828E),
@@ -5290,9 +5432,9 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
                         ),
                         const SizedBox(height: 18),
                       ],
-                      const Text(
-                        'Notes',
-                        style: TextStyle(
+                      Text(
+                        l10n.posCustomizeNotesLabel,
+                        style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w900,
                           color: Color(0xFF17252C),
@@ -5305,8 +5447,7 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
                         maxLines: 3,
                         minLines: 3,
                         decoration: InputDecoration(
-                          hintText:
-                              'Add preparation notes for the kitchen or cashier',
+                          hintText: l10n.posCustomizeNotesHint,
                           hintStyle: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
@@ -5347,7 +5488,7 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
                     child: SizedBox(
                       height: 70,
                       child: _OutlineActionButton(
-                        label: 'Cancel',
+                        label: l10n.commonCancel,
                         icon: Icons.close_rounded,
                         onTap: () => Navigator.of(context).pop(),
                       ),
@@ -5359,8 +5500,9 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
                       height: 70,
                       child: _FilledActionButton(
                         buttonKey: const ValueKey('customize-confirm'),
-                        label:
-                            'Apply ${SunmiReceiptService.money(_previewLineTotal)}',
+                        label: l10n.posCustomizeApply(
+                          SunmiReceiptService.money(_previewLineTotal),
+                        ),
                         onTap: _canSubmit ? _submit : null,
                       ),
                     ),
@@ -6099,6 +6241,7 @@ class _EmptyProductsState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.16),
@@ -6119,8 +6262,8 @@ class _EmptyProductsState extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 hasSearch
-                    ? 'No products match your search.'
-                    : 'No products available here yet.',
+                    ? l10n.posProductsEmptySearchTitle
+                    : l10n.posProductsEmptyCategoryTitle,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 18,
@@ -6131,8 +6274,8 @@ class _EmptyProductsState extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 hasSearch
-                    ? 'Try another product name or clear the current search.'
-                    : 'Choose another category or add products to this category later.',
+                    ? l10n.posProductsEmptySearchSubtitle
+                    : l10n.posProductsEmptyCategorySubtitle,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 13,
@@ -6145,7 +6288,7 @@ class _EmptyProductsState extends StatelessWidget {
                 const SizedBox(height: 16),
                 _OutlinePillButton(
                   icon: Icons.close_rounded,
-                  label: 'Clear Search',
+                  label: l10n.posProductsClearSearch,
                   onTap: onClearSearch,
                 ),
               ],
@@ -6174,6 +6317,7 @@ class _ProductListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return TweenAnimationBuilder<double>(
       key: ValueKey('product-list-pulse-${product.id}-$pulseNonce'),
       tween: Tween<double>(begin: highlighted ? 1 : 0, end: 0),
@@ -6230,9 +6374,9 @@ class _ProductListTile extends StatelessWidget {
                               color: const Color(0xFFFFE1E1),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Text(
-                              'SOLD OUT',
-                              style: TextStyle(
+                            child: Text(
+                              l10n.posProductSoldOutBadge,
+                              style: const TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w900,
                                 color: Color(0xFFB42318),
@@ -6249,9 +6393,9 @@ class _ProductListTile extends StatelessWidget {
                               color: const Color(0xFFFFD45D),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Text(
-                              'LOW STOCK',
-                              style: TextStyle(
+                            child: Text(
+                              l10n.posProductLowStockBadge,
+                              style: const TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w900,
                                 color: Color(0xFF2A2418),
@@ -6281,7 +6425,7 @@ class _ProductListTile extends StatelessWidget {
                           ),
                         ),
                         const Spacer(),
-                        _FilledMiniAction(label: 'Add', onTap: onAdd),
+                        _FilledMiniAction(label: l10n.posProductAdd, onTap: onAdd),
                       ],
                     ),
                   ],
@@ -6314,6 +6458,7 @@ class _ProductTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final artworkHeight = compact ? 72.0 : 96.0;
     final outerPadding = compact ? 8.0 : 10.0;
     final titleSize = compact ? 12.8 : 14.6;
@@ -6397,9 +6542,9 @@ class _ProductTile extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     alignment: Alignment.center,
-                    child: const Text(
-                      'SOLD OUT',
-                      style: TextStyle(
+                    child: Text(
+                      l10n.posProductSoldOutBadge,
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w900,
                         fontSize: 12,
@@ -6433,7 +6578,7 @@ class _ProductTile extends StatelessWidget {
                         ),
                         SizedBox(width: compact ? 3 : 4),
                         Text(
-                          'LOW STOCK',
+                          l10n.posProductLowStockBadge,
                           style: TextStyle(
                             fontSize: badgeFontSize,
                             fontWeight: FontWeight.w900,
@@ -6984,6 +7129,7 @@ class _PayButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return InkWell(
       onTap: busy ? null : onTap,
       borderRadius: BorderRadius.circular(26),
@@ -7026,7 +7172,7 @@ class _PayButton extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    busy ? 'Processing Payment' : 'Process to Pay',
+                    busy ? l10n.posPayBtnProcessing : l10n.posPayBtnProcessToPay,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -7038,8 +7184,10 @@ class _PayButton extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     busy
-                        ? 'Completing order'
-                        : 'PAY ${SunmiReceiptService.money(total)}',
+                        ? l10n.posPayBtnCompletingOrder
+                        : l10n.posPayBtnPayAmount(
+                            SunmiReceiptService.money(total),
+                          ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -7292,6 +7440,7 @@ class _DiningTableCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final statusColor = switch (status) {
       DiningTableStatus.available => const Color(0xFF218947),
       DiningTableStatus.occupied => const Color(0xFFC9470F),
@@ -7390,8 +7539,12 @@ class _DiningTableCard extends StatelessWidget {
                       const SizedBox(width: 5),
                       Text(
                         status == DiningTableStatus.paid
-                            ? 'Ticket #${session!.orderNumber ?? '-'}'
-                            : 'Ref ${session!.orderReference}',
+                            ? l10n.posDiningTicketNumber(
+                                '${session!.orderNumber ?? '-'}',
+                              )
+                            : l10n.posDiningRefNumber(
+                                session!.orderReference,
+                              ),
                         style: const TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w900,
@@ -7449,10 +7602,10 @@ class _DiningTableCard extends StatelessWidget {
                         children: [
                           _TinyInfoBadge(
                             icon: Icons.people_alt_outlined,
-                            label: 'Seats ${table.seats}',
+                            label: l10n.posDiningSeats(table.seats),
                           ),
                           _StatusCapsule(
-                            label: 'AVAILABLE',
+                            label: l10n.posDiningStatusAvailable,
                             color: const Color(0xFFD8F9E7),
                             foreground: const Color(0xFF218947),
                           ),
@@ -7482,9 +7635,9 @@ class _DiningTableCard extends StatelessWidget {
                             height: 15,
                             color: const Color(0xFFF4B178),
                           ),
-                          const Text(
-                            'OCCUPIED',
-                            style: TextStyle(
+                          Text(
+                            l10n.posDiningStatusOccupied,
+                            style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w900,
                               color: Color(0xFFEA6614),
@@ -7510,9 +7663,9 @@ class _DiningTableCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 9),
-                          const Text(
-                            'PAID / CLEAR',
-                            style: TextStyle(
+                          Text(
+                            l10n.posDiningStatusPaidClear,
+                            style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w900,
                               color: Color(0xFF247246),
@@ -7696,12 +7849,12 @@ class _HeldOrdersPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     if (records.isEmpty) {
-      return const _StorageEmptyState(
+      return _StorageEmptyState(
         icon: Icons.pause_circle_outline_rounded,
-        title: 'No held orders yet',
-        message:
-            'Any order you place on hold will appear here so the staff can continue it later.',
+        title: l10n.posStorageHeldEmptyTitle,
+        message: l10n.posStorageHeldEmptyMessage,
       );
     }
 
@@ -7738,17 +7891,17 @@ class _OrderHistoryPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Column(
       children: [
         _ManagerAuthorizationBanner(onRegister: onRegisterManager),
         const SizedBox(height: 14),
         Expanded(
           child: records.isEmpty
-              ? const _StorageEmptyState(
+              ? _StorageEmptyState(
                   icon: Icons.history_rounded,
-                  title: 'No completed orders yet',
-                  message:
-                      'Completed payments will be archived here so the staff can review them or print receipts again.',
+                  title: l10n.posStorageHistoryEmptyTitle,
+                  message: l10n.posStorageHistoryEmptyMessage,
                 )
               : ListView.separated(
                   physics: const BouncingScrollPhysics(),
@@ -7778,6 +7931,7 @@ class _ManagerAuthorizationBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
@@ -7801,24 +7955,24 @@ class _ManagerAuthorizationBanner extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Manager cancellation approval',
-                  style: TextStyle(
+                  l10n.posFingerprintBannerTitle,
+                  style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
                     color: Color(0xFF18262E),
                   ),
                 ),
-                SizedBox(height: 3),
+                const SizedBox(height: 3),
                 Text(
-                  'Register once, then use fingerprint approval before opening completed order cancellation.',
+                  l10n.posFingerprintBannerMessage,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 12,
                     height: 1.35,
                     fontWeight: FontWeight.w600,
@@ -7833,7 +7987,7 @@ class _ManagerAuthorizationBanner extends StatelessWidget {
             width: 212,
             height: 52,
             child: _OutlineActionButton(
-              label: 'Register Manager',
+              label: l10n.posFingerprintRegisterManager,
               icon: Icons.fingerprint_rounded,
               onTap: () => unawaited(onRegister()),
             ),
@@ -7935,6 +8089,7 @@ class _HeldOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -7952,7 +8107,7 @@ class _HeldOrderCard extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      'Ref ${record.orderReference}',
+                      l10n.posStorageHeldRef(record.orderReference),
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
@@ -7960,7 +8115,9 @@ class _HeldOrderCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    _OrderMetaChip(label: record.orderType.label),
+                    _OrderMetaChip(
+                      label: localizedOrderType(l10n, record.orderType),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -7979,7 +8136,9 @@ class _HeldOrderCard extends StatelessWidget {
                   children: [
                     _InfoBadge(
                       icon: Icons.receipt_long_rounded,
-                      label: '${record.draft.items.length} items',
+                      label: l10n.posStorageItemsCount(
+                        record.draft.items.length,
+                      ),
                     ),
                     _InfoBadge(
                       icon: Icons.payments_outlined,
@@ -7988,7 +8147,9 @@ class _HeldOrderCard extends StatelessWidget {
                     if (record.draft.splitCount > 1)
                       _InfoBadge(
                         icon: Icons.call_split_rounded,
-                        label: 'Split ${record.draft.splitCount}',
+                        label: l10n.posStorageSplitBadge(
+                          record.draft.splitCount,
+                        ),
                       ),
                     if (record.draft.customerReferenceNumber.isNotEmpty)
                       _InfoBadge(
@@ -8000,7 +8161,12 @@ class _HeldOrderCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 Text(
                   record.draft.items
-                      .map((item) => '${item.qty}x ${item.product.name}')
+                      .map(
+                        (item) => l10n.posStorageItemQtyName(
+                          item.qty,
+                          item.product.name,
+                        ),
+                      )
                       .take(4)
                       .join(' • '),
                   maxLines: 2,
@@ -8022,7 +8188,7 @@ class _HeldOrderCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _FilledActionButton(
-                  label: 'Continue Order',
+                  label: l10n.posStorageContinueOrder,
                   onTap: onResume,
                 ),
                 const SizedBox(height: 10),
@@ -8030,7 +8196,7 @@ class _HeldOrderCard extends StatelessWidget {
                 SizedBox(
                   height: 52,
                   child: _OutlineActionButton(
-                    label: 'Discard',
+                    label: l10n.posStorageDiscard,
                     icon: Icons.delete_outline_rounded,
                     onTap: onDiscard,
                   ),
@@ -8059,6 +8225,7 @@ class _OrderHistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final snapshot = record.snapshot;
     // Server-sourced history is terminal + not locally mutable — no cancel.
     final canCancel = !snapshot.isFullyCanceled && !record.fromServer;
@@ -8080,7 +8247,7 @@ class _OrderHistoryCard extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      'Order #${record.orderNumber}',
+                      l10n.posStorageOrderNumber(record.orderNumber),
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
@@ -8088,7 +8255,9 @@ class _OrderHistoryCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    _OrderMetaChip(label: record.orderType.label),
+                    _OrderMetaChip(
+                      label: localizedOrderType(l10n, record.orderType),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -8108,13 +8277,19 @@ class _OrderHistoryCard extends StatelessWidget {
                     if (snapshot.paymentMethod.isNotEmpty)
                       _InfoBadge(
                         icon: Icons.credit_card_rounded,
-                        label: snapshot.paymentMethod,
+                        label: localizedPaymentMethod(
+                          l10n,
+                          snapshot.paymentMethod,
+                        ),
                       ),
                     _InfoBadge(
                       icon: snapshot.cancellations.isEmpty
                           ? Icons.task_alt_rounded
                           : Icons.cancel_rounded,
-                      label: snapshot.paymentStatus,
+                      label: localizedPaymentStatus(
+                        l10n,
+                        snapshot.paymentStatus,
+                      ),
                     ),
                     _InfoBadge(
                       icon: Icons.payments_outlined,
@@ -8123,13 +8298,16 @@ class _OrderHistoryCard extends StatelessWidget {
                     if (snapshot.splitPayments.isNotEmpty)
                       _InfoBadge(
                         icon: Icons.call_split_rounded,
-                        label: '${snapshot.splitPayments.length} splits',
+                        label: l10n.posStorageSplitsCount(
+                          snapshot.splitPayments.length,
+                        ),
                       ),
                     if (snapshot.cancellations.isNotEmpty)
                       _InfoBadge(
                         icon: Icons.remove_circle_outline_rounded,
-                        label:
-                            'Canceled ${SunmiReceiptService.money(snapshot.canceledAmount)}',
+                        label: l10n.posStorageCanceledAmount(
+                          SunmiReceiptService.money(snapshot.canceledAmount),
+                        ),
                       ),
                     if (snapshot.customerReferenceNumber.isNotEmpty)
                       _InfoBadge(
@@ -8141,7 +8319,12 @@ class _OrderHistoryCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 Text(
                   snapshot.items
-                      .map((item) => '${item['qty']}x ${item['name']}')
+                      .map(
+                        (item) => l10n.posStorageItemQtyName(
+                          (item['qty'] as num?)?.toInt() ?? 1,
+                          item['name']?.toString() ?? '',
+                        ),
+                      )
                       .take(4)
                       .join(' • '),
                   maxLines: 2,
@@ -8165,7 +8348,7 @@ class _OrderHistoryCard extends StatelessWidget {
                 SizedBox(
                   height: 52,
                   child: _OutlineActionButton(
-                    label: 'Print',
+                    label: l10n.commonPrint,
                     icon: Icons.print_outlined,
                     onTap: onPrint,
                   ),
@@ -8175,7 +8358,7 @@ class _OrderHistoryCard extends StatelessWidget {
                 SizedBox(
                   height: 52,
                   child: _OutlineActionButton(
-                    label: 'Kitchen',
+                    label: l10n.posStorageKitchen,
                     icon: Icons.restaurant_rounded,
                     onTap: onPrintKitchen,
                   ),
@@ -8205,6 +8388,7 @@ class _HistoryCancelButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return IgnorePointer(
       ignoring: !enabled,
       child: Opacity(
@@ -8233,7 +8417,7 @@ class _HistoryCancelButton extends StatelessWidget {
                 ),
                 const SizedBox(width: 9),
                 Text(
-                  enabled ? 'Cancel' : 'Canceled',
+                  enabled ? l10n.commonCancel : l10n.posStorageCanceled,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
@@ -8331,6 +8515,7 @@ class _FingerprintAuthorizationDialogState
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Material(
       type: MaterialType.transparency,
       child: SafeArea(
@@ -8431,10 +8616,10 @@ class _FingerprintAuthorizationDialogState
                       color: const Color(0xFFEAF2F6),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(
+                        const SizedBox(
                           width: 14,
                           height: 14,
                           child: CircularProgressIndicator(
@@ -8442,10 +8627,10 @@ class _FingerprintAuthorizationDialogState
                             color: Color(0xFF1E8D54),
                           ),
                         ),
-                        SizedBox(width: 10),
+                        const SizedBox(width: 10),
                         Text(
-                          'Waiting for fingerprint',
-                          style: TextStyle(
+                          l10n.posFingerprintWaiting,
+                          style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w900,
                             color: Color(0xFF344A54),
@@ -8520,6 +8705,7 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final snapshot = _snapshot;
     final selectableCount = snapshot.items.asMap().entries.where((entry) {
       return !snapshot.isItemCanceled(entry.key);
@@ -8560,7 +8746,9 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Cancel Order #${widget.record.orderNumber}',
+                                l10n.posCancelPageTitle(
+                                  widget.record.orderNumber,
+                                ),
                                 style: const TextStyle(
                                   fontSize: 28,
                                   fontWeight: FontWeight.w900,
@@ -8569,7 +8757,7 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
                               ),
                               const SizedBox(height: 5),
                               Text(
-                                'Manager approved. Cancel the full order or select the completed items to cancel.',
+                                l10n.posCancelPageSubtitle,
                                 style: TextStyle(
                                   fontSize: 14,
                                   height: 1.35,
@@ -8612,11 +8800,11 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
                         ],
                       ),
                       if (_reasonMissing)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 8),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
                           child: Text(
-                            'Pick a cancellation reason first.',
-                            style: TextStyle(
+                            l10n.posCancelPageReasonRequired,
+                            style: const TextStyle(
                               color: Color(0xFFB84524),
                               fontWeight: FontWeight.w700,
                               fontSize: 13,
@@ -8642,9 +8830,9 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
                               children: [
                                 Row(
                                   children: [
-                                    const Text(
-                                      'Order Items',
-                                      style: TextStyle(
+                                    Text(
+                                      l10n.posCancelPageOrderItems,
+                                      style: const TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.w900,
                                         color: Color(0xFF18262E),
@@ -8653,7 +8841,9 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
                                     const Spacer(),
                                     _InfoBadge(
                                       icon: Icons.inventory_2_outlined,
-                                      label: '$selectableCount cancellable',
+                                      label: l10n.posCancelPageCancellableCount(
+                                        selectableCount,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -8705,7 +8895,7 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
                           child: SizedBox(
                             height: 58,
                             child: _OutlineActionButton(
-                              label: 'Close',
+                              label: l10n.commonClose,
                               icon: Icons.close_rounded,
                               onTap: _busy
                                   ? () {}
@@ -8719,8 +8909,10 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
                             height: 58,
                             child: _FilledActionButton(
                               label: _busy
-                                  ? 'Saving...'
-                                  : 'Cancel Selected (${_selectedIndexes.length})',
+                                  ? l10n.posCancelPageSaving
+                                  : l10n.posCancelPageCancelSelected(
+                                      _selectedIndexes.length,
+                                    ),
                               onTap: _selectedIndexes.isEmpty || _busy
                                   ? null
                                   : () => unawaited(_submit(fullOrder: false)),
@@ -8732,7 +8924,9 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
                           child: SizedBox(
                             height: 58,
                             child: _DestructiveActionButton(
-                              label: _busy ? 'Saving...' : 'Cancel Full Order',
+                              label: _busy
+                                  ? l10n.posCancelPageSaving
+                                  : l10n.posCancelPageCancelFullOrder,
                               enabled: !_busy && !snapshot.isFullyCanceled,
                               onTap: () => unawaited(_submit(fullOrder: true)),
                             ),
@@ -8758,6 +8952,7 @@ class _CancellationSummaryPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final snapshot = record.snapshot;
 
     return Container(
@@ -8771,9 +8966,9 @@ class _CancellationSummaryPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Order Summary',
-            style: TextStyle(
+          Text(
+            l10n.posCancelPageOrderSummary,
+            style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w900,
               color: Color(0xFF18262E),
@@ -8781,28 +8976,28 @@ class _CancellationSummaryPanel extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           _CancellationMetric(
-            label: 'Paid total',
+            label: l10n.posCancelPagePaidTotal,
             value: SunmiReceiptService.money(snapshot.payableTotal),
             icon: Icons.payments_outlined,
           ),
           const SizedBox(height: 10),
           _CancellationMetric(
-            label: 'Canceled',
+            label: l10n.posCancelPageCanceledMetric,
             value: SunmiReceiptService.money(snapshot.canceledAmount),
             icon: Icons.remove_circle_outline_rounded,
           ),
           const SizedBox(height: 10),
           _CancellationMetric(
-            label: 'Payment',
-            value: snapshot.paymentMethod,
+            label: l10n.posCancelPagePaymentMetric,
+            value: localizedPaymentMethod(l10n, snapshot.paymentMethod),
             icon: Icons.credit_card_rounded,
           ),
           const SizedBox(height: 16),
           const Divider(height: 1),
           const SizedBox(height: 14),
-          const Text(
-            'Cancellation Log',
-            style: TextStyle(
+          Text(
+            l10n.posCancelPageCancellationLog,
+            style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w900,
               color: Color(0xFF344A54),
@@ -8811,11 +9006,11 @@ class _CancellationSummaryPanel extends StatelessWidget {
           const SizedBox(height: 10),
           Expanded(
             child: snapshot.cancellations.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
-                      'No cancellations recorded.',
+                      l10n.posCancelPageNoCancellations,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 13,
                         height: 1.35,
                         fontWeight: FontWeight.w700,
@@ -8908,7 +9103,7 @@ class _CancellationMetric extends StatelessWidget {
               value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
+              textAlign: TextAlign.end,
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w900,
@@ -8937,8 +9132,9 @@ class _CancellationItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final qty = (item['qty'] as num?)?.toInt() ?? 1;
-    final name = item['name']?.toString() ?? 'Item';
+    final name = item['name']?.toString() ?? l10n.posCancelPageItemFallback;
     final amount = (item['lineTotal'] as num?)?.toDouble() ?? 0;
     final detailLines = ((item['detailLines'] as List?) ?? const [])
         .map((line) => line.toString())
@@ -8984,7 +9180,7 @@ class _CancellationItemRow extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          '$qty x $name',
+                          l10n.posCancelPageItemQtyName(qty, name),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -9025,7 +9221,10 @@ class _CancellationItemRow extends StatelessWidget {
             ),
             if (canceled) ...[
               const SizedBox(width: 12),
-              const _InfoBadge(icon: Icons.cancel_rounded, label: 'Canceled'),
+              _InfoBadge(
+                icon: Icons.cancel_rounded,
+                label: l10n.posStorageCanceled,
+              ),
             ],
           ],
         ),
@@ -9105,6 +9304,7 @@ class _DeliveryProviderPickerDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 60),
@@ -9122,10 +9322,10 @@ class _DeliveryProviderPickerDialog extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Choose Delivery Provider',
-                      style: TextStyle(
+                      l10n.posDeliveryPickerTitle,
+                      style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w900,
                         color: Color(0xFF17252C),
@@ -9149,9 +9349,9 @@ class _DeliveryProviderPickerDialog extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Product prices update to the selected provider.',
-                style: TextStyle(
+              Text(
+                l10n.posDeliveryPickerSubtitle,
+                style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFF73828E),
@@ -9273,6 +9473,7 @@ class _InAppKeyboardDialogState extends State<_InAppKeyboardDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final rows = widget.numbersOnly
         ? const <List<String>>[
             ['1', '2', '3'],
@@ -9335,24 +9536,35 @@ class _InAppKeyboardDialogState extends State<_InAppKeyboardDialog> {
               ),
             ),
             const SizedBox(height: 18),
-            ...rows.map(
-              (row) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
-                  children: row
-                      .map(
-                        (key) => Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: _KeyboardKey(
-                              label: key,
-                              onTap: () => _append(key),
-                            ),
-                          ),
+            // Keypad stays LTR in Arabic so the QWERTY/digit order never
+            // mirrors (digits + Latin letters must keep their layout).
+            Directionality(
+              textDirection: TextDirection.ltr,
+              child: Column(
+                children: rows
+                    .map(
+                      (row) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Row(
+                          children: row
+                              .map(
+                                (key) => Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                    child: _KeyboardKey(
+                                      label: key,
+                                      onTap: () => _append(key),
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
                         ),
-                      )
-                      .toList(),
-                ),
+                      ),
+                    )
+                    .toList(),
               ),
             ),
             if (!widget.numbersOnly)
@@ -9362,7 +9574,7 @@ class _InAppKeyboardDialogState extends State<_InAppKeyboardDialog> {
                   children: [
                     Expanded(
                       child: _KeyboardKey(
-                        label: 'SPACE',
+                        label: l10n.posKeyboardSpace,
                         onTap: () => _append(' '),
                       ),
                     ),
@@ -9373,7 +9585,7 @@ class _InAppKeyboardDialogState extends State<_InAppKeyboardDialog> {
               children: [
                 Expanded(
                   child: _OutlineActionButton(
-                    label: 'Clear',
+                    label: l10n.posKeyboardClear,
                     icon: Icons.refresh_rounded,
                     onTap: () {
                       setState(() {
@@ -9385,7 +9597,7 @@ class _InAppKeyboardDialogState extends State<_InAppKeyboardDialog> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _OutlineActionButton(
-                    label: 'Backspace',
+                    label: l10n.posKeyboardBackspace,
                     icon: Icons.backspace_outlined,
                     onTap: _backspace,
                   ),
@@ -9393,7 +9605,7 @@ class _InAppKeyboardDialogState extends State<_InAppKeyboardDialog> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _FilledActionButton(
-                    label: 'Done',
+                    label: l10n.commonDone,
                     onTap: () => Navigator.of(context).pop(_value.trim()),
                   ),
                 ),
@@ -9466,6 +9678,8 @@ class _CustomerSearchDialogState extends State<_CustomerSearchDialog> {
   Future<void> _run() async {
     final q = _controller.text.trim();
     if (q.isEmpty) return;
+    // Captured before the await so it stays valid after the async gap.
+    final l10n = L10n.of(context);
     setState(() {
       _busy = true;
       _error = null;
@@ -9480,7 +9694,7 @@ class _CustomerSearchDialogState extends State<_CustomerSearchDialog> {
       }
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Search failed. Check the connection.');
+        setState(() => _error = l10n.posCustomerSearchFailed);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -9492,6 +9706,7 @@ class _CustomerSearchDialogState extends State<_CustomerSearchDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Dialog(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460, maxHeight: 560),
@@ -9508,16 +9723,16 @@ class _CustomerSearchDialogState extends State<_CustomerSearchDialog> {
                       autofocus: true,
                       textInputAction: TextInputAction.search,
                       onSubmitted: (_) => _run(),
-                      decoration: const InputDecoration(
-                        hintText: 'Name, phone, or plate',
-                        prefixIcon: Icon(Icons.search),
+                      decoration: InputDecoration(
+                        hintText: l10n.posCustomerSearchHint,
+                        prefixIcon: const Icon(Icons.search),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
                     onPressed: _busy ? null : _run,
-                    child: const Text('Search'),
+                    child: Text(l10n.posCustomerSearchButton),
                   ),
                 ],
               ),
@@ -9530,9 +9745,9 @@ class _CustomerSearchDialogState extends State<_CustomerSearchDialog> {
               if (_error != null)
                 Text(_error!, style: const TextStyle(color: Color(0xFFD23B3B))),
               if (!_busy && _searched && _results.isEmpty && _error == null)
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text('No customers found.'),
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(l10n.posCustomerSearchNoResults),
                 ),
               Flexible(
                 child: ListView.builder(
@@ -9546,7 +9761,7 @@ class _CustomerSearchDialogState extends State<_CustomerSearchDialog> {
                       title: Text(c.name.isEmpty ? c.phone : c.name),
                       subtitle: Text([
                         if (c.phone.isNotEmpty) c.phone,
-                        if (pts > 0) '$pts points',
+                        if (pts > 0) l10n.posCustomerSearchPoints(pts),
                       ].join('  ·  ')),
                       onTap: () => Navigator.pop(context, c),
                     );
@@ -9554,10 +9769,10 @@ class _CustomerSearchDialogState extends State<_CustomerSearchDialog> {
                 ),
               ),
               Align(
-                alignment: Alignment.centerRight,
+                alignment: AlignmentDirectional.centerEnd,
                 child: TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  child: Text(l10n.commonCancel),
                 ),
               ),
             ],
@@ -9589,15 +9804,19 @@ class _RedeemBlocksDialogState extends State<_RedeemBlocksDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final points = _blocks * widget.pointsPerBlock;
     final value = _blocks * widget.valuePerBlock;
     return AlertDialog(
-      title: const Text('Redeem points'),
+      title: Text(l10n.posRedeemTitle),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '${widget.pointsPerBlock} points = ${SunmiReceiptService.money(widget.valuePerBlock)} per block',
+            l10n.posRedeemPerBlock(
+              widget.pointsPerBlock,
+              SunmiReceiptService.money(widget.valuePerBlock),
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
@@ -9622,7 +9841,7 @@ class _RedeemBlocksDialogState extends State<_RedeemBlocksDialog> {
           ),
           const SizedBox(height: 8),
           Text(
-            '$points points  →  ${SunmiReceiptService.money(value)} off',
+            l10n.posRedeemSummary(points, SunmiReceiptService.money(value)),
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ],
@@ -9630,11 +9849,11 @@ class _RedeemBlocksDialogState extends State<_RedeemBlocksDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(l10n.commonCancel),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, _blocks),
-          child: const Text('Redeem'),
+          child: Text(l10n.posRedeemConfirm),
         ),
       ],
     );
@@ -9661,6 +9880,7 @@ class _DiscountDialogState extends State<_DiscountDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 160, vertical: 80),
       backgroundColor: Colors.transparent,
@@ -9673,10 +9893,10 @@ class _DiscountDialogState extends State<_DiscountDialog> {
           children: [
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Add Discount',
-                    style: TextStyle(
+                    l10n.posDiscountDlgTitle,
+                    style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w900,
                       color: Color(0xFF18262F),
@@ -9690,9 +9910,9 @@ class _DiscountDialogState extends State<_DiscountDialog> {
               ],
             ),
             const SizedBox(height: 18),
-            const Text(
-              'Percentage Discounts',
-              style: TextStyle(
+            Text(
+              l10n.posDiscountDlgPercentageSection,
+              style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
                 color: Color(0xFF22323B),
@@ -9745,9 +9965,9 @@ class _DiscountDialogState extends State<_DiscountDialog> {
               ],
             ),
             const SizedBox(height: 18),
-            const Text(
-              'Fixed Discounts',
-              style: TextStyle(
+            Text(
+              l10n.posDiscountDlgFixedSection,
+              style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
                 color: Color(0xFF22323B),
@@ -9804,7 +10024,7 @@ class _DiscountDialogState extends State<_DiscountDialog> {
               children: [
                 Expanded(
                   child: _OutlineActionButton(
-                    label: 'Clear Discount',
+                    label: l10n.posDiscountDlgClear,
                     icon: Icons.close_rounded,
                     onTap: () => Navigator.of(
                       context,
@@ -9814,9 +10034,11 @@ class _DiscountDialogState extends State<_DiscountDialog> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _FilledActionButton(
+                    // The stored discount label stays English (it is persisted
+                    // in snapshots, pushed to the server, and printed).
                     label: _selected.isActive
-                        ? 'Apply ${_selected.label}'
-                        : 'Close',
+                        ? l10n.posDiscountDlgApply(_selected.label)
+                        : l10n.commonClose,
                     onTap: _selected.isActive
                         ? () => Navigator.of(context).pop(_selected)
                         : () => Navigator.of(context).pop(),
@@ -9895,6 +10117,7 @@ class _SplitBillDialogState extends State<_SplitBillDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final share = _splitCount > 1
         ? double.parse((widget.total / _splitCount).toStringAsFixed(3))
         : widget.total;
@@ -9911,10 +10134,10 @@ class _SplitBillDialogState extends State<_SplitBillDialog> {
           children: [
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Split Bill',
-                    style: TextStyle(
+                    l10n.posSplitDlgTitle,
+                    style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w900,
                       color: Color(0xFF18262F),
@@ -9934,7 +10157,9 @@ class _SplitBillDialogState extends State<_SplitBillDialog> {
               children: List.generate(6, (index) {
                 final count = index + 1;
                 return _DiscountChoice(
-                  label: count == 1 ? 'Single Bill' : '$count Guests',
+                  label: count == 1
+                      ? l10n.posSplitDlgSingleBill
+                      : l10n.posSplitDlgGuests(count),
                   selected: _splitCount == count,
                   onTap: () => setState(() {
                     _splitCount = count;
@@ -9956,8 +10181,8 @@ class _SplitBillDialogState extends State<_SplitBillDialog> {
                 children: [
                   Text(
                     _splitCount > 1
-                        ? 'Each guest pays'
-                        : 'Single payment total',
+                        ? l10n.posSplitDlgEachGuestPays
+                        : l10n.posSplitDlgSinglePaymentTotal,
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
@@ -9981,7 +10206,7 @@ class _SplitBillDialogState extends State<_SplitBillDialog> {
               children: [
                 Expanded(
                   child: _OutlineActionButton(
-                    label: 'Cancel',
+                    label: l10n.commonCancel,
                     icon: Icons.close_rounded,
                     onTap: () => Navigator.of(context).pop(),
                   ),
@@ -9989,7 +10214,9 @@ class _SplitBillDialogState extends State<_SplitBillDialog> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _FilledActionButton(
-                    label: _splitCount > 1 ? 'Apply Split' : 'Use Single Bill',
+                    label: _splitCount > 1
+                        ? l10n.posSplitDlgApplySplit
+                        : l10n.posSplitDlgUseSingleBill,
                     onTap: () => Navigator.of(context).pop(_splitCount),
                   ),
                 ),

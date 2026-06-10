@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:ui' show Locale;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
+import '../services/display_strings.dart';
 import '../services/kitchen_ticket.dart';
 import '../services/local_order_storage_service.dart';
 import '../services/mosambee_payment_service.dart';
@@ -373,6 +376,12 @@ class PosController extends ChangeNotifier {
     String? reason,
     int? voidReasonId,
   })? onOrderVoided;
+
+  /// Phase C4 — resolves controller-authored user-facing messages in the
+  /// device language without a BuildContext. Stored messages (lastPaymentMessage,
+  /// displayNote) keep the language they were authored in until the next action.
+  L10n Function()? localize;
+  L10n get _l10n => localize?.call() ?? lookupL10n(const Locale('en'));
 
   /// Whether to print a Sunmi receipt on completion (driven by Settings; the
   /// screen keeps it in sync with the settings controller).
@@ -961,7 +970,7 @@ class PosController extends ChangeNotifier {
   Future<void> selectOrderType(OrderType orderType) async {
     if (selectedOrderType == orderType) {
       if (orderType == OrderType.dineIn && activeDiningTableId == null) {
-        displayNote = 'Choose a table to start or continue a dine-in order.';
+        displayNote = _l10n.ctrlMsgChooseTableDineIn;
         _broadcast();
       }
       return;
@@ -973,7 +982,7 @@ class PosController extends ChangeNotifier {
 
     selectedOrderType = orderType;
     if (orderType == OrderType.dineIn) {
-      displayNote = 'Choose a table to start or continue a dine-in order.';
+      displayNote = _l10n.ctrlMsgChooseTableDineIn;
       paymentStatus = 'Waiting';
       selectedPaymentMethod = 'Cash';
       productSearchQuery = '';
@@ -1239,7 +1248,10 @@ class PosController extends ChangeNotifier {
       _splitPayments.clear();
       displayNote = session.draft!.note.isNotEmpty
           ? session.draft!.note
-          : 'Editing ${definition.name} in ${_floorLabel(definition.floorId)}.';
+          : _l10n.ctrlMsgEditingTableOnFloor(
+              definition.name,
+              _floorLabel(definition.floorId),
+            );
     } else {
       if (!canReuseCurrentCart) {
         _cart.clear();
@@ -1249,9 +1261,9 @@ class PosController extends ChangeNotifier {
         splitCount = 1;
         _splitPayments.clear();
         currentOrderReference = '';
-        displayNote = 'Add items for ${definition.name}.';
+        displayNote = _l10n.ctrlMsgAddItemsForTable(definition.name);
       } else if (displayNote.isEmpty) {
-        displayNote = 'Assigning the current items to ${definition.name}.';
+        displayNote = _l10n.ctrlMsgAssignItemsToTable(definition.name);
       }
     }
 
@@ -1266,7 +1278,7 @@ class PosController extends ChangeNotifier {
       advanceOrderNumber: false,
       nextOrderType: OrderType.dineIn,
       clearActiveDiningTable: true,
-      note: 'Choose a table to start or continue a dine-in order.',
+      note: _l10n.ctrlMsgChooseTableDineIn,
     );
   }
 
@@ -1282,7 +1294,7 @@ class PosController extends ChangeNotifier {
       advanceOrderNumber: false,
       nextOrderType: OrderType.dineIn,
       clearActiveDiningTable: true,
-      note: 'Choose a table to start or continue a dine-in order.',
+      note: _l10n.ctrlMsgChooseTableDineIn,
     );
   }
 
@@ -1300,7 +1312,7 @@ class PosController extends ChangeNotifier {
         advanceOrderNumber: false,
         nextOrderType: OrderType.dineIn,
         clearActiveDiningTable: true,
-        note: 'Choose a table to start or continue a dine-in order.',
+        note: _l10n.ctrlMsgChooseTableDineIn,
       );
       return;
     }
@@ -1438,14 +1450,14 @@ class PosController extends ChangeNotifier {
           ),
         );
       }
-      final message = 'Reference ${draft.orderReference} was placed on hold.';
+      final message = _l10n.ctrlMsgOrderHeld(draft.orderReference);
       _resetForNextOrder(advanceOrderNumber: false);
       lastPaymentMessage = message;
       displayNote = message;
       _broadcast();
       return message;
     } catch (error) {
-      final message = 'Unable to hold the order right now.';
+      final message = _l10n.ctrlMsgHoldFailed;
       debugPrint('Failed to hold order: $error');
       lastPaymentMessage = message;
       displayNote = message;
@@ -1492,7 +1504,7 @@ class PosController extends ChangeNotifier {
     await _orderStorage.deleteHeldOrder(record.id);
     await refreshHeldOrders();
     _broadcast();
-    return 'Resumed held reference $currentOrderReference.';
+    return _l10n.ctrlMsgOrderResumed(currentOrderReference);
   }
 
   /// Phase C2 — discard a held order (blueprint §6.7 "Cancel: voids the
@@ -1511,7 +1523,7 @@ class PosController extends ChangeNotifier {
         reason: 'Held order discarded',
       );
     }
-    return 'Held reference ${record.orderReference} was discarded.';
+    return _l10n.ctrlMsgHeldOrderDiscarded(record.orderReference);
   }
 
   Future<void> refreshOrderHistory() async {
@@ -1548,7 +1560,7 @@ class PosController extends ChangeNotifier {
   }) async {
     final snapshot = record.snapshot;
     if (snapshot.isFullyCanceled) {
-      return 'Order #${record.orderNumber} is already fully canceled.';
+      return _l10n.ctrlMsgOrderAlreadyCanceled(record.orderNumber);
     }
 
     final now = DateTime.now();
@@ -1607,7 +1619,7 @@ class PosController extends ChangeNotifier {
     }
 
     if (newCancellations.isEmpty) {
-      return 'No cancellable items were selected.';
+      return _l10n.ctrlMsgNoCancellableItems;
     }
 
     final updatedCancellations = [
@@ -1617,8 +1629,8 @@ class PosController extends ChangeNotifier {
     final updatedSnapshot = snapshot.copyWith(
       paymentStatus: cancelFullOrder ? 'Canceled' : 'Partially Canceled',
       note: cancelFullOrder
-          ? 'Order canceled by manager.'
-          : '${newCancellations.length} item${newCancellations.length == 1 ? '' : 's'} canceled by manager.',
+          ? _l10n.ctrlMsgOrderCanceledByManagerNote
+          : _l10n.ctrlMsgItemsCanceledByManagerNote(newCancellations.length),
       cancellations: updatedCancellations,
     );
     final updatedRecord = OrderHistoryRecord(
@@ -1646,9 +1658,12 @@ class PosController extends ChangeNotifier {
           voidReasonId: voidReason?.id,
         );
       }
-      return 'Order #${record.orderNumber} was fully canceled.';
+      return _l10n.ctrlMsgOrderFullyCanceled(record.orderNumber);
     }
-    return '${newCancellations.length} item${newCancellations.length == 1 ? '' : 's'} canceled from order #${record.orderNumber}.';
+    return _l10n.ctrlMsgItemsCanceledFromOrder(
+      newCancellations.length,
+      record.orderNumber,
+    );
   }
 
   Future<String?> payAndPrint({double? cashTenderedAmount}) async {
@@ -1670,14 +1685,15 @@ class PosController extends ChangeNotifier {
       if (canOfferCharityRoundUp) {
         final accepted = await _promptForCharityRoundUp();
         if (accepted == null) {
+          // 'Credit Card' shortens to 'Card' in this message (original copy).
           final paymentLabel = transactionMethod == 'Credit Card'
-              ? 'Card'
-              : transactionMethod;
+              ? _l10n.displayMethodCardShort
+              : localizedPaymentMethod(_l10n, transactionMethod);
           _clearPaymentLaunchOverlay();
           paymentStatus = 'Payment canceled';
           lastPaymentMessage = _charityPromptCanceled
-              ? '$paymentLabel payment canceled.'
-              : 'Timed out waiting for the customer response.';
+              ? _l10n.ctrlMsgPaymentCanceledWithMethod(paymentLabel)
+              : _l10n.ctrlMsgCustomerResponseTimeout;
           displayNote = lastPaymentMessage;
           _broadcast();
           return lastPaymentMessage;
@@ -1691,8 +1707,9 @@ class PosController extends ChangeNotifier {
             cashTenderedAmount + 0.0005 < payableTotal) {
           _clearPaymentLaunchOverlay();
           paymentStatus = 'Payment canceled';
-          lastPaymentMessage =
-              'Tendered cash must be at least ${SunmiReceiptService.money(payableTotal)}.';
+          lastPaymentMessage = _l10n.ctrlMsgTenderedCashTooLow(
+            SunmiReceiptService.money(payableTotal),
+          );
           displayNote = lastPaymentMessage;
           _broadcast();
           return lastPaymentMessage;
@@ -1700,14 +1717,17 @@ class PosController extends ChangeNotifier {
 
         paymentStatus = 'Processing payment';
         displayNote = transactionSplitCount > 1
-            ? 'The cashier is completing split bill cash payment $transactionSplitIndex of $transactionSplitCount.'
-            : 'The cashier is completing a cash payment.';
+            ? _l10n.ctrlMsgCashierCompletingSplitCash(
+                transactionSplitIndex,
+                transactionSplitCount,
+              )
+            : _l10n.ctrlMsgCashierCompletingCash;
         paymentOverlayTitle = '';
         _broadcast();
 
         paymentStatus = 'Paid';
-        lastPaymentMessage = 'Cash payment recorded successfully.';
-        displayNote = 'Cash payment completed. Thank you.';
+        lastPaymentMessage = _l10n.ctrlMsgCashPaymentRecorded;
+        displayNote = _l10n.ctrlMsgCashPaymentCompleted;
         _broadcast();
 
         return await _completeSuccessfulPayment(
@@ -1723,8 +1743,8 @@ class PosController extends ChangeNotifier {
       _clearPaymentLaunchOverlay();
       paymentStatus = 'Processing payment';
       displayNote = charityRoundUpAccepted
-          ? 'Thank you for rounding up for charity. Tap your card or phone on the rear NFC area to pay.'
-          : 'Tap your card or phone on the rear NFC area to pay.';
+          ? _l10n.ctrlMsgTapToPayRoundUp
+          : _l10n.ctrlMsgTapToPay;
       _broadcast();
 
       debugPrint(
@@ -1741,10 +1761,8 @@ class PosController extends ChangeNotifier {
             await _promptForPendingReconciliation(amount: payableTotal)) {
           _clearPaymentLaunchOverlay();
           paymentStatus = 'Paid (pending reconciliation)';
-          lastPaymentMessage =
-              'Card recorded as pending reconciliation. The bank settlement will confirm it.';
-          displayNote =
-              'Payment recorded pending bank confirmation. Thank you.';
+          lastPaymentMessage = _l10n.ctrlMsgCardPendingReconRecorded;
+          displayNote = _l10n.ctrlMsgPaymentPendingBankThanks;
           _broadcast();
 
           return await _completeSuccessfulPayment(
@@ -1774,11 +1792,11 @@ class PosController extends ChangeNotifier {
       _clearPaymentLaunchOverlay();
       paymentStatus = 'Paid';
       lastPaymentMessage = charityRoundUpAccepted
-          ? '${paymentResult.userMessage} Thank you for supporting charity.'
+          ? _l10n.ctrlMsgCardApprovedRoundUpThanks(paymentResult.userMessage)
           : paymentResult.userMessage;
       displayNote = charityRoundUpAccepted
-          ? 'Payment approved. Your round-up donation will go to charity. Thank you.'
-          : 'Payment approved. Thank you.';
+          ? _l10n.ctrlMsgPaymentApprovedRoundUpNote
+          : _l10n.ctrlMsgPaymentApprovedNote;
       _broadcast();
 
       return await _completeSuccessfulPayment(
@@ -1803,8 +1821,7 @@ class PosController extends ChangeNotifier {
 
     if (splitCount > 1 || hasRecordedSplitPayments) {
       paymentStatus = 'Payment canceled';
-      lastPaymentMessage =
-          'Clear Split Bill before using cash and card split payment.';
+      lastPaymentMessage = _l10n.ctrlMsgClearSplitBillFirst;
       displayNote = lastPaymentMessage;
       _broadcast();
       return lastPaymentMessage;
@@ -1818,8 +1835,9 @@ class PosController extends ChangeNotifier {
 
     if (cashShare <= 0 || cardBaseAmount <= 0) {
       paymentStatus = 'Payment canceled';
-      lastPaymentMessage =
-          'Enter a cash amount less than ${SunmiReceiptService.money(billTotal)} before using split payment.';
+      lastPaymentMessage = _l10n.ctrlMsgEnterCashBelowTotal(
+        SunmiReceiptService.money(billTotal),
+      );
       displayNote = lastPaymentMessage;
       _broadcast();
       return lastPaymentMessage;
@@ -1839,8 +1857,8 @@ class PosController extends ChangeNotifier {
           _clearPaymentLaunchOverlay();
           paymentStatus = 'Payment canceled';
           lastPaymentMessage = _charityPromptCanceled
-              ? 'Split payment canceled.'
-              : 'Timed out waiting for the customer response.';
+              ? _l10n.ctrlMsgSplitPaymentCanceled
+              : _l10n.ctrlMsgCustomerResponseTimeout;
           displayNote = lastPaymentMessage;
           _broadcast();
           return lastPaymentMessage;
@@ -1850,8 +1868,8 @@ class PosController extends ChangeNotifier {
       _clearPaymentLaunchOverlay();
       paymentStatus = 'Processing payment';
       displayNote = charityRoundUpAccepted
-          ? 'Thank you for rounding up for charity. Tap your card or phone for the remaining split payment.'
-          : 'Tap your card or phone for the remaining split payment.';
+          ? _l10n.ctrlMsgTapForRemainingSplitRoundUp
+          : _l10n.ctrlMsgTapForRemainingSplit;
       _broadcast();
 
       debugPrint(
@@ -1920,13 +1938,19 @@ class PosController extends ChangeNotifier {
       paymentStatus = cardPending ? 'Paid (pending reconciliation)' : 'Paid';
       selectedPaymentMethod = 'Split Payment';
       lastPaymentMessage = cardPending
-          ? 'Split payment recorded. Cash ${SunmiReceiptService.money(cashShare)}; card ${SunmiReceiptService.money(cardPaidAmount)} pending reconciliation.'
-          : 'Split payment completed. Cash ${SunmiReceiptService.money(cashShare)} and card ${SunmiReceiptService.money(cardPaidAmount)} recorded.';
+          ? _l10n.ctrlMsgSplitRecordedCardPending(
+              SunmiReceiptService.money(cashShare),
+              SunmiReceiptService.money(cardPaidAmount),
+            )
+          : _l10n.ctrlMsgSplitCompletedCashCard(
+              SunmiReceiptService.money(cashShare),
+              SunmiReceiptService.money(cardPaidAmount),
+            );
       displayNote = cardPending
-          ? 'Cash received; card payment recorded pending bank confirmation. Thank you.'
+          ? _l10n.ctrlMsgCashReceivedCardPendingNote
           : charityRoundUpAccepted
-          ? 'Split payment completed with a card round-up donation. Thank you.'
-          : 'Split payment completed. Thank you.';
+          ? _l10n.ctrlMsgSplitCompletedRoundUpNote
+          : _l10n.ctrlMsgSplitCompletedNote;
       _broadcast();
 
       return await _finishCompletedOrder(
@@ -1989,10 +2013,17 @@ class PosController extends ChangeNotifier {
         _resetCharityRoundUp();
         _clearPaymentLaunchOverlay();
         paymentStatus = 'Split payment pending';
-        lastPaymentMessage =
-            'Split payment $splitIndexAtPayment of $splitCountAtPayment recorded. Continue with guest $nextSplitIndex.';
-        displayNote =
-            'Guest $splitIndexAtPayment paid ${SunmiReceiptService.money(paidAmount)}. Collect split payment $nextSplitIndex of $splitCountAtPayment.';
+        lastPaymentMessage = _l10n.ctrlMsgSplitProgressRecorded(
+          splitIndexAtPayment,
+          splitCountAtPayment,
+          nextSplitIndex,
+        );
+        displayNote = _l10n.ctrlMsgGuestPaidCollectNext(
+          splitIndexAtPayment,
+          SunmiReceiptService.money(paidAmount),
+          nextSplitIndex,
+          splitCountAtPayment,
+        );
         _broadcast();
         return lastPaymentMessage;
       }
@@ -2000,10 +2031,11 @@ class PosController extends ChangeNotifier {
       _clearPaymentLaunchOverlay();
       paymentStatus = 'Paid';
       selectedPaymentMethod = 'Split Payment';
-      lastPaymentMessage =
-          'Split payment completed. $splitCountAtPayment payments recorded for ${SunmiReceiptService.money(_splitPaidTotal)}.';
-      displayNote =
-          'Split bill completed with $splitCountAtPayment payments. Thank you.';
+      lastPaymentMessage = _l10n.ctrlMsgSplitCompletedSummary(
+        splitCountAtPayment,
+        SunmiReceiptService.money(_splitPaidTotal),
+      );
+      displayNote = _l10n.ctrlMsgSplitBillCompletedNote(splitCountAtPayment);
       _broadcast();
 
       return await _finishCompletedOrder(
@@ -2064,9 +2096,7 @@ class PosController extends ChangeNotifier {
       nextOrderType: isDineInPayment ? OrderType.dineIn : OrderType.quickOrder,
       forceOrderNumber: isDineInPayment ? _nextOrderNumberSeed : null,
       clearActiveDiningTable: true,
-      note: isDineInPayment
-          ? 'Choose a table to start or continue a dine-in order.'
-          : '',
+      note: isDineInPayment ? _l10n.ctrlMsgChooseTableDineIn : '',
     );
     return successMessage;
   }
@@ -2201,8 +2231,9 @@ class PosController extends ChangeNotifier {
     charityRoundUpAccepted = false;
     charityRoundUpAmount = offeredCharityRoundUpAmount;
     charityRoundUpTotal = offeredCharityRoundUpTotal;
-    displayNote =
-        'Would you like to round up ${SunmiReceiptService.money(charityRoundUpAmount)} to charity?';
+    displayNote = _l10n.ctrlMsgRoundUpPromptQuestion(
+      SunmiReceiptService.money(charityRoundUpAmount),
+    );
     _broadcast();
     debugPrint('PosController waiting for charity round-up response.');
 
@@ -2248,16 +2279,18 @@ class PosController extends ChangeNotifier {
     charityRoundUpTotal = accepted
         ? offeredCharityRoundUpTotal
         : activePaymentBaseTotal;
-    final paymentKind = selectedPaymentMethod == 'Cash'
-        ? 'cash payment'
-        : 'card payment';
+    final isCashMethod = selectedPaymentMethod == 'Cash';
     _showPaymentLaunchOverlay(
-      title: selectedPaymentMethod == 'Cash'
-          ? 'Preparing Cash Payment'
-          : 'Preparing Secure Payment',
+      title: isCashMethod
+          ? _l10n.ctrlOverlayPreparingCashPayment
+          : _l10n.ctrlOverlayPreparingSecurePayment,
       message: accepted
-          ? 'Thank you. We are preparing the rounded amount for $paymentKind.'
-          : 'Thank you. We are preparing the original amount for $paymentKind.',
+          ? (isCashMethod
+                ? _l10n.ctrlMsgPreparingRoundedCash
+                : _l10n.ctrlMsgPreparingRoundedCard)
+          : (isCashMethod
+                ? _l10n.ctrlMsgPreparingOriginalCash
+                : _l10n.ctrlMsgPreparingOriginalCard),
     );
     lastCustomerEvent = switch (source) {
       'staff' =>
@@ -2299,8 +2332,7 @@ class PosController extends ChangeNotifier {
     paymentStatus = 'Card charge not confirmed';
     showPendingReconciliationPrompt = true;
     _clearPaymentLaunchOverlay();
-    displayNote =
-        'The card charge could not be confirmed. Staff is reviewing the payment.';
+    displayNote = _l10n.ctrlMsgCardUnconfirmedReviewing;
     _broadcast();
 
     try {
@@ -2365,13 +2397,13 @@ class PosController extends ChangeNotifier {
     paymentStatus = 'Processing payment';
     _showPaymentLaunchOverlay(
       title: stage == 'login_started'
-          ? 'Connecting To Payment Terminal'
-          : 'Waiting For Payment Result',
+          ? _l10n.ctrlOverlayConnectingTerminal
+          : _l10n.ctrlOverlayWaitingPaymentResult,
       message: stage == 'login_started'
-          ? 'Payment Terminal is opening securely. Please wait while the payment terminal prepares the transaction.'
+          ? _l10n.ctrlMsgTerminalOpening
           : charityRoundUpAccepted
-          ? 'The rounded amount has been sent to Payment Terminal. Please follow the terminal instructions while we wait for the final response.'
-          : 'The order total has been sent to Payment Terminal. Please follow the terminal instructions while we wait for the final response.',
+          ? _l10n.ctrlMsgRoundedSentToTerminal
+          : _l10n.ctrlMsgTotalSentToTerminal,
     );
     _broadcast();
   }
@@ -2426,7 +2458,7 @@ class PosController extends ChangeNotifier {
   }
 
   String _floorLabel(String floorId) =>
-      _findDiningFloorById(floorId)?.label ?? 'Dining';
+      _findDiningFloorById(floorId)?.label ?? _l10n.ctrlFloorFallbackDining;
 
   void _reserveOrderNumber(int orderNumber) {
     if (orderNumber >= _nextOrderNumberSeed) {
