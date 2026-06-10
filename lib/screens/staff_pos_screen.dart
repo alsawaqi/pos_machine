@@ -701,17 +701,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   String get _activeDiningTableLabel =>
       controller.activeDiningTableDefinition?.name ?? '';
 
-  String _formatOccupancyDuration(DateTime? value) {
-    if (value == null) return '0m';
-    final difference = _clockNow.value.difference(value);
-    if (difference.inHours >= 1) {
-      final hours = difference.inHours;
-      final minutes = difference.inMinutes.remainder(60);
-      return minutes == 0 ? '${hours}h' : '${hours}h ${minutes}m';
-    }
-    final minutes = difference.inMinutes;
-    return '${minutes < 1 ? 1 : minutes}m';
-  }
+  String _formatOccupancyDuration(DateTime? value) =>
+      _formatOccupancyDurationAt(value, _clockNow.value);
 
   Widget _buildCatalogSurface(double contentHeight) {
     return Column(
@@ -933,22 +924,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                     session?.status ??
                                     DiningTableStatus.available;
 
+                                // Gap sweep G2 / P-F1 — occupied tables
+                                // expose Move / Merge via a visible actions
+                                // button (and still on long-press).
+                                final openActions =
+                                    status == DiningTableStatus.occupied &&
+                                            session != null
+                                        ? () => unawaited(
+                                            _openDiningTableActionsSheet(
+                                                table, session))
+                                        : null;
                                 return _DiningTableCard(
                                   table: table,
                                   session: session,
                                   status: status,
-                                  durationLabel: _formatOccupancyDuration(
-                                    session?.occupiedAt,
-                                  ),
-                                  // Gap sweep G2 — occupied tables expose
-                                  // Move / Merge on long-press.
-                                  onLongPress:
-                                      status == DiningTableStatus.occupied &&
-                                              session != null
-                                          ? () => unawaited(
-                                              _openDiningTableActionsSheet(
-                                                  table, session))
-                                          : null,
+                                  clock: _clockNow,
+                                  onLongPress: openActions,
+                                  onActions: openActions,
                                   onTap: () async {
                                     if (status == DiningTableStatus.paid &&
                                         session != null) {
@@ -7941,23 +7933,42 @@ ShapeBorder _diningCardShape(String shape, BorderSide side) {
   }
 }
 
+/// Shared "seated for" formatter — pure so the table card can re-derive it
+/// from the live clock tick (P-F1: the badge used to be a frozen snapshot).
+String _formatOccupancyDurationAt(DateTime? value, DateTime now) {
+  if (value == null) return '0m';
+  final difference = now.difference(value);
+  if (difference.inHours >= 1) {
+    final hours = difference.inHours;
+    final minutes = difference.inMinutes.remainder(60);
+    return minutes == 0 ? '${hours}h' : '${hours}h ${minutes}m';
+  }
+  final minutes = difference.inMinutes;
+  return '${minutes < 1 ? 1 : minutes}m';
+}
+
 class _DiningTableCard extends StatelessWidget {
   final DiningTableDefinition table;
   final DiningTableSession? session;
   final DiningTableStatus status;
-  final String durationLabel;
+  // P-F1 — the card derives the seated-for badge from the live clock so it
+  // ticks while the cashier watches the floor plan.
+  final ValueListenable<DateTime> clock;
   final VoidCallback onTap;
   // Gap sweep G2 — long-press opens the table actions sheet (move/merge);
-  // null = no actions for this status.
+  // null = no actions for this status. P-F1 adds [onActions], a VISIBLE
+  // button for the same sheet (long-press alone was undiscoverable).
   final VoidCallback? onLongPress;
+  final VoidCallback? onActions;
 
   const _DiningTableCard({
     required this.table,
     required this.session,
     required this.status,
-    required this.durationLabel,
+    required this.clock,
     required this.onTap,
     this.onLongPress,
+    this.onActions,
   });
 
   @override
@@ -8078,7 +8089,49 @@ class _DiningTableCard extends StatelessWidget {
                   ),
                 ),
               ),
-            if (status == DiningTableStatus.occupied)
+            // P-F1 — the occupied marker is now a real button into the
+            // Move/Merge actions sheet (it was a decorative dot; long-press
+            // was the only — and invisible — way in). Its own InkWell wins
+            // the gesture arena over the card's onTap.
+            if (status == DiningTableStatus.occupied && onActions != null)
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Tooltip(
+                  message: l10n.posDiningTableActionsTooltip,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color:
+                              const Color(0xFFFF7A1A).withValues(alpha: 0.42),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      color: const Color(0xFFFF7A1A),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: onActions,
+                        child: const SizedBox(
+                          width: 30,
+                          height: 30,
+                          child: Icon(
+                            Icons.more_horiz_rounded,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            else if (status == DiningTableStatus.occupied)
               Positioned(
                 top: 17,
                 right: 17,
@@ -8147,11 +8200,20 @@ class _DiningTableCard extends StatelessWidget {
                             strong: true,
                             foreground: const Color(0xFF9E3410),
                           ),
-                          _TinyInfoBadge(
-                            icon: Icons.schedule_rounded,
-                            label: durationLabel,
-                            tint: const Color(0xFFFFE0C5),
-                            foreground: const Color(0xFF9E4F11),
+                          // P-F1 — only this tiny badge listens to the
+                          // 1-second clock, so the seated-for time ticks
+                          // without rebuilding the whole floor plan.
+                          ValueListenableBuilder<DateTime>(
+                            valueListenable: clock,
+                            builder: (context, now, _) => _TinyInfoBadge(
+                              icon: Icons.schedule_rounded,
+                              label: _formatOccupancyDurationAt(
+                                session?.occupiedAt,
+                                now,
+                              ),
+                              tint: const Color(0xFFFFE0C5),
+                              foreground: const Color(0xFF9E4F11),
+                            ),
                           ),
                           Container(
                             width: 1,

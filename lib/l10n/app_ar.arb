@@ -579,6 +579,7 @@
   "posCancelPageSubtitle": "تمت موافقة المدير. ألغِ الطلب كاملًا أو حدد الأصناف المكتملة لإلغائها.",
   "posCancelPageReasonRequired": "اختر سبب الإلغاء أولًا.",
   "posCancelPageServerFullOnly": "الطلبات المتزامنة تُلغى بالكامل فقط.",
+  "posDiningTableActionsTooltip": "إجراءات الطاولة",
   "posCancelPageOrderItems": "أصناف الطلب",
   "posCancelPageCancellableCount": "{count} قابلة للإلغاء",
   "posCancelPageSaving": "جارٍ الحفظ...",

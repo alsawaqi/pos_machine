@@ -2184,6 +2184,9 @@ class L10nAr extends L10n {
       'الطلبات المتزامنة تُلغى بالكامل فقط.';
 
   @override
+  String get posDiningTableActionsTooltip => 'إجراءات الطاولة';
+
+  @override
   String get posCancelPageOrderItems => 'أصناف الطلب';
 
   @override

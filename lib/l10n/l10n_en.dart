@@ -2155,6 +2155,9 @@ class L10nEn extends L10n {
       'Synced orders can only be canceled in full.';
 
   @override
+  String get posDiningTableActionsTooltip => 'Table actions';
+
+  @override
   String get posCancelPageOrderItems => 'Order Items';
 
   @override

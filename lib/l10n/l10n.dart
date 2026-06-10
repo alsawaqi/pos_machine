@@ -3576,6 +3576,12 @@ abstract class L10n {
   /// **'Synced orders can only be canceled in full.'**
   String get posCancelPageServerFullOnly;
 
+  /// No description provided for @posDiningTableActionsTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Table actions'**
+  String get posDiningTableActionsTooltip;
+
   /// No description provided for @posCancelPageOrderItems.
   ///
   /// In en, this message translates to:
