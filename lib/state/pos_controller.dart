@@ -1344,6 +1344,137 @@ class PosController extends ChangeNotifier {
     _notifySafely();
   }
 
+  /// Gap sweep G2 — move an OCCUPIED table's session to a FREE table (the
+  /// customer changed seats). Device-local, like the sessions themselves;
+  /// the eventual order.create reads the table LIVE from the active
+  /// definition, so the server needs no fixup. Returns the localized result
+  /// message, or null when the preconditions fail (caller guards UI-side
+  /// too). Floor-plan context only (no active table) — that sidesteps the
+  /// debounced-persist race by construction.
+  Future<String?> transferDiningTable(String fromTableId, String toTableId) async {
+    if (activeDiningTableId != null || fromTableId == toTableId) return null;
+    final source = diningSessionFor(fromTableId);
+    final targetDef = _findDiningTableDefinitionById(toTableId);
+    if (source == null ||
+        source.status != DiningTableStatus.occupied ||
+        source.draft == null ||
+        targetDef == null ||
+        diningSessionFor(toTableId) != null) {
+      return null;
+    }
+
+    final sourceDef = _findDiningTableDefinitionById(fromTableId);
+    final newDraft = source.draft!.copyWith(
+      diningTableId: targetDef.id,
+      diningTableName: targetDef.name,
+      diningFloorId: targetDef.floorId,
+      diningFloorLabel: _floorLabel(targetDef.floorId),
+    );
+    final moved = DiningTableSession(
+      tableId: targetDef.id,
+      floorId: targetDef.floorId,
+      status: DiningTableStatus.occupied,
+      updatedAt: DateTime.now(),
+      orderNumber: source.orderNumber,
+      orderReference: source.orderReference,
+      occupiedAt: source.occupiedAt,
+      draft: newDraft,
+    );
+
+    // Save target BEFORE deleting source (REPLACE is idempotent): a crash in
+    // between duplicates a row, never loses the cart.
+    await _orderStorage.saveDiningTableSession(moved);
+    await _orderStorage.clearDiningTable(fromTableId);
+    diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
+      ..removeWhere((s) => s.tableId == fromTableId || s.tableId == targetDef.id)
+      ..insert(0, moved);
+    _notifySafely();
+
+    return _l10n.ctrlMsgTableTransferred(
+      sourceDef?.name ?? fromTableId,
+      targetDef.name,
+    );
+  }
+
+  /// Gap sweep G2 — merge an OCCUPIED source table's cart into another
+  /// OCCUPIED target table (parties joined up). Lines combine on
+  /// [CartItem.mergeSignature] (same product + modifiers + notes → qty
+  /// adds; else appended). The TARGET keeps its reference, discount and
+  /// split settings; the source session is dropped — and if its draft was
+  /// mirrored server-side as a held order, the mirror is voided like a
+  /// discard so no stale hold lingers on other terminals.
+  Future<String?> mergeDiningTables(String sourceTableId, String targetTableId) async {
+    if (activeDiningTableId != null || sourceTableId == targetTableId) {
+      return null;
+    }
+    final source = diningSessionFor(sourceTableId);
+    final target = diningSessionFor(targetTableId);
+    if (source == null ||
+        target == null ||
+        source.status != DiningTableStatus.occupied ||
+        target.status != DiningTableStatus.occupied ||
+        source.draft == null ||
+        target.draft == null) {
+      return null;
+    }
+    final sourceDef = _findDiningTableDefinitionById(sourceTableId);
+    final targetDef = _findDiningTableDefinitionById(targetTableId);
+
+    final merged = target.draft!.items
+        .map((item) => CartItem.fromMap(item.toMap()))
+        .toList();
+    for (final item in source.draft!.items) {
+      final index =
+          merged.indexWhere((e) => e.mergeSignature == item.mergeSignature);
+      if (index >= 0) {
+        merged[index].qty += item.qty;
+      } else {
+        merged.add(CartItem.fromMap(item.toMap()));
+      }
+    }
+
+    final mergedDraft = target.draft!.copyWith(items: merged);
+    final earliestOccupied = (source.occupiedAt != null &&
+            (target.occupiedAt == null ||
+                source.occupiedAt!.isBefore(target.occupiedAt!)))
+        ? source.occupiedAt
+        : target.occupiedAt;
+    final mergedSession = DiningTableSession(
+      tableId: target.tableId,
+      floorId: target.floorId,
+      status: DiningTableStatus.occupied,
+      updatedAt: DateTime.now(),
+      orderNumber: target.orderNumber,
+      orderReference: target.orderReference,
+      occupiedAt: earliestOccupied,
+      draft: mergedDraft,
+    );
+
+    await _orderStorage.saveDiningTableSession(mergedSession);
+    await _orderStorage.clearDiningTable(sourceTableId);
+    diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
+      ..removeWhere(
+          (s) => s.tableId == sourceTableId || s.tableId == target.tableId)
+      ..insert(0, mergedSession);
+
+    // The source cart may have been mirrored server-side as a held order
+    // (a resumed hold keeps its uuid) — void the mirror like a discard.
+    final sourceUuid = source.draft!.serverOrderUuid;
+    if (sourceUuid.isNotEmpty && sourceUuid != mergedDraft.serverOrderUuid) {
+      onOrderVoided?.call(
+        sourceUuid,
+        orderNumber: source.orderNumber,
+        reason: 'Merged into ${targetDef?.name ?? targetTableId}',
+      );
+    }
+    _notifySafely();
+
+    return _l10n.ctrlMsgTablesMerged(
+      sourceDef?.name ?? sourceTableId,
+      targetDef?.name ?? targetTableId,
+    );
+  }
+
   Future<void> openRearDisplay() async {
     if (!_presentationEnabled) return;
 
@@ -2506,6 +2637,9 @@ class PosController extends ChangeNotifier {
 
   String _floorLabel(String floorId) =>
       _findDiningFloorById(floorId)?.label ?? _l10n.ctrlFloorFallbackDining;
+
+  /// Gap sweep G2 — public floor label for the table pickers.
+  String floorLabelFor(String floorId) => _floorLabel(floorId);
 
   void _reserveOrderNumber(int orderNumber) {
     if (orderNumber >= _nextOrderNumberSeed) {

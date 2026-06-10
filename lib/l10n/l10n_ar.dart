@@ -2442,4 +2442,70 @@ class L10nAr extends L10n {
 
   @override
   String get posMidShiftCashTaken => 'النقد المحصّل (هذا الجهاز)';
+
+  @override
+  String posDiningActionsTitle(String table) {
+    return 'الطاولة $table';
+  }
+
+  @override
+  String get posDiningActionOpen => 'فتح الطاولة';
+
+  @override
+  String get posDiningActionMove => 'النقل إلى طاولة أخرى';
+
+  @override
+  String get posDiningActionMoveHint =>
+      'انتقل الضيوف إلى مقاعد أخرى — ينتقل الطلب معهم.';
+
+  @override
+  String get posDiningActionMerge => 'الدمج في طاولة أخرى';
+
+  @override
+  String get posDiningActionMergeHint => 'ضم هذا الطلب إلى طاولة مشغولة أخرى.';
+
+  @override
+  String get posDiningPickFreeTable => 'النقل إلى أي طاولة شاغرة؟';
+
+  @override
+  String get posDiningPickMergeTarget => 'الدمج في أي طاولة؟';
+
+  @override
+  String get posDiningMergeConfirmTitle => 'دمج الطاولتين؟';
+
+  @override
+  String posDiningMergeConfirmBody(
+    String source,
+    String sourceTotal,
+    String target,
+    String targetTotal,
+  ) {
+    return 'سيُدمج طلب $source ($sourceTotal) في $target ($targetTotal). تصبح طاولة المصدر شاغرة، وتحتفظ الطاولة الهدف بمرجعها وخصمها.';
+  }
+
+  @override
+  String get posDiningNoFreeTables => 'لا توجد طاولات شاغرة حاليًا.';
+
+  @override
+  String get posDiningNoMergeTargets => 'لا توجد طاولات مشغولة أخرى للدمج.';
+
+  @override
+  String get posDiningActionFailed =>
+      'تغيّرت حالة الطاولة — حدّث مخطط الطاولات وحاول مرة أخرى.';
+
+  @override
+  String get posDiningTableMovedTitle => 'تم نقل الطاولة';
+
+  @override
+  String get posDiningTablesMergedTitle => 'تم دمج الطاولتين';
+
+  @override
+  String ctrlMsgTableTransferred(String from, String to) {
+    return 'تم نقل $from إلى $to — انتقل الطلب مع الضيوف.';
+  }
+
+  @override
+  String ctrlMsgTablesMerged(String source, String target) {
+    return 'تم دمج $source في $target.';
+  }
 }

@@ -1549,5 +1549,65 @@
   "posMidShiftRoundUp": "Round-up donations",
   "posMidShiftVoids": "Voids",
   "posMidShiftOpeningFloat": "Opening float",
-  "posMidShiftCashTaken": "Cash taken (this device)"
+  "posMidShiftCashTaken": "Cash taken (this device)",
+  "posDiningActionsTitle": "Table {table}",
+  "@posDiningActionsTitle": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiningActionOpen": "Open table",
+  "posDiningActionMove": "Move to another table",
+  "posDiningActionMoveHint": "The party changed seats — the order follows.",
+  "posDiningActionMerge": "Merge into another table",
+  "posDiningActionMergeHint": "Combine this order into another occupied table.",
+  "posDiningPickFreeTable": "Move to which free table?",
+  "posDiningPickMergeTarget": "Merge into which table?",
+  "posDiningMergeConfirmTitle": "Merge Tables?",
+  "posDiningMergeConfirmBody": "{source} ({sourceTotal}) will be merged into {target} ({targetTotal}). The source table becomes free; the target keeps its reference and discount.",
+  "@posDiningMergeConfirmBody": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "sourceTotal": {
+        "type": "String"
+      },
+      "target": {
+        "type": "String"
+      },
+      "targetTotal": {
+        "type": "String"
+      }
+    }
+  },
+  "posDiningNoFreeTables": "No free tables available right now.",
+  "posDiningNoMergeTargets": "No other occupied tables to merge into.",
+  "posDiningActionFailed": "The table state changed — refresh the floor plan and try again.",
+  "posDiningTableMovedTitle": "Table Moved",
+  "posDiningTablesMergedTitle": "Tables Merged",
+  "ctrlMsgTableTransferred": "Moved {from} to {to} — the order followed the party.",
+  "@ctrlMsgTableTransferred": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "ctrlMsgTablesMerged": "Merged {source} into {target}.",
+  "@ctrlMsgTablesMerged": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  }
 }

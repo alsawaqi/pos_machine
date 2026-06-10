@@ -2407,4 +2407,72 @@ class L10nEn extends L10n {
 
   @override
   String get posMidShiftCashTaken => 'Cash taken (this device)';
+
+  @override
+  String posDiningActionsTitle(String table) {
+    return 'Table $table';
+  }
+
+  @override
+  String get posDiningActionOpen => 'Open table';
+
+  @override
+  String get posDiningActionMove => 'Move to another table';
+
+  @override
+  String get posDiningActionMoveHint =>
+      'The party changed seats — the order follows.';
+
+  @override
+  String get posDiningActionMerge => 'Merge into another table';
+
+  @override
+  String get posDiningActionMergeHint =>
+      'Combine this order into another occupied table.';
+
+  @override
+  String get posDiningPickFreeTable => 'Move to which free table?';
+
+  @override
+  String get posDiningPickMergeTarget => 'Merge into which table?';
+
+  @override
+  String get posDiningMergeConfirmTitle => 'Merge Tables?';
+
+  @override
+  String posDiningMergeConfirmBody(
+    String source,
+    String sourceTotal,
+    String target,
+    String targetTotal,
+  ) {
+    return '$source ($sourceTotal) will be merged into $target ($targetTotal). The source table becomes free; the target keeps its reference and discount.';
+  }
+
+  @override
+  String get posDiningNoFreeTables => 'No free tables available right now.';
+
+  @override
+  String get posDiningNoMergeTargets =>
+      'No other occupied tables to merge into.';
+
+  @override
+  String get posDiningActionFailed =>
+      'The table state changed — refresh the floor plan and try again.';
+
+  @override
+  String get posDiningTableMovedTitle => 'Table Moved';
+
+  @override
+  String get posDiningTablesMergedTitle => 'Tables Merged';
+
+  @override
+  String ctrlMsgTableTransferred(String from, String to) {
+    return 'Moved $from to $to — the order followed the party.';
+  }
+
+  @override
+  String ctrlMsgTablesMerged(String source, String target) {
+    return 'Merged $source into $target.';
+  }
 }

@@ -4001,6 +4001,113 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Cash taken (this device)'**
   String get posMidShiftCashTaken;
+
+  /// No description provided for @posDiningActionsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Table {table}'**
+  String posDiningActionsTitle(String table);
+
+  /// No description provided for @posDiningActionOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open table'**
+  String get posDiningActionOpen;
+
+  /// No description provided for @posDiningActionMove.
+  ///
+  /// In en, this message translates to:
+  /// **'Move to another table'**
+  String get posDiningActionMove;
+
+  /// No description provided for @posDiningActionMoveHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The party changed seats — the order follows.'**
+  String get posDiningActionMoveHint;
+
+  /// No description provided for @posDiningActionMerge.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge into another table'**
+  String get posDiningActionMerge;
+
+  /// No description provided for @posDiningActionMergeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Combine this order into another occupied table.'**
+  String get posDiningActionMergeHint;
+
+  /// No description provided for @posDiningPickFreeTable.
+  ///
+  /// In en, this message translates to:
+  /// **'Move to which free table?'**
+  String get posDiningPickFreeTable;
+
+  /// No description provided for @posDiningPickMergeTarget.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge into which table?'**
+  String get posDiningPickMergeTarget;
+
+  /// No description provided for @posDiningMergeConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Merge Tables?'**
+  String get posDiningMergeConfirmTitle;
+
+  /// No description provided for @posDiningMergeConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} ({sourceTotal}) will be merged into {target} ({targetTotal}). The source table becomes free; the target keeps its reference and discount.'**
+  String posDiningMergeConfirmBody(
+    String source,
+    String sourceTotal,
+    String target,
+    String targetTotal,
+  );
+
+  /// No description provided for @posDiningNoFreeTables.
+  ///
+  /// In en, this message translates to:
+  /// **'No free tables available right now.'**
+  String get posDiningNoFreeTables;
+
+  /// No description provided for @posDiningNoMergeTargets.
+  ///
+  /// In en, this message translates to:
+  /// **'No other occupied tables to merge into.'**
+  String get posDiningNoMergeTargets;
+
+  /// No description provided for @posDiningActionFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The table state changed — refresh the floor plan and try again.'**
+  String get posDiningActionFailed;
+
+  /// No description provided for @posDiningTableMovedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Table Moved'**
+  String get posDiningTableMovedTitle;
+
+  /// No description provided for @posDiningTablesMergedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Tables Merged'**
+  String get posDiningTablesMergedTitle;
+
+  /// No description provided for @ctrlMsgTableTransferred.
+  ///
+  /// In en, this message translates to:
+  /// **'Moved {from} to {to} — the order followed the party.'**
+  String ctrlMsgTableTransferred(String from, String to);
+
+  /// No description provided for @ctrlMsgTablesMerged.
+  ///
+  /// In en, this message translates to:
+  /// **'Merged {source} into {target}.'**
+  String ctrlMsgTablesMerged(String source, String target);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

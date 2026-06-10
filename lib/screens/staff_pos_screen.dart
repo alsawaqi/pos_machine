@@ -933,6 +933,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   durationLabel: _formatOccupancyDuration(
                                     session?.occupiedAt,
                                   ),
+                                  // Gap sweep G2 — occupied tables expose
+                                  // Move / Merge on long-press.
+                                  onLongPress:
+                                      status == DiningTableStatus.occupied &&
+                                              session != null
+                                          ? () => unawaited(
+                                              _openDiningTableActionsSheet(
+                                                  table, session))
+                                          : null,
                                   onTap: () async {
                                     if (status == DiningTableStatus.paid &&
                                         session != null) {
@@ -1862,6 +1871,169 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
     if (value == null) return;
     controller.setDiningTableSearchQuery(value);
+  }
+
+  /// Gap sweep G2 — long-press actions for an OCCUPIED table: open it,
+  /// move the party to a free table, or merge its order into another
+  /// occupied table.
+  Future<void> _openDiningTableActionsSheet(
+    DiningTableDefinition table,
+    DiningTableSession session,
+  ) async {
+    final l10n = L10n.of(context);
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.table_restaurant_rounded),
+              title: Text(l10n.posDiningActionsTitle(table.name)),
+              subtitle: Text(
+                '${SunmiReceiptService.money(session.total)} · ${_formatOccupancyDuration(session.occupiedAt)}',
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.login_rounded),
+              title: Text(l10n.posDiningActionOpen),
+              onTap: () => Navigator.pop(ctx, 'open'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.swap_horiz_rounded),
+              title: Text(l10n.posDiningActionMove),
+              subtitle: Text(l10n.posDiningActionMoveHint),
+              onTap: () => Navigator.pop(ctx, 'move'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.call_merge_rounded),
+              title: Text(l10n.posDiningActionMerge),
+              subtitle: Text(l10n.posDiningActionMergeHint),
+              onTap: () => Navigator.pop(ctx, 'merge'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.close),
+              title: Text(l10n.commonCancel),
+              onTap: () => Navigator.pop(ctx, null),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+
+    switch (action) {
+      case 'open':
+        await controller.openDiningTable(table.id);
+        if (mounted) setState(() => _showPaymentPage = false);
+      case 'move':
+        await _openTableTargetPicker(table, session, merge: false);
+      case 'merge':
+        await _openTableTargetPicker(table, session, merge: true);
+    }
+  }
+
+  /// Gap sweep G2 — pick the target table for a move (free tables) or a
+  /// merge (other occupied tables; confirms with both totals first).
+  Future<void> _openTableTargetPicker(
+    DiningTableDefinition source,
+    DiningTableSession sourceSession, {
+    required bool merge,
+  }) async {
+    final l10n = L10n.of(context);
+    final targets = controller.diningTableDefinitions.where((t) {
+      if (t.id == source.id) return false;
+      final session = controller.diningSessionFor(t.id);
+      return merge
+          ? session?.status == DiningTableStatus.occupied
+          : session == null;
+    }).toList();
+
+    if (targets.isEmpty) {
+      _showPopupMessage(
+        title: merge ? l10n.posDiningActionMerge : l10n.posDiningActionMove,
+        message:
+            merge ? l10n.posDiningNoMergeTargets : l10n.posDiningNoFreeTables,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
+    final targetId = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(
+          merge ? l10n.posDiningPickMergeTarget : l10n.posDiningPickFreeTable,
+        ),
+        children: [
+          for (final t in targets)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, t.id),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('${t.name} · ${controller.floorLabelFor(t.floorId)}'),
+                  if (merge)
+                    Text(
+                      SunmiReceiptService.money(
+                        controller.diningSessionFor(t.id)?.total ?? 0,
+                      ),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (!mounted || targetId == null) return;
+
+    if (merge) {
+      final targetSession = controller.diningSessionFor(targetId);
+      final targetDef = targets.firstWhere((t) => t.id == targetId);
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(l10n.posDiningMergeConfirmTitle),
+          content: Text(l10n.posDiningMergeConfirmBody(
+            source.name,
+            SunmiReceiptService.money(sourceSession.total),
+            targetDef.name,
+            SunmiReceiptService.money(targetSession?.total ?? 0),
+          )),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l10n.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l10n.posDiningActionMerge),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    final message = merge
+        ? await controller.mergeDiningTables(source.id, targetId)
+        : await controller.transferDiningTable(source.id, targetId);
+    if (!mounted) return;
+    if (message == null) {
+      _showPopupMessage(
+        title: merge ? l10n.posDiningActionMerge : l10n.posDiningActionMove,
+        message: l10n.posDiningActionFailed,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+    _showPopupMessage(
+      title: merge ? l10n.posDiningTablesMergedTitle : l10n.posDiningTableMovedTitle,
+      message: message,
+      tone: FeedbackTone.success,
+    );
   }
 
   Future<void> _openPaidDiningTableDialog(
@@ -7684,6 +7856,9 @@ class _DiningTableCard extends StatelessWidget {
   final DiningTableStatus status;
   final String durationLabel;
   final VoidCallback onTap;
+  // Gap sweep G2 — long-press opens the table actions sheet (move/merge);
+  // null = no actions for this status.
+  final VoidCallback? onLongPress;
 
   const _DiningTableCard({
     required this.table,
@@ -7691,6 +7866,7 @@ class _DiningTableCard extends StatelessWidget {
     required this.status,
     required this.durationLabel,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -7734,6 +7910,7 @@ class _DiningTableCard extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       customBorder: cardShape,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),

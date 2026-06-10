@@ -1201,6 +1201,45 @@ class OrderSessionDraft {
     );
   }
 
+  /// Gap sweep G2 — rebuild the draft with overrides (table transfer/merge
+  /// re-point the table binding; merge swaps the item list). Mirrors
+  /// OrderSnapshot.copyWith: every field listed by hand, so new fields MUST
+  /// be added here too.
+  OrderSessionDraft copyWith({
+    int? orderNumber,
+    String? orderReference,
+    OrderType? orderType,
+    String? selectedCategory,
+    String? customerReferenceNumber,
+    String? diningFloorId,
+    String? diningFloorLabel,
+    String? diningTableId,
+    String? diningTableName,
+    List<CartItem>? items,
+    DiscountConfiguration? discount,
+    int? splitCount,
+    String? note,
+    String? serverOrderUuid,
+  }) {
+    return OrderSessionDraft(
+      orderNumber: orderNumber ?? this.orderNumber,
+      orderReference: orderReference ?? this.orderReference,
+      orderType: orderType ?? this.orderType,
+      selectedCategory: selectedCategory ?? this.selectedCategory,
+      customerReferenceNumber:
+          customerReferenceNumber ?? this.customerReferenceNumber,
+      diningFloorId: diningFloorId ?? this.diningFloorId,
+      diningFloorLabel: diningFloorLabel ?? this.diningFloorLabel,
+      diningTableId: diningTableId ?? this.diningTableId,
+      diningTableName: diningTableName ?? this.diningTableName,
+      items: items ?? this.items,
+      discount: discount ?? this.discount,
+      splitCount: splitCount ?? this.splitCount,
+      note: note ?? this.note,
+      serverOrderUuid: serverOrderUuid ?? this.serverOrderUuid,
+    );
+  }
+
   double get rawSubtotal => items.fold(0, (sum, item) => sum + item.lineTotal);
 
   double get discountAmount {
