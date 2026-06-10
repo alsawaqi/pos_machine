@@ -189,7 +189,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _clockNow = ValueNotifier<DateTime>(DateTime.now());
     _currentOrderScrollController = ScrollController();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _clockNow.value = DateTime.now();
+      final previous = _clockNow.value;
+      final now = DateTime.now();
+      _clockNow.value = now;
+      // Gap sweep G1 — on each minute boundary, let time-windowed product
+      // tiles flip available/unavailable (no-op when no windows configured).
+      if (now.minute != previous.minute || now.hour != previous.hour) {
+        controller.onMinuteTick();
+      }
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -4807,11 +4814,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                             return _ProductListTile(
                               product: product,
                               onAdd: () {
-                                if (!controller.isOutOfStock(product)) {
+                                if (!controller.isUnorderable(product)) {
                                   controller.addProduct(product);
                                 }
                               },
                               outOfStock: controller.isOutOfStock(product),
+                              outsideHours: controller.isOutsideHours(product),
                               highlighted: pulseNonce > 0,
                               pulseNonce: pulseNonce,
                             );
@@ -4837,11 +4845,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           return _ProductTile(
                             product: product,
                             onAdd: () {
-                              if (!controller.isOutOfStock(product)) {
+                              if (!controller.isUnorderable(product)) {
                                 controller.addProduct(product);
                               }
                             },
                             outOfStock: controller.isOutOfStock(product),
+                            outsideHours: controller.isOutsideHours(product),
                             compact: compact,
                             highlighted: pulseNonce > 0,
                             pulseNonce: pulseNonce,
@@ -6731,6 +6740,8 @@ class _ProductListTile extends StatelessWidget {
   final bool highlighted;
   final int pulseNonce;
   final bool outOfStock;
+  // Gap sweep G1 — outside the product's daily window (distinct from sold out).
+  final bool outsideHours;
 
   const _ProductListTile({
     required this.product,
@@ -6738,6 +6749,7 @@ class _ProductListTile extends StatelessWidget {
     this.highlighted = false,
     this.pulseNonce = 0,
     this.outOfStock = false,
+    this.outsideHours = false,
   });
 
   @override
@@ -6756,7 +6768,7 @@ class _ProductListTile extends StatelessWidget {
         return Transform.scale(scale: 1 + (effectPulse * 0.018), child: child);
       },
       child: InkWell(
-        onTap: outOfStock ? null : onAdd,
+        onTap: (outOfStock || outsideHours) ? null : onAdd,
         borderRadius: BorderRadius.circular(24),
         child: Container(
           padding: const EdgeInsets.all(10),
@@ -6806,6 +6818,25 @@ class _ProductListTile extends StatelessWidget {
                                 fontSize: 10,
                                 fontWeight: FontWeight.w900,
                                 color: Color(0xFFB42318),
+                              ),
+                            ),
+                          )
+                        else if (outsideHours)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE3E8F7),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              l10n.posProductOutsideHoursBadge,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF3A4A8C),
                               ),
                             ),
                           ),
@@ -6872,6 +6903,8 @@ class _ProductTile extends StatelessWidget {
   final bool highlighted;
   final int pulseNonce;
   final bool outOfStock;
+  // Gap sweep G1 — outside the product's daily window (distinct from sold out).
+  final bool outsideHours;
 
   const _ProductTile({
     required this.product,
@@ -6880,6 +6913,7 @@ class _ProductTile extends StatelessWidget {
     this.highlighted = false,
     this.pulseNonce = 0,
     this.outOfStock = false,
+    this.outsideHours = false,
   });
 
   @override
@@ -6906,7 +6940,7 @@ class _ProductTile extends StatelessWidget {
         return Transform.scale(
           scale: 1 + (effectPulse * 0.026),
           child: InkWell(
-            onTap: outOfStock ? null : onAdd,
+            onTap: (outOfStock || outsideHours) ? null : onAdd,
             borderRadius: BorderRadius.circular(24),
             child: Container(
               padding: EdgeInsets.all(outerPadding),
@@ -6977,6 +7011,37 @@ class _ProductTile extends StatelessWidget {
                         fontSize: 12,
                         letterSpacing: 1.2,
                       ),
+                    ),
+                  ),
+                )
+              else if (outsideHours)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF26315B).withValues(alpha: 0.50),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    alignment: Alignment.center,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.schedule_rounded,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          l10n.posProductOutsideHoursBadge,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 10.5,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

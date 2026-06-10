@@ -1285,6 +1285,7 @@
   "posProductsClearSearch": "Clear Search",
   "posProductSoldOutBadge": "SOLD OUT",
   "posProductLowStockBadge": "LOW STOCK",
+  "posProductOutsideHoursBadge": "NOT AVAILABLE NOW",
   "posProductAdd": "Add",
   "posPayBtnProcessing": "Processing Payment",
   "posPayBtnProcessToPay": "Process to Pay",

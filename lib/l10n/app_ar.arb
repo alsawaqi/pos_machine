@@ -544,6 +544,7 @@
   "posProductsClearSearch": "مسح البحث",
   "posProductSoldOutBadge": "نفدت الكمية",
   "posProductLowStockBadge": "مخزون منخفض",
+  "posProductOutsideHoursBadge": "غير متاح الآن",
   "posProductAdd": "إضافة",
   "posPayBtnProcessing": "جارٍ معالجة الدفع",
   "posPayBtnProcessToPay": "المتابعة إلى الدفع",

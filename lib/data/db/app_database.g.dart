@@ -1118,6 +1118,28 @@ class $ProductsTable extends Products
     requiredDuringInsert: false,
     defaultValue: const Constant('[]'),
   );
+  static const VerificationMeta _availableFromMeta = const VerificationMeta(
+    'availableFrom',
+  );
+  @override
+  late final GeneratedColumn<String> availableFrom = GeneratedColumn<String>(
+    'available_from',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _availableUntilMeta = const VerificationMeta(
+    'availableUntil',
+  );
+  @override
+  late final GeneratedColumn<String> availableUntil = GeneratedColumn<String>(
+    'available_until',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1133,6 +1155,8 @@ class $ProductsTable extends Products
     deliveryPricesJson,
     stockMode,
     recipeJson,
+    availableFrom,
+    availableUntil,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1236,6 +1260,24 @@ class $ProductsTable extends Products
         recipeJson.isAcceptableOrUnknown(data['recipe_json']!, _recipeJsonMeta),
       );
     }
+    if (data.containsKey('available_from')) {
+      context.handle(
+        _availableFromMeta,
+        availableFrom.isAcceptableOrUnknown(
+          data['available_from']!,
+          _availableFromMeta,
+        ),
+      );
+    }
+    if (data.containsKey('available_until')) {
+      context.handle(
+        _availableUntilMeta,
+        availableUntil.isAcceptableOrUnknown(
+          data['available_until']!,
+          _availableUntilMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1297,6 +1339,14 @@ class $ProductsTable extends Products
         DriftSqlType.string,
         data['${effectivePrefix}recipe_json'],
       )!,
+      availableFrom: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}available_from'],
+      ),
+      availableUntil: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}available_until'],
+      ),
     );
   }
 
@@ -1320,6 +1370,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
   final String deliveryPricesJson;
   final String? stockMode;
   final String recipeJson;
+  final String? availableFrom;
+  final String? availableUntil;
   const ProductRow({
     required this.id,
     required this.name,
@@ -1334,6 +1386,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     required this.deliveryPricesJson,
     this.stockMode,
     required this.recipeJson,
+    this.availableFrom,
+    this.availableUntil,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1365,6 +1419,12 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       map['stock_mode'] = Variable<String>(stockMode);
     }
     map['recipe_json'] = Variable<String>(recipeJson);
+    if (!nullToAbsent || availableFrom != null) {
+      map['available_from'] = Variable<String>(availableFrom);
+    }
+    if (!nullToAbsent || availableUntil != null) {
+      map['available_until'] = Variable<String>(availableUntil);
+    }
     return map;
   }
 
@@ -1397,6 +1457,12 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           ? const Value.absent()
           : Value(stockMode),
       recipeJson: Value(recipeJson),
+      availableFrom: availableFrom == null && nullToAbsent
+          ? const Value.absent()
+          : Value(availableFrom),
+      availableUntil: availableUntil == null && nullToAbsent
+          ? const Value.absent()
+          : Value(availableUntil),
     );
   }
 
@@ -1423,6 +1489,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       ),
       stockMode: serializer.fromJson<String?>(json['stockMode']),
       recipeJson: serializer.fromJson<String>(json['recipeJson']),
+      availableFrom: serializer.fromJson<String?>(json['availableFrom']),
+      availableUntil: serializer.fromJson<String?>(json['availableUntil']),
     );
   }
   @override
@@ -1442,6 +1510,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       'deliveryPricesJson': serializer.toJson<String>(deliveryPricesJson),
       'stockMode': serializer.toJson<String?>(stockMode),
       'recipeJson': serializer.toJson<String>(recipeJson),
+      'availableFrom': serializer.toJson<String?>(availableFrom),
+      'availableUntil': serializer.toJson<String?>(availableUntil),
     };
   }
 
@@ -1459,6 +1529,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     String? deliveryPricesJson,
     Value<String?> stockMode = const Value.absent(),
     String? recipeJson,
+    Value<String?> availableFrom = const Value.absent(),
+    Value<String?> availableUntil = const Value.absent(),
   }) => ProductRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -1477,6 +1549,12 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     deliveryPricesJson: deliveryPricesJson ?? this.deliveryPricesJson,
     stockMode: stockMode.present ? stockMode.value : this.stockMode,
     recipeJson: recipeJson ?? this.recipeJson,
+    availableFrom: availableFrom.present
+        ? availableFrom.value
+        : this.availableFrom,
+    availableUntil: availableUntil.present
+        ? availableUntil.value
+        : this.availableUntil,
   );
   ProductRow copyWithCompanion(ProductsCompanion data) {
     return ProductRow(
@@ -1507,6 +1585,12 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       recipeJson: data.recipeJson.present
           ? data.recipeJson.value
           : this.recipeJson,
+      availableFrom: data.availableFrom.present
+          ? data.availableFrom.value
+          : this.availableFrom,
+      availableUntil: data.availableUntil.present
+          ? data.availableUntil.value
+          : this.availableUntil,
     );
   }
 
@@ -1525,7 +1609,9 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           ..write('deliveryPriceBaisas: $deliveryPriceBaisas, ')
           ..write('deliveryPricesJson: $deliveryPricesJson, ')
           ..write('stockMode: $stockMode, ')
-          ..write('recipeJson: $recipeJson')
+          ..write('recipeJson: $recipeJson, ')
+          ..write('availableFrom: $availableFrom, ')
+          ..write('availableUntil: $availableUntil')
           ..write(')'))
         .toString();
   }
@@ -1545,6 +1631,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     deliveryPricesJson,
     stockMode,
     recipeJson,
+    availableFrom,
+    availableUntil,
   );
   @override
   bool operator ==(Object other) =>
@@ -1562,7 +1650,9 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           other.deliveryPriceBaisas == this.deliveryPriceBaisas &&
           other.deliveryPricesJson == this.deliveryPricesJson &&
           other.stockMode == this.stockMode &&
-          other.recipeJson == this.recipeJson);
+          other.recipeJson == this.recipeJson &&
+          other.availableFrom == this.availableFrom &&
+          other.availableUntil == this.availableUntil);
 }
 
 class ProductsCompanion extends UpdateCompanion<ProductRow> {
@@ -1579,6 +1669,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
   final Value<String> deliveryPricesJson;
   final Value<String?> stockMode;
   final Value<String> recipeJson;
+  final Value<String?> availableFrom;
+  final Value<String?> availableUntil;
   const ProductsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -1593,6 +1685,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     this.deliveryPricesJson = const Value.absent(),
     this.stockMode = const Value.absent(),
     this.recipeJson = const Value.absent(),
+    this.availableFrom = const Value.absent(),
+    this.availableUntil = const Value.absent(),
   });
   ProductsCompanion.insert({
     this.id = const Value.absent(),
@@ -1608,6 +1702,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     this.deliveryPricesJson = const Value.absent(),
     this.stockMode = const Value.absent(),
     this.recipeJson = const Value.absent(),
+    this.availableFrom = const Value.absent(),
+    this.availableUntil = const Value.absent(),
   });
   static Insertable<ProductRow> custom({
     Expression<int>? id,
@@ -1623,6 +1719,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     Expression<String>? deliveryPricesJson,
     Expression<String>? stockMode,
     Expression<String>? recipeJson,
+    Expression<String>? availableFrom,
+    Expression<String>? availableUntil,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1640,6 +1738,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
         'delivery_prices_json': deliveryPricesJson,
       if (stockMode != null) 'stock_mode': stockMode,
       if (recipeJson != null) 'recipe_json': recipeJson,
+      if (availableFrom != null) 'available_from': availableFrom,
+      if (availableUntil != null) 'available_until': availableUntil,
     });
   }
 
@@ -1657,6 +1757,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     Value<String>? deliveryPricesJson,
     Value<String?>? stockMode,
     Value<String>? recipeJson,
+    Value<String?>? availableFrom,
+    Value<String?>? availableUntil,
   }) {
     return ProductsCompanion(
       id: id ?? this.id,
@@ -1672,6 +1774,8 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
       deliveryPricesJson: deliveryPricesJson ?? this.deliveryPricesJson,
       stockMode: stockMode ?? this.stockMode,
       recipeJson: recipeJson ?? this.recipeJson,
+      availableFrom: availableFrom ?? this.availableFrom,
+      availableUntil: availableUntil ?? this.availableUntil,
     );
   }
 
@@ -1717,6 +1821,12 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     if (recipeJson.present) {
       map['recipe_json'] = Variable<String>(recipeJson.value);
     }
+    if (availableFrom.present) {
+      map['available_from'] = Variable<String>(availableFrom.value);
+    }
+    if (availableUntil.present) {
+      map['available_until'] = Variable<String>(availableUntil.value);
+    }
     return map;
   }
 
@@ -1735,7 +1845,9 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
           ..write('deliveryPriceBaisas: $deliveryPriceBaisas, ')
           ..write('deliveryPricesJson: $deliveryPricesJson, ')
           ..write('stockMode: $stockMode, ')
-          ..write('recipeJson: $recipeJson')
+          ..write('recipeJson: $recipeJson, ')
+          ..write('availableFrom: $availableFrom, ')
+          ..write('availableUntil: $availableUntil')
           ..write(')'))
         .toString();
   }
@@ -9434,6 +9546,8 @@ typedef $$ProductsTableCreateCompanionBuilder =
       Value<String> deliveryPricesJson,
       Value<String?> stockMode,
       Value<String> recipeJson,
+      Value<String?> availableFrom,
+      Value<String?> availableUntil,
     });
 typedef $$ProductsTableUpdateCompanionBuilder =
     ProductsCompanion Function({
@@ -9450,6 +9564,8 @@ typedef $$ProductsTableUpdateCompanionBuilder =
       Value<String> deliveryPricesJson,
       Value<String?> stockMode,
       Value<String> recipeJson,
+      Value<String?> availableFrom,
+      Value<String?> availableUntil,
     });
 
 class $$ProductsTableFilterComposer
@@ -9523,6 +9639,16 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<String> get recipeJson => $composableBuilder(
     column: $table.recipeJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get availableFrom => $composableBuilder(
+    column: $table.availableFrom,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get availableUntil => $composableBuilder(
+    column: $table.availableUntil,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -9600,6 +9726,16 @@ class $$ProductsTableOrderingComposer
     column: $table.recipeJson,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get availableFrom => $composableBuilder(
+    column: $table.availableFrom,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get availableUntil => $composableBuilder(
+    column: $table.availableUntil,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ProductsTableAnnotationComposer
@@ -9663,6 +9799,16 @@ class $$ProductsTableAnnotationComposer
     column: $table.recipeJson,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get availableFrom => $composableBuilder(
+    column: $table.availableFrom,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get availableUntil => $composableBuilder(
+    column: $table.availableUntil,
+    builder: (column) => column,
+  );
 }
 
 class $$ProductsTableTableManager
@@ -9709,6 +9855,8 @@ class $$ProductsTableTableManager
                 Value<String> deliveryPricesJson = const Value.absent(),
                 Value<String?> stockMode = const Value.absent(),
                 Value<String> recipeJson = const Value.absent(),
+                Value<String?> availableFrom = const Value.absent(),
+                Value<String?> availableUntil = const Value.absent(),
               }) => ProductsCompanion(
                 id: id,
                 name: name,
@@ -9723,6 +9871,8 @@ class $$ProductsTableTableManager
                 deliveryPricesJson: deliveryPricesJson,
                 stockMode: stockMode,
                 recipeJson: recipeJson,
+                availableFrom: availableFrom,
+                availableUntil: availableUntil,
               ),
           createCompanionCallback:
               ({
@@ -9739,6 +9889,8 @@ class $$ProductsTableTableManager
                 Value<String> deliveryPricesJson = const Value.absent(),
                 Value<String?> stockMode = const Value.absent(),
                 Value<String> recipeJson = const Value.absent(),
+                Value<String?> availableFrom = const Value.absent(),
+                Value<String?> availableUntil = const Value.absent(),
               }) => ProductsCompanion.insert(
                 id: id,
                 name: name,
@@ -9753,6 +9905,8 @@ class $$ProductsTableTableManager
                 deliveryPricesJson: deliveryPricesJson,
                 stockMode: stockMode,
                 recipeJson: recipeJson,
+                availableFrom: availableFrom,
+                availableUntil: availableUntil,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

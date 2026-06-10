@@ -38,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -125,6 +125,11 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(addonGroups, addonGroups.maxSelections);
             await m.addColumn(addons, addons.isDefault);
             await m.addColumn(categories, categories.addonGroupIdsJson);
+          }
+          if (from < 17) {
+            // v17 — Gap sweep G1: per-product daily availability window.
+            await m.addColumn(products, products.availableFrom);
+            await m.addColumn(products, products.availableUntil);
           }
         },
       );

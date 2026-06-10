@@ -3366,6 +3366,12 @@ abstract class L10n {
   /// **'LOW STOCK'**
   String get posProductLowStockBadge;
 
+  /// No description provided for @posProductOutsideHoursBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'NOT AVAILABLE NOW'**
+  String get posProductOutsideHoursBadge;
+
   /// No description provided for @posProductAdd.
   ///
   /// In en, this message translates to:

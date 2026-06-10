@@ -26,6 +26,10 @@ class PosController extends ChangeNotifier {
   final MosambeePaymentService _paymentBridge = MosambeePaymentService();
   final OrderStorageService _orderStorage;
 
+  /// Gap sweep G1 — injectable wall clock for the daily availability windows
+  /// (tests pin it; production keeps the default).
+  DateTime Function() clock = DateTime.now;
+
   List<String> categories = const [
     'Coffee',
     'Drinks',
@@ -633,6 +637,27 @@ class PosController extends ChangeNotifier {
       default:
         return false;
     }
+  }
+
+  /// Gap sweep G1 — whether [product] is outside its daily availability
+  /// window right now (greyed-out / blocked, distinct from sold-out).
+  bool isOutsideHours(Product product) => !product.isAvailableAt(clock());
+
+  /// A product can't be added to the cart when sold out OR outside its
+  /// daily window. The tile gating + add-to-cart guards use this.
+  bool isUnorderable(Product product) =>
+      isOutOfStock(product) || isOutsideHours(product);
+
+  /// True when any cached product has a daily window configured — lets the
+  /// screen skip minute-tick rebuilds entirely for merchants that never use
+  /// time-windowed menus.
+  bool get hasTimeWindowedProducts =>
+      allProducts.any((p) => p.hasAvailabilityWindow);
+
+  /// Called by the screen on each minute boundary so windowed tiles flip
+  /// available/unavailable without a manual refresh.
+  void onMinuteTick() {
+    if (hasTimeWindowedProducts) notifyListeners();
   }
 
   List<Product> get visibleProducts {

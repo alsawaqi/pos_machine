@@ -309,6 +309,8 @@ class ConfigMapper {
               deliveryPricesJson: Value(_deliveryPricesJson(p['delivery_prices'])),
               stockMode: Value(_strN(p['stock_mode'])),
               recipeJson: Value(_recipeJson(p['recipe'])),
+              availableFrom: Value(_strN(p['available_from'])),
+              availableUntil: Value(_strN(p['available_until'])),
             ))
         .toList();
 
@@ -598,6 +600,8 @@ class ConfigMapper {
               stockMode: p.stockMode,
               recipe: _recipeFromJson(p.recipeJson),
               branchStockQty: p.branchStockQty,
+              availableFrom: p.availableFrom,
+              availableUntil: p.availableUntil,
             ))
         .toList();
 

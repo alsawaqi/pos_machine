@@ -2009,6 +2009,9 @@ class L10nEn extends L10n {
   String get posProductLowStockBadge => 'LOW STOCK';
 
   @override
+  String get posProductOutsideHoursBadge => 'NOT AVAILABLE NOW';
+
+  @override
   String get posProductAdd => 'Add';
 
   @override

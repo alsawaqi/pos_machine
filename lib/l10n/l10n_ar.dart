@@ -2032,6 +2032,9 @@ class L10nAr extends L10n {
   String get posProductLowStockBadge => 'مخزون منخفض';
 
   @override
+  String get posProductOutsideHoursBadge => 'غير متاح الآن';
+
+  @override
   String get posProductAdd => 'إضافة';
 
   @override

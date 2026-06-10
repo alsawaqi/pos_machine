@@ -411,6 +411,11 @@ class Product {
   final String? stockMode;
   final List<RecipeLine> recipe;
   final double? branchStockQty;
+  // Gap sweep G1 — daily availability window ('HH:MM:SS', the pos_discounts
+  // convention): both null = always orderable; start > end wraps midnight
+  // (22:00→02:00). Evaluated device-side in [isAvailableAt].
+  final String? availableFrom;
+  final String? availableUntil;
 
   const Product({
     required this.id,
@@ -427,12 +432,44 @@ class Product {
     this.stockMode,
     this.recipe = const <RecipeLine>[],
     this.branchStockQty,
+    this.availableFrom,
+    this.availableUntil,
   });
 
   /// The name to SHOW for [arabic] UI — falls back to the English identity
   /// name when the merchant provided no Arabic.
   String displayName(bool arabic) =>
       arabic && nameAr.trim().isNotEmpty ? nameAr : name;
+
+  /// Normalize 'HH:MM' (a raw API caller may omit seconds) to 'HH:MM:SS'.
+  static String? _normTime(String? v) {
+    if (v == null || v.isEmpty) return null;
+    return v.length == 5 ? '$v:00' : v;
+  }
+
+  /// Gap sweep G1 — whether this product may be ordered at [now] under its
+  /// daily window (clone of MerchantDiscount._matchesTime): both-null =
+  /// always; boundaries inclusive; start > end wraps midnight.
+  bool isAvailableAt(DateTime now) {
+    final from = _normTime(availableFrom);
+    final until = _normTime(availableUntil);
+    if (from == null && until == null) return true;
+
+    String pad(int v) => v.toString().padLeft(2, '0');
+    final hhmmss = '${pad(now.hour)}:${pad(now.minute)}:${pad(now.second)}';
+    final start = from ?? '00:00:00';
+    final end = until ?? '23:59:59';
+    if (start.compareTo(end) <= 0) {
+      return hhmmss.compareTo(start) >= 0 && hhmmss.compareTo(end) <= 0;
+    }
+    // Overnight window (e.g. 22:00 → 02:00).
+    return hhmmss.compareTo(start) >= 0 || hhmmss.compareTo(end) <= 0;
+  }
+
+  /// True when a daily window is configured at all.
+  bool get hasAvailabilityWindow =>
+      (availableFrom != null && availableFrom!.isNotEmpty) ||
+      (availableUntil != null && availableUntil!.isNotEmpty);
 
   /// The unit price to charge on a delivery order for [providerId], following
   /// the merchant's chain: provider override → in-house delivery price → base.
@@ -454,6 +491,8 @@ class Product {
         stockMode: stockMode,
         recipe: recipe,
         branchStockQty: branchStockQty,
+        availableFrom: availableFrom,
+        availableUntil: availableUntil,
       );
 
   factory Product.fromMap(Map<String, dynamic> map) {

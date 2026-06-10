@@ -72,6 +72,10 @@ class Products extends Table {
   // An ingredient-mode product is sold out when any line's branch ingredient
   // balance < its quantity (BranchIngredientStock).
   TextColumn get recipeJson => text().withDefault(const Constant('[]'))();
+  // Gap sweep G1 — daily availability window 'HH:MM:SS' (both null = always
+  // orderable; from > until wraps midnight). Evaluated on the device clock.
+  TextColumn get availableFrom => text().nullable()();
+  TextColumn get availableUntil => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
