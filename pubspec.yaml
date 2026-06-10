@@ -53,6 +53,9 @@ dependencies:
   flutter_secure_storage: ^10.3.1
   mobile_scanner: ^7.2.0
   sentry_flutter: ^8.14.2
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
 
 dev_dependencies:
   flutter_test:
@@ -72,6 +75,10 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+
+  # Phase C4 — gen-l10n: lib/l10n/app_en.arb + app_ar.arb → the L10n class
+  # (config in l10n.yaml). Regenerates on flutter run/build/test.
+  generate: true
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

@@ -7,8 +7,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/sentry.dart';
+import 'l10n/l10n.dart';
 import 'providers/providers.dart';
 import 'services/session_service.dart';
+import 'services/settings_service.dart';
 import 'screens/staff_startup_gate.dart';
 import 'screens/customer_display_screen.dart';
 
@@ -79,10 +81,20 @@ Future<void> secondaryDisplayMain() async {
     'Launching customer display entrypoint.',
     name: 'POSBootstrap',
   );
+  // Phase C4 — this is a SEPARATE Flutter engine with no ProviderScope
+  // overrides, so it reads the persisted language itself at startup (a live
+  // switch reaches it the next time the rear display engine starts).
+  Locale locale = const Locale('en');
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    locale = Locale(SettingsService(prefs).snapshot().language);
+  } catch (_) {
+    // keep English
+  }
   // NO Sentry here: this entrypoint runs a SECOND Flutter engine in the same
   // Android process — initializing the SDK again would double-init the native
   // layer. The staff engine's native SDK still catches process-level crashes.
-  runApp(const CustomerDisplayApp());
+  runApp(CustomerDisplayApp(locale: locale));
 }
 
 Future<void> _configureKioskMode() async {
@@ -103,25 +115,38 @@ Future<void> _configureKioskMode() async {
   );
 }
 
-class StaffApp extends StatelessWidget {
+class StaffApp extends ConsumerWidget {
   const StaffApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Phase C4 (§9.8) — the watched locale flips strings AND direction (the
+    // global delegates wrap the app in the right Directionality for Arabic).
+    final locale = ref.watch(localeProvider);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      locale: locale,
+      supportedLocales: L10n.supportedLocales,
+      localizationsDelegates: L10n.localizationsDelegates,
       home: const _FullscreenShell(child: StaffStartupGate()),
     );
   }
 }
 
 class CustomerDisplayApp extends StatelessWidget {
-  const CustomerDisplayApp({super.key});
+  const CustomerDisplayApp({super.key, this.locale = const Locale('en')});
+
+  /// Resolved from prefs in [secondaryDisplayMain] (separate engine — it
+  /// cannot watch the staff engine's Riverpod state).
+  final Locale locale;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      locale: locale,
+      supportedLocales: L10n.supportedLocales,
+      localizationsDelegates: L10n.localizationsDelegates,
       home: const _FullscreenShell(child: CustomerDisplayScreen()),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_config.dart';
+import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/settings_service.dart';
 
@@ -48,7 +49,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final saved = ref.read(settingsControllerProvider).serverBaseUrl ?? '';
     _urlController.text = saved;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Settings saved.')),
+      SnackBar(content: Text(L10n.of(context).settingsSaved)),
     );
   }
 
@@ -59,24 +60,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     });
     final ok = await ref.read(apiServiceProvider).pingBaseUrl(_candidateUrl);
     if (!mounted) return;
+    final l10n = L10n.of(context);
     setState(() {
       _testing = false;
       _testOk = ok;
       _testResult = ok
-          ? 'Server reachable at $_candidateUrl'
-          : 'Could not reach $_candidateUrl';
+          ? l10n.settingsServerReachable(_candidateUrl)
+          : l10n.settingsServerUnreachable(_candidateUrl);
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsControllerProvider);
+    final l10n = L10n.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFF102028),
       appBar: AppBar(
         backgroundColor: const Color(0xFF102028),
         foregroundColor: Colors.white,
-        title: const Text('Settings'),
+        title: Text(l10n.settingsTitle),
       ),
       body: Center(
         child: ConstrainedBox(
@@ -84,7 +87,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           child: ListView(
             padding: const EdgeInsets.all(24),
             children: [
-              _sectionLabel('Server'),
+              _sectionLabel(l10n.settingsSectionServer),
               const SizedBox(height: 8),
               TextField(
                 controller: _urlController,
@@ -92,15 +95,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 keyboardType: TextInputType.url,
                 autocorrect: false,
                 decoration: _fieldDecoration(
-                  label: 'Server address',
-                  hint: 'e.g. 192.168.1.50:8088',
+                  label: l10n.settingsServerAddress,
+                  hint: l10n.settingsServerHint,
                 ),
               ),
               const SizedBox(height: 6),
               Text(
                 settings.usingDefaultServer
-                    ? 'Using the built-in default: ${ApiConfig.baseUrl}'
-                    : 'Active: ${settings.effectiveBaseUrl}',
+                    ? l10n.settingsUsingDefault(ApiConfig.baseUrl)
+                    : l10n.settingsActive(settings.effectiveBaseUrl),
                 style: const TextStyle(color: Colors.white54, fontSize: 12),
               ),
               const SizedBox(height: 14),
@@ -116,7 +119,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.wifi_tethering),
-                      label: const Text('Test connection'),
+                      label: Text(l10n.settingsTestConnection),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white,
                         side: const BorderSide(color: Colors.white24),
@@ -131,7 +134,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
-                      child: const Text('Save'),
+                      child: Text(l10n.commonSave),
                     ),
                   ),
                 ],
@@ -158,26 +161,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             .setServerBaseUrl(null);
                         if (mounted) _urlController.text = '';
                       },
-                child: const Text(
-                  'Reset to default',
-                  style: TextStyle(color: Colors.white54),
+                child: Text(
+                  l10n.settingsResetDefault,
+                  style: const TextStyle(color: Colors.white54),
                 ),
               ),
               const Divider(color: Colors.white12, height: 36),
-              _sectionLabel('Receipts'),
+              _sectionLabel(l10n.settingsSectionReceipts),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: settings.printReceipts,
                 onChanged: (v) => ref
                     .read(settingsControllerProvider.notifier)
                     .setPrintReceipts(v),
-                title: const Text(
-                  'Print receipts',
-                  style: TextStyle(color: Colors.white),
+                title: Text(
+                  l10n.settingsPrintReceipts,
+                  style: const TextStyle(color: Colors.white),
                 ),
-                subtitle: const Text(
-                  'Print a Sunmi receipt when an order completes.',
-                  style: TextStyle(color: Colors.white54),
+                subtitle: Text(
+                  l10n.settingsPrintReceiptsHint,
+                  style: const TextStyle(color: Colors.white54),
                 ),
               ),
               SwitchListTile(
@@ -186,14 +189,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 onChanged: (v) => ref
                     .read(settingsControllerProvider.notifier)
                     .setPrintKitchenTickets(v),
-                title: const Text(
-                  'Print kitchen tickets',
-                  style: TextStyle(color: Colors.white),
+                title: Text(
+                  l10n.settingsPrintKitchenTickets,
+                  style: const TextStyle(color: Colors.white),
                 ),
-                subtitle: const Text(
-                  'Print an items-only kitchen ticket when an order completes or is held.',
-                  style: TextStyle(color: Colors.white54),
+                subtitle: Text(
+                  l10n.settingsPrintKitchenTicketsHint,
+                  style: const TextStyle(color: Colors.white54),
                 ),
+              ),
+              const Divider(color: Colors.white12, height: 36),
+              // Phase C4 (§9.8) — the language toggle (also a Phase 9 #92
+              // deliverable: "Settings: language toggle, …").
+              _sectionLabel(l10n.settingsSectionLanguage),
+              const SizedBox(height: 12),
+              SegmentedButton<String>(
+                segments: [
+                  ButtonSegment(
+                    value: 'en',
+                    label: Text(l10n.languageEnglish),
+                  ),
+                  ButtonSegment(
+                    value: 'ar',
+                    label: Text(l10n.languageArabic),
+                  ),
+                ],
+                selected: {settings.language},
+                onSelectionChanged: (selection) => ref
+                    .read(settingsControllerProvider.notifier)
+                    .setLanguage(selection.first),
+                style: SegmentedButton.styleFrom(
+                  foregroundColor: Colors.white70,
+                  selectedForegroundColor: Colors.white,
+                  selectedBackgroundColor: const Color(0xFF35C28B),
+                  side: const BorderSide(color: Colors.white24),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                l10n.settingsLanguageHint,
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
               ),
             ],
           ),

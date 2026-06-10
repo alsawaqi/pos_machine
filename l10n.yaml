@@ -1,0 +1,8 @@
+# Phase C4 — Arabic/English localization (blueprint §9.8).
+# `flutter gen-l10n` (also run implicitly by build/test) turns the ARB files
+# into the L10n class. nullable-getter false ⇒ L10n.of(context) is non-null.
+arb-dir: lib/l10n
+template-arb-file: app_en.arb
+output-localization-file: l10n.dart
+output-class: L10n
+nullable-getter: false

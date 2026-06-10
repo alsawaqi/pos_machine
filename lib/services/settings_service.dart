@@ -10,6 +10,7 @@ class AppSettings {
     this.serverBaseUrl,
     this.printReceipts = true,
     this.printKitchenTickets = true,
+    this.language = 'en',
   });
 
   /// Operator-set server base URL. Null/empty ⇒ fall back to the compile-time
@@ -23,6 +24,10 @@ class AppSettings {
   /// Phase C1 — whether to print an items-only kitchen ticket on order
   /// completion and on hold (blueprint §6.10).
   final bool printKitchenTickets;
+
+  /// Phase C4 (blueprint §9.8) — the UI language: 'en' | 'ar'. Arabic flips
+  /// the whole app RTL via MaterialApp's locale.
+  final String language;
 
   /// The base URL actually used for API calls.
   String get effectiveBaseUrl =>
@@ -38,11 +43,13 @@ class AppSettings {
     String? serverBaseUrl,
     bool? printReceipts,
     bool? printKitchenTickets,
+    String? language,
   }) =>
       AppSettings(
         serverBaseUrl: serverBaseUrl ?? this.serverBaseUrl,
         printReceipts: printReceipts ?? this.printReceipts,
         printKitchenTickets: printKitchenTickets ?? this.printKitchenTickets,
+        language: language ?? this.language,
       );
 }
 
@@ -54,11 +61,13 @@ class SettingsService {
   static const _kBaseUrl = 'server_base_url';
   static const _kPrintReceipts = 'print_receipts';
   static const _kPrintKitchenTickets = 'print_kitchen_tickets';
+  static const _kLanguage = 'app_language';
 
   AppSettings snapshot() => AppSettings(
         serverBaseUrl: _prefs.getString(_kBaseUrl),
         printReceipts: _prefs.getBool(_kPrintReceipts) ?? true,
         printKitchenTickets: _prefs.getBool(_kPrintKitchenTickets) ?? true,
+        language: _prefs.getString(_kLanguage) == 'ar' ? 'ar' : 'en',
       );
 
   /// The base URL the API client should use right now.
@@ -81,6 +90,10 @@ class SettingsService {
 
   Future<void> savePrintKitchenTickets(bool value) async {
     await _prefs.setBool(_kPrintKitchenTickets, value);
+  }
+
+  Future<void> saveLanguage(String value) async {
+    await _prefs.setString(_kLanguage, value == 'ar' ? 'ar' : 'en');
   }
 
   /// Normalize an operator-entered server URL: trim, default the scheme to

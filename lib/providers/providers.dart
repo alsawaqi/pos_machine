@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show Locale;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/sentry.dart';
 import '../data/config_repository.dart';
+import '../l10n/l10n.dart';
 import '../data/db/app_database.dart';
 import '../data/order_sync_repository.dart';
 import '../services/api_models.dart';
@@ -61,7 +63,25 @@ class SettingsController extends Notifier<AppSettings> {
     await _svc.savePrintKitchenTickets(value);
     state = _svc.snapshot();
   }
+
+  /// Phase C4 — switch the UI language ('en' | 'ar'); applies immediately
+  /// (MaterialApp watches [localeProvider]).
+  Future<void> setLanguage(String value) async {
+    await _svc.saveLanguage(value);
+    state = _svc.snapshot();
+  }
 }
+
+/// Phase C4 — the active UI locale, derived from Settings.
+final localeProvider = Provider<Locale>(
+  (ref) => Locale(ref.watch(settingsControllerProvider).language),
+);
+
+/// Phase C4 — context-free strings for code that has no BuildContext
+/// (PosController messages, services, dialogs built from controllers).
+final l10nProvider = Provider<L10n>(
+  (ref) => lookupL10n(ref.watch(localeProvider)),
+);
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
