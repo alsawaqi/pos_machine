@@ -7343,21 +7343,44 @@ class _PaymentMethodActionButton extends StatelessWidget {
           border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
           boxShadow: _softShadow,
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 42, color: Colors.white),
-            const SizedBox(height: 18),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
+        child: LayoutBuilder(builder: (context, constraints) {
+          // The stacked icon+label content is ~96px tall — slim buttons
+          // (the 64px Gift pill) lay out horizontally instead so the
+          // content always fits the given height.
+          final compact = constraints.maxHeight < 110;
+          if (compact) {
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 26, color: Colors.white),
+                const SizedBox(width: 10),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            );
+          }
+          return Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 42, color: Colors.white),
+              const SizedBox(height: 18),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          );
+        }),
       ),
     );
   }
