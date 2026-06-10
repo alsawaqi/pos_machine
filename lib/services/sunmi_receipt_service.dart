@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:sunmi_printer_plus/sunmi_printer_plus.dart';
 import '../models/pos_models.dart';
 import 'kitchen_ticket.dart';
+import 'shift_summary.dart';
 
 class SunmiReceiptService {
   static String money(double value) => '${value.toStringAsFixed(3)} OMR';
@@ -213,9 +214,18 @@ class SunmiReceiptService {
   /// prices; blueprint §6.10). FAIL-SAFE by design: any printer error
   /// (including MissingPluginException on non-Sunmi dev hardware) is swallowed
   /// so a kitchen print can never block order completion or holding.
-  static Future<void> printKitchenTicket(KitchenTicketData ticket) async {
+  static Future<void> printKitchenTicket(KitchenTicketData ticket) =>
+      _printLines(buildKitchenTicketLines(ticket));
+
+  /// Phase C6 — print the shift-close Z-report (blueprint Phase 9 #88).
+  /// Same fail-safe contract as the kitchen ticket.
+  static Future<void> printShiftSummary(ShiftSummaryTicket ticket) =>
+      _printLines(buildShiftSummaryLines(ticket));
+
+  /// Render pre-built styled lines, swallowing every printer failure.
+  static Future<void> _printLines(List<KitchenTicketLine> lines) async {
     try {
-      for (final line in buildKitchenTicketLines(ticket)) {
+      for (final line in lines) {
         final align =
             line.center ? SunmiPrintAlign.CENTER : SunmiPrintAlign.LEFT;
         await SunmiPrinter.printText(
@@ -232,7 +242,7 @@ class SunmiReceiptService {
       await SunmiPrinter.lineWrap(3);
       await SunmiPrinter.cutPaper();
     } catch (_) {
-      // Kitchen printing is best-effort — never propagate printer failures.
+      // Best-effort — never propagate printer failures.
     }
   }
 }

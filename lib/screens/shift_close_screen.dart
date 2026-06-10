@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/providers.dart';
+import '../services/local_order_storage_service.dart';
 import '../services/shift_payload.dart';
 import '../services/shift_service.dart';
+import '../services/shift_summary.dart';
+import '../services/sunmi_receipt_service.dart';
 
 /// Close the device's open cash-drawer shift: the cashier counts the drawer,
 /// the server computes expected cash (opening + cash sales on this device) and
@@ -43,6 +48,8 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
     setState(() => _closingBaisas ~/= 10);
   }
 
+  ShiftSummaryTicket? _ticket;
+
   Future<void> _close() async {
     final shift = ref.read(sessionControllerProvider).openShift;
     if (shift == null) {
@@ -58,7 +65,44 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
             shiftUuid: shift.uuid,
             closingCashBaisas: _closingBaisas,
           );
-      if (mounted) setState(() => _result = result);
+      // Phase C6 — assemble the Z-report: server numbers when present (same
+      // transaction as the close), the device-local fold as the fallback.
+      final closedAt = DateTime.now();
+      var summary = ShiftSalesSummary.fromServerResult(result.summaryJson);
+      if (summary == null) {
+        final localHistory =
+            await LocalOrderStorageService.instance.loadOrderHistory();
+        summary = buildLocalShiftSummary(
+          localHistory,
+          openedAt: shift.openedAt,
+          closedAt: closedAt,
+        );
+      }
+      final session = ref.read(sessionServiceProvider);
+      final ticket = ShiftSummaryTicket(
+        deviceCode: session.kioskId ?? '',
+        staffName: session.staff?.name ?? '',
+        openedAt: shift.openedAt,
+        closedAt: closedAt,
+        openingBaisas: shift.openingCashBaisas,
+        expectedBaisas: result.expectedCashBaisas,
+        countedBaisas: _closingBaisas,
+        varianceBaisas: result.varianceBaisas,
+        summary: summary,
+      );
+      // Persist the reprint snapshot BEFORE markShiftClosed erases the
+      // device's only record of the shift window.
+      await session.saveLastShiftSummary(ticket.toJson());
+      if (ref.read(settingsControllerProvider).printReceipts) {
+        // Auto-print once; fail-safe inside the service.
+        unawaited(SunmiReceiptService.printShiftSummary(ticket));
+      }
+      if (mounted) {
+        setState(() {
+          _result = result;
+          _ticket = ticket;
+        });
+      }
     } on ShiftException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
@@ -169,6 +213,21 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
         const Divider(color: Colors.white24, height: 28),
         _resultRow('Variance', _money(variance), color: color, bold: true),
         const SizedBox(height: 24),
+        if (_ticket != null) ...[
+          SizedBox(
+            width: 260,
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: () => SunmiReceiptService.printShiftSummary(_ticket!),
+              icon: const Icon(Icons.print_outlined, color: Colors.white70),
+              label: const Text(
+                'Print summary',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         SizedBox(
           width: 260,
           height: 52,

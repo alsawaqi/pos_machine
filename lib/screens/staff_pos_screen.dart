@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import '../models/pos_models.dart';
 import '../services/manager_authorization_service.dart';
+import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
@@ -3798,6 +3799,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               onTap: () => Navigator.pop(ctx, 'stock_count'),
             ),
             ListTile(
+              leading: const Icon(Icons.summarize_rounded),
+              title: const Text('Shift summary (Z-report)'),
+              subtitle: const Text('Reprint the last closed shift — manager only'),
+              onTap: () => Navigator.pop(ctx, 'shift_summary'),
+            ),
+            ListTile(
               leading: const Icon(Icons.settings),
               title: const Text('Settings'),
               subtitle: const Text('Server address, printing'),
@@ -3838,11 +3845,51 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const StockCountScreen()),
       );
+    } else if (action == 'shift_summary') {
+      await _reprintLastShiftSummary();
     } else if (action == 'settings') {
       await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const SettingsScreen()),
       );
     }
+  }
+
+  /// Phase C6 — manager-gated reprint of the LAST closed shift's Z-report
+  /// (blueprint Phase 9 #88: "Daily sales summary (Manager only)").
+  Future<void> _reprintLastShiftSummary() async {
+    final snapshot = ref.read(sessionServiceProvider).lastShiftSummary;
+    final ticket = ShiftSummaryTicket.fromJson(snapshot, isReprint: true);
+    if (ticket == null) {
+      _showPopupMessage(
+        title: 'No Shift Summary Yet',
+        message: 'Close a shift first — its summary is kept for reprinting.',
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
+    final ok = await _managerAuthorization.authenticateManagerApproval(
+      subtitle: 'Shift summary',
+      description:
+          'Place the manager fingerprint to reprint the last shift summary.',
+    );
+    if (!mounted) return;
+    if (!ok) {
+      _showPopupMessage(
+        title: 'Approval Required',
+        message: 'Manager approval was not granted for the shift summary.',
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
+    await SunmiReceiptService.printShiftSummary(ticket);
+    if (!mounted) return;
+    _showPopupMessage(
+      title: 'Shift Summary Printed',
+      message: 'The last shift summary was sent to the printer.',
+      tone: FeedbackTone.success,
+    );
   }
 
   Future<void> _confirmLogout() async {

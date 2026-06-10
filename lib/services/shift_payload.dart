@@ -19,6 +19,7 @@ class ShiftCloseResult {
   const ShiftCloseResult({
     required this.expectedCashBaisas,
     required this.varianceBaisas,
+    this.summaryJson,
   });
 
   /// opening + cash sales rung on this device during the shift.
@@ -27,10 +28,16 @@ class ShiftCloseResult {
   /// counted closing cash − expected (negative = drawer short).
   final int varianceBaisas;
 
+  /// Phase C6 — the server's shift sales summary (Z-report numbers), parsed
+  /// by ShiftSalesSummary.fromServerResult. Null from an older API → the
+  /// device falls back to its local calculator.
+  final Map<String, dynamic>? summaryJson;
+
   factory ShiftCloseResult.fromResult(Map<String, dynamic> result) {
     return ShiftCloseResult(
       expectedCashBaisas: (result['expected_cash_baisas'] as num?)?.toInt() ?? 0,
       varianceBaisas: (result['variance_baisas'] as num?)?.toInt() ?? 0,
+      summaryJson: (result['summary'] as Map?)?.cast<String, dynamic>(),
     );
   }
 }

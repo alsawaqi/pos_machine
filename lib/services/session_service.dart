@@ -83,6 +83,7 @@ class SessionService {
   static const _kStaff = 'staff_session_json';
   static const _kShift = 'open_shift_json';
   static const _kWebsocket = 'websocket_config_json';
+  static const _kLastShiftSummary = 'last_shift_summary_json';
 
   String? _deviceToken; // in-memory cache for the dio interceptor
 
@@ -190,6 +191,23 @@ class SessionService {
     await _prefs.remove(_kShift);
   }
 
+  /// Phase C6 — the LAST closed shift's printed Z-report snapshot, persisted
+  /// BEFORE clearShift() erases the device's only record of the shift window,
+  /// so a manager can reprint it from the staff menu. Survives staff logout.
+  Map<String, dynamic>? get lastShiftSummary {
+    final raw = _prefs.getString(_kLastShiftSummary);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return (jsonDecode(raw) as Map).cast<String, dynamic>();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveLastShiftSummary(Map<String, dynamic> snapshot) async {
+    await _prefs.setString(_kLastShiftSummary, jsonEncode(snapshot));
+  }
+
   /// Staff logout (layer 2 only — keeps the device activated AND the open shift,
   /// which is a per-device drawer the next cashier inherits).
   Future<void> clearStaff() async {
@@ -208,5 +226,6 @@ class SessionService {
     await _prefs.remove(_kKioskId);
     await _prefs.remove(_kTerminalId);
     await _prefs.remove(_kWebsocket);
+    await _prefs.remove(_kLastShiftSummary);
   }
 }
