@@ -51,6 +51,11 @@ class SettingsController extends Notifier<AppSettings> {
     await _svc.savePrintReceipts(value);
     state = _svc.snapshot();
   }
+
+  Future<void> setPrintKitchenTickets(bool value) async {
+    await _svc.savePrintKitchenTickets(value);
+    state = _svc.snapshot();
+  }
 }
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) {

@@ -6,7 +6,11 @@ import '../core/api_config.dart';
 /// operator/installer preferences — distinct from the device activation (layer
 /// 1) and the staff session (layer 2).
 class AppSettings {
-  const AppSettings({this.serverBaseUrl, this.printReceipts = true});
+  const AppSettings({
+    this.serverBaseUrl,
+    this.printReceipts = true,
+    this.printKitchenTickets = true,
+  });
 
   /// Operator-set server base URL. Null/empty ⇒ fall back to the compile-time
   /// [ApiConfig.baseUrl]. Lets a real device on the LAN point at the right
@@ -15,6 +19,10 @@ class AppSettings {
 
   /// Whether to print a Sunmi receipt on order completion.
   final bool printReceipts;
+
+  /// Phase C1 — whether to print an items-only kitchen ticket on order
+  /// completion and on hold (blueprint §6.10).
+  final bool printKitchenTickets;
 
   /// The base URL actually used for API calls.
   String get effectiveBaseUrl =>
@@ -26,10 +34,15 @@ class AppSettings {
   bool get usingDefaultServer =>
       serverBaseUrl == null || serverBaseUrl!.isEmpty;
 
-  AppSettings copyWith({String? serverBaseUrl, bool? printReceipts}) =>
+  AppSettings copyWith({
+    String? serverBaseUrl,
+    bool? printReceipts,
+    bool? printKitchenTickets,
+  }) =>
       AppSettings(
         serverBaseUrl: serverBaseUrl ?? this.serverBaseUrl,
         printReceipts: printReceipts ?? this.printReceipts,
+        printKitchenTickets: printKitchenTickets ?? this.printKitchenTickets,
       );
 }
 
@@ -40,10 +53,12 @@ class SettingsService {
 
   static const _kBaseUrl = 'server_base_url';
   static const _kPrintReceipts = 'print_receipts';
+  static const _kPrintKitchenTickets = 'print_kitchen_tickets';
 
   AppSettings snapshot() => AppSettings(
         serverBaseUrl: _prefs.getString(_kBaseUrl),
         printReceipts: _prefs.getBool(_kPrintReceipts) ?? true,
+        printKitchenTickets: _prefs.getBool(_kPrintKitchenTickets) ?? true,
       );
 
   /// The base URL the API client should use right now.
@@ -62,6 +77,10 @@ class SettingsService {
 
   Future<void> savePrintReceipts(bool value) async {
     await _prefs.setBool(_kPrintReceipts, value);
+  }
+
+  Future<void> savePrintKitchenTickets(bool value) async {
+    await _prefs.setBool(_kPrintKitchenTickets, value);
   }
 
   /// Normalize an operator-entered server URL: trim, default the scheme to

@@ -157,10 +157,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller = PosController();
     controller.onOrderCompleted = _handleOrderCompleted;
     controller.onOrderVoided = _handleOrderVoided;
-    // Keep the receipt-printing toggle in sync with Settings.
-    controller.printReceipts = ref.read(settingsControllerProvider).printReceipts;
+    // Keep the printing toggles in sync with Settings.
+    final settings = ref.read(settingsControllerProvider);
+    controller.printReceipts = settings.printReceipts;
+    controller.printKitchenTickets = settings.printKitchenTickets;
     ref.listenManual(settingsControllerProvider, (prev, next) {
       controller.printReceipts = next.printReceipts;
+      controller.printKitchenTickets = next.printKitchenTickets;
     });
     _customerNumberController = TextEditingController();
     _vehiclePlateController = TextEditingController();
@@ -1170,6 +1173,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 tone: FeedbackTone.success,
               );
             },
+            onPrintKitchen: (record) =>
+                _handleKitchenTicketReprint(record),
             onCancel: (record) => _handleOrderCancellationRequest(
               historyDialogContext: context,
               record: record,
@@ -1198,6 +1203,35 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           ),
         );
       },
+    );
+  }
+
+  /// Phase C1 — kitchen-ticket reprint, manager-gated (blueprint §6.10:
+  /// "kitchen ticket reprint requires Manager permission"; the customer
+  /// receipt reprint stays free).
+  Future<void> _handleKitchenTicketReprint(OrderHistoryRecord record) async {
+    final ok = await _managerAuthorization.authenticateManagerApproval(
+      subtitle: 'Reprint kitchen ticket',
+      description:
+          'Place the manager fingerprint to reprint the kitchen ticket for order #${record.orderNumber}.',
+    );
+    if (!mounted) return;
+    if (!ok) {
+      _showPopupMessage(
+        title: 'Approval Required',
+        message: 'Manager approval was not granted for the kitchen reprint.',
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
+    await controller.printHistoricalKitchenTicket(record);
+    if (!mounted) return;
+    _showPopupMessage(
+      title: 'Kitchen Ticket Printed',
+      message:
+          'Kitchen ticket for order #${record.orderNumber} was sent to the printer.',
+      tone: FeedbackTone.success,
     );
   }
 
@@ -7580,12 +7614,14 @@ class _OrderHistoryPanel extends StatelessWidget {
   final List<OrderHistoryRecord> records;
   final Future<void> Function() onRegisterManager;
   final Future<void> Function(OrderHistoryRecord record) onPrint;
+  final Future<void> Function(OrderHistoryRecord record) onPrintKitchen;
   final Future<void> Function(OrderHistoryRecord record) onCancel;
 
   const _OrderHistoryPanel({
     required this.records,
     required this.onRegisterManager,
     required this.onPrint,
+    required this.onPrintKitchen,
     required this.onCancel,
   });
 
@@ -7613,6 +7649,7 @@ class _OrderHistoryPanel extends StatelessWidget {
                     return _OrderHistoryCard(
                       record: record,
                       onPrint: () => onPrint(record),
+                      onPrintKitchen: () => onPrintKitchen(record),
                       onCancel: () => onCancel(record),
                     );
                   },
@@ -7879,11 +7916,13 @@ class _HeldOrderCard extends StatelessWidget {
 class _OrderHistoryCard extends StatelessWidget {
   final OrderHistoryRecord record;
   final VoidCallback onPrint;
+  final VoidCallback onPrintKitchen;
   final VoidCallback onCancel;
 
   const _OrderHistoryCard({
     required this.record,
     required this.onPrint,
+    required this.onPrintKitchen,
     required this.onCancel,
   });
 
@@ -7998,6 +8037,16 @@ class _OrderHistoryCard extends StatelessWidget {
                     label: 'Print',
                     icon: Icons.print_outlined,
                     onTap: onPrint,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // Phase C1 — manager-gated kitchen-ticket reprint (§6.10).
+                SizedBox(
+                  height: 52,
+                  child: _OutlineActionButton(
+                    label: 'Kitchen',
+                    icon: Icons.restaurant_rounded,
+                    onTap: onPrintKitchen,
                   ),
                 ),
                 const SizedBox(height: 10),

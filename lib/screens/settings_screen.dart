@@ -180,6 +180,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   style: TextStyle(color: Colors.white54),
                 ),
               ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: settings.printKitchenTickets,
+                onChanged: (v) => ref
+                    .read(settingsControllerProvider.notifier)
+                    .setPrintKitchenTickets(v),
+                title: const Text(
+                  'Print kitchen tickets',
+                  style: TextStyle(color: Colors.white),
+                ),
+                subtitle: const Text(
+                  'Print an items-only kitchen ticket when an order completes or is held.',
+                  style: TextStyle(color: Colors.white54),
+                ),
+              ),
             ],
           ),
         ),

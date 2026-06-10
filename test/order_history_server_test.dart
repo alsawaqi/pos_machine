@@ -25,6 +25,13 @@ void main() {
             'qty': 2,
             'line_total_baisas': 3000,
             'notes': 'oat',
+            'addons': [
+              {
+                'add_on_id': 9,
+                'add_on_name': 'Extra Shot',
+                'price_delta_baisas': 300,
+              },
+            ],
           },
         ],
       };
@@ -50,6 +57,14 @@ void main() {
       expect(s.items.first['name'], 'Latte');
       expect(s.items.first['qty'], 2.0);
       expect(s.items.first['lineTotal'], 3.0);
+
+      // Phase C1 — server add-ons map to the CartItem modifier shape so
+      // kitchen-ticket reprints of cross-device orders include them.
+      final modifiers = s.items.first['modifiers'] as List;
+      expect(modifiers.length, 1);
+      expect(modifiers.first['label'], 'Extra Shot');
+      expect(modifiers.first['group'], '');
+      expect(modifiers.first['price'], 0.3);
     });
 
     test('defaults gracefully on a sparse payload', () {

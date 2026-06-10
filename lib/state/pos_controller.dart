@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/pos_models.dart';
+import '../services/kitchen_ticket.dart';
 import '../services/local_order_storage_service.dart';
 import '../services/mosambee_payment_service.dart';
 import '../services/order_sync_payload.dart' show uuidV4;
@@ -364,6 +365,10 @@ class PosController extends ChangeNotifier {
   /// Whether to print a Sunmi receipt on completion (driven by Settings; the
   /// screen keeps it in sync with the settings controller).
   bool printReceipts = true;
+
+  /// Phase C1 — whether to print an items-only kitchen ticket on completion
+  /// and on hold (blueprint §6.10). Driven by Settings like [printReceipts].
+  bool printKitchenTickets = true;
 
   bool _presentationEnabled =
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -1324,11 +1329,63 @@ class PosController extends ChangeNotifier {
 
   Future<void> printOnly() async {
     if (_cart.isEmpty) return;
-    await SunmiReceiptService.printReceipt(snapshot(), template: receiptTemplate);
+    try {
+      await SunmiReceiptService.printReceipt(snapshot(), template: receiptTemplate);
+    } catch (error) {
+      debugPrint('Receipt print failed: $error');
+    }
   }
 
   Future<void> printHistoricalReceipt(OrderHistoryRecord record) async {
-    await SunmiReceiptService.printReceipt(record.snapshot, template: receiptTemplate);
+    try {
+      await SunmiReceiptService.printReceipt(record.snapshot, template: receiptTemplate);
+    } catch (error) {
+      debugPrint('Receipt reprint failed: $error');
+    }
+  }
+
+  /// Phase C1 — reprint the KITCHEN ticket for a past order. The caller is
+  /// responsible for the manager gate (blueprint §6.10: kitchen ticket reprint
+  /// requires Manager permission). Stamps the ORIGINAL order time + a REPRINT
+  /// banner. Fail-safe (the service swallows printer errors).
+  Future<void> printHistoricalKitchenTicket(OrderHistoryRecord record) async {
+    await SunmiReceiptService.printKitchenTicket(
+      _kitchenTicketFromSnapshot(
+        record.snapshot,
+        time: record.createdAt,
+        isReprint: true,
+      ),
+    );
+  }
+
+  /// 'Table 4 | Main Hall' — same composition the customer receipt uses.
+  static String _composeTableLabel(String tableName, String floorLabel) {
+    final table = tableName.trim();
+    if (table.isEmpty) return '';
+    final floor = floorLabel.trim();
+    return floor.isEmpty ? 'Table $table' : 'Table $table | $floor';
+  }
+
+  KitchenTicketData _kitchenTicketFromSnapshot(
+    OrderSnapshot s, {
+    required DateTime time,
+    bool isReprint = false,
+  }) {
+    return KitchenTicketData(
+      orderLabel: 'Order #${s.orderNumber}',
+      orderTypeLabel: OrderTypeLabel.fromStorage(s.orderType).label,
+      tableLabel: _composeTableLabel(s.diningTableName, s.diningFloorLabel),
+      // selectedDeliveryProvider is the LIVE order's pick — it is only valid
+      // on the completion path (still set until the post-print reset). Past
+      // orders never stored the provider, so reprints omit it.
+      deliveryProvider:
+          !isReprint && s.orderType == OrderType.delivery.storageValue
+              ? (selectedDeliveryProvider?.name ?? '')
+              : '',
+      time: time,
+      isReprint: isReprint,
+      items: s.items,
+    );
   }
 
   Future<String?> holdCurrentOrder() async {
@@ -1338,6 +1395,29 @@ class PosController extends ChangeNotifier {
       final draft = createDraft();
       await _orderStorage.saveHeldOrder(draft);
       await refreshHeldOrders();
+      if (printKitchenTickets) {
+        // Phase C1 — holding IS the "send to kitchen" moment today, so the
+        // kitchen gets its ticket now (fail-safe; before the reset below so
+        // the delivery-provider pick is still readable).
+        await SunmiReceiptService.printKitchenTicket(
+          KitchenTicketData(
+            orderLabel: draft.orderReference.isEmpty
+                ? 'Order #$currentOrderNumber'
+                : draft.orderReference,
+            orderTypeLabel: draft.orderType.label,
+            tableLabel: _composeTableLabel(
+              draft.diningTableName,
+              draft.diningFloorLabel,
+            ),
+            deliveryProvider: draft.orderType == OrderType.delivery
+                ? (selectedDeliveryProvider?.name ?? '')
+                : '',
+            time: DateTime.now(),
+            isHold: true,
+            items: draft.items.map((item) => item.toMap()).toList(),
+          ),
+        );
+      }
       final message = 'Reference ${draft.orderReference} was placed on hold.';
       _resetForNextOrder(advanceOrderNumber: false);
       lastPaymentMessage = message;
@@ -1907,7 +1987,20 @@ class PosController extends ChangeNotifier {
     // push share it — a later full-cancel can then emit a matching order.void.
     final completedSnapshot = snapshot().copyWith(serverOrderUuid: uuidV4());
     if (printReceipts) {
-      await SunmiReceiptService.printReceipt(completedSnapshot, template: receiptTemplate);
+      // Fail-safe: a printer error must never abort the local save or the
+      // pos_api push below.
+      try {
+        await SunmiReceiptService.printReceipt(completedSnapshot, template: receiptTemplate);
+      } catch (error) {
+        debugPrint('Receipt print failed: $error');
+      }
+    }
+    if (printKitchenTickets) {
+      // Phase C1 — the kitchen copy: items + add-ons + notes, no prices. The
+      // service itself swallows printer errors.
+      await SunmiReceiptService.printKitchenTicket(
+        _kitchenTicketFromSnapshot(completedSnapshot, time: DateTime.now()),
+      );
     }
     await _saveCompletedOrder(completedSnapshot);
     // Push the finalized order to pos_api (via the durable outbox). Fire-and-

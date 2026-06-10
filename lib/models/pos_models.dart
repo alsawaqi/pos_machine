@@ -1635,6 +1635,21 @@ class OrderHistoryRecord {
               'lineTotal':
                   ((raw['line_total_baisas'] as num?)?.toDouble() ?? 0) / 1000.0,
               'notes': raw['notes']?.toString() ?? '',
+              // Phase C1 — the server's add-ons, mapped to the CartItem
+              // modifier shape so kitchen-ticket reprints of cross-device
+              // orders show them (the server sends no group label).
+              'modifiers': ((raw['addons'] as List?) ?? const [])
+                  .whereType<Map>()
+                  .map((addon) => <String, dynamic>{
+                        'id': 'addon_${addon['add_on_id']}',
+                        'group': '',
+                        'label': addon['add_on_name']?.toString() ?? '',
+                        'price':
+                            ((addon['price_delta_baisas'] as num?)?.toDouble() ??
+                                    0) /
+                                1000.0,
+                      })
+                  .toList(),
             })
         .toList();
 
