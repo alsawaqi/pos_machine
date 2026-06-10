@@ -3899,6 +3899,108 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'The summary did not print — check the printer and try again.'**
   String get shiftClosePrintFailed;
+
+  /// No description provided for @posMidShiftReportTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Current Shift'**
+  String get posMidShiftReportTitle;
+
+  /// No description provided for @posMidShiftThisDeviceOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'This device only — live estimate, not the closing reconciliation.'**
+  String get posMidShiftThisDeviceOnly;
+
+  /// No description provided for @posMidShiftNoOpenShiftTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No Open Shift'**
+  String get posMidShiftNoOpenShiftTitle;
+
+  /// No description provided for @posMidShiftNoOpenShiftBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Open a shift first — the report covers the current drawer session.'**
+  String get posMidShiftNoOpenShiftBody;
+
+  /// No description provided for @posMidShiftAuthSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Shift report'**
+  String get posMidShiftAuthSubtitle;
+
+  /// No description provided for @posMidShiftAuthDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Place the manager fingerprint to view the current shift report.'**
+  String get posMidShiftAuthDesc;
+
+  /// No description provided for @posMidShiftAuthDeniedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Manager approval was not granted for the shift report.'**
+  String get posMidShiftAuthDeniedBody;
+
+  /// No description provided for @posMidShiftOrders.
+  ///
+  /// In en, this message translates to:
+  /// **'Orders'**
+  String get posMidShiftOrders;
+
+  /// No description provided for @posMidShiftGross.
+  ///
+  /// In en, this message translates to:
+  /// **'Gross sales'**
+  String get posMidShiftGross;
+
+  /// No description provided for @posMidShiftDiscounts.
+  ///
+  /// In en, this message translates to:
+  /// **'Discounts'**
+  String get posMidShiftDiscounts;
+
+  /// No description provided for @posMidShiftComps.
+  ///
+  /// In en, this message translates to:
+  /// **'Comps'**
+  String get posMidShiftComps;
+
+  /// No description provided for @posMidShiftTax.
+  ///
+  /// In en, this message translates to:
+  /// **'Tax'**
+  String get posMidShiftTax;
+
+  /// No description provided for @posMidShiftTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'TOTAL'**
+  String get posMidShiftTotal;
+
+  /// No description provided for @posMidShiftRoundUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Round-up donations'**
+  String get posMidShiftRoundUp;
+
+  /// No description provided for @posMidShiftVoids.
+  ///
+  /// In en, this message translates to:
+  /// **'Voids'**
+  String get posMidShiftVoids;
+
+  /// No description provided for @posMidShiftOpeningFloat.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening float'**
+  String get posMidShiftOpeningFloat;
+
+  /// No description provided for @posMidShiftCashTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'Cash taken (this device)'**
+  String get posMidShiftCashTaken;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

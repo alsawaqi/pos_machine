@@ -293,6 +293,86 @@ String _tenderLabel(String method) => switch (method) {
       _ => method,
     };
 
+/// Gap sweep G3 — the MID-SHIFT (X-report) print layout. Deliberately NOT
+/// [buildShiftSummaryLines]: the Z-report's DRAWER block requires counted
+/// cash + variance, which do not exist mid-shift — fabricating them would
+/// print a lie. This prints sales/tenders plus an opening-float + cash-taken
+/// MEMO (never labelled "expected"), always tagged device-local.
+List<KitchenTicketLine> buildMidShiftSummaryLines(
+  ShiftSalesSummary s, {
+  required String deviceCode,
+  required String staffName,
+  required DateTime openedAt,
+  required DateTime asOf,
+  required int openingBaisas,
+}) {
+  final lines = <KitchenTicketLine>[
+    const KitchenTicketLine('SHIFT REPORT',
+        bold: true, fontSize: 32, center: true),
+    const KitchenTicketLine('(X-REPORT / MID-SHIFT)', bold: true, center: true),
+    const KitchenTicketLine('OFFLINE - device-local figures',
+        bold: true, center: true),
+    KitchenTicketLine(
+      'Device $deviceCode${staffName.isEmpty ? '' : '  |  $staffName'}',
+      center: true,
+    ),
+    KitchenTicketLine(
+      '${formatKitchenTicketTime(openedAt)} - ${formatKitchenTicketTime(asOf)}',
+      center: true,
+    ),
+    const KitchenTicketLine(_divider),
+    const KitchenTicketLine('SALES', bold: true),
+    KitchenTicketLine(_row('Orders', '${s.orderCount}')),
+    KitchenTicketLine(_row('Gross sales', _money(s.grossBaisas))),
+  ];
+
+  if (s.discountBaisas > 0) {
+    lines.add(
+        KitchenTicketLine(_row('Discounts', '-${_money(s.discountBaisas)}')));
+  }
+  if (s.compBaisas > 0) {
+    lines.add(KitchenTicketLine(_row('Comps', '-${_money(s.compBaisas)}')));
+  }
+  if (s.taxBaisas > 0) {
+    lines.add(KitchenTicketLine(_row('Tax', _money(s.taxBaisas))));
+  }
+  lines.add(KitchenTicketLine(_row('TOTAL', _money(s.grandBaisas)), bold: true));
+
+  if (s.tenders.isNotEmpty) {
+    lines
+      ..add(const KitchenTicketLine(_divider))
+      ..add(const KitchenTicketLine('TENDERS', bold: true));
+    for (final tender in s.tenders) {
+      lines.add(KitchenTicketLine(_row(
+        '${_tenderLabel(tender.method)} (${tender.count})',
+        _money(tender.amountBaisas),
+      )));
+    }
+  }
+  if (s.roundUpBaisas > 0) {
+    lines.add(
+        KitchenTicketLine(_row('Round-up donations', _money(s.roundUpBaisas))));
+  }
+  if (s.voidCount > 0) {
+    lines
+      ..add(const KitchenTicketLine(_divider))
+      ..add(KitchenTicketLine(
+          _row('Voids (${s.voidCount})', _money(s.voidTotalBaisas))));
+  }
+
+  final cashTaken = s.tenders
+      .where((t) => t.method == 'cash')
+      .fold<int>(0, (sum, t) => sum + t.amountBaisas);
+  lines
+    ..add(const KitchenTicketLine(_divider))
+    ..add(const KitchenTicketLine('DRAWER (MEMO)', bold: true))
+    ..add(KitchenTicketLine(_row('Opening float', _money(openingBaisas))))
+    ..add(KitchenTicketLine(_row('Cash taken (this device)', _money(cashTaken))))
+    ..add(const KitchenTicketLine(_divider));
+
+  return lines;
+}
+
 /// The printed Z-report layout. Drawer math is IDENTICAL to the server's
 /// CloseShiftHandler + the merchant Shift Report: expected = opening + net
 /// cash (expenses informational, never deducted); variance negative = SHORT.

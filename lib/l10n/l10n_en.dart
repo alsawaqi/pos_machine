@@ -2352,4 +2352,59 @@ class L10nEn extends L10n {
   @override
   String get shiftClosePrintFailed =>
       'The summary did not print — check the printer and try again.';
+
+  @override
+  String get posMidShiftReportTitle => 'Current Shift';
+
+  @override
+  String get posMidShiftThisDeviceOnly =>
+      'This device only — live estimate, not the closing reconciliation.';
+
+  @override
+  String get posMidShiftNoOpenShiftTitle => 'No Open Shift';
+
+  @override
+  String get posMidShiftNoOpenShiftBody =>
+      'Open a shift first — the report covers the current drawer session.';
+
+  @override
+  String get posMidShiftAuthSubtitle => 'Shift report';
+
+  @override
+  String get posMidShiftAuthDesc =>
+      'Place the manager fingerprint to view the current shift report.';
+
+  @override
+  String get posMidShiftAuthDeniedBody =>
+      'Manager approval was not granted for the shift report.';
+
+  @override
+  String get posMidShiftOrders => 'Orders';
+
+  @override
+  String get posMidShiftGross => 'Gross sales';
+
+  @override
+  String get posMidShiftDiscounts => 'Discounts';
+
+  @override
+  String get posMidShiftComps => 'Comps';
+
+  @override
+  String get posMidShiftTax => 'Tax';
+
+  @override
+  String get posMidShiftTotal => 'TOTAL';
+
+  @override
+  String get posMidShiftRoundUp => 'Round-up donations';
+
+  @override
+  String get posMidShiftVoids => 'Voids';
+
+  @override
+  String get posMidShiftOpeningFloat => 'Opening float';
+
+  @override
+  String get posMidShiftCashTaken => 'Cash taken (this device)';
 }

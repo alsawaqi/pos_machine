@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
 import '../services/display_strings.dart';
+import '../services/local_order_storage_service.dart';
 import '../services/manager_authorization_service.dart';
 import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
@@ -3881,10 +3882,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           unawaited(_openOrderHistoryDialog());
                           break;
                         case 'Report':
-                          _showPlaceholderMessage(
-                            l10n.posNavReportsComingTitle,
-                            l10n.posNavReportsComingBody,
-                          );
+                          // Gap sweep G3 — the mid-shift X-report this chip
+                          // was reserved for (manager-gated).
+                          unawaited(_openMidShiftReport());
                           break;
                         default:
                           _showPlaceholderMessage(
@@ -4122,6 +4122,72 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         MaterialPageRoute(builder: (_) => const SettingsScreen()),
       );
     }
+  }
+
+  /// Gap sweep G3 — the mid-shift X-report behind the top-bar Report chip:
+  /// the CURRENT shift's sales so far, computed from the device-local order
+  /// log (other terminals' sales are absent — tagged as such). Manager-gated
+  /// for consistency with the Z-report (blueprint Phase 9 #88 "Daily sales
+  /// summary (Manager only)"). Shows an opening-float + cash-taken MEMO,
+  /// never a fabricated expected/variance.
+  Future<void> _openMidShiftReport() async {
+    final l10n = L10n.of(context);
+    final shift = ref.read(sessionControllerProvider).openShift;
+    if (shift == null) {
+      _showPopupMessage(
+        title: l10n.posMidShiftNoOpenShiftTitle,
+        message: l10n.posMidShiftNoOpenShiftBody,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
+    final ok = await _managerAuthorization.authenticateManagerApproval(
+      subtitle: l10n.posMidShiftAuthSubtitle,
+      description: l10n.posMidShiftAuthDesc,
+    );
+    if (!mounted) return;
+    if (!ok) {
+      _showPopupMessage(
+        title: l10n.posManagerApprovalRequiredTitle,
+        message: l10n.posMidShiftAuthDeniedBody,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
+    final history = await LocalOrderStorageService.instance.loadOrderHistory();
+    if (!mounted) return;
+    final asOf = DateTime.now();
+    final summary = buildLocalShiftSummary(
+      history,
+      openedAt: shift.openedAt,
+      closedAt: asOf,
+    );
+    final session = ref.read(sessionServiceProvider);
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => _MidShiftReportDialog(
+        summary: summary,
+        openedAt: shift.openedAt,
+        asOf: asOf,
+        openingBaisas: shift.openingCashBaisas,
+        onPrint: () async {
+          final printed = await SunmiReceiptService.printTicketLines(
+            buildMidShiftSummaryLines(
+              summary,
+              deviceCode: session.kioskId ?? '',
+              staffName: session.staff?.name ?? '',
+              openedAt: shift.openedAt,
+              asOf: asOf,
+              openingBaisas: shift.openingCashBaisas,
+            ),
+          );
+          if (!printed) _handlePrintFailed('shift');
+        },
+      ),
+    );
   }
 
   /// Phase C6 — manager-gated reprint of the LAST closed shift's Z-report
@@ -8018,6 +8084,151 @@ class _StorageOverlayShell extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Gap sweep G3 — the compact on-screen mid-shift (X-report) dialog. Money
+/// = baisas/1000 with the standard 3-dp format; figures are DEVICE-LOCAL.
+class _MidShiftReportDialog extends StatelessWidget {
+  final ShiftSalesSummary summary;
+  final DateTime openedAt;
+  final DateTime asOf;
+  final int openingBaisas;
+  final Future<void> Function() onPrint;
+
+  const _MidShiftReportDialog({
+    required this.summary,
+    required this.openedAt,
+    required this.asOf,
+    required this.openingBaisas,
+    required this.onPrint,
+  });
+
+  static String _money(int baisas) {
+    final sign = baisas < 0 ? '-' : '';
+    return '$sign${(baisas.abs() / 1000).toStringAsFixed(3)}';
+  }
+
+  String _tenderLabel(L10n l10n, String method) => switch (method) {
+        'cash' => l10n.displayMethodCash,
+        'card' => l10n.displayMethodCard,
+        'gift' => l10n.displayMethodGift,
+        _ => method,
+      };
+
+  Widget _row(String label, String value,
+      {bool bold = false, Color color = Colors.white}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label,
+              style: const TextStyle(color: Colors.white60, fontSize: 14)),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: bold ? 18 : 14,
+              fontWeight: bold ? FontWeight.w900 : FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
+    final s = summary;
+    final cashTaken = s.tenders
+        .where((t) => t.method == 'cash')
+        .fold<int>(0, (sum, t) => sum + t.amountBaisas);
+
+    return Dialog(
+      backgroundColor: const Color(0xFF102028),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                l10n.posMidShiftReportTitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                l10n.posMidShiftThisDeviceOnly,
+                textAlign: TextAlign.center,
+                style:
+                    const TextStyle(color: Color(0xFFE0A93B), fontSize: 12),
+              ),
+              const Divider(color: Colors.white24, height: 24),
+              _row(l10n.posMidShiftOrders, '${s.orderCount}'),
+              _row(l10n.posMidShiftGross, _money(s.grossBaisas)),
+              if (s.discountBaisas > 0)
+                _row(l10n.posMidShiftDiscounts, '-${_money(s.discountBaisas)}'),
+              if (s.compBaisas > 0)
+                _row(l10n.posMidShiftComps, '-${_money(s.compBaisas)}'),
+              if (s.taxBaisas > 0) _row(l10n.posMidShiftTax, _money(s.taxBaisas)),
+              _row(l10n.posMidShiftTotal, _money(s.grandBaisas), bold: true),
+              if (s.tenders.isNotEmpty) ...[
+                const Divider(color: Colors.white24, height: 24),
+                for (final tender in s.tenders)
+                  _row(
+                    '${_tenderLabel(l10n, tender.method)} (${tender.count})',
+                    _money(tender.amountBaisas),
+                  ),
+              ],
+              if (s.roundUpBaisas > 0)
+                _row(l10n.posMidShiftRoundUp, _money(s.roundUpBaisas)),
+              if (s.voidCount > 0)
+                _row(
+                  '${l10n.posMidShiftVoids} (${s.voidCount})',
+                  _money(s.voidTotalBaisas),
+                  color: const Color(0xFFFF6B6B),
+                ),
+              const Divider(color: Colors.white24, height: 24),
+              _row(l10n.posMidShiftOpeningFloat, _money(openingBaisas)),
+              _row(l10n.posMidShiftCashTaken, _money(cashTaken)),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onPrint,
+                      icon: const Icon(Icons.print_outlined,
+                          color: Colors.white70),
+                      label: Text(
+                        l10n.commonPrint,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text(l10n.commonClose),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),

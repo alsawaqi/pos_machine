@@ -632,5 +632,22 @@
   "posPrintFailedKitchenBody": "الطلب محفوظ. أعد طباعة نسخة المطبخ من السجل.",
   "posPrintFailedShiftTitle": "لم يُطبع ملخص الوردية",
   "posPrintFailedShiftBody": "تحقق من الطابعة ثم أعد الطباعة من قائمة الموظف.",
-  "shiftClosePrintFailed": "لم يُطبع الملخص — تحقق من الطابعة وحاول مرة أخرى."
+  "shiftClosePrintFailed": "لم يُطبع الملخص — تحقق من الطابعة وحاول مرة أخرى.",
+  "posMidShiftReportTitle": "الوردية الحالية",
+  "posMidShiftThisDeviceOnly": "هذا الجهاز فقط — تقدير مباشر، وليس تسوية الإغلاق.",
+  "posMidShiftNoOpenShiftTitle": "لا توجد وردية مفتوحة",
+  "posMidShiftNoOpenShiftBody": "افتح وردية أولاً — يغطي التقرير جلسة الدرج الحالية.",
+  "posMidShiftAuthSubtitle": "تقرير الوردية",
+  "posMidShiftAuthDesc": "ضع بصمة المدير لعرض تقرير الوردية الحالية.",
+  "posMidShiftAuthDeniedBody": "لم تُمنح موافقة المدير على تقرير الوردية.",
+  "posMidShiftOrders": "الطلبات",
+  "posMidShiftGross": "إجمالي المبيعات",
+  "posMidShiftDiscounts": "الخصومات",
+  "posMidShiftComps": "الضيافات",
+  "posMidShiftTax": "الضريبة",
+  "posMidShiftTotal": "الإجمالي",
+  "posMidShiftRoundUp": "تبرعات التقريب",
+  "posMidShiftVoids": "الإلغاءات",
+  "posMidShiftOpeningFloat": "الرصيد الافتتاحي",
+  "posMidShiftCashTaken": "النقد المحصّل (هذا الجهاز)"
 }

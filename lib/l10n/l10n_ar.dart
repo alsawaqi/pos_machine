@@ -2387,4 +2387,59 @@ class L10nAr extends L10n {
   @override
   String get shiftClosePrintFailed =>
       'لم يُطبع الملخص — تحقق من الطابعة وحاول مرة أخرى.';
+
+  @override
+  String get posMidShiftReportTitle => 'الوردية الحالية';
+
+  @override
+  String get posMidShiftThisDeviceOnly =>
+      'هذا الجهاز فقط — تقدير مباشر، وليس تسوية الإغلاق.';
+
+  @override
+  String get posMidShiftNoOpenShiftTitle => 'لا توجد وردية مفتوحة';
+
+  @override
+  String get posMidShiftNoOpenShiftBody =>
+      'افتح وردية أولاً — يغطي التقرير جلسة الدرج الحالية.';
+
+  @override
+  String get posMidShiftAuthSubtitle => 'تقرير الوردية';
+
+  @override
+  String get posMidShiftAuthDesc =>
+      'ضع بصمة المدير لعرض تقرير الوردية الحالية.';
+
+  @override
+  String get posMidShiftAuthDeniedBody =>
+      'لم تُمنح موافقة المدير على تقرير الوردية.';
+
+  @override
+  String get posMidShiftOrders => 'الطلبات';
+
+  @override
+  String get posMidShiftGross => 'إجمالي المبيعات';
+
+  @override
+  String get posMidShiftDiscounts => 'الخصومات';
+
+  @override
+  String get posMidShiftComps => 'الضيافات';
+
+  @override
+  String get posMidShiftTax => 'الضريبة';
+
+  @override
+  String get posMidShiftTotal => 'الإجمالي';
+
+  @override
+  String get posMidShiftRoundUp => 'تبرعات التقريب';
+
+  @override
+  String get posMidShiftVoids => 'الإلغاءات';
+
+  @override
+  String get posMidShiftOpeningFloat => 'الرصيد الافتتاحي';
+
+  @override
+  String get posMidShiftCashTaken => 'النقد المحصّل (هذا الجهاز)';
 }

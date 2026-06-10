@@ -1532,5 +1532,22 @@
   "posPrintFailedKitchenBody": "The order is saved. Reprint the kitchen copy from History.",
   "posPrintFailedShiftTitle": "Shift Summary Didn't Print",
   "posPrintFailedShiftBody": "Check the printer, then reprint from the staff menu.",
-  "shiftClosePrintFailed": "The summary did not print — check the printer and try again."
+  "shiftClosePrintFailed": "The summary did not print — check the printer and try again.",
+  "posMidShiftReportTitle": "Current Shift",
+  "posMidShiftThisDeviceOnly": "This device only — live estimate, not the closing reconciliation.",
+  "posMidShiftNoOpenShiftTitle": "No Open Shift",
+  "posMidShiftNoOpenShiftBody": "Open a shift first — the report covers the current drawer session.",
+  "posMidShiftAuthSubtitle": "Shift report",
+  "posMidShiftAuthDesc": "Place the manager fingerprint to view the current shift report.",
+  "posMidShiftAuthDeniedBody": "Manager approval was not granted for the shift report.",
+  "posMidShiftOrders": "Orders",
+  "posMidShiftGross": "Gross sales",
+  "posMidShiftDiscounts": "Discounts",
+  "posMidShiftComps": "Comps",
+  "posMidShiftTax": "Tax",
+  "posMidShiftTotal": "TOTAL",
+  "posMidShiftRoundUp": "Round-up donations",
+  "posMidShiftVoids": "Voids",
+  "posMidShiftOpeningFloat": "Opening float",
+  "posMidShiftCashTaken": "Cash taken (this device)"
 }

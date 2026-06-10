@@ -210,6 +210,54 @@ void main() {
     });
   });
 
+  // Gap sweep G3 — the mid-shift X-report layout (no counted/variance ever).
+  group('buildMidShiftSummaryLines', () {
+    test('prints sales + tenders + a drawer MEMO, never a variance', () {
+      final texts = buildMidShiftSummaryLines(
+        const ShiftSalesSummary(
+          orderCount: 3,
+          grossBaisas: 7000,
+          discountBaisas: 500,
+          compBaisas: 0,
+          taxBaisas: 0,
+          grandBaisas: 6500,
+          tenders: [
+            ShiftTenderLine(method: 'cash', amountBaisas: 4000, count: 2),
+            ShiftTenderLine(method: 'card', amountBaisas: 2500, count: 1),
+          ],
+          voidCount: 0,
+          voidTotalBaisas: 0,
+          roundUpBaisas: 0,
+          branchExpensesBaisas: 0,
+          source: 'local',
+        ),
+        deviceCode: 'POS-TEST-001',
+        staffName: 'Sara',
+        openedAt: DateTime(2026, 6, 10, 8),
+        asOf: DateTime(2026, 6, 10, 13, 30),
+        openingBaisas: 10000,
+      ).map((l) => l.text).toList();
+
+      expect(texts.first, 'SHIFT REPORT');
+      expect(texts, contains('(X-REPORT / MID-SHIFT)'));
+      expect(texts, contains('OFFLINE - device-local figures'));
+      expect(texts.any((t) => t.startsWith('Orders') && t.endsWith('3')), isTrue);
+      expect(texts.any((t) => t.startsWith('TOTAL') && t.endsWith('6.500')), isTrue);
+      expect(texts.any((t) => t.startsWith('Cash (2)') && t.endsWith('4.000')), isTrue);
+      expect(texts.any((t) => t.startsWith('Opening float') && t.endsWith('10.000')), isTrue);
+      // Cash MEMO from cash tenders only (card excluded).
+      expect(
+        texts.any((t) => t.startsWith('Cash taken') && t.endsWith('4.000')),
+        isTrue,
+      );
+      // Never a fabricated reconciliation:
+      final joined = texts.join('\n');
+      expect(joined, isNot(contains('VARIANCE')));
+      expect(joined, isNot(contains('Counted')));
+      expect(joined, isNot(contains('Expected')));
+    });
+  });
+
   group('buildShiftSummaryLines', () {
     ShiftSummaryTicket ticket({bool isReprint = false, String source = 'server'}) {
       return ShiftSummaryTicket(
