@@ -70,6 +70,12 @@ const _customizationGroups = <_ModifierGroupDefinition>[
   ),
 ];
 
+/// Phase C4 — the void/comp reason label to SHOW for [arabic] UI: the
+/// merchant's Arabic name when provided, else the English identity name
+/// (stored values and payloads always keep the English name).
+String _reasonDisplayName(String name, String? nameAr, bool arabic) =>
+    arabic && nameAr != null && nameAr.trim().isNotEmpty ? nameAr : name;
+
 const bool _staffVisualEffectsEnabled = bool.fromEnvironment(
   'POS_ENABLE_VISUAL_EFFECTS',
   defaultValue: false,
@@ -201,6 +207,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         if (catalog != null) {
           controller.applyCatalog(
             categories: catalog.categories,
+            categoryNamesAr: catalog.categoryNamesAr,
             products: catalog.products,
             floors: catalog.floors,
             tables: catalog.tables,
@@ -375,6 +382,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// the whole discounted subtotal) and validated against the reason's cap.
   Future<void> _openCompDialog() async {
     final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
     if (controller.cart.isEmpty) {
       _showPopupMessage(
         title: l10n.posCompNothingTitle,
@@ -491,7 +499,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                         DropdownMenuItem(
                           value: i,
                           child: Text(
-                            '${cart[i].product.name} ×${cart[i].qty}',
+                            '${cart[i].product.displayName(isAr)} ×${cart[i].qty}',
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -509,7 +517,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     children: [
                       for (final r in controller.compReasons)
                         ChoiceChip(
-                          label: Text(r.name),
+                          label: Text(_reasonDisplayName(r.name, r.nameAr, isAr)),
                           selected: reason?.id == r.id,
                           onSelected: (selected) => setDialogState(
                             () => reason = selected ? r : null,
@@ -527,7 +535,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       padding: const EdgeInsets.only(top: 6),
                       child: Text(
                         l10n.posCompExceedsCapMessage(
-                          reason!.name,
+                          _reasonDisplayName(reason!.name, reason!.nameAr, isAr),
                           SunmiReceiptService.money(cap),
                         ),
                         style: const TextStyle(color: Color(0xFFB84524)),
@@ -562,7 +570,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _showPopupMessage(
       title: l10n.posCompAppliedTitle,
       message: l10n.posCompAppliedMessage(
-        reason!.name,
+        _reasonDisplayName(reason!.name, reason!.nameAr, isAr),
         SunmiReceiptService.money(controller.compAmount),
       ),
       tone: FeedbackTone.success,
@@ -2293,6 +2301,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         return _ModifierGroupDefinition(
           step: step,
           title: group.name,
+          // Phase C4 — merchant Arabic names, display-only (the English
+          // title/label stay the identity in selections and payloads).
+          titleAr: group.nameAr ?? '',
           multiSelect: group.multiSelect,
           // Phase B — merchant-configured constraints + defaults.
           requiredSelection: group.isRequired,
@@ -2306,6 +2317,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               .map((option) => _ModifierOptionDefinition(
                     id: option.id.toString(),
                     label: option.label,
+                    labelAr: option.labelAr ?? '',
                     price: option.priceDelta,
                   ))
               .toList(),
@@ -4261,6 +4273,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Widget _buildCategoriesPanel() {
     final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
     return _glassPanel(
       padding: const EdgeInsets.all(16),
       tint: const Color(0x1CFFFFFF),
@@ -4293,7 +4306,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 final category = controller.categories[index];
                 final selected = category == controller.selectedCategory;
                 return _CategoryCard(
-                  title: category,
+                  // Phase C4 — render the merchant Arabic label; the English
+                  // [category] stays the identity (selection + icon key).
+                  title: controller.categoryDisplayName(category, isAr),
                   icon: _categoryIcons[category] ?? Icons.category_outlined,
                   selected: selected,
                   onTap: () => controller.selectCategory(category),
@@ -4879,7 +4894,8 @@ class _OrderItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
-    final detailLines = item.detailLines;
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final detailLines = item.detailLinesFor(isAr);
     final subtitle =
         item.firstModifierLabel('Size (Required)') ?? item.product.category;
 
@@ -4946,7 +4962,7 @@ class _OrderItemCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        item.product.name.toUpperCase(),
+                        item.product.displayName(isAr).toUpperCase(),
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w900,
@@ -5085,7 +5101,8 @@ class _PaymentOrderItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
-    final detailLines = item.detailLines;
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final detailLines = item.detailLinesFor(isAr);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -5103,7 +5120,10 @@ class _PaymentOrderItemCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  l10n.posCartQtyTimesName(item.qty, item.product.name),
+                  l10n.posCartQtyTimesName(
+                    item.qty,
+                    item.product.displayName(isAr),
+                  ),
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
@@ -5169,6 +5189,9 @@ class _PaymentOrderItemCard extends StatelessWidget {
 class _ModifierGroupDefinition {
   final int step;
   final String title;
+  // Phase C4 — the merchant's Arabic group name, display-only (empty = none;
+  // [title] stays the identity used for selection keys and modifier groups).
+  final String titleAr;
   final bool multiSelect;
   final bool requiredSelection;
   // Phase B — selection constraints (Additions §1.2): the sheet blocks Add
@@ -5183,6 +5206,7 @@ class _ModifierGroupDefinition {
   const _ModifierGroupDefinition({
     required this.step,
     required this.title,
+    this.titleAr = '',
     this.multiSelect = false,
     this.requiredSelection = false,
     this.minSelections = 0,
@@ -5190,18 +5214,29 @@ class _ModifierGroupDefinition {
     this.defaultOptionIds = const <String>{},
     required this.options,
   });
+
+  /// The group title to SHOW for [arabic] UI (English stays the identity).
+  String displayTitle(bool arabic) =>
+      arabic && titleAr.trim().isNotEmpty ? titleAr : title;
 }
 
 class _ModifierOptionDefinition {
   final String id;
   final String label;
+  // Phase C4 — the merchant's Arabic option label, display-only (empty = none).
+  final String labelAr;
   final double price;
 
   const _ModifierOptionDefinition({
     required this.id,
     required this.label,
+    this.labelAr = '',
     required this.price,
   });
+
+  /// The option label to SHOW for [arabic] UI (English stays the identity).
+  String displayLabel(bool arabic) =>
+      arabic && labelAr.trim().isNotEmpty ? labelAr : label;
 }
 
 class _CartItemCustomizationResult {
@@ -5278,6 +5313,7 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
             id: option.id,
             group: group.title,
             label: option.label,
+            labelAr: option.labelAr,
             price: option.price,
           ),
         );
@@ -5349,6 +5385,7 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 56, vertical: 40),
@@ -5378,7 +5415,9 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          l10n.posCustomizeTitle(widget.item.product.name),
+                          l10n.posCustomizeTitle(
+                            widget.item.product.displayName(isAr),
+                          ),
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w900,
@@ -5530,6 +5569,7 @@ class _CustomizeGroupSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -5554,7 +5594,7 @@ class _CustomizeGroupSection extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Text(
-              group.title,
+              group.displayTitle(isAr),
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w900,
@@ -5601,6 +5641,7 @@ class _CustomizationOptionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
     return InkWell(
       key: ValueKey('customize-option-${option.id}'),
       onTap: onTap,
@@ -5641,7 +5682,7 @@ class _CustomizationOptionTile extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      option.label,
+                      option.displayLabel(isAr),
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
@@ -5671,7 +5712,7 @@ class _CustomizationOptionTile extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          option.label,
+                          option.displayLabel(isAr),
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 14,
@@ -6318,6 +6359,7 @@ class _ProductListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
     return TweenAnimationBuilder<double>(
       key: ValueKey('product-list-pulse-${product.id}-$pulseNonce'),
       tween: Tween<double>(begin: highlighted ? 1 : 0, end: 0),
@@ -6356,7 +6398,7 @@ class _ProductListTile extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            product.name,
+                            product.displayName(isAr),
                             style: const TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w900,
@@ -6459,6 +6501,7 @@ class _ProductTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
     final artworkHeight = compact ? 72.0 : 96.0;
     final outerPadding = compact ? 8.0 : 10.0;
     final titleSize = compact ? 12.8 : 14.6;
@@ -6602,7 +6645,7 @@ class _ProductTile extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       Text(
-                        product.name,
+                        product.displayName(isAr),
                         maxLines: compact ? 2 : 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -8090,6 +8133,7 @@ class _HeldOrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -8164,7 +8208,7 @@ class _HeldOrderCard extends StatelessWidget {
                       .map(
                         (item) => l10n.posStorageItemQtyName(
                           item.qty,
-                          item.product.name,
+                          item.product.displayName(isAr),
                         ),
                       )
                       .take(4)
@@ -8226,6 +8270,7 @@ class _OrderHistoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
     final snapshot = record.snapshot;
     // Server-sourced history is terminal + not locally mutable — no cancel.
     final canCancel = !snapshot.isFullyCanceled && !record.fromServer;
@@ -8322,7 +8367,11 @@ class _OrderHistoryCard extends StatelessWidget {
                       .map(
                         (item) => l10n.posStorageItemQtyName(
                           (item['qty'] as num?)?.toInt() ?? 1,
-                          item['name']?.toString() ?? '',
+                          // Phase C4 — prefer the snapshot's Arabic name when
+                          // the UI locale is Arabic ('name' stays the identity).
+                          isAr && (item['nameAr']?.toString().isNotEmpty ?? false)
+                              ? item['nameAr'].toString()
+                              : item['name']?.toString() ?? '',
                         ),
                       )
                       .take(4)
@@ -8706,6 +8755,7 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
     final snapshot = _snapshot;
     final selectableCount = snapshot.items.asMap().entries.where((entry) {
       return !snapshot.isItemCanceled(entry.key);
@@ -8788,7 +8838,9 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
                         children: [
                           for (final r in widget.voidReasons)
                             ChoiceChip(
-                              label: Text(r.name),
+                              label: Text(
+                                _reasonDisplayName(r.name, r.nameAr, isAr),
+                              ),
                               selected: _selectedReason?.id == r.id,
                               onSelected: _busy
                                   ? null
@@ -9133,8 +9185,14 @@ class _CancellationItemRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
     final qty = (item['qty'] as num?)?.toInt() ?? 1;
-    final name = item['name']?.toString() ?? l10n.posCancelPageItemFallback;
+    // Phase C4 — prefer the snapshot's Arabic name when the UI locale is
+    // Arabic ('name' stays the identity key everywhere else).
+    final nameAr = item['nameAr']?.toString() ?? '';
+    final name = isAr && nameAr.isNotEmpty
+        ? nameAr
+        : item['name']?.toString() ?? l10n.posCancelPageItemFallback;
     final amount = (item['lineTotal'] as num?)?.toDouble() ?? 0;
     final detailLines = ((item['detailLines'] as List?) ?? const [])
         .map((line) => line.toString())

@@ -245,6 +245,14 @@ class PosController extends ChangeNotifier {
   /// Null = print the built-in default receipt. Passed to [SunmiReceiptService].
   ReceiptTemplate? receiptTemplate;
 
+  /// Phase C4 — Arabic category display names keyed by the ENGLISH identity
+  /// name (selectedCategory / product.category stay English). Display-only.
+  Map<String, String> categoryNamesAr = const <String, String>{};
+
+  /// The category label to SHOW for [arabic] UI.
+  String categoryDisplayName(String name, bool arabic) =>
+      arabic ? (categoryNamesAr[name] ?? name) : name;
+
   /// Phase B — company void reason codes (the cancel dialog requires one when
   /// any exist) + comp reasons (manager write-offs) + the category-level
   /// add-on group bindings unioned in [addonGroupsForProduct].
@@ -452,6 +460,7 @@ class PosController extends ChangeNotifier {
   /// so this bridge is all that is needed — no widget changes.
   void applyCatalog({
     required List<String> categories,
+    Map<String, String> categoryNamesAr = const <String, String>{},
     required List<Product> products,
     required List<DiningFloor> floors,
     required List<DiningTableDefinition> tables,
@@ -472,6 +481,7 @@ class PosController extends ChangeNotifier {
     int? branchId,
   }) {
     this.categories = categories;
+    this.categoryNamesAr = categoryNamesAr;
     _baseProducts = products;
     diningFloors = floors;
     diningTableDefinitions = tables;
@@ -619,7 +629,9 @@ class PosController extends ChangeNotifier {
       final matchesCategory = product.category == selectedCategory;
       if (!matchesCategory) return false;
       if (query.isEmpty) return true;
+      // Phase C4 — an Arabic cashier can search by the Arabic product name.
       return product.name.toLowerCase().contains(query) ||
+          product.nameAr.contains(query) ||
           product.category.toLowerCase().contains(query);
     }).toList();
   }

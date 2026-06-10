@@ -9,6 +9,7 @@ import '../models/pos_models.dart';
 class CatalogSnapshot {
   const CatalogSnapshot({
     required this.categories,
+    this.categoryNamesAr = const <String, String>{},
     required this.products,
     required this.floors,
     required this.tables,
@@ -29,6 +30,10 @@ class CatalogSnapshot {
   });
 
   final List<String> categories;
+  // Phase C4 — Arabic display names keyed by the ENGLISH category name (the
+  // English name stays the identity: selectedCategory, product.category and
+  // discount matching all compare on it). Missing entry = show English.
+  final Map<String, String> categoryNamesAr;
   final List<Product> products;
   final List<DiningFloor> floors;
   final List<DiningTableDefinition> tables;
@@ -581,6 +586,7 @@ class ConfigMapper {
         .map((p) => Product(
               id: p.id.toString(),
               name: p.name,
+              nameAr: p.nameAr ?? '',
               category: idToName[p.categoryId] ?? '',
               categoryId: p.categoryId,
               price: p.basePriceBaisas / 1000.0,
@@ -785,6 +791,10 @@ class ConfigMapper {
 
     return CatalogSnapshot(
       categories: sortedCats.map((c) => c.name).toList(),
+      categoryNamesAr: {
+        for (final c in sortedCats)
+          if ((c.nameAr ?? '').trim().isNotEmpty) c.name: c.nameAr!.trim(),
+      },
       products: products,
       floors: floorDefs,
       tables: tableDefs,

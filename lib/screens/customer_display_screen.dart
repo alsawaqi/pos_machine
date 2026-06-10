@@ -2005,9 +2005,16 @@ class _DisplayItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
     final imageAsset = item['imageAsset']?.toString();
     final qty = (item['qty'] as num?)?.toInt() ?? 0;
     final total = (item['lineTotal'] as num?)?.toDouble() ?? 0;
+    // Phase C4 — prefer the snapshot's Arabic product name when the display
+    // locale is Arabic ('name' stays the identity key in the snapshot map).
+    final nameAr = item['nameAr']?.toString() ?? '';
+    final displayName = isAr && nameAr.isNotEmpty
+        ? nameAr
+        : item['name']?.toString() ?? '';
     final detailLines = ((item['detailLines'] as List?) ?? const [])
         .map((line) => line.toString())
         .where((line) => line.isNotEmpty)
@@ -2084,7 +2091,7 @@ class _DisplayItemCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item['name']?.toString() ?? '',
+                  displayName,
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,

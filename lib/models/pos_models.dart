@@ -386,6 +386,10 @@ class RecipeLine {
 class Product {
   final String id;
   final String name;
+  // Phase C4 — the merchant's Arabic product name (empty = none provided).
+  // Cached in Drift from /device/config name_ar; display-only (the English
+  // name stays the identity used in snapshots, payloads and receipts).
+  final String nameAr;
   final String category;
   // Numeric category id — for matching category-scope discounts to a cart line.
   // Null when unknown (e.g. a product reconstructed from an older snapshot).
@@ -411,6 +415,7 @@ class Product {
   const Product({
     required this.id,
     required this.name,
+    this.nameAr = '',
     required this.category,
     this.categoryId,
     required this.price,
@@ -424,6 +429,11 @@ class Product {
     this.branchStockQty,
   });
 
+  /// The name to SHOW for [arabic] UI — falls back to the English identity
+  /// name when the merchant provided no Arabic.
+  String displayName(bool arabic) =>
+      arabic && nameAr.trim().isNotEmpty ? nameAr : name;
+
   /// The unit price to charge on a delivery order for [providerId], following
   /// the merchant's chain: provider override → in-house delivery price → base.
   double deliveryPriceFor(int providerId) =>
@@ -432,6 +442,7 @@ class Product {
   Product copyWith({double? price}) => Product(
         id: id,
         name: name,
+        nameAr: nameAr,
         category: category,
         categoryId: categoryId,
         price: price ?? this.price,
@@ -449,6 +460,7 @@ class Product {
     return Product(
       id: map['id']?.toString() ?? '',
       name: map['name']?.toString() ?? '',
+      nameAr: map['nameAr']?.toString() ?? '',
       category: map['category']?.toString() ?? '',
       categoryId: (map['categoryId'] as num?)?.toInt(),
       price:
@@ -468,6 +480,7 @@ class Product {
     return {
       'id': id,
       'name': name,
+      if (nameAr.isNotEmpty) 'nameAr': nameAr,
       'category': category,
       'price': price,
       'imageAsset': imageAsset,
@@ -481,26 +494,40 @@ class CartItemModifier {
   final String id;
   final String group;
   final String label;
+  // Phase C4 — the add-on's Arabic label (display-only; empty = none).
+  final String labelAr;
   final double price;
 
   const CartItemModifier({
     required this.id,
     required this.group,
     required this.label,
+    this.labelAr = '',
     required this.price,
   });
+
+  /// The label to SHOW for [arabic] UI (English stays the identity).
+  String displayLabel(bool arabic) =>
+      arabic && labelAr.trim().isNotEmpty ? labelAr : label;
 
   factory CartItemModifier.fromMap(Map<String, dynamic> map) {
     return CartItemModifier(
       id: map['id']?.toString() ?? '',
       group: map['group']?.toString() ?? '',
       label: map['label']?.toString() ?? '',
+      labelAr: map['labelAr']?.toString() ?? '',
       price: (map['price'] as num?)?.toDouble() ?? 0,
     );
   }
 
   Map<String, dynamic> toMap() {
-    return {'id': id, 'group': group, 'label': label, 'price': price};
+    return {
+      'id': id,
+      'group': group,
+      'label': label,
+      if (labelAr.isNotEmpty) 'labelAr': labelAr,
+      'price': price,
+    };
   }
 }
 
@@ -560,7 +587,12 @@ class CartItem {
     return groupItems.first.label;
   }
 
-  List<String> get detailLines {
+  List<String> get detailLines => detailLinesFor(false);
+
+  /// Phase C4 — the cart line's modifier/notes summary, with add-on labels in
+  /// Arabic when [arabic] (group names + the 'Notes:' prefix stay as authored;
+  /// the stored English remains the identity everywhere else).
+  List<String> detailLinesFor(bool arabic) {
     final lines = <String>[];
     final grouped = <String, List<CartItemModifier>>{};
 
@@ -576,7 +608,7 @@ class CartItem {
             final extra = modifier.price <= 0
                 ? ''
                 : ' (+${modifier.price.toStringAsFixed(3)} OMR)';
-            return '${modifier.label}$extra';
+            return '${modifier.displayLabel(arabic)}$extra';
           })
           .join(', ');
       lines.add('${entry.key}: $formattedValues');
@@ -593,6 +625,7 @@ class CartItem {
     return {
       'id': product.id,
       'name': product.name,
+      if (product.nameAr.isNotEmpty) 'nameAr': product.nameAr,
       'category': product.category,
       'qty': qty,
       'basePrice': product.price,
