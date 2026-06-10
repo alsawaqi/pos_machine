@@ -926,6 +926,9 @@ class CustomerSearchResult {
   final String phone;
   final double walletBalance;
   final List<LoyaltyBalance> loyalty;
+  // P-F2 — the customer's registered vehicle plates (uppercased). A plate can
+  // be linked to several customers (family car) and vice versa.
+  final List<String> plates;
 
   const CustomerSearchResult({
     required this.id,
@@ -933,6 +936,7 @@ class CustomerSearchResult {
     this.phone = '',
     this.walletBalance = 0,
     this.loyalty = const [],
+    this.plates = const [],
   });
 
   factory CustomerSearchResult.fromJson(Map<String, dynamic> j) =>
@@ -945,6 +949,10 @@ class CustomerSearchResult {
         loyalty: ((j['loyalty'] as List?) ?? const [])
             .whereType<Map>()
             .map((m) => LoyaltyBalance.fromJson(m.cast<String, dynamic>()))
+            .toList(),
+        plates: ((j['plates'] as List?) ?? const [])
+            .map((p) => p.toString())
+            .where((p) => p.isNotEmpty)
             .toList(),
       );
 
@@ -963,6 +971,8 @@ class CustomerRef {
   final double walletBalance;
   // Cached loyalty balances per rule (offline points view + redeem).
   final List<LoyaltyBalance> loyalty;
+  // P-F2 — cached plate links for offline plate lookup / the details dialog.
+  final List<String> plates;
 
   const CustomerRef({
     required this.id,
@@ -970,6 +980,7 @@ class CustomerRef {
     this.phone = '',
     this.walletBalance = 0,
     this.loyalty = const [],
+    this.plates = const [],
   });
 
   /// Convert to the [CustomerSearchResult] shape the attach/redeem flow uses, so
@@ -980,6 +991,7 @@ class CustomerRef {
         phone: phone,
         walletBalance: walletBalance,
         loyalty: loyalty,
+        plates: plates,
       );
 }
 

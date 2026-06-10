@@ -324,6 +324,9 @@ class CachedCustomers extends Table {
   // Cached loyalty balances per rule: JSON [{rule_id, points, stamps}]. Drives
   // OFFLINE points display + redeem (the live search refreshes it when online).
   TextColumn get loyaltyJson => text().withDefault(const Constant('[]'))();
+  // P-F2 — the customer's vehicle-plate links, JSON ["1234AB", ...]. Offline
+  // plate lookup + the customer-details dialog.
+  TextColumn get platesJson => text().withDefault(const Constant('[]'))();
 
   @override
   Set<Column> get primaryKey => {id};

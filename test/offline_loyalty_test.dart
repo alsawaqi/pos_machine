@@ -16,6 +16,7 @@ void main() {
         phone: '+96890000000',
         walletBalanceBaisas: 3000,
         loyaltyJson: '[{"rule_id":1,"points":50,"stamps":3}]',
+        platesJson: '["1234AB"]',
       );
 
       final catalog = ConfigMapper.toCatalog(
@@ -41,6 +42,9 @@ void main() {
       expect(c.loyalty.first.ruleId, 1);
       expect(c.loyalty.first.points, 50);
       expect(c.loyalty.first.stamps, 3);
+      // P-F2 — cached plate links survive the decode + the conversion.
+      expect(c.plates, ['1234AB']);
+      expect(c.toSearchResult().plates, ['1234AB']);
     });
 
     test('an empty loyalty cache decodes to no balances', () {
@@ -50,6 +54,7 @@ void main() {
         phone: null,
         walletBalanceBaisas: 0,
         loyaltyJson: '[]',
+        platesJson: '[]',
       );
       final catalog = ConfigMapper.toCatalog(
         null, const [], const [], const [], const [], const [],

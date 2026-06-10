@@ -1633,47 +1633,160 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.setProductSearchQuery(value);
   }
 
-  /// Customer field tap: search the live book (with loyalty), or enter a number.
-  Future<void> _openCustomerChooser() async {
+  /// P-F2 — the customer Details button: resolve the customer (the attached
+  /// one, else look the typed number up), refresh the full profile from the
+  /// server when reachable, attach them to the order, and open the details
+  /// dialog (plates to pick from + per-rule loyalty + redeem).
+  Future<void> _openCustomerDetails() async {
     final l10n = L10n.of(context);
-    final choice = await showModalBottomSheet<String>(
+    CustomerSearchResult? customer = controller.selectedCustomer;
+    final q = _customerNumberController.text.trim();
+
+    if (customer == null && q.isNotEmpty) {
+      List<CustomerSearchResult> matches;
+      try {
+        matches = await ref.read(apiServiceProvider).searchCustomers(q);
+      } catch (_) {
+        matches = controller.searchCachedCustomers(q);
+      }
+      if (!mounted) return;
+      for (final c in matches) {
+        if (c.phone == q) {
+          customer = c;
+          break;
+        }
+      }
+      customer ??= matches.isNotEmpty ? matches.first : null;
+    }
+    if (customer == null) {
+      _showPopupMessage(
+        title: l10n.posCustomerNotFoundTitle,
+        message: l10n.posCustomerNotFoundMessage(q),
+        tone: FeedbackTone.info,
+      );
+      return;
+    }
+
+    // Freshest profile (latest plates + balances) when the server answers;
+    // otherwise keep the search/cache copy we already hold.
+    var profile = customer;
+    try {
+      final fresh =
+          await ref.read(apiServiceProvider).fetchCustomerDetails(profile.id);
+      if (fresh != null) profile = fresh;
+    } catch (_) {}
+    if (!mounted) return;
+
+    // Viewing details attaches the customer (loyalty earn rides the order).
+    controller.attachCustomer(profile);
+    setState(() =>
+        _customerNumberController.text = controller.customerReferenceNumber);
+
+    final action = await showDialog<String>(
       context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      builder: (_) => _CustomerDetailsDialog(
+        customer: profile,
+        rules: controller.loyaltyRules,
+        currentPlate: controller.vehiclePlateNumber,
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'redeem') {
+      await _openLoyaltyRedeem();
+    } else if (action.startsWith('plate:')) {
+      final plate = action.substring('plate:'.length);
+      controller.setVehiclePlateNumber(plate);
+      setState(() => _vehiclePlateController.text = plate);
+      _showPopupMessage(
+        title: l10n.posPaymentVehiclePlateLabel,
+        message: plate,
+        tone: FeedbackTone.success,
+      );
+    }
+  }
+
+  /// P-F2 — search by vehicle plate: who is linked to this car? (A plate can
+  /// belong to several customers and vice versa.) Picking a match attaches
+  /// the customer AND sets the plate on the order.
+  Future<void> _openPlateCustomerSearch() async {
+    final l10n = L10n.of(context);
+    final value = await showDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => _InAppKeyboardDialog(
+        title: l10n.posPlateSearchTitle,
+        initialValue: _vehiclePlateController.text,
+        hintText: l10n.posPlateHint,
+      ),
+    );
+    if (value == null || !mounted) return;
+    final plate = value.trim().toUpperCase();
+    if (plate.isEmpty) return;
+
+    List<CustomerSearchResult> matches;
+    try {
+      matches = await ref.read(apiServiceProvider).searchCustomers(plate);
+    } catch (_) {
+      matches = controller.searchCachedCustomers(plate);
+    }
+    if (!mounted) return;
+    // The endpoint also matches names/phones — keep true plate matches when
+    // any exist.
+    final plateMatches = matches
+        .where((c) => c.plates.any((p) => p.contains(plate)))
+        .toList();
+    final candidates = plateMatches.isNotEmpty ? plateMatches : matches;
+    if (candidates.isEmpty) {
+      _showPopupMessage(
+        title: l10n.posCustomerNotFoundTitle,
+        message: l10n.posPlateSearchNoMatches(plate),
+        tone: FeedbackTone.info,
+      );
+      return;
+    }
+
+    CustomerSearchResult? picked;
+    if (candidates.length == 1) {
+      picked = candidates.single;
+    } else {
+      picked = await showDialog<CustomerSearchResult>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: Text(l10n.posPlateSearchPickCustomer(plate)),
           children: [
-            ListTile(
-              leading: const Icon(Icons.person_search_rounded),
-              title: Text(l10n.posCustomerSearchOption),
-              subtitle: Text(l10n.posCustomerSearchOptionSubtitle),
-              onTap: () => Navigator.pop(ctx, 'search'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.dialpad_rounded),
-              title: Text(l10n.posCustomerEnterNumberOption),
-              onTap: () => Navigator.pop(ctx, 'manual'),
-            ),
-            if (controller.selectedCustomer != null ||
-                controller.customerReferenceNumber.isNotEmpty)
-              ListTile(
-                leading: const Icon(Icons.person_off_outlined),
-                title: Text(l10n.posCustomerClearOption),
-                onTap: () => Navigator.pop(ctx, 'clear'),
+            for (final c in candidates)
+              SimpleDialogOption(
+                onPressed: () => Navigator.of(ctx).pop(c),
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.person_rounded),
+                  title: Text(c.name),
+                  subtitle: Text(
+                    [
+                      if (c.phone.isNotEmpty) c.phone,
+                      if (c.plates.isNotEmpty) c.plates.join(' · '),
+                    ].join('  ·  '),
+                  ),
+                ),
               ),
           ],
         ),
-      ),
-    );
-    if (!mounted || choice == null) return;
-    switch (choice) {
-      case 'search':
-        await _openCustomerSearch();
-      case 'manual':
-        await _openCustomerNumberKeyboard();
-      case 'clear':
-        setState(() => _customerNumberController.clear());
-        controller.setCustomerReferenceNumber('');
+      );
     }
+    if (picked == null || !mounted) return;
+
+    controller.attachCustomer(picked);
+    controller.setVehiclePlateNumber(plate);
+    setState(() {
+      _customerNumberController.text = controller.customerReferenceNumber;
+      _vehiclePlateController.text = plate;
+    });
+    _showPopupMessage(
+      title: l10n.posCustomerAttachedTitle,
+      message: l10n.posCustomerAttachedSummary(
+          picked.name, _loyaltySummary(l10n, picked)),
+      tone: FeedbackTone.success,
+    );
   }
 
   Future<void> _openCustomerSearch() async {
@@ -3271,8 +3384,36 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
+  /// A small trailing action inside the customer/plate fields. Its own
+  /// InkWell wins the gesture arena over the field's main tap.
+  Widget _fieldTrailingAction({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+    Key? key,
+  }) =>
+      Tooltip(
+        message: tooltip,
+        child: Material(
+          color: const Color(0xFFEDF4F7),
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            key: key,
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: SizedBox(
+              width: 34,
+              height: 34,
+              child: Icon(icon, size: 18, color: const Color(0xFF3D5563)),
+            ),
+          ),
+        ),
+      );
+
   Widget _buildCustomerReferenceField() {
     final l10n = L10n.of(context);
+    final hasValue = _customerNumberController.text.isNotEmpty ||
+        controller.selectedCustomer != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3285,13 +3426,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           ),
         ),
         const SizedBox(height: 8),
+        // P-F2 — tapping the field opens the NUMBER KEYPAD directly (no
+        // chooser popup); search and details are the trailing buttons.
         InkWell(
           key: const ValueKey('payment-customer-number'),
-          onTap: _openCustomerChooser,
+          onTap: () => unawaited(_openCustomerNumberKeyboard()),
           borderRadius: BorderRadius.circular(18),
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.84),
               borderRadius: BorderRadius.circular(18),
@@ -3317,7 +3460,31 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Icon(Icons.dialpad_rounded, color: Color(0xFF4B5C67)),
+                if (hasValue) ...[
+                  _fieldTrailingAction(
+                    icon: Icons.badge_outlined,
+                    tooltip: l10n.posCustomerDetailsTooltip,
+                    onTap: () => unawaited(_openCustomerDetails()),
+                    key: const ValueKey('payment-customer-details'),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                _fieldTrailingAction(
+                  icon: Icons.person_search_rounded,
+                  tooltip: l10n.posCustomerSearchOption,
+                  onTap: () => unawaited(_openCustomerSearch()),
+                ),
+                if (hasValue) ...[
+                  const SizedBox(width: 6),
+                  _fieldTrailingAction(
+                    icon: Icons.close_rounded,
+                    tooltip: l10n.posCustomerClearOption,
+                    onTap: () {
+                      setState(() => _customerNumberController.clear());
+                      controller.setCustomerReferenceNumber('');
+                    },
+                  ),
+                ],
               ],
             ),
           ),
@@ -3346,7 +3513,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           borderRadius: BorderRadius.circular(18),
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.84),
               borderRadius: BorderRadius.circular(18),
@@ -3373,8 +3540,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Icon(Icons.keyboard_alt_outlined,
-                    color: Color(0xFF4B5C67)),
+                // P-F2 — find the customers linked to a plate.
+                _fieldTrailingAction(
+                  icon: Icons.person_search_rounded,
+                  tooltip: l10n.posPlateSearchTooltip,
+                  onTap: () => unawaited(_openPlateCustomerSearch()),
+                  key: const ValueKey('payment-plate-search'),
+                ),
               ],
             ),
           ),
@@ -9157,6 +9329,207 @@ class _InfoBadge extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// P-F2 — the customer profile dialog: vehicle plates (tap one to put it on
+/// the order), per-rule loyalty balances (points / stamp progress), wallet.
+/// Pops `plate:PLATE` when a plate is picked, `redeem` for the redeem flow.
+class _CustomerDetailsDialog extends StatelessWidget {
+  final CustomerSearchResult customer;
+  final List<LoyaltyRule> rules;
+  final String currentPlate;
+
+  const _CustomerDetailsDialog({
+    required this.customer,
+    required this.rules,
+    required this.currentPlate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
+    final activeRules = rules.where((r) => r.isActive).toList();
+    final hasRedeemables =
+        customer.loyalty.any((b) => b.points > 0 || b.stamps > 0);
+
+    Widget sectionLabel(String text) => Padding(
+          padding: const EdgeInsets.only(top: 16, bottom: 8),
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
+              color: Color(0xFF6B7E8A),
+            ),
+          ),
+        );
+
+    return AlertDialog(
+      title: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE3F2EA),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.person_rounded, color: Color(0xFF1E8D54)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  customer.name,
+                  style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                if (customer.phone.isNotEmpty)
+                  Text(
+                    customer.phone,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6B7E8A),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 440,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (customer.walletBalance > 0)
+                Row(
+                  children: [
+                    const Icon(Icons.account_balance_wallet_outlined,
+                        size: 18, color: Color(0xFF3D5563)),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${l10n.posCustomerDetailsWallet}: '
+                      '${SunmiReceiptService.money(customer.walletBalance)}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              sectionLabel(l10n.posCustomerDetailsPlates.toUpperCase()),
+              if (customer.plates.isEmpty)
+                Text(
+                  l10n.posCustomerDetailsNoPlates,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF8B9DA8),
+                  ),
+                )
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final plate in customer.plates)
+                      ActionChip(
+                        avatar: Icon(
+                          plate == currentPlate
+                              ? Icons.check_circle_rounded
+                              : Icons.directions_car_outlined,
+                          size: 18,
+                          color: const Color(0xFF1E8D54),
+                        ),
+                        label: Text(
+                          plate,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        onPressed: () =>
+                            Navigator.of(context).pop('plate:$plate'),
+                      ),
+                  ],
+                ),
+              sectionLabel(l10n.posCustomerDetailsLoyalty.toUpperCase()),
+              if (activeRules.isEmpty)
+                Text(
+                  l10n.posLoyaltyNoneYet,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF8B9DA8),
+                  ),
+                )
+              else
+                Column(
+                  children: [
+                    for (final rule in activeRules)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              rule.isVisitBased
+                                  ? Icons.local_activity_outlined
+                                  : Icons.stars_rounded,
+                              size: 18,
+                              color: const Color(0xFF8E5BA6),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                rule.name,
+                                style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              rule.isVisitBased
+                                  ? l10n.posCustomerDetailsStampProgress(
+                                      customer.stampsForRule(rule.id),
+                                      rule.stampsRequired,
+                                    )
+                                  : l10n.posLoyaltySummaryPoints(
+                                      customer.pointsForRule(rule.id),
+                                    ),
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF1E8D54),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(L10n.of(context).commonClose),
+        ),
+        FilledButton.icon(
+          onPressed:
+              hasRedeemables ? () => Navigator.of(context).pop('redeem') : null,
+          icon: const Icon(Icons.redeem_rounded, size: 18),
+          label: Text(L10n.of(context).posCustomerDetailsRedeem),
+        ),
+      ],
     );
   }
 }

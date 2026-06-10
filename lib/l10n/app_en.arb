@@ -1414,6 +1414,33 @@
   "posManagerPinInvalid": "PIN not accepted. Check it and try again.",
   "posManagerPinOffline": "PIN approval needs a connection — use the fingerprint instead.",
   "posManagerPinVerify": "Verify",
+  "posCustomerDetailsTooltip": "Customer details",
+  "posCustomerDetailsWallet": "Wallet",
+  "posCustomerDetailsPlates": "Vehicle plates",
+  "posCustomerDetailsNoPlates": "No plates registered yet.",
+  "posCustomerDetailsLoyalty": "Loyalty",
+  "posCustomerDetailsRedeem": "Redeem",
+  "posCustomerDetailsStampProgress": "{got}/{needed} stamps",
+  "@posCustomerDetailsStampProgress": {
+    "placeholders": {
+      "got": {"type": "int"},
+      "needed": {"type": "int"}
+    }
+  },
+  "posPlateSearchTooltip": "Find customers by plate",
+  "posPlateSearchTitle": "Search by Plate",
+  "posPlateSearchNoMatches": "No customers linked to {plate}.",
+  "@posPlateSearchNoMatches": {
+    "placeholders": {
+      "plate": {"type": "String"}
+    }
+  },
+  "posPlateSearchPickCustomer": "Customers linked to {plate}",
+  "@posPlateSearchPickCustomer": {
+    "placeholders": {
+      "plate": {"type": "String"}
+    }
+  },
   "posCancelPageOrderItems": "Order Items",
   "posCancelPageCancellableCount": "{count} cancellable",
   "@posCancelPageCancellableCount": {

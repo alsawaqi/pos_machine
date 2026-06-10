@@ -2207,6 +2207,45 @@ class L10nAr extends L10n {
   String get posManagerPinVerify => 'تحقق';
 
   @override
+  String get posCustomerDetailsTooltip => 'بيانات الزبون';
+
+  @override
+  String get posCustomerDetailsWallet => 'المحفظة';
+
+  @override
+  String get posCustomerDetailsPlates => 'لوحات المركبات';
+
+  @override
+  String get posCustomerDetailsNoPlates => 'لا توجد لوحات مسجلة بعد.';
+
+  @override
+  String get posCustomerDetailsLoyalty => 'الولاء';
+
+  @override
+  String get posCustomerDetailsRedeem => 'استبدال';
+
+  @override
+  String posCustomerDetailsStampProgress(int got, int needed) {
+    return '$got/$needed طوابع';
+  }
+
+  @override
+  String get posPlateSearchTooltip => 'البحث عن الزبائن باللوحة';
+
+  @override
+  String get posPlateSearchTitle => 'البحث باللوحة';
+
+  @override
+  String posPlateSearchNoMatches(String plate) {
+    return 'لا يوجد زبائن مرتبطون بـ $plate.';
+  }
+
+  @override
+  String posPlateSearchPickCustomer(String plate) {
+    return 'الزبائن المرتبطون بـ $plate';
+  }
+
+  @override
   String get posCancelPageOrderItems => 'أصناف الطلب';
 
   @override

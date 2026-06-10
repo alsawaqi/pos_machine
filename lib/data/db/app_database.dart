@@ -38,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -130,6 +130,10 @@ class AppDatabase extends _$AppDatabase {
             // v17 — Gap sweep G1: per-product daily availability window.
             await m.addColumn(products, products.availableFrom);
             await m.addColumn(products, products.availableUntil);
+          }
+          if (from < 18) {
+            // v18 — P-F2: cached vehicle-plate links per customer.
+            await m.addColumn(cachedCustomers, cachedCustomers.platesJson);
           }
         },
       );

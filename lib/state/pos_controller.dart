@@ -1120,7 +1120,10 @@ class PosController extends ChangeNotifier {
     if (q.isEmpty) return const [];
     return cachedCustomers
         .where((c) =>
-            c.name.toLowerCase().contains(q) || c.phone.toLowerCase().contains(q))
+            c.name.toLowerCase().contains(q) ||
+            c.phone.toLowerCase().contains(q) ||
+            // P-F2 — offline plate lookup (plates cache uppercased).
+            c.plates.any((p) => p.toLowerCase().contains(q)))
         .take(20)
         .map((c) => c.toSearchResult())
         .toList();

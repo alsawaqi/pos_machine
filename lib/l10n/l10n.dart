@@ -3618,6 +3618,72 @@ abstract class L10n {
   /// **'Verify'**
   String get posManagerPinVerify;
 
+  /// No description provided for @posCustomerDetailsTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer details'**
+  String get posCustomerDetailsTooltip;
+
+  /// No description provided for @posCustomerDetailsWallet.
+  ///
+  /// In en, this message translates to:
+  /// **'Wallet'**
+  String get posCustomerDetailsWallet;
+
+  /// No description provided for @posCustomerDetailsPlates.
+  ///
+  /// In en, this message translates to:
+  /// **'Vehicle plates'**
+  String get posCustomerDetailsPlates;
+
+  /// No description provided for @posCustomerDetailsNoPlates.
+  ///
+  /// In en, this message translates to:
+  /// **'No plates registered yet.'**
+  String get posCustomerDetailsNoPlates;
+
+  /// No description provided for @posCustomerDetailsLoyalty.
+  ///
+  /// In en, this message translates to:
+  /// **'Loyalty'**
+  String get posCustomerDetailsLoyalty;
+
+  /// No description provided for @posCustomerDetailsRedeem.
+  ///
+  /// In en, this message translates to:
+  /// **'Redeem'**
+  String get posCustomerDetailsRedeem;
+
+  /// No description provided for @posCustomerDetailsStampProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'{got}/{needed} stamps'**
+  String posCustomerDetailsStampProgress(int got, int needed);
+
+  /// No description provided for @posPlateSearchTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Find customers by plate'**
+  String get posPlateSearchTooltip;
+
+  /// No description provided for @posPlateSearchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Search by Plate'**
+  String get posPlateSearchTitle;
+
+  /// No description provided for @posPlateSearchNoMatches.
+  ///
+  /// In en, this message translates to:
+  /// **'No customers linked to {plate}.'**
+  String posPlateSearchNoMatches(String plate);
+
+  /// No description provided for @posPlateSearchPickCustomer.
+  ///
+  /// In en, this message translates to:
+  /// **'Customers linked to {plate}'**
+  String posPlateSearchPickCustomer(String plate);
+
   /// No description provided for @posCancelPageOrderItems.
   ///
   /// In en, this message translates to:

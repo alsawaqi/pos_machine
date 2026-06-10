@@ -478,6 +478,7 @@ class ConfigMapper {
               phone: Value(_strN(c['phone'])),
               walletBalanceBaisas: Value(_int(c['wallet_balance_baisas']) ?? 0),
               loyaltyJson: Value(jsonEncode(c['loyalty'] ?? const [])),
+              platesJson: Value(jsonEncode(c['plates'] ?? const [])),
             ))
         .toList();
 
@@ -777,6 +778,7 @@ class ConfigMapper {
               phone: c.phone ?? '',
               walletBalance: c.walletBalanceBaisas / 1000.0,
               loyalty: _loyaltyBalances(c.loyaltyJson),
+              plates: _stringList(c.platesJson),
             ))
         .toList();
 
@@ -902,6 +904,21 @@ class ConfigMapper {
         return decoded
             .whereType<Map>()
             .map((m) => LoyaltyBalance.fromJson(m.cast<String, dynamic>()))
+            .toList();
+      }
+    } catch (_) {}
+    return const [];
+  }
+
+  /// P-F2 — decode a cached JSON string array (e.g. plate links). Fail-soft.
+  static List<String> _stringList(String json) {
+    if (json.isEmpty || json == '[]') return const [];
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is List) {
+        return decoded
+            .map((e) => e.toString())
+            .where((e) => e.isNotEmpty)
             .toList();
       }
     } catch (_) {}

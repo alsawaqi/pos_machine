@@ -2179,6 +2179,45 @@ class L10nEn extends L10n {
   String get posManagerPinVerify => 'Verify';
 
   @override
+  String get posCustomerDetailsTooltip => 'Customer details';
+
+  @override
+  String get posCustomerDetailsWallet => 'Wallet';
+
+  @override
+  String get posCustomerDetailsPlates => 'Vehicle plates';
+
+  @override
+  String get posCustomerDetailsNoPlates => 'No plates registered yet.';
+
+  @override
+  String get posCustomerDetailsLoyalty => 'Loyalty';
+
+  @override
+  String get posCustomerDetailsRedeem => 'Redeem';
+
+  @override
+  String posCustomerDetailsStampProgress(int got, int needed) {
+    return '$got/$needed stamps';
+  }
+
+  @override
+  String get posPlateSearchTooltip => 'Find customers by plate';
+
+  @override
+  String get posPlateSearchTitle => 'Search by Plate';
+
+  @override
+  String posPlateSearchNoMatches(String plate) {
+    return 'No customers linked to $plate.';
+  }
+
+  @override
+  String posPlateSearchPickCustomer(String plate) {
+    return 'Customers linked to $plate';
+  }
+
+  @override
   String get posCancelPageOrderItems => 'Order Items';
 
   @override

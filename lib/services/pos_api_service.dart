@@ -222,6 +222,21 @@ class PosApiService {
         .toList();
   }
 
+  /// GET /device/customers/{id} — P-F2: the full customer profile for the
+  /// details dialog (plates + per-rule loyalty balances + wallet), same shape
+  /// as a search hit. Returns null on 404 (deleted / foreign customer).
+  Future<CustomerSearchResult?> fetchCustomerDetails(int id) async {
+    try {
+      final body = await _send(() => _dio.get('/device/customers/$id'));
+      final customer = body.dataMap['customer'];
+      if (customer is! Map) return null;
+      return CustomerSearchResult.fromJson(customer.cast<String, dynamic>());
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
   /// GET /device/orders/history — the branch's terminal (paid/void/refunded)
   /// orders, newest first, so a freshly-paired or second device shows prior
   /// sales rung at the branch (not just its own local store). Online-only.

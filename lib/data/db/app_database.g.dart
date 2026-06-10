@@ -7318,6 +7318,18 @@ class $CachedCustomersTable extends CachedCustomers
     requiredDuringInsert: false,
     defaultValue: const Constant('[]'),
   );
+  static const VerificationMeta _platesJsonMeta = const VerificationMeta(
+    'platesJson',
+  );
+  @override
+  late final GeneratedColumn<String> platesJson = GeneratedColumn<String>(
+    'plates_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -7325,6 +7337,7 @@ class $CachedCustomersTable extends CachedCustomers
     phone,
     walletBalanceBaisas,
     loyaltyJson,
+    platesJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -7371,6 +7384,12 @@ class $CachedCustomersTable extends CachedCustomers
         ),
       );
     }
+    if (data.containsKey('plates_json')) {
+      context.handle(
+        _platesJsonMeta,
+        platesJson.isAcceptableOrUnknown(data['plates_json']!, _platesJsonMeta),
+      );
+    }
     return context;
   }
 
@@ -7400,6 +7419,10 @@ class $CachedCustomersTable extends CachedCustomers
         DriftSqlType.string,
         data['${effectivePrefix}loyalty_json'],
       )!,
+      platesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}plates_json'],
+      )!,
     );
   }
 
@@ -7415,12 +7438,14 @@ class CustomerRow extends DataClass implements Insertable<CustomerRow> {
   final String? phone;
   final int walletBalanceBaisas;
   final String loyaltyJson;
+  final String platesJson;
   const CustomerRow({
     required this.id,
     required this.name,
     this.phone,
     required this.walletBalanceBaisas,
     required this.loyaltyJson,
+    required this.platesJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7432,6 +7457,7 @@ class CustomerRow extends DataClass implements Insertable<CustomerRow> {
     }
     map['wallet_balance_baisas'] = Variable<int>(walletBalanceBaisas);
     map['loyalty_json'] = Variable<String>(loyaltyJson);
+    map['plates_json'] = Variable<String>(platesJson);
     return map;
   }
 
@@ -7444,6 +7470,7 @@ class CustomerRow extends DataClass implements Insertable<CustomerRow> {
           : Value(phone),
       walletBalanceBaisas: Value(walletBalanceBaisas),
       loyaltyJson: Value(loyaltyJson),
+      platesJson: Value(platesJson),
     );
   }
 
@@ -7460,6 +7487,7 @@ class CustomerRow extends DataClass implements Insertable<CustomerRow> {
         json['walletBalanceBaisas'],
       ),
       loyaltyJson: serializer.fromJson<String>(json['loyaltyJson']),
+      platesJson: serializer.fromJson<String>(json['platesJson']),
     );
   }
   @override
@@ -7471,6 +7499,7 @@ class CustomerRow extends DataClass implements Insertable<CustomerRow> {
       'phone': serializer.toJson<String?>(phone),
       'walletBalanceBaisas': serializer.toJson<int>(walletBalanceBaisas),
       'loyaltyJson': serializer.toJson<String>(loyaltyJson),
+      'platesJson': serializer.toJson<String>(platesJson),
     };
   }
 
@@ -7480,12 +7509,14 @@ class CustomerRow extends DataClass implements Insertable<CustomerRow> {
     Value<String?> phone = const Value.absent(),
     int? walletBalanceBaisas,
     String? loyaltyJson,
+    String? platesJson,
   }) => CustomerRow(
     id: id ?? this.id,
     name: name ?? this.name,
     phone: phone.present ? phone.value : this.phone,
     walletBalanceBaisas: walletBalanceBaisas ?? this.walletBalanceBaisas,
     loyaltyJson: loyaltyJson ?? this.loyaltyJson,
+    platesJson: platesJson ?? this.platesJson,
   );
   CustomerRow copyWithCompanion(CachedCustomersCompanion data) {
     return CustomerRow(
@@ -7498,6 +7529,9 @@ class CustomerRow extends DataClass implements Insertable<CustomerRow> {
       loyaltyJson: data.loyaltyJson.present
           ? data.loyaltyJson.value
           : this.loyaltyJson,
+      platesJson: data.platesJson.present
+          ? data.platesJson.value
+          : this.platesJson,
     );
   }
 
@@ -7508,14 +7542,21 @@ class CustomerRow extends DataClass implements Insertable<CustomerRow> {
           ..write('name: $name, ')
           ..write('phone: $phone, ')
           ..write('walletBalanceBaisas: $walletBalanceBaisas, ')
-          ..write('loyaltyJson: $loyaltyJson')
+          ..write('loyaltyJson: $loyaltyJson, ')
+          ..write('platesJson: $platesJson')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, phone, walletBalanceBaisas, loyaltyJson);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    phone,
+    walletBalanceBaisas,
+    loyaltyJson,
+    platesJson,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -7524,7 +7565,8 @@ class CustomerRow extends DataClass implements Insertable<CustomerRow> {
           other.name == this.name &&
           other.phone == this.phone &&
           other.walletBalanceBaisas == this.walletBalanceBaisas &&
-          other.loyaltyJson == this.loyaltyJson);
+          other.loyaltyJson == this.loyaltyJson &&
+          other.platesJson == this.platesJson);
 }
 
 class CachedCustomersCompanion extends UpdateCompanion<CustomerRow> {
@@ -7533,12 +7575,14 @@ class CachedCustomersCompanion extends UpdateCompanion<CustomerRow> {
   final Value<String?> phone;
   final Value<int> walletBalanceBaisas;
   final Value<String> loyaltyJson;
+  final Value<String> platesJson;
   const CachedCustomersCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.phone = const Value.absent(),
     this.walletBalanceBaisas = const Value.absent(),
     this.loyaltyJson = const Value.absent(),
+    this.platesJson = const Value.absent(),
   });
   CachedCustomersCompanion.insert({
     this.id = const Value.absent(),
@@ -7546,6 +7590,7 @@ class CachedCustomersCompanion extends UpdateCompanion<CustomerRow> {
     this.phone = const Value.absent(),
     this.walletBalanceBaisas = const Value.absent(),
     this.loyaltyJson = const Value.absent(),
+    this.platesJson = const Value.absent(),
   });
   static Insertable<CustomerRow> custom({
     Expression<int>? id,
@@ -7553,6 +7598,7 @@ class CachedCustomersCompanion extends UpdateCompanion<CustomerRow> {
     Expression<String>? phone,
     Expression<int>? walletBalanceBaisas,
     Expression<String>? loyaltyJson,
+    Expression<String>? platesJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -7561,6 +7607,7 @@ class CachedCustomersCompanion extends UpdateCompanion<CustomerRow> {
       if (walletBalanceBaisas != null)
         'wallet_balance_baisas': walletBalanceBaisas,
       if (loyaltyJson != null) 'loyalty_json': loyaltyJson,
+      if (platesJson != null) 'plates_json': platesJson,
     });
   }
 
@@ -7570,6 +7617,7 @@ class CachedCustomersCompanion extends UpdateCompanion<CustomerRow> {
     Value<String?>? phone,
     Value<int>? walletBalanceBaisas,
     Value<String>? loyaltyJson,
+    Value<String>? platesJson,
   }) {
     return CachedCustomersCompanion(
       id: id ?? this.id,
@@ -7577,6 +7625,7 @@ class CachedCustomersCompanion extends UpdateCompanion<CustomerRow> {
       phone: phone ?? this.phone,
       walletBalanceBaisas: walletBalanceBaisas ?? this.walletBalanceBaisas,
       loyaltyJson: loyaltyJson ?? this.loyaltyJson,
+      platesJson: platesJson ?? this.platesJson,
     );
   }
 
@@ -7598,6 +7647,9 @@ class CachedCustomersCompanion extends UpdateCompanion<CustomerRow> {
     if (loyaltyJson.present) {
       map['loyalty_json'] = Variable<String>(loyaltyJson.value);
     }
+    if (platesJson.present) {
+      map['plates_json'] = Variable<String>(platesJson.value);
+    }
     return map;
   }
 
@@ -7608,7 +7660,8 @@ class CachedCustomersCompanion extends UpdateCompanion<CustomerRow> {
           ..write('name: $name, ')
           ..write('phone: $phone, ')
           ..write('walletBalanceBaisas: $walletBalanceBaisas, ')
-          ..write('loyaltyJson: $loyaltyJson')
+          ..write('loyaltyJson: $loyaltyJson, ')
+          ..write('platesJson: $platesJson')
           ..write(')'))
         .toString();
   }
@@ -12759,6 +12812,7 @@ typedef $$CachedCustomersTableCreateCompanionBuilder =
       Value<String?> phone,
       Value<int> walletBalanceBaisas,
       Value<String> loyaltyJson,
+      Value<String> platesJson,
     });
 typedef $$CachedCustomersTableUpdateCompanionBuilder =
     CachedCustomersCompanion Function({
@@ -12767,6 +12821,7 @@ typedef $$CachedCustomersTableUpdateCompanionBuilder =
       Value<String?> phone,
       Value<int> walletBalanceBaisas,
       Value<String> loyaltyJson,
+      Value<String> platesJson,
     });
 
 class $$CachedCustomersTableFilterComposer
@@ -12800,6 +12855,11 @@ class $$CachedCustomersTableFilterComposer
 
   ColumnFilters<String> get loyaltyJson => $composableBuilder(
     column: $table.loyaltyJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get platesJson => $composableBuilder(
+    column: $table.platesJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -12837,6 +12897,11 @@ class $$CachedCustomersTableOrderingComposer
     column: $table.loyaltyJson,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get platesJson => $composableBuilder(
+    column: $table.platesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CachedCustomersTableAnnotationComposer
@@ -12864,6 +12929,11 @@ class $$CachedCustomersTableAnnotationComposer
 
   GeneratedColumn<String> get loyaltyJson => $composableBuilder(
     column: $table.loyaltyJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get platesJson => $composableBuilder(
+    column: $table.platesJson,
     builder: (column) => column,
   );
 }
@@ -12906,12 +12976,14 @@ class $$CachedCustomersTableTableManager
                 Value<String?> phone = const Value.absent(),
                 Value<int> walletBalanceBaisas = const Value.absent(),
                 Value<String> loyaltyJson = const Value.absent(),
+                Value<String> platesJson = const Value.absent(),
               }) => CachedCustomersCompanion(
                 id: id,
                 name: name,
                 phone: phone,
                 walletBalanceBaisas: walletBalanceBaisas,
                 loyaltyJson: loyaltyJson,
+                platesJson: platesJson,
               ),
           createCompanionCallback:
               ({
@@ -12920,12 +12992,14 @@ class $$CachedCustomersTableTableManager
                 Value<String?> phone = const Value.absent(),
                 Value<int> walletBalanceBaisas = const Value.absent(),
                 Value<String> loyaltyJson = const Value.absent(),
+                Value<String> platesJson = const Value.absent(),
               }) => CachedCustomersCompanion.insert(
                 id: id,
                 name: name,
                 phone: phone,
                 walletBalanceBaisas: walletBalanceBaisas,
                 loyaltyJson: loyaltyJson,
+                platesJson: platesJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
