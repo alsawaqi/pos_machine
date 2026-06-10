@@ -2330,4 +2330,36 @@ class L10nAr extends L10n {
 
   @override
   String get displayMethodCardShort => 'البطاقة';
+
+  @override
+  String get displayMethodGift => 'هدية';
+
+  @override
+  String get ctrlMsgGiftRecorded =>
+      'تم تسجيل الطلب كهدية — لم يُحصَّل أي مبلغ.';
+
+  @override
+  String get ctrlMsgGiftCompleted => 'هذا الطلب هدية منا. شكرًا لكم!';
+
+  @override
+  String get posPaymentGift => 'هدية';
+
+  @override
+  String get posPayGiftConfirmTitle => 'إهداء هذا الطلب؟';
+
+  @override
+  String posPayGiftConfirmMessage(String amount) {
+    return 'سيُقدَّم الطلب بالكامل ($amount OMR) كهدية — لن يُحصَّل أي مبلغ من العميل، وسيُخصم المخزون كالمعتاد.';
+  }
+
+  @override
+  String get posPayGiftRegisterManagerMessage =>
+      'سجِّل بصمة المدير مرة واحدة قبل إهداء أي طلب.';
+
+  @override
+  String get posPayGiftManagerApprovalMessage =>
+      'ضع بصمة المدير لإهداء هذا الطلب.';
+
+  @override
+  String get posPayGiftDeniedMessage => 'لم تُمنح موافقة المدير على الهدية.';
 }

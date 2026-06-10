@@ -1752,6 +1752,29 @@ class PosController extends ChangeNotifier {
         );
       }
 
+      // Phase D4 (blueprint §6.8) — GIFT: the whole order gifted, zero
+      // charged. Mirrors the cash path (no tender/change validation, no
+      // round-up — canOfferCharityRoundUp already excludes it) and must run
+      // BEFORE the card path below, which launches a real Mosambee charge.
+      // The screen owns the manager gate; the wire tender is method 'gift'
+      // at the full grand total (the server validates Σ(tendered)==grand).
+      if (transactionMethod == 'Gift') {
+        _clearPaymentLaunchOverlay();
+        paymentStatus = 'Paid';
+        lastPaymentMessage = _l10n.ctrlMsgGiftRecorded;
+        displayNote = _l10n.ctrlMsgGiftCompleted;
+        _broadcast();
+
+        return await _completeSuccessfulPayment(
+          transactionMethod: transactionMethod,
+          splitCountAtPayment: transactionSplitCount,
+          splitIndexAtPayment: transactionSplitIndex,
+          baseAmount: transactionBaseAmount,
+          isDineInPayment: isDineInPayment,
+          successMessage: lastPaymentMessage,
+        );
+      }
+
       _clearPaymentLaunchOverlay();
       paymentStatus = 'Processing payment';
       displayNote = charityRoundUpAccepted

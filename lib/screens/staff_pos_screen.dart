@@ -311,9 +311,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
 
     // Loyalty earn (v2 #3): an identified customer accrues under EVERY active
-    // earn program (stamp card + points + …), not just the first.
+    // earn program (stamp card + points + …), not just the first. Phase D4 —
+    // a GIFTED order earns nothing (no spend ⇒ no points; the server also
+    // guards this).
     final loyaltyRuleIds =
-        customerId != null ? controller.activeEarnRuleIds : const <int>[];
+        customerId != null && snapshot.paymentMethod != 'Gift'
+            ? controller.activeEarnRuleIds
+            : const <int>[];
 
     try {
       await ref.read(orderSyncRepositoryProvider).enqueue(
@@ -1033,6 +1037,85 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (controller.cart.isNotEmpty && controller.splitCount > 1) {
       setState(() {
         _cashTenderInput = '';
+      });
+    }
+
+    _showPopupMessage(
+      title: _paymentMessageTitle(),
+      message: message,
+      tone: _paymentMessageTone(),
+    );
+  }
+
+  /// Phase D4 (blueprint §6.8) — gift the WHOLE order: zero charged to the
+  /// customer, inventory still deducts, manager approval required (the same
+  /// fingerprint gate the comp flow uses, registering one if absent).
+  Future<void> _submitGiftPayment() async {
+    if (controller.isProcessingPayment || controller.cart.isEmpty) return;
+    final l10n = L10n.of(context);
+
+    var hasManager = await _managerAuthorization.isManagerRegistered();
+    if (!mounted) return;
+    var authorized = false;
+    if (!hasManager) {
+      hasManager = await _showFingerprintAuthorizationOverlay(
+        title: l10n.posManagerRegisterFingerprintTitle,
+        message: l10n.posPayGiftRegisterManagerMessage,
+        action: _managerAuthorization.registerManagerFingerprint,
+      );
+      if (!mounted) return;
+      authorized = hasManager;
+    }
+    if (!authorized && hasManager) {
+      authorized = await _showFingerprintAuthorizationOverlay(
+        title: l10n.posManagerApprovalRequiredTitle,
+        message: l10n.posPayGiftManagerApprovalMessage,
+        action: _managerAuthorization.authenticateCancellation,
+      );
+    }
+    if (!mounted) return;
+    if (!authorized) {
+      _showPopupMessage(
+        title: l10n.posManagerApprovalRequiredTitle,
+        message: l10n.posPayGiftDeniedMessage,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.posPayGiftConfirmTitle),
+        content: Text(l10n.posPayGiftConfirmMessage(
+          SunmiReceiptService.money(controller.activePaymentBaseTotal),
+        )),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.posPaymentGift),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    controller.setCustomerReferenceNumber(_customerNumberController.text);
+    // Label must be exactly 'Gift' — mapPaymentMethod matches 'card' before
+    // 'gift', so e.g. 'Gift Card' would mis-map to a card tender.
+    controller.selectPaymentMethod('Gift');
+    final message = await controller.payAndPrint();
+    if (!mounted || message == null || message.isEmpty) return;
+
+    if (controller.cart.isEmpty) {
+      setState(() {
+        _showPaymentPage = false;
+        _cashTenderInput = '';
+        _customerNumberController.clear();
       });
     }
 
@@ -3478,6 +3561,22 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 colors: [Color(0xFF2A8B42), Color(0xFF1F7236)],
                               ),
                               onTap: _submitCardPayment,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          // Phase D4 — gift the whole order (manager-gated;
+                          // §6.8 "zero charged… inventory still deducts").
+                          SizedBox(
+                            height: 64,
+                            child: _PaymentMethodActionButton(
+                              label: l10n.posPaymentGift,
+                              icon: Icons.card_giftcard_rounded,
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [Color(0xFF8E5BA6), Color(0xFF6E4385)],
+                              ),
+                              onTap: _submitGiftPayment,
                             ),
                           ),
                           const Spacer(),

@@ -614,6 +614,44 @@ void main() {
     });
   });
 
+  // Phase D4 — gift orders (blueprint §6.8: whole order gifted, zero charged).
+  group('gift tender', () {
+    test('a Gift order emits one gift tender at the full grand total', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '10', 'name': 'Latte', 'qty': 2, 'unitPrice': 2.5, 'lineTotal': 5.0},
+        ],
+        rawSubtotal: 5.0,
+        total: 5.0,
+        paymentMethod: 'Gift',
+        // Even a (mis-)set round-up flag must NOT emit donation.record:
+        // gifts carry no card tender to attach a donation to.
+        charityRoundUpAccepted: true,
+        charityRoundUpAmount: 0.5,
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+
+      expect(payload.events, hasLength(2)); // create + pay only — NO donation
+      final payments =
+          payload.events[1]['payload']['payments'] as List<dynamic>;
+      expect(payments.single, {
+        'method': 'gift',
+        'amount_baisas': 5000,
+        'status': 'success',
+      });
+    });
+
+    test('mapPaymentMethod ordering: card wins over labels containing both', () {
+      // Pin the ordering trap: 'card' is matched before 'gift', so a future
+      // 'Gift Card' label would be a CARD tender — the device must send the
+      // exact label 'Gift' for gift orders.
+      expect(mapPaymentMethod('Gift'), 'gift');
+      expect(mapPaymentMethod('Gift Card'), 'card');
+      expect(mapPaymentMethod('Cash'), 'cash');
+    });
+  });
+
   // Phase C2 — the order.hold mirror built from a held draft (blueprint §6.7).
   group('buildOrderHoldEvent', () {
     OrderSessionDraft draft({

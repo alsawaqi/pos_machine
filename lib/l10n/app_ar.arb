@@ -616,5 +616,14 @@
   "posSplitDlgSinglePaymentTotal": "إجمالي الدفعة الواحدة",
   "posSplitDlgApplySplit": "تطبيق التقسيم",
   "posSplitDlgUseSingleBill": "استخدام فاتورة واحدة",
-  "displayMethodCardShort": "البطاقة"
+  "displayMethodCardShort": "البطاقة",
+  "displayMethodGift": "هدية",
+  "ctrlMsgGiftRecorded": "تم تسجيل الطلب كهدية — لم يُحصَّل أي مبلغ.",
+  "ctrlMsgGiftCompleted": "هذا الطلب هدية منا. شكرًا لكم!",
+  "posPaymentGift": "هدية",
+  "posPayGiftConfirmTitle": "إهداء هذا الطلب؟",
+  "posPayGiftConfirmMessage": "سيُقدَّم الطلب بالكامل ({amount} OMR) كهدية — لن يُحصَّل أي مبلغ من العميل، وسيُخصم المخزون كالمعتاد.",
+  "posPayGiftRegisterManagerMessage": "سجِّل بصمة المدير مرة واحدة قبل إهداء أي طلب.",
+  "posPayGiftManagerApprovalMessage": "ضع بصمة المدير لإهداء هذا الطلب.",
+  "posPayGiftDeniedMessage": "لم تُمنح موافقة المدير على الهدية."
 }

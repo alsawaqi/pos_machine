@@ -3803,6 +3803,60 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Card'**
   String get displayMethodCardShort;
+
+  /// No description provided for @displayMethodGift.
+  ///
+  /// In en, this message translates to:
+  /// **'Gift'**
+  String get displayMethodGift;
+
+  /// No description provided for @ctrlMsgGiftRecorded.
+  ///
+  /// In en, this message translates to:
+  /// **'Gift order recorded — nothing charged.'**
+  String get ctrlMsgGiftRecorded;
+
+  /// No description provided for @ctrlMsgGiftCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'This order is our gift. Thank you!'**
+  String get ctrlMsgGiftCompleted;
+
+  /// No description provided for @posPaymentGift.
+  ///
+  /// In en, this message translates to:
+  /// **'Gift'**
+  String get posPaymentGift;
+
+  /// No description provided for @posPayGiftConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Gift This Order?'**
+  String get posPayGiftConfirmTitle;
+
+  /// No description provided for @posPayGiftConfirmMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The whole order ({amount} OMR) will be gifted — nothing is charged to the customer. Inventory still deducts.'**
+  String posPayGiftConfirmMessage(String amount);
+
+  /// No description provided for @posPayGiftRegisterManagerMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Register the manager fingerprint once before gifting an order.'**
+  String get posPayGiftRegisterManagerMessage;
+
+  /// No description provided for @posPayGiftManagerApprovalMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Place the manager fingerprint to gift this order.'**
+  String get posPayGiftManagerApprovalMessage;
+
+  /// No description provided for @posPayGiftDeniedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Manager approval was not granted for the gift.'**
+  String get posPayGiftDeniedMessage;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

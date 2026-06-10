@@ -2295,4 +2295,36 @@ class L10nEn extends L10n {
 
   @override
   String get displayMethodCardShort => 'Card';
+
+  @override
+  String get displayMethodGift => 'Gift';
+
+  @override
+  String get ctrlMsgGiftRecorded => 'Gift order recorded — nothing charged.';
+
+  @override
+  String get ctrlMsgGiftCompleted => 'This order is our gift. Thank you!';
+
+  @override
+  String get posPaymentGift => 'Gift';
+
+  @override
+  String get posPayGiftConfirmTitle => 'Gift This Order?';
+
+  @override
+  String posPayGiftConfirmMessage(String amount) {
+    return 'The whole order ($amount OMR) will be gifted — nothing is charged to the customer. Inventory still deducts.';
+  }
+
+  @override
+  String get posPayGiftRegisterManagerMessage =>
+      'Register the manager fingerprint once before gifting an order.';
+
+  @override
+  String get posPayGiftManagerApprovalMessage =>
+      'Place the manager fingerprint to gift this order.';
+
+  @override
+  String get posPayGiftDeniedMessage =>
+      'Manager approval was not granted for the gift.';
 }

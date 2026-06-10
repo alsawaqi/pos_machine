@@ -41,5 +41,6 @@ String localizedPaymentMethod(L10n l10n, String value) => switch (value) {
       'Cash' => l10n.displayMethodCash,
       'Credit Card' => l10n.displayMethodCard,
       'Split Payment' => l10n.displayMethodSplit,
+      'Gift' => l10n.displayMethodGift,
       _ => value,
     };

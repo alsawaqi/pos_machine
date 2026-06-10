@@ -1509,5 +1509,21 @@
   "posSplitDlgSinglePaymentTotal": "Single payment total",
   "posSplitDlgApplySplit": "Apply Split",
   "posSplitDlgUseSingleBill": "Use Single Bill",
-  "displayMethodCardShort": "Card"
+  "displayMethodCardShort": "Card",
+  "displayMethodGift": "Gift",
+  "ctrlMsgGiftRecorded": "Gift order recorded — nothing charged.",
+  "ctrlMsgGiftCompleted": "This order is our gift. Thank you!",
+  "posPaymentGift": "Gift",
+  "posPayGiftConfirmTitle": "Gift This Order?",
+  "posPayGiftConfirmMessage": "The whole order ({amount} OMR) will be gifted — nothing is charged to the customer. Inventory still deducts.",
+  "@posPayGiftConfirmMessage": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "posPayGiftRegisterManagerMessage": "Register the manager fingerprint once before gifting an order.",
+  "posPayGiftManagerApprovalMessage": "Place the manager fingerprint to gift this order.",
+  "posPayGiftDeniedMessage": "Manager approval was not granted for the gift."
 }

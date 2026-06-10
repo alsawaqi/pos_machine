@@ -165,6 +165,24 @@ void main() {
       expect(summary.roundUpBaisas, 50);
     });
 
+    test('a gifted order buckets under the gift tender, never cash', () {
+      final summary = buildLocalShiftSummary(
+        [
+          record(
+            at: DateTime(2026, 6, 10, 12),
+            total: 4.0,
+            paymentMethod: 'Gift',
+          ),
+        ],
+        openedAt: openedAt,
+        closedAt: closedAt,
+      );
+
+      expect(summary.orderCount, 1);
+      expect(summary.tenders.single.method, 'gift');
+      expect(summary.tenders.single.amountBaisas, 4000);
+    });
+
     test('a fully-canceled order counts as a void, not a sale', () {
       final at = DateTime(2026, 6, 10, 12);
       final summary = buildLocalShiftSummary(
