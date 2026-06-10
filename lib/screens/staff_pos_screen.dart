@@ -3759,8 +3759,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          AspectRatio(
-                            aspectRatio: 1,
+                          // Expanded (not square AspectRatio): the fixed
+                          // 1600x900 canvas leaves this column 592px, so two
+                          // 236px squares can never fit — share the height.
+                          Expanded(
                             child: _PaymentMethodActionButton(
                               label: l10n.posPaymentCash,
                               icon: Icons.payments_outlined,
@@ -3773,8 +3775,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                             ),
                           ),
                           const SizedBox(height: 14),
-                          AspectRatio(
-                            aspectRatio: 1,
+                          Expanded(
                             child: _PaymentMethodActionButton(
                               label: l10n.posPaymentCard,
                               icon: Icons.credit_card_rounded,
@@ -3802,7 +3803,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                               onTap: _submitGiftPayment,
                             ),
                           ),
-                          const Spacer(),
                           const SizedBox(height: 14),
                           SizedBox(
                             height: 86,

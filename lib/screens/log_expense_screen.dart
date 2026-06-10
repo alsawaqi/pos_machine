@@ -140,15 +140,15 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
         ),
         automaticallyImplyLeading: false,
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+      // The Sunmi T3 shows this screen in 15.6" landscape where the stacked
+      // phone-width column (~900px tall) overflows the viewport and forces
+      // scrolling. Wide viewports get a two-pane row — form fields left,
+      // keypad right — so the whole form fits on screen; narrow/portrait
+      // keeps the stacked column. The scroll views remain only as a
+      // soft-keyboard safety net.
+      body: LayoutBuilder(builder: (context, constraints) {
+        final twoPane = constraints.maxWidth > 900;
+        final formFields = <Widget>[
                 Text(l10n.expenseCategoryLabel,
                     style:
                         const TextStyle(color: Colors.white54, fontSize: 13)),
@@ -204,30 +204,70 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
                         const TextStyle(color: Color(0xFFFF6B6B), fontSize: 14),
                   ),
                 ],
-                const SizedBox(height: 18),
-                Center(child: _keypad()),
-                const SizedBox(height: 18),
-                Center(
-                  child: SizedBox(
-                    width: 260,
-                    height: 52,
-                    child: FilledButton(
-                      onPressed: _busy ? null : _submit,
-                      child: _busy
-                          ? const SizedBox(
-                              height: 22,
-                              width: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(l10n.expenseRecordButton),
+        ];
+        final submitButton = SizedBox(
+          width: 260,
+          height: 52,
+          child: FilledButton(
+            onPressed: _busy ? null : _submit,
+            child: _busy
+                ? const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(l10n.expenseRecordButton),
+          ),
+        );
+        if (twoPane) {
+          return Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // A tight 420 width (not maxWidth): the amount card and
+                  // note field expand to fill it, matching the stacked look.
+                  SizedBox(
+                    width: 420,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ...formFields,
+                        const SizedBox(height: 18),
+                        Center(child: submitButton),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 48),
+                  _keypad(),
+                ],
+              ),
+            ),
+          );
+        }
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ...formFields,
+                  const SizedBox(height: 18),
+                  Center(child: _keypad()),
+                  const SizedBox(height: 18),
+                  Center(child: submitButton),
+                ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      }),
     );
   }
 
