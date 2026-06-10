@@ -1441,6 +1441,14 @@
       "plate": {"type": "String"}
     }
   },
+  "posEarnPickerTitle": "Loyalty Program",
+  "posEarnPickerSubtitle": "Which program(s) should this order earn under for {name}?",
+  "@posEarnPickerSubtitle": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "posEarnPickerConfirm": "Confirm",
   "posCancelPageOrderItems": "Order Items",
   "posCancelPageCancellableCount": "{count} cancellable",
   "@posCancelPageCancellableCount": {

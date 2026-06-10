@@ -326,6 +326,27 @@ class PosController extends ChangeNotifier {
   /// each, not just the first.
   List<int> get activeEarnRuleIds =>
       loyaltyRules.where((r) => r.isActive).map((r) => r.id).toList();
+
+  /// P-F3 — the earn program(s) the cashier/customer picked for THIS order
+  /// (the picker shows on customer attach when several programs run at
+  /// once). Null = no explicit choice → earn under every active rule, the
+  /// longstanding default. Reset when the customer changes, detaches, or
+  /// the order completes.
+  List<int>? selectedEarnRuleIds;
+
+  /// The earn-rule ids the pay event carries: the explicit choice clipped to
+  /// the still-active rules, else all active rules.
+  List<int> get effectiveEarnRuleIds {
+    final chosen = selectedEarnRuleIds;
+    if (chosen == null) return activeEarnRuleIds;
+    final active = activeEarnRuleIds;
+    return chosen.where(active.contains).toList();
+  }
+
+  void setSelectedEarnRules(List<int> ruleIds) {
+    selectedEarnRuleIds = List<int>.from(ruleIds);
+    _broadcast();
+  }
   int splitCount = 1;
   final List<SplitPaymentRecord> _splitPayments = [];
   /// Soft POS evidence for the most recent single (non-split) card payment.
@@ -1093,12 +1114,19 @@ class PosController extends ChangeNotifier {
     customerReferenceNumber = value.replaceAll(RegExp(r'\D'), '').trim();
     // Typing a raw number detaches any searched customer (they diverge).
     selectedCustomer = null;
+    selectedEarnRuleIds = null; // P-F3 — the choice belonged to them
     _broadcast();
   }
 
   /// Attach a customer chosen from live search. Their phone backfills the
   /// reference display; the order will attach by id.
   void attachCustomer(CustomerSearchResult customer) {
+    // P-F3 — an earn-program choice belongs to ONE customer: keep it on a
+    // same-customer re-attach (e.g. reopening their details), drop it when
+    // the customer actually changes.
+    if (selectedCustomer?.id != customer.id) {
+      selectedEarnRuleIds = null;
+    }
     selectedCustomer = customer;
     customerReferenceNumber =
         customer.phone.replaceAll(RegExp(r'\D'), '').trim();
@@ -2876,6 +2904,7 @@ class PosController extends ChangeNotifier {
     customerReferenceNumber = '';
     vehiclePlateNumber = '';
     selectedCustomer = null;
+    selectedEarnRuleIds = null; // P-F3 — per-order choice
     currentOrderReference = '';
     isProcessingPayment = false;
     productSearchQuery = '';

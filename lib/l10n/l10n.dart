@@ -3684,6 +3684,24 @@ abstract class L10n {
   /// **'Customers linked to {plate}'**
   String posPlateSearchPickCustomer(String plate);
 
+  /// No description provided for @posEarnPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Loyalty Program'**
+  String get posEarnPickerTitle;
+
+  /// No description provided for @posEarnPickerSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Which program(s) should this order earn under for {name}?'**
+  String posEarnPickerSubtitle(String name);
+
+  /// No description provided for @posEarnPickerConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm'**
+  String get posEarnPickerConfirm;
+
   /// No description provided for @posCancelPageOrderItems.
   ///
   /// In en, this message translates to:

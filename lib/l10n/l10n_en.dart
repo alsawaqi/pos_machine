@@ -2218,6 +2218,17 @@ class L10nEn extends L10n {
   }
 
   @override
+  String get posEarnPickerTitle => 'Loyalty Program';
+
+  @override
+  String posEarnPickerSubtitle(String name) {
+    return 'Which program(s) should this order earn under for $name?';
+  }
+
+  @override
+  String get posEarnPickerConfirm => 'Confirm';
+
+  @override
   String get posCancelPageOrderItems => 'Order Items';
 
   @override

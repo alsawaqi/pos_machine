@@ -2246,6 +2246,17 @@ class L10nAr extends L10n {
   }
 
   @override
+  String get posEarnPickerTitle => 'برنامج الولاء';
+
+  @override
+  String posEarnPickerSubtitle(String name) {
+    return 'ضمن أي برنامج تُحتسب مكافآت هذا الطلب لـ $name؟';
+  }
+
+  @override
+  String get posEarnPickerConfirm => 'تأكيد';
+
+  @override
   String get posCancelPageOrderItems => 'أصناف الطلب';
 
   @override

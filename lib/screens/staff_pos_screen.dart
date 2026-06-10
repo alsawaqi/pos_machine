@@ -322,13 +322,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       }
     }
 
-    // Loyalty earn (v2 #3): an identified customer accrues under EVERY active
-    // earn program (stamp card + points + …), not just the first. Phase D4 —
-    // a GIFTED order earns nothing (no spend ⇒ no points; the server also
-    // guards this).
+    // Loyalty earn (v2 #3): an identified customer accrues under every active
+    // earn program — unless P-F3's picker recorded an explicit choice for
+    // this order (effectiveEarnRuleIds). Phase D4 — a GIFTED order earns
+    // nothing (no spend ⇒ no points; the server also guards this).
     final loyaltyRuleIds =
         customerId != null && snapshot.paymentMethod != 'Gift'
-            ? controller.activeEarnRuleIds
+            ? controller.effectiveEarnRuleIds
             : const <int>[];
 
     try {
@@ -1633,6 +1633,25 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.setProductSearchQuery(value);
   }
 
+  /// P-F3 — when the merchant runs MORE THAN ONE active earn program (e.g. a
+  /// stamp card AND points), ask which one(s) this order earns under — the
+  /// customer's pick. Asked once per attached customer per order; cancel or
+  /// a single-program merchant keeps the earn-under-all default.
+  Future<void> _maybePickEarnPrograms() async {
+    final customer = controller.selectedCustomer;
+    if (customer == null) return;
+    if (controller.selectedEarnRuleIds != null) return; // already chosen
+    final rules = controller.loyaltyRules.where((r) => r.isActive).toList();
+    if (rules.length < 2) return;
+
+    final picked = await showDialog<List<int>>(
+      context: context,
+      builder: (_) => _EarnProgramPickerDialog(rules: rules, customer: customer),
+    );
+    if (!mounted || picked == null) return;
+    controller.setSelectedEarnRules(picked);
+  }
+
   /// P-F2 — the customer Details button: resolve the customer (the attached
   /// one, else look the typed number up), refresh the full profile from the
   /// server when reachable, attach them to the order, and open the details
@@ -1690,7 +1709,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         currentPlate: controller.vehiclePlateNumber,
       ),
     );
-    if (!mounted || action == null) return;
+    if (!mounted || action == null) {
+      if (mounted) await _maybePickEarnPrograms();
+      return;
+    }
     if (action == 'redeem') {
       await _openLoyaltyRedeem();
     } else if (action.startsWith('plate:')) {
@@ -1703,6 +1725,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         tone: FeedbackTone.success,
       );
     }
+    if (mounted) await _maybePickEarnPrograms();
   }
 
   /// P-F2 — search by vehicle plate: who is linked to this car? (A plate can
@@ -1787,6 +1810,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           picked.name, _loyaltySummary(l10n, picked)),
       tone: FeedbackTone.success,
     );
+    await _maybePickEarnPrograms();
   }
 
   Future<void> _openCustomerSearch() async {
@@ -1819,6 +1843,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           : result.name,
       tone: FeedbackTone.success,
     );
+    await _maybePickEarnPrograms();
   }
 
   Future<void> _openCustomerNumberKeyboard() async {
@@ -1882,6 +1907,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           l10n.posCustomerAttachedSummary(match.name, _loyaltySummary(l10n, match)),
       tone: FeedbackTone.success,
     );
+    await _maybePickEarnPrograms();
   }
 
   /// A short loyalty summary (total points + stamps across rules) for the
@@ -9329,6 +9355,106 @@ class _InfoBadge extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// P-F3 — "which loyalty program does this order earn under?" Shown on
+/// customer attach when the merchant runs 2+ active earn programs. All
+/// programs start checked (the default behavior); the customer/cashier
+/// unticks the ones to skip. Pops the chosen rule ids, or null on cancel
+/// (= keep earning under all).
+class _EarnProgramPickerDialog extends StatefulWidget {
+  final List<LoyaltyRule> rules;
+  final CustomerSearchResult customer;
+
+  const _EarnProgramPickerDialog({required this.rules, required this.customer});
+
+  @override
+  State<_EarnProgramPickerDialog> createState() =>
+      _EarnProgramPickerDialogState();
+}
+
+class _EarnProgramPickerDialogState extends State<_EarnProgramPickerDialog> {
+  late final Set<int> _selected = widget.rules.map((r) => r.id).toSet();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
+    return AlertDialog(
+      title: Text(l10n.posEarnPickerTitle),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.posEarnPickerSubtitle(widget.customer.name),
+              style: const TextStyle(fontSize: 13.5, height: 1.35),
+            ),
+            const SizedBox(height: 10),
+            for (final rule in widget.rules)
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _selected.contains(rule.id),
+                onChanged: (checked) => setState(() {
+                  if (checked == true) {
+                    _selected.add(rule.id);
+                  } else {
+                    _selected.remove(rule.id);
+                  }
+                }),
+                title: Row(
+                  children: [
+                    Icon(
+                      rule.isVisitBased
+                          ? Icons.local_activity_outlined
+                          : Icons.stars_rounded,
+                      size: 18,
+                      color: const Color(0xFF8E5BA6),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        rule.name,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsetsDirectional.only(start: 26),
+                  child: Text(
+                    rule.isVisitBased
+                        ? l10n.posCustomerDetailsStampProgress(
+                            widget.customer.stampsForRule(rule.id),
+                            rule.stampsRequired,
+                          )
+                        : l10n.posLoyaltySummaryPoints(
+                            widget.customer.pointsForRule(rule.id),
+                          ),
+                    style: const TextStyle(fontSize: 12.5),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.commonCancel),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_selected.toList()),
+          child: Text(l10n.posEarnPickerConfirm),
+        ),
+      ],
     );
   }
 }
