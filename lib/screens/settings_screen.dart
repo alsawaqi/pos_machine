@@ -9,9 +9,18 @@ import '../services/settings_service.dart';
 /// Device-local POS settings: the server address (so a real device can be
 /// pointed at the right backend without a rebuild), a connection test, and the
 /// receipt-printing toggle. Reachable before activation (device-setup gear) and
-/// from the in-POS staff menu.
+/// from the in-POS top-bar gear.
+///
+/// P-F1 — [showOperations] (true when opened from the POS) adds the
+/// operational actions that used to live on the logout sheet: close shift,
+/// log expense, request restock, stock count, reprint shift summary. Tapping
+/// one POPS this screen with its action key — the POS screen dispatches it so
+/// the flows keep their controller/session context. Pre-activation (device
+/// setup) there is no staff session, so the section stays hidden.
 class SettingsScreen extends ConsumerStatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.showOperations = false});
+
+  final bool showOperations;
 
   @override
   ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
@@ -87,6 +96,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           child: ListView(
             padding: const EdgeInsets.all(24),
             children: [
+              if (widget.showOperations) ...[
+                _sectionLabel(l10n.settingsSectionOperations),
+                const SizedBox(height: 4),
+                _operationTile(
+                  icon: Icons.point_of_sale_rounded,
+                  title: l10n.posMenuCloseShift,
+                  subtitle: l10n.posMenuCloseShiftSub,
+                  action: 'close_shift',
+                ),
+                _operationTile(
+                  icon: Icons.receipt_long_rounded,
+                  title: l10n.posMenuLogExpense,
+                  subtitle: l10n.posMenuLogExpenseSub,
+                  action: 'log_expense',
+                ),
+                _operationTile(
+                  icon: Icons.inventory_2_rounded,
+                  title: l10n.posMenuRequestRestock,
+                  subtitle: l10n.posMenuRequestRestockSub,
+                  action: 'restock_request',
+                ),
+                _operationTile(
+                  icon: Icons.checklist_rounded,
+                  title: l10n.posMenuStockCount,
+                  subtitle: l10n.posMenuStockCountSub,
+                  action: 'stock_count',
+                ),
+                _operationTile(
+                  icon: Icons.summarize_rounded,
+                  title: l10n.posMenuShiftSummary,
+                  subtitle: l10n.posMenuShiftSummarySub,
+                  action: 'shift_summary',
+                ),
+                const Divider(color: Colors.white12, height: 36),
+              ],
               _sectionLabel(l10n.settingsSectionServer),
               const SizedBox(height: 8),
               TextField(
@@ -236,6 +280,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
   }
+
+  Widget _operationTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String action,
+  }) =>
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(icon, color: Colors.white70),
+        title: Text(title, style: const TextStyle(color: Colors.white)),
+        subtitle: Text(subtitle, style: const TextStyle(color: Colors.white54)),
+        trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+        onTap: () => Navigator.of(context).pop(action),
+      );
 
   Widget _sectionLabel(String text) => Text(
         text.toUpperCase(),

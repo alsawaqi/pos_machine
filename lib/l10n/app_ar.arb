@@ -12,6 +12,7 @@
   "commonLogout": "تسجيل الخروج",
   "settingsTitle": "الإعدادات",
   "settingsSectionServer": "الخادم",
+  "settingsSectionOperations": "العمليات",
   "settingsServerAddress": "عنوان الخادم",
   "settingsServerHint": "مثال: 192.168.1.50:8088",
   "settingsUsingDefault": "الافتراضي المدمج قيد الاستخدام: {url}",

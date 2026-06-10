@@ -45,6 +45,9 @@ class L10nAr extends L10n {
   String get settingsSectionServer => 'الخادم';
 
   @override
+  String get settingsSectionOperations => 'العمليات';
+
+  @override
   String get settingsServerAddress => 'عنوان الخادم';
 
   @override

@@ -3976,7 +3976,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           const SizedBox(width: 8),
           _buildTimeBlock(),
           const SizedBox(width: 8),
-          _CircleGlassButton(icon: Icons.settings_outlined, onTap: () {}),
+          // P-F1 — the gear opens Settings (which now hosts the operational
+          // actions that used to crowd the logout sheet).
+          _CircleGlassButton(
+            icon: Icons.settings_outlined,
+            onTap: () => unawaited(_openSettings()),
+          ),
           const SizedBox(width: 8),
           Flexible(
             flex: 5,
@@ -4206,66 +4211,29 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  /// Staff chip menu: close the cash-drawer shift, or log out.
+  /// Staff chip menu — P-F1: ONLY log out / cancel here (per the merchant's
+  /// request); the operational actions moved into Settings (the top-bar gear).
   Future<void> _openStaffMenu() async {
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) {
         final l10n = L10n.of(ctx);
         return SafeArea(
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.point_of_sale_rounded),
-                  title: Text(l10n.posMenuCloseShift),
-                  subtitle: Text(l10n.posMenuCloseShiftSub),
-                  onTap: () => Navigator.pop(ctx, 'close_shift'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.receipt_long_rounded),
-                  title: Text(l10n.posMenuLogExpense),
-                  subtitle: Text(l10n.posMenuLogExpenseSub),
-                  onTap: () => Navigator.pop(ctx, 'log_expense'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.inventory_2_rounded),
-                  title: Text(l10n.posMenuRequestRestock),
-                  subtitle: Text(l10n.posMenuRequestRestockSub),
-                  onTap: () => Navigator.pop(ctx, 'restock_request'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.checklist_rounded),
-                  title: Text(l10n.posMenuStockCount),
-                  subtitle: Text(l10n.posMenuStockCountSub),
-                  onTap: () => Navigator.pop(ctx, 'stock_count'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.summarize_rounded),
-                  title: Text(l10n.posMenuShiftSummary),
-                  subtitle: Text(l10n.posMenuShiftSummarySub),
-                  onTap: () => Navigator.pop(ctx, 'shift_summary'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.settings),
-                  title: Text(l10n.posMenuSettings),
-                  subtitle: Text(l10n.posMenuSettingsSub),
-                  onTap: () => Navigator.pop(ctx, 'settings'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.logout),
-                  title: Text(l10n.commonLogout),
-                  subtitle: Text(l10n.posMenuLogoutSub),
-                  onTap: () => Navigator.pop(ctx, 'logout'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.close),
-                  title: Text(l10n.commonCancel),
-                  onTap: () => Navigator.pop(ctx, null),
-                ),
-              ],
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.logout),
+                title: Text(l10n.commonLogout),
+                subtitle: Text(l10n.posMenuLogoutSub),
+                onTap: () => Navigator.pop(ctx, 'logout'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.close),
+                title: Text(l10n.commonCancel),
+                onTap: () => Navigator.pop(ctx, null),
+              ),
+            ],
           ),
         );
       },
@@ -4273,28 +4241,39 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (!mounted) return;
     if (action == 'logout') {
       await _confirmLogout();
-    } else if (action == 'close_shift') {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const ShiftCloseScreen()),
-      );
-    } else if (action == 'log_expense') {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const LogExpenseScreen()),
-      );
-    } else if (action == 'restock_request') {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const RestockRequestScreen()),
-      );
-    } else if (action == 'stock_count') {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const StockCountScreen()),
-      );
-    } else if (action == 'shift_summary') {
-      await _reprintLastShiftSummary();
-    } else if (action == 'settings') {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const SettingsScreen()),
-      );
+    }
+  }
+
+  /// P-F1 — the top-bar gear: Settings, which now hosts the operational
+  /// actions (close shift, expense, restock, stock count, shift summary).
+  /// The screen pops an action key so the flows keep running with this
+  /// screen's controller/session context.
+  Future<void> _openSettings() async {
+    final action = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => const SettingsScreen(showOperations: true),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'close_shift':
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const ShiftCloseScreen()),
+        );
+      case 'log_expense':
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const LogExpenseScreen()),
+        );
+      case 'restock_request':
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const RestockRequestScreen()),
+        );
+      case 'stock_count':
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const StockCountScreen()),
+        );
+      case 'shift_summary':
+        await _reprintLastShiftSummary();
     }
   }
 

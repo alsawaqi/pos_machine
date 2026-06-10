@@ -45,6 +45,9 @@ class L10nEn extends L10n {
   String get settingsSectionServer => 'Server';
 
   @override
+  String get settingsSectionOperations => 'Operations';
+
+  @override
   String get settingsServerAddress => 'Server address';
 
   @override

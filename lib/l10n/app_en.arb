@@ -12,6 +12,7 @@
   "commonLogout": "Log out",
   "settingsTitle": "Settings",
   "settingsSectionServer": "Server",
+  "settingsSectionOperations": "Operations",
   "settingsServerAddress": "Server address",
   "settingsServerHint": "e.g. 192.168.1.50:8088",
   "settingsUsingDefault": "Using the built-in default: {url}",

@@ -169,6 +169,12 @@ abstract class L10n {
   /// **'Server'**
   String get settingsSectionServer;
 
+  /// No description provided for @settingsSectionOperations.
+  ///
+  /// In en, this message translates to:
+  /// **'Operations'**
+  String get settingsSectionOperations;
+
   /// No description provided for @settingsServerAddress.
   ///
   /// In en, this message translates to:
