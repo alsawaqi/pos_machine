@@ -36,6 +36,11 @@ class ConfigRepository {
       loyaltyRuleRows: parsed.loyaltyRules,
       customerRows: parsed.customers,
       ingredientRows: parsed.ingredients,
+      // P-F1 bugfix: these were never passed, so replaceConfig's const-[]
+      // defaults WIPED the reason tables on every full sync and the comp/
+      // cancel-reason UI never saw a single reason.
+      voidReasonRows: parsed.voidReasons,
+      compReasonRows: parsed.compReasons,
       meta: parsed.meta,
     );
     await _session.saveTerminalId(config.terminalId);
@@ -79,6 +84,10 @@ class ConfigRepository {
         loyaltyRuleRows: c.loyaltyRules,
         customerRows: c.customers,
         ingredientRows: c.ingredients,
+        // P-F1 bugfix: delta-changed reason rows upsert into the cache
+        // (deactivations/deletions heal on the next full sync, like taxes).
+        voidReasonRows: c.voidReasons,
+        compReasonRows: c.compReasons,
         deletedCategoryIds: d.categories,
         deletedProductIds: d.products,
         deletedFloorIds: d.floors,
@@ -128,6 +137,10 @@ class ConfigRepository {
     var loyaltyRules = <LoyaltyRuleRow>[];
     var customers = <CustomerRow>[];
     var ingredients = <IngredientRow>[];
+    // P-F1 bugfix: these two were never read back into the catalog, leaving
+    // controller.voidReasons/compReasons permanently empty on the device.
+    var voidReasons = <VoidReasonRow>[];
+    var compReasons = <CompReasonRow>[];
     SyncMetaRow? meta;
     var seenCats = false, seenProds = false, seenFloors = false, seenTables = false, seenTaxes = false;
 
@@ -137,6 +150,7 @@ class ConfigRepository {
           branch, cats, prods, floors, tables, taxes, addonGroups, addons,
           deliveryProviders, expenseCategories, branchStock, discounts,
           loyaltyRules, customers, ingredients, meta,
+          voidReasons, compReasons,
         ));
       }
     }
@@ -205,6 +219,14 @@ class ConfigRepository {
       }),
       _db.watchIngredients().listen((v) {
         ingredients = v;
+        emit();
+      }),
+      _db.watchVoidReasons().listen((v) {
+        voidReasons = v;
+        emit();
+      }),
+      _db.watchCompReasons().listen((v) {
+        compReasons = v;
         emit();
       }),
       _db.watchSyncMeta().listen((v) {
