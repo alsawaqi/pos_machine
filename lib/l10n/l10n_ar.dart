@@ -2362,4 +2362,29 @@ class L10nAr extends L10n {
 
   @override
   String get posPayGiftDeniedMessage => 'لم تُمنح موافقة المدير على الهدية.';
+
+  @override
+  String get posPrintFailedReceiptTitle => 'لم يُطبع الإيصال';
+
+  @override
+  String get posPrintFailedReceiptBody =>
+      'تحقق من الطابعة (الورق / الغطاء). الطلب محفوظ — أعد طباعته من السجل.';
+
+  @override
+  String get posPrintFailedKitchenTitle => 'لم تُطبع تذكرة المطبخ';
+
+  @override
+  String get posPrintFailedKitchenBody =>
+      'الطلب محفوظ. أعد طباعة نسخة المطبخ من السجل.';
+
+  @override
+  String get posPrintFailedShiftTitle => 'لم يُطبع ملخص الوردية';
+
+  @override
+  String get posPrintFailedShiftBody =>
+      'تحقق من الطابعة ثم أعد الطباعة من قائمة الموظف.';
+
+  @override
+  String get shiftClosePrintFailed =>
+      'لم يُطبع الملخص — تحقق من الطابعة وحاول مرة أخرى.';
 }

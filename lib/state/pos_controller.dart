@@ -362,6 +362,18 @@ class PosController extends ChangeNotifier {
   /// or fail order completion.
   void Function(OrderSnapshot snapshot)? onOrderCompleted;
 
+  /// Phase G4 — invoked when a PRINT fails on real hardware (paper out,
+  /// cover open, printer fault). jobKind ∈ {'receipt','kitchen','shift'}.
+  /// Fire-and-forget: printing is fail-safe and never blocks a sale; this
+  /// only lets the screen alert staff. Never fired on dev hardware (no
+  /// printer plugin at all).
+  void Function(String jobKind)? onPrintFailed;
+
+  void _reportPrintFailure(String jobKind) {
+    if (!SunmiReceiptService.printerPluginAvailable) return; // dev hardware
+    onPrintFailed?.call(jobKind);
+  }
+
   /// Phase C2 — invoked when an order is placed on hold (after the local save).
   /// The screen wires this to the hold-mirror outbox (order.hold) so the held
   /// order survives a device wipe and shows on the branch's other terminals.
@@ -1364,35 +1376,36 @@ class PosController extends ChangeNotifier {
     _notifySafely();
   }
 
-  Future<void> printOnly() async {
-    if (_cart.isEmpty) return;
-    try {
-      await SunmiReceiptService.printReceipt(snapshot(), template: receiptTemplate);
-    } catch (error) {
-      debugPrint('Receipt print failed: $error');
-    }
+  /// Returns false when the print failed (Phase G4) — the caller shows the
+  /// right feedback instead of a false success.
+  Future<bool> printOnly() async {
+    if (_cart.isEmpty) return false;
+    final ok = await SunmiReceiptService.printReceipt(snapshot(), template: receiptTemplate);
+    if (!ok) _reportPrintFailure('receipt');
+    return ok;
   }
 
-  Future<void> printHistoricalReceipt(OrderHistoryRecord record) async {
-    try {
-      await SunmiReceiptService.printReceipt(record.snapshot, template: receiptTemplate);
-    } catch (error) {
-      debugPrint('Receipt reprint failed: $error');
-    }
+  Future<bool> printHistoricalReceipt(OrderHistoryRecord record) async {
+    final ok = await SunmiReceiptService.printReceipt(record.snapshot, template: receiptTemplate);
+    if (!ok) _reportPrintFailure('receipt');
+    return ok;
   }
 
   /// Phase C1 — reprint the KITCHEN ticket for a past order. The caller is
   /// responsible for the manager gate (blueprint §6.10: kitchen ticket reprint
   /// requires Manager permission). Stamps the ORIGINAL order time + a REPRINT
-  /// banner. Fail-safe (the service swallows printer errors).
-  Future<void> printHistoricalKitchenTicket(OrderHistoryRecord record) async {
-    await SunmiReceiptService.printKitchenTicket(
+  /// banner. Fail-safe (the service swallows printer errors); returns false
+  /// on a print failure (Phase G4).
+  Future<bool> printHistoricalKitchenTicket(OrderHistoryRecord record) async {
+    final ok = await SunmiReceiptService.printKitchenTicket(
       _kitchenTicketFromSnapshot(
         record.snapshot,
         time: record.createdAt,
         isReprint: true,
       ),
     );
+    if (!ok) _reportPrintFailure('kitchen');
+    return ok;
   }
 
   /// 'Table 4 | Main Hall' — same composition the customer receipt uses.
@@ -1443,7 +1456,7 @@ class PosController extends ChangeNotifier {
         // Phase C1 — holding IS the "send to kitchen" moment today, so the
         // kitchen gets its ticket now (fail-safe; before the reset below so
         // the delivery-provider pick is still readable).
-        await SunmiReceiptService.printKitchenTicket(
+        final printed = await SunmiReceiptService.printKitchenTicket(
           KitchenTicketData(
             orderLabel: draft.orderReference.isEmpty
                 ? 'Order #$currentOrderNumber'
@@ -1461,6 +1474,7 @@ class PosController extends ChangeNotifier {
             items: draft.items.map((item) => item.toMap()).toList(),
           ),
         );
+        if (!printed) _reportPrintFailure('kitchen');
       }
       final message = _l10n.ctrlMsgOrderHeld(draft.orderReference);
       _resetForNextOrder(advanceOrderNumber: false);
@@ -2103,19 +2117,17 @@ class PosController extends ChangeNotifier {
     _activeServerOrderUuid = null;
     if (printReceipts) {
       // Fail-safe: a printer error must never abort the local save or the
-      // pos_api push below.
-      try {
-        await SunmiReceiptService.printReceipt(completedSnapshot, template: receiptTemplate);
-      } catch (error) {
-        debugPrint('Receipt print failed: $error');
-      }
+      // pos_api push below — it only surfaces a staff alert (Phase G4).
+      final ok = await SunmiReceiptService.printReceipt(completedSnapshot, template: receiptTemplate);
+      if (!ok) _reportPrintFailure('receipt');
     }
     if (printKitchenTickets) {
       // Phase C1 — the kitchen copy: items + add-ons + notes, no prices. The
       // service itself swallows printer errors.
-      await SunmiReceiptService.printKitchenTicket(
+      final ok = await SunmiReceiptService.printKitchenTicket(
         _kitchenTicketFromSnapshot(completedSnapshot, time: DateTime.now()),
       );
+      if (!ok) _reportPrintFailure('kitchen');
     }
     await _saveCompletedOrder(completedSnapshot);
     // Push the finalized order to pos_api (via the durable outbox). Fire-and-

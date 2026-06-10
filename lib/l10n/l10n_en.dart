@@ -2327,4 +2327,29 @@ class L10nEn extends L10n {
   @override
   String get posPayGiftDeniedMessage =>
       'Manager approval was not granted for the gift.';
+
+  @override
+  String get posPrintFailedReceiptTitle => 'Receipt Didn\'t Print';
+
+  @override
+  String get posPrintFailedReceiptBody =>
+      'Check the printer (paper / cover). The order is saved — reprint it from History.';
+
+  @override
+  String get posPrintFailedKitchenTitle => 'Kitchen Ticket Didn\'t Print';
+
+  @override
+  String get posPrintFailedKitchenBody =>
+      'The order is saved. Reprint the kitchen copy from History.';
+
+  @override
+  String get posPrintFailedShiftTitle => 'Shift Summary Didn\'t Print';
+
+  @override
+  String get posPrintFailedShiftBody =>
+      'Check the printer, then reprint from the staff menu.';
+
+  @override
+  String get shiftClosePrintFailed =>
+      'The summary did not print — check the printer and try again.';
 }

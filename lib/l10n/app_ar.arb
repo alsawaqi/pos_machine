@@ -625,5 +625,12 @@
   "posPayGiftConfirmMessage": "سيُقدَّم الطلب بالكامل ({amount} OMR) كهدية — لن يُحصَّل أي مبلغ من العميل، وسيُخصم المخزون كالمعتاد.",
   "posPayGiftRegisterManagerMessage": "سجِّل بصمة المدير مرة واحدة قبل إهداء أي طلب.",
   "posPayGiftManagerApprovalMessage": "ضع بصمة المدير لإهداء هذا الطلب.",
-  "posPayGiftDeniedMessage": "لم تُمنح موافقة المدير على الهدية."
+  "posPayGiftDeniedMessage": "لم تُمنح موافقة المدير على الهدية.",
+  "posPrintFailedReceiptTitle": "لم يُطبع الإيصال",
+  "posPrintFailedReceiptBody": "تحقق من الطابعة (الورق / الغطاء). الطلب محفوظ — أعد طباعته من السجل.",
+  "posPrintFailedKitchenTitle": "لم تُطبع تذكرة المطبخ",
+  "posPrintFailedKitchenBody": "الطلب محفوظ. أعد طباعة نسخة المطبخ من السجل.",
+  "posPrintFailedShiftTitle": "لم يُطبع ملخص الوردية",
+  "posPrintFailedShiftBody": "تحقق من الطابعة ثم أعد الطباعة من قائمة الموظف.",
+  "shiftClosePrintFailed": "لم يُطبع الملخص — تحقق من الطابعة وحاول مرة أخرى."
 }

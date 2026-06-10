@@ -167,6 +167,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.onOrderCompleted = _handleOrderCompleted;
     controller.onOrderHeld = _handleOrderHeld;
     controller.onOrderVoided = _handleOrderVoided;
+    // Phase G4 — printing is fail-safe (never blocks a sale); this surfaces
+    // a throttled staff alert when real hardware fails (paper out / cover).
+    controller.onPrintFailed = _handlePrintFailed;
     // Phase C4 — controller/service-authored messages resolve through the
     // device language without a BuildContext (see l10nProvider). Stored
     // messages keep the language they were authored in until the next action.
@@ -1328,15 +1331,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             records: controller.orderHistory,
             onRegisterManager: _registerManagerFingerprint,
             onPrint: (record) async {
-              await controller.printHistoricalReceipt(record);
+              final printed = await controller.printHistoricalReceipt(record);
               if (!mounted) return;
-              _showPopupMessage(
-                title: l10n.posHistoryReceiptPrintedTitle,
-                message: l10n.posHistoryReceiptPrintedMessage(
-                  record.orderNumber,
-                ),
-                tone: FeedbackTone.success,
-              );
+              // Phase G4 — no false-success popup; the failure alert comes
+              // through the throttled onPrintFailed channel.
+              if (printed) {
+                _showPopupMessage(
+                  title: l10n.posHistoryReceiptPrintedTitle,
+                  message: l10n.posHistoryReceiptPrintedMessage(
+                    record.orderNumber,
+                  ),
+                  tone: FeedbackTone.success,
+                );
+              }
             },
             onPrintKitchen: (record) =>
                 _handleKitchenTicketReprint(record),
@@ -1390,13 +1397,49 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
-    await controller.printHistoricalKitchenTicket(record);
-    if (!mounted) return;
+    final printed = await controller.printHistoricalKitchenTicket(record);
+    if (!mounted || !printed) return; // failure surfaces via onPrintFailed
     _showPopupMessage(
       title: l10n.posKitchenTicketPrintedTitle,
       message: l10n.posKitchenTicketPrintedMessage(record.orderNumber),
       tone: FeedbackTone.success,
     );
+  }
+
+  /// Phase G4 — staff alert for a failed print, throttled so a dead printer
+  /// during a rush shows ONE popup per window, not one per order (the popup
+  /// slot is shared with payment feedback). The sale/hold itself is never
+  /// affected — printing is fail-safe by design.
+  DateTime? _lastPrintFailureAlertAt;
+
+  void _handlePrintFailed(String jobKind) {
+    if (!mounted) return;
+    final now = DateTime.now();
+    final last = _lastPrintFailureAlertAt;
+    if (last != null && now.difference(last) < const Duration(minutes: 2)) {
+      return;
+    }
+    _lastPrintFailureAlertAt = now;
+
+    final l10n = L10n.of(context);
+    final (title, message, tone) = switch (jobKind) {
+      'kitchen' => (
+          l10n.posPrintFailedKitchenTitle,
+          l10n.posPrintFailedKitchenBody,
+          FeedbackTone.warning,
+        ),
+      'shift' => (
+          l10n.posPrintFailedShiftTitle,
+          l10n.posPrintFailedShiftBody,
+          FeedbackTone.error,
+        ),
+      _ => (
+          l10n.posPrintFailedReceiptTitle,
+          l10n.posPrintFailedReceiptBody,
+          FeedbackTone.error,
+        ),
+    };
+    _showPopupMessage(title: title, message: message, tone: tone);
   }
 
   Future<void> _registerManagerFingerprint() async {
@@ -4110,8 +4153,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
-    await SunmiReceiptService.printShiftSummary(ticket);
+    final printed = await SunmiReceiptService.printShiftSummary(ticket);
     if (!mounted) return;
+    if (!printed) {
+      _handlePrintFailed('shift');
+      return;
+    }
     _showPopupMessage(
       title: l10n.posMenuShiftSummaryPrintedTitle,
       message: l10n.posMenuShiftSummaryPrintedBody,
@@ -4597,8 +4644,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     icon: Icons.print_outlined,
                     title: l10n.commonPrint,
                     onTap: () async {
-                      await controller.printOnly();
-                      if (!mounted) return;
+                      final printed = await controller.printOnly();
+                      if (!mounted || !printed) return;
                       _showPopupMessage(
                         title: l10n.posNavReceiptPrintedTitle,
                         message: l10n.posNavReceiptPrintedBody,

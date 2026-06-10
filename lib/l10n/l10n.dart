@@ -3857,6 +3857,48 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Manager approval was not granted for the gift.'**
   String get posPayGiftDeniedMessage;
+
+  /// No description provided for @posPrintFailedReceiptTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Receipt Didn\'t Print'**
+  String get posPrintFailedReceiptTitle;
+
+  /// No description provided for @posPrintFailedReceiptBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the printer (paper / cover). The order is saved — reprint it from History.'**
+  String get posPrintFailedReceiptBody;
+
+  /// No description provided for @posPrintFailedKitchenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Kitchen Ticket Didn\'t Print'**
+  String get posPrintFailedKitchenTitle;
+
+  /// No description provided for @posPrintFailedKitchenBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The order is saved. Reprint the kitchen copy from History.'**
+  String get posPrintFailedKitchenBody;
+
+  /// No description provided for @posPrintFailedShiftTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Shift Summary Didn\'t Print'**
+  String get posPrintFailedShiftTitle;
+
+  /// No description provided for @posPrintFailedShiftBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the printer, then reprint from the staff menu.'**
+  String get posPrintFailedShiftBody;
+
+  /// No description provided for @shiftClosePrintFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The summary did not print — check the printer and try again.'**
+  String get shiftClosePrintFailed;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

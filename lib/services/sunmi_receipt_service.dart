@@ -1,11 +1,18 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:sunmi_printer_plus/sunmi_printer_plus.dart';
 import '../models/pos_models.dart';
 import 'kitchen_ticket.dart';
 import 'shift_summary.dart';
 
 class SunmiReceiptService {
+  /// Phase G4 — false once a print hit MissingPluginException (non-Sunmi /
+  /// dev hardware: there IS no printer). Callers use it to stay silent on
+  /// dev instead of alerting staff about a printer that never existed.
+  static bool printerPluginAvailable = true;
+
   static String money(double value) => '${value.toStringAsFixed(3)} OMR';
 
   static String row(String left, String right, {int width = 32}) {
@@ -34,7 +41,24 @@ class SunmiReceiptService {
   /// per-branch template from /device/config), its business name / CR / VAT /
   /// header + footer lines drive the printout; otherwise the built-in default
   /// header ("MITHQAL 2.0") is used.
-  static Future<void> printReceipt(OrderSnapshot order, {ReceiptTemplate? template}) async {
+  ///
+  /// Phase G4 — NEVER throws; returns false on a printer failure so callers
+  /// can alert staff (paper out / cover open) without ever blocking the sale.
+  /// MissingPluginException (dev hardware) is a silent false.
+  static Future<bool> printReceipt(OrderSnapshot order, {ReceiptTemplate? template}) async {
+    try {
+      await _printReceiptBody(order, template: template);
+      return true;
+    } on MissingPluginException {
+      printerPluginAvailable = false;
+      return false;
+    } catch (error) {
+      debugPrint('Receipt print failed: $error');
+      return false;
+    }
+  }
+
+  static Future<void> _printReceiptBody(OrderSnapshot order, {ReceiptTemplate? template}) async {
     final orderType = OrderTypeLabel.fromStorage(order.orderType).label;
     final t = (template != null && !template.isEmpty) ? template : null;
 
@@ -213,17 +237,25 @@ class SunmiReceiptService {
   /// Phase C1 — print a kitchen ticket (items + qty + add-ons + notes, no
   /// prices; blueprint §6.10). FAIL-SAFE by design: any printer error
   /// (including MissingPluginException on non-Sunmi dev hardware) is swallowed
-  /// so a kitchen print can never block order completion or holding.
-  static Future<void> printKitchenTicket(KitchenTicketData ticket) =>
+  /// so a kitchen print can never block order completion or holding. Returns
+  /// false on failure (Phase G4) so callers can alert staff.
+  static Future<bool> printKitchenTicket(KitchenTicketData ticket) =>
       _printLines(buildKitchenTicketLines(ticket));
 
   /// Phase C6 — print the shift-close Z-report (blueprint Phase 9 #88).
   /// Same fail-safe contract as the kitchen ticket.
-  static Future<void> printShiftSummary(ShiftSummaryTicket ticket) =>
+  static Future<bool> printShiftSummary(ShiftSummaryTicket ticket) =>
       _printLines(buildShiftSummaryLines(ticket));
 
+  /// Phase G3 — print arbitrary pre-built ticket lines (the mid-shift
+  /// X-report uses this). Same fail-safe contract.
+  static Future<bool> printTicketLines(List<KitchenTicketLine> lines) =>
+      _printLines(lines);
+
   /// Render pre-built styled lines, swallowing every printer failure.
-  static Future<void> _printLines(List<KitchenTicketLine> lines) async {
+  /// Returns false on failure; MissingPluginException additionally clears
+  /// [printerPluginAvailable] (dev hardware — stay silent).
+  static Future<bool> _printLines(List<KitchenTicketLine> lines) async {
     try {
       for (final line in lines) {
         final align =
@@ -241,8 +273,13 @@ class SunmiReceiptService {
       }
       await SunmiPrinter.lineWrap(3);
       await SunmiPrinter.cutPaper();
-    } catch (_) {
-      // Best-effort — never propagate printer failures.
+      return true;
+    } on MissingPluginException {
+      printerPluginAvailable = false;
+      return false;
+    } catch (error) {
+      debugPrint('Ticket print failed: $error');
+      return false;
     }
   }
 }

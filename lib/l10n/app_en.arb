@@ -1525,5 +1525,12 @@
   },
   "posPayGiftRegisterManagerMessage": "Register the manager fingerprint once before gifting an order.",
   "posPayGiftManagerApprovalMessage": "Place the manager fingerprint to gift this order.",
-  "posPayGiftDeniedMessage": "Manager approval was not granted for the gift."
+  "posPayGiftDeniedMessage": "Manager approval was not granted for the gift.",
+  "posPrintFailedReceiptTitle": "Receipt Didn't Print",
+  "posPrintFailedReceiptBody": "Check the printer (paper / cover). The order is saved — reprint it from History.",
+  "posPrintFailedKitchenTitle": "Kitchen Ticket Didn't Print",
+  "posPrintFailedKitchenBody": "The order is saved. Reprint the kitchen copy from History.",
+  "posPrintFailedShiftTitle": "Shift Summary Didn't Print",
+  "posPrintFailedShiftBody": "Check the printer, then reprint from the staff menu.",
+  "shiftClosePrintFailed": "The summary did not print — check the printer and try again."
 }

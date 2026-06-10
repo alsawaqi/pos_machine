@@ -50,6 +50,8 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
   }
 
   ShiftSummaryTicket? _ticket;
+  // Phase G4 — the auto/manual summary print failed (real hardware only).
+  bool _printFailed = false;
 
   Future<void> _close() async {
     final l10n = L10n.of(context);
@@ -96,8 +98,14 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
       // device's only record of the shift window.
       await session.saveLastShiftSummary(ticket.toJson());
       if (ref.read(settingsControllerProvider).printReceipts) {
-        // Auto-print once; fail-safe inside the service.
-        unawaited(SunmiReceiptService.printShiftSummary(ticket));
+        // Auto-print once; fail-safe inside the service. Phase G4 — a
+        // failure flips the inline banner on the result step (the close
+        // itself already settled server-side).
+        unawaited(SunmiReceiptService.printShiftSummary(ticket).then((ok) {
+          if (!ok && mounted && SunmiReceiptService.printerPluginAvailable) {
+            setState(() => _printFailed = true);
+          }
+        }));
       }
       if (mounted) {
         setState(() {
@@ -218,12 +226,27 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
         const Divider(color: Colors.white24, height: 28),
         _resultRow(l10n.shiftCloseVariance, _money(variance), color: color, bold: true),
         const SizedBox(height: 24),
+        if (_printFailed) ...[
+          Text(
+            l10n.shiftClosePrintFailed,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Color(0xFFE0A93B), fontSize: 13),
+          ),
+          const SizedBox(height: 10),
+        ],
         if (_ticket != null) ...[
           SizedBox(
             width: 260,
             height: 52,
             child: OutlinedButton.icon(
-              onPressed: () => SunmiReceiptService.printShiftSummary(_ticket!),
+              onPressed: () async {
+                final ok =
+                    await SunmiReceiptService.printShiftSummary(_ticket!);
+                if (mounted) {
+                  setState(() => _printFailed =
+                      !ok && SunmiReceiptService.printerPluginAvailable);
+                }
+              },
               icon: const Icon(Icons.print_outlined, color: Colors.white70),
               label: Text(
                 l10n.shiftClosePrintSummary,
