@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart' show Value;
+import 'package:sentry_flutter/sentry_flutter.dart' show SentryLevel;
 
+import '../core/sentry.dart';
 import '../models/pos_models.dart';
 import '../services/order_sync_payload.dart';
 import '../services/pos_api_service.dart';
@@ -61,6 +63,10 @@ class OrderSyncRepository {
       orderNumber: Value(snapshot.orderNumber),
       createdAt: Value(DateTime.now()),
     ));
+    sentryBreadcrumb('sync', 'order enqueued', data: {
+      'order': payload.orderUuid,
+      'events': payload.events.length,
+    });
 
     await flush();
   }
@@ -169,11 +175,24 @@ class OrderSyncRepository {
           await _db.markOutboxSynced(row.orderUuid, DateTime.now());
           synced++;
         } else {
-          await _db.markOutboxAttempt(
-            row.orderUuid,
-            row.attempts + 1,
-            _firstError(results),
-          );
+          final error = _firstError(results);
+          await _db.markOutboxAttempt(row.orderUuid, row.attempts + 1, error);
+          // Phase C5 — a server-side REJECTION is otherwise invisible (it
+          // only lands in a Drift column). Capture the FIRST failure per row
+          // only, so a retrying fleet can't flood the quota.
+          if (row.attempts == 0) {
+            sentryCaptureMessage(
+              'sync push rejected (${row.orderUuid}): $error',
+              level: SentryLevel.warning,
+            );
+          } else {
+            sentryBreadcrumb(
+              'sync',
+              'push retry rejected',
+              data: {'order': row.orderUuid, 'attempts': row.attempts + 1},
+              level: SentryLevel.warning,
+            );
+          }
         }
       } catch (e) {
         // Network / transport failure — no ACK at all. The same batch (same

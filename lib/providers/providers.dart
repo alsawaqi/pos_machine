@@ -4,8 +4,10 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:sentry_flutter/sentry_flutter.dart' show SentryLevel;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/sentry.dart';
 import '../data/config_repository.dart';
 import '../data/db/app_database.dart';
 import '../data/order_sync_repository.dart';
@@ -85,11 +87,20 @@ class SessionController extends Notifier<SessionState> {
   Future<void> saveStaff(StaffSessionData staff) async {
     await _svc.saveStaff(staff);
     state = _svc.snapshot();
+    // Phase C5 — crashes attribute to the signed-in cashier (no-op w/o DSN).
+    await setSentryStaff(
+      id: staff.id,
+      name: staff.name,
+      position: staff.position,
+    );
+    sentryBreadcrumb('auth', 'staff login');
   }
 
   Future<void> logoutStaff() async {
     await _svc.clearStaff();
     state = _svc.snapshot();
+    await setSentryStaff(id: null);
+    sentryBreadcrumb('auth', 'staff logout');
   }
 
   /// Record the device's open shift after the server ACKs shift.open — flips
@@ -108,6 +119,12 @@ class SessionController extends Notifier<SessionState> {
   Future<void> clearForRePair() async {
     await _svc.clearForRePair();
     state = _svc.snapshot();
+    await setSentryStaff(id: null);
+    sentryBreadcrumb(
+      'auth',
+      'device token rejected — dropped back to pairing',
+      level: SentryLevel.warning,
+    );
   }
 }
 
