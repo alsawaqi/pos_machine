@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
 import '../providers/providers.dart';
 import '../services/expense_restock_payload.dart';
@@ -46,20 +47,23 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
       .length;
 
   Future<void> _submit(List<IngredientRef> ingredients) async {
+    // Captured before any await so localized strings are safe to use after
+    // the async gaps below (paired with the existing mounted guards).
+    final l10n = L10n.of(context);
     final lines = <StockCountLineInput>[];
     for (final ing in ingredients) {
       final raw = _counted[ing.id]?.text.trim() ?? '';
       if (raw.isEmpty) continue;
       final value = double.tryParse(raw);
       if (value == null || value < 0) {
-        setState(() => _error = 'Invalid count for ${ing.name}.');
+        setState(() => _error = l10n.stockCountInvalidCount(ing.name));
         return;
       }
       if (ing.isPieceCounted &&
           !ing.allowFractionalPieces &&
           value != value.roundToDouble()) {
-        setState(() => _error =
-            '${ing.name} is counted in whole ${ing.countableLabel}s.');
+        setState(() => _error = l10n.stockCountWholeUnitsOnly(
+            ing.name, ing.countableLabel ?? ''));
         return;
       }
       lines.add(ing.isPieceCounted
@@ -67,7 +71,7 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
           : StockCountLineInput(ingredientId: ing.id, countedUnits: value));
     }
     if (lines.isEmpty) {
-      setState(() => _error = 'Enter at least one counted amount.');
+      setState(() => _error = l10n.stockCountEnterAtLeastOne);
       return;
     }
 
@@ -95,8 +99,8 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(variance == 0
-                ? 'Count submitted — everything matched the books.'
-                : 'Count submitted — $variance line(s) had a variance.'),
+                ? l10n.stockCountSubmittedNoVariance
+                : l10n.stockCountSubmittedWithVariance(variance)),
           ),
         );
         Navigator.of(context).pop();
@@ -105,8 +109,7 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
       if (mounted) {
-        setState(() =>
-            _error = 'Could not submit the count. Check your connection.');
+        setState(() => _error = l10n.stockCountSubmitFailed);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -115,6 +118,7 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final catalog = ref.watch(catalogProvider).asData?.value;
     final ingredients = catalog?.ingredients ?? const <IngredientRef>[];
     final balances = catalog?.ingredientBalances ?? const <int, double>{};
@@ -124,7 +128,7 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF102028),
         foregroundColor: Colors.white,
-        title: const Text('Day-end stock count'),
+        title: Text(l10n.stockCountTitle),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: _busy ? null : () => Navigator.of(context).pop(),
@@ -139,11 +143,10 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
               : Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 4),
+                      padding:
+                          const EdgeInsetsDirectional.fromSTEB(24, 16, 24, 4),
                       child: Text(
-                        'Count what is physically on the shelf. Leave a row '
-                        'blank to skip it. Shortfalls are recorded as waste, '
-                        'overages as adjustments.',
+                        l10n.stockCountInstructions,
                         style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 13),
                       ),
                     ),
@@ -166,6 +169,7 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
   }
 
   Widget _row(IngredientRef ing, double? balance) {
+    final l10n = L10n.of(context);
     final pieceLabel = ing.countableLabel;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -185,8 +189,10 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
                 const SizedBox(height: 2),
                 Text(
                   pieceLabel != null
-                      ? 'Count in ${pieceLabel}s · on book: ${_fmt(balance)} ${ing.unit ?? ''}'
-                      : 'On book: ${_fmt(balance)} ${ing.unit ?? ''}',
+                      ? l10n.stockCountRowPieceHint(
+                          pieceLabel, _fmt(balance), ing.unit ?? '')
+                      : l10n.stockCountRowOnBook(
+                          _fmt(balance), ing.unit ?? ''),
                   style: TextStyle(
                     color: pieceLabel != null
                         ? const Color(0xFFE8B45A)
@@ -212,7 +218,7 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
               textAlign: TextAlign.center,
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
-                hintText: pieceLabel ?? (ing.unit ?? 'qty'),
+                hintText: pieceLabel ?? (ing.unit ?? l10n.stockCountQtyHint),
                 hintStyle: const TextStyle(color: Colors.white24),
                 filled: true,
                 fillColor: const Color(0xFF0E2129),
@@ -230,8 +236,9 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
   }
 
   Widget _footer(List<IngredientRef> ingredients) {
+    final l10n = L10n.of(context);
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+      padding: const EdgeInsetsDirectional.fromSTEB(24, 12, 24, 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -241,7 +248,7 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
             maxLength: 1000,
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
-              labelText: 'Note (optional)',
+              labelText: l10n.stockCountNoteLabel,
               labelStyle: const TextStyle(color: Colors.white54),
               counterText: '',
               filled: true,
@@ -274,7 +281,7 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
                       width: 22,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Text('Submit count ($_filledCount)'),
+                  : Text(l10n.stockCountSubmitButton(_filledCount)),
             ),
           ),
         ],
@@ -283,17 +290,18 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
   }
 
   Widget _emptyState() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 48),
+    final l10n = L10n.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.checklist_rounded, color: Colors.white38, size: 48),
-          SizedBox(height: 12),
+          const Icon(Icons.checklist_rounded, color: Colors.white38, size: 48),
+          const SizedBox(height: 12),
           Text(
-            'No ingredients available yet.\nSync the device to load the catalogue.',
+            l10n.stockCountEmptyState,
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white54, fontSize: 14),
+            style: const TextStyle(color: Colors.white54, fontSize: 14),
           ),
         ],
       ),

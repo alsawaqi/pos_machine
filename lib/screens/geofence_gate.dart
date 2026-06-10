@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/geofence_service.dart';
 
@@ -29,23 +30,24 @@ class _Lock extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = L10n.of(context);
     final (String title, String message, IconData icon) = switch (status.state) {
       FenceState.locating => (
-          'Checking location…',
-          'Acquiring a GPS fix for this branch.',
+          l10n.geofenceCheckingLocationTitle,
+          l10n.geofenceCheckingLocationMessage,
           Icons.my_location,
         ),
       FenceState.noPermission => (
-          'Location required',
-          'Enable location services and grant permission to use the POS.',
+          l10n.geofenceLocationRequiredTitle,
+          l10n.geofenceLocationRequiredMessage,
           Icons.location_disabled,
         ),
       FenceState.outside => (
-          'Outside the store area',
-          _distanceText(status),
+          l10n.geofenceOutsideTitle,
+          _distanceText(l10n, status),
           Icons.wrong_location,
         ),
-      _ => ('Locked', '', Icons.lock_outline),
+      _ => (l10n.geofenceLockedTitle, '', Icons.lock_outline),
     };
 
     return Scaffold(
@@ -80,7 +82,7 @@ class _Lock extends ConsumerWidget {
               OutlinedButton.icon(
                 onPressed: () => ref.invalidate(geofenceProvider),
                 icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
+                label: Text(l10n.commonRetry),
                 style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
               ),
           ],
@@ -89,12 +91,13 @@ class _Lock extends ConsumerWidget {
     );
   }
 
-  String _distanceText(GeofenceStatus s) {
+  String _distanceText(L10n l10n, GeofenceStatus s) {
     if (s.distanceM == null) {
-      return 'This device is outside the permitted branch area.';
+      return l10n.geofenceOutsideNoDistanceMessage;
     }
-    return 'You are about ${s.distanceM!.round()} m from the branch '
-        '(allowed within ${s.radiusM.round()} m). Move closer, or tap Retry to '
-        'pull the latest branch location/radius set by the admin.';
+    return l10n.geofenceOutsideDistanceMessage(
+      s.distanceM!.round(),
+      s.radiusM.round(),
+    );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
 import '../providers/providers.dart';
 import '../services/expense_restock_payload.dart';
@@ -40,19 +41,20 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
         return i.unit == null || i.unit!.isEmpty ? i.name : '${i.name} (${i.unit})';
       }
     }
-    return 'Ingredient #$id';
+    return L10n.of(context).restockIngredientFallback(id);
   }
 
   void _addLine() {
     if (_busy) return;
+    final l10n = L10n.of(context);
     final id = _selectedId;
     final qty = double.tryParse(_qtyController.text.trim()) ?? 0;
     if (id == null) {
-      setState(() => _error = 'Pick an ingredient.');
+      setState(() => _error = l10n.restockPickIngredientError);
       return;
     }
     if (qty <= 0) {
-      setState(() => _error = 'Enter a quantity greater than zero.');
+      setState(() => _error = l10n.restockQuantityError);
       return;
     }
     setState(() {
@@ -79,8 +81,9 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
   }
 
   Future<void> _submit() async {
+    final l10n = L10n.of(context);
     if (_lines.isEmpty) {
-      setState(() => _error = 'Add at least one ingredient.');
+      setState(() => _error = l10n.restockAddAtLeastOneError);
       return;
     }
     final note = _noteController.text.trim();
@@ -95,7 +98,7 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Restock request submitted.')),
+          SnackBar(content: Text(l10n.restockSubmittedSnack)),
         );
         Navigator.of(context).pop();
       }
@@ -103,8 +106,7 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
       if (mounted) {
-        setState(() =>
-            _error = 'Could not submit the request. Check your connection.');
+        setState(() => _error = l10n.restockSubmitFailedError);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -113,6 +115,7 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final catalog = ref.watch(catalogProvider).asData?.value;
     final ingredients = catalog?.ingredients ?? const <IngredientRef>[];
 
@@ -121,7 +124,7 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF102028),
         foregroundColor: Colors.white,
-        title: const Text('Request restock'),
+        title: Text(l10n.restockTitle),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: _busy ? null : () => Navigator.of(context).pop(),
@@ -139,9 +142,9 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Add ingredient',
-                          style:
-                              TextStyle(color: Colors.white54, fontSize: 13)),
+                      Text(l10n.restockAddIngredientLabel,
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 13)),
                       const SizedBox(height: 8),
                       _ingredientPicker(ingredients),
                       const SizedBox(height: 16),
@@ -155,7 +158,7 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
                         maxLength: 1000,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: 'Note (optional)',
+                          labelText: l10n.restockNoteLabel,
                           labelStyle: const TextStyle(color: Colors.white54),
                           counterText: '',
                           filled: true,
@@ -189,7 +192,7 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
                                     child: CircularProgressIndicator(
                                         strokeWidth: 2),
                                   )
-                                : const Text('Submit request'),
+                                : Text(l10n.restockSubmitButton),
                           ),
                         ),
                       ),
@@ -202,16 +205,18 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
   }
 
   Widget _emptyState() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 48),
+    final l10n = L10n.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
       child: Column(
         children: [
-          Icon(Icons.inventory_2_outlined, color: Colors.white38, size: 48),
-          SizedBox(height: 12),
+          const Icon(Icons.inventory_2_outlined,
+              color: Colors.white38, size: 48),
+          const SizedBox(height: 12),
           Text(
-            'No ingredients available yet.\nSync the device to load the catalogue.',
+            l10n.restockEmptyState,
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white54, fontSize: 14),
+            style: const TextStyle(color: Colors.white54, fontSize: 14),
           ),
         ],
       ),
@@ -219,6 +224,7 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
   }
 
   Widget _ingredientPicker(List<IngredientRef> ingredients) {
+    final l10n = L10n.of(context);
     return Row(
       children: [
         Expanded(
@@ -236,8 +242,8 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
                 dropdownColor: const Color(0xFF16313B),
                 style: const TextStyle(color: Colors.white),
                 iconEnabledColor: Colors.white54,
-                hint: const Text('Ingredient',
-                    style: TextStyle(color: Colors.white54)),
+                hint: Text(l10n.restockIngredientHint,
+                    style: const TextStyle(color: Colors.white54)),
                 items: ingredients
                     .map((i) => DropdownMenuItem<int>(
                           value: i.id,
@@ -269,7 +275,7 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
             style: const TextStyle(color: Colors.white),
             textAlign: TextAlign.center,
             decoration: InputDecoration(
-              hintText: 'Qty',
+              hintText: l10n.restockQtyHint,
               hintStyle: const TextStyle(color: Colors.white38),
               filled: true,
               fillColor: const Color(0xFF16313B),

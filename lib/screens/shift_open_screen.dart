@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/order_sync_payload.dart' show uuidV4;
 import '../services/session_service.dart';
@@ -54,8 +55,10 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
       // offline / transient — fall through.
     }
     if (!silent && mounted) {
-      setState(() => _error =
-          'This device already has an open shift, but it could not be loaded. Check your connection and try again.');
+      // Safe: inside the file's mounted guard. (L10n cannot be captured before
+      // the await here — this method also runs from initState via
+      // _probeExistingShift, where inherited lookups are not allowed.)
+      setState(() => _error = L10n.of(context).shiftOpenErrorAdoptFailed);
     }
     return false;
   }
@@ -77,9 +80,11 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
   }
 
   Future<void> _open() async {
+    // Captured before the first await: needed again in the catch branch below.
+    final l10n = L10n.of(context);
     final staff = ref.read(sessionControllerProvider).staff;
     if (staff == null) {
-      setState(() => _error = 'No staff session. Please log in again.');
+      setState(() => _error = l10n.shiftOpenErrorNoStaffSession);
       return;
     }
     setState(() {
@@ -110,7 +115,7 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
       }
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Could not open the shift. Check your connection.');
+        setState(() => _error = l10n.shiftOpenErrorOpenFailed);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -119,18 +124,19 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     if (_checking) {
-      return const Scaffold(
-        backgroundColor: Color(0xFF102028),
+      return Scaffold(
+        backgroundColor: const Color(0xFF102028),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
               Text(
-                'Checking for an open shift…',
-                style: TextStyle(color: Colors.white60, fontSize: 14),
+                l10n.shiftOpenCheckingExisting,
+                style: const TextStyle(color: Colors.white60, fontSize: 14),
               ),
             ],
           ),
@@ -148,9 +154,9 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Open shift',
-                  style: TextStyle(
+                Text(
+                  l10n.shiftOpenTitle,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
@@ -159,8 +165,8 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
                 const SizedBox(height: 6),
                 Text(
                   staffName.isEmpty
-                      ? 'Count the opening cash float.'
-                      : 'Welcome $staffName. Count the opening cash float.',
+                      ? l10n.shiftOpenSubtitle
+                      : l10n.shiftOpenWelcomeSubtitle(staffName),
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white60, fontSize: 14),
                 ),
@@ -174,9 +180,9 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
                   ),
                   child: Column(
                     children: [
-                      const Text(
-                        'Opening cash (OMR)',
-                        style: TextStyle(color: Colors.white54, fontSize: 13),
+                      Text(
+                        l10n.shiftOpenOpeningCashLabel,
+                        style: const TextStyle(color: Colors.white54, fontSize: 13),
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -212,7 +218,7 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
                             width: 22,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Open shift'),
+                        : Text(l10n.shiftOpenSubmitButton),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -222,9 +228,9 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
                       : () => ref
                           .read(sessionControllerProvider.notifier)
                           .logoutStaff(),
-                  child: const Text(
-                    'Log out',
-                    style: TextStyle(color: Colors.white54),
+                  child: Text(
+                    l10n.commonLogout,
+                    style: const TextStyle(color: Colors.white54),
                   ),
                 ),
               ],

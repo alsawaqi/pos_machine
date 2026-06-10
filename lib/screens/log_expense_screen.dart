@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/expense_restock_payload.dart';
 import '../services/expense_restock_service.dart';
@@ -25,8 +26,26 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
 
   static String _money(int baisas) => (baisas / 1000).toStringAsFixed(3);
 
-  static String _label(String category) =>
-      category[0].toUpperCase() + category.substring(1);
+  /// Localized display name for the const fallback category KEYS (shown only
+  /// offline before the first config sync — config-driven categories carry
+  /// their own server-provided name). The keys themselves stay untranslated:
+  /// they are the API contract. Unknown keys fall back to capitalization.
+  static String _fallbackCategoryName(L10n l10n, String category) {
+    switch (category) {
+      case 'utilities':
+        return l10n.expenseCategoryUtilities;
+      case 'supplies':
+        return l10n.expenseCategorySupplies;
+      case 'maintenance':
+        return l10n.expenseCategoryMaintenance;
+      case 'salaries':
+        return l10n.expenseCategorySalaries;
+      case 'other':
+        return l10n.expenseCategoryOther;
+      default:
+        return category[0].toUpperCase() + category.substring(1);
+    }
+  }
 
   @override
   void dispose() {
@@ -50,8 +69,10 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
   }
 
   Future<void> _submit() async {
+    // Captured before the first await; reused in the post-await handlers below.
+    final l10n = L10n.of(context);
     if (_amountBaisas <= 0) {
-      setState(() => _error = 'Enter an amount greater than zero.');
+      setState(() => _error = l10n.expenseAmountGreaterThanZeroError);
       return;
     }
     final staffId = ref.read(sessionControllerProvider).staff?.id;
@@ -69,7 +90,7 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Expense recorded.')),
+          SnackBar(content: Text(l10n.expenseRecordedMessage)),
         );
         Navigator.of(context).pop();
       }
@@ -77,8 +98,7 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
       if (mounted) {
-        setState(() =>
-            _error = 'Could not log the expense. Check your connection.');
+        setState(() => _error = l10n.expenseSubmitFailedError);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -87,6 +107,7 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     // Prefer the company's config-driven expense categories (value = key, label
     // = name); fall back to the hardcoded const keys when none are cached
     // (offline before the first config sync). Sourced from the same Drift-backed
@@ -96,7 +117,9 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
             const <({String key, String name})>[];
     final categoryEntries = configCategories.isNotEmpty
         ? configCategories
-        : expenseCategories.map((k) => (key: k, name: _label(k))).toList();
+        : expenseCategories
+            .map((k) => (key: k, name: _fallbackCategoryName(l10n, k)))
+            .toList();
 
     // Keep the selection valid against the available set (the field initialiser
     // seeds the const first key, which may not exist among config categories).
@@ -110,7 +133,7 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF102028),
         foregroundColor: Colors.white,
-        title: const Text('Log expense'),
+        title: Text(l10n.expenseTitle),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: _busy ? null : () => Navigator.of(context).pop(),
@@ -126,8 +149,9 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Category',
-                    style: TextStyle(color: Colors.white54, fontSize: 13)),
+                Text(l10n.expenseCategoryLabel,
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 13)),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
@@ -152,7 +176,7 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
                   }).toList(),
                 ),
                 const SizedBox(height: 18),
-                _amountCard('Amount (OMR)', _money(_amountBaisas)),
+                _amountCard(l10n.expenseAmountOmrLabel, _money(_amountBaisas)),
                 const SizedBox(height: 14),
                 TextField(
                   controller: _noteController,
@@ -160,7 +184,7 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
                   maxLength: 1000,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
-                    labelText: 'Note (optional)',
+                    labelText: l10n.expenseNoteOptionalLabel,
                     labelStyle: const TextStyle(color: Colors.white54),
                     counterText: '',
                     filled: true,
@@ -195,7 +219,7 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
                               width: 22,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('Record expense'),
+                          : Text(l10n.expenseRecordButton),
                     ),
                   ),
                 ),

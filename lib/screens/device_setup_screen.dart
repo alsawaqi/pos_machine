@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
 import 'qr_scanner_screen.dart';
@@ -30,9 +31,10 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
   }
 
   Future<void> _activate() async {
+    final l10n = L10n.of(context);
     final code = _codeController.text.trim();
     if (code.isEmpty) {
-      setState(() => _error = 'Enter the activation code from the admin portal.');
+      setState(() => _error = l10n.deviceSetupErrorEnterCode);
       return;
     }
     setState(() {
@@ -54,21 +56,22 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
-      if (mounted) setState(() => _error = 'Device setup failed. Please try again.');
+      if (mounted) setState(() => _error = l10n.deviceSetupErrorFailed);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _scan() async {
+    final l10n = L10n.of(context);
     // Ask for camera access up front so we don't open a black scanner screen
     // if it's denied.
     final status = await Permission.camera.request();
     if (!mounted) return;
     if (!status.isGranted) {
       setState(() => _error = status.isPermanentlyDenied
-          ? 'Camera access is blocked. Enable it in Settings to scan the code (or enter it manually).'
-          : 'Camera permission is needed to scan the QR code (or enter it manually).');
+          ? l10n.deviceSetupErrorCameraBlocked
+          : l10n.deviceSetupErrorCameraPermission);
       if (status.isPermanentlyDenied) {
         await openAppSettings();
       }
@@ -85,6 +88,7 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFF102028),
       appBar: AppBar(
@@ -93,7 +97,7 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white54),
-            tooltip: 'Settings',
+            tooltip: l10n.deviceSetupSettingsTooltip,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const SettingsScreen()),
             ),
@@ -111,20 +115,20 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
               children: [
                 const Icon(Icons.point_of_sale, size: 64, color: Colors.white70),
                 const SizedBox(height: 16),
-                const Text(
-                  'Set up this device',
+                Text(
+                  l10n.deviceSetupTitle,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Scan or enter the activation code generated for this device in the admin portal. You only do this once.',
+                Text(
+                  l10n.deviceSetupSubtitle,
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white60, fontSize: 14),
+                  style: const TextStyle(color: Colors.white60, fontSize: 14),
                 ),
                 const SizedBox(height: 28),
                 SizedBox(
@@ -132,18 +136,18 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
                   child: FilledButton.icon(
                     onPressed: _busy ? null : _scan,
                     icon: const Icon(Icons.qr_code_scanner),
-                    label: const Text('Scan QR code'),
+                    label: Text(l10n.deviceSetupScanQrButton),
                   ),
                 ),
                 const SizedBox(height: 20),
                 Row(
                   children: [
                     const Expanded(child: Divider(color: Colors.white24)),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: Text(
-                        'or enter it manually',
-                        style: TextStyle(color: Colors.white38, fontSize: 12),
+                        l10n.deviceSetupOrEnterManually,
+                        style: const TextStyle(color: Colors.white38, fontSize: 12),
                       ),
                     ),
                     const Expanded(child: Divider(color: Colors.white24)),
@@ -158,7 +162,7 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
                   enableSuggestions: false,
                   onSubmitted: (_) => _busy ? null : _activate(),
                   decoration: InputDecoration(
-                    labelText: 'Activation code',
+                    labelText: l10n.deviceSetupActivationCodeLabel,
                     labelStyle: const TextStyle(color: Colors.white60),
                     filled: true,
                     fillColor: const Color(0xFF1B3540),
@@ -194,7 +198,7 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
                             width: 24,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Continue'),
+                        : Text(l10n.commonContinue),
                   ),
                 ),
               ],

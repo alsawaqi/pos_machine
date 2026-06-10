@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../l10n/l10n.dart';
+
 /// Full-screen QR scanner for the device activation code. Pops with the scanned
 /// string, or null if the user backs out / can't scan.
 ///
@@ -52,15 +54,16 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: const Color(0xFF102028),
         foregroundColor: Colors.white,
-        title: const Text('Scan activation code'),
+        title: Text(l10n.qrScannerTitle),
         actions: [
           IconButton(
-            tooltip: 'Switch camera',
+            tooltip: l10n.qrScannerSwitchCameraTooltip,
             icon: const Icon(Icons.cameraswitch_outlined),
             onPressed: _switchCamera,
           ),
@@ -87,14 +90,14 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
               ),
             ),
           ),
-          const Positioned(
+          Positioned(
             bottom: 48,
             left: 24,
             right: 24,
             child: Text(
-              "Point the camera at the activation QR code. If it doesn't open, tap the switch-camera icon, or go back and enter the code manually.",
+              l10n.qrScannerHint,
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
             ),
           ),
         ],
@@ -111,10 +114,11 @@ class _ScannerError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final detail = error.errorDetails?.message;
     final message = (detail != null && detail.isNotEmpty)
         ? detail
-        : 'Could not start the camera (${error.errorCode.name}).';
+        : l10n.qrScannerCameraStartError(error.errorCode.name);
     return ColoredBox(
       color: Colors.black,
       child: Center(
@@ -131,10 +135,10 @@ class _ScannerError extends StatelessWidget {
                 style: const TextStyle(color: Colors.white70, fontSize: 15),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Try the switch-camera icon above, use the device scanner, or enter the code manually.',
+              Text(
+                l10n.qrScannerErrorHelp,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white38, fontSize: 13),
+                style: const TextStyle(color: Colors.white38, fontSize: 13),
               ),
               const SizedBox(height: 24),
               OutlinedButton(
@@ -143,7 +147,7 @@ class _ScannerError extends StatelessWidget {
                   foregroundColor: Colors.white,
                   side: const BorderSide(color: Colors.white24),
                 ),
-                child: const Text('Enter the code manually'),
+                child: Text(l10n.qrScannerEnterManuallyButton),
               ),
             ],
           ),

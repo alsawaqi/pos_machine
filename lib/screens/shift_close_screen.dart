@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/local_order_storage_service.dart';
 import '../services/shift_payload.dart';
@@ -51,9 +52,10 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
   ShiftSummaryTicket? _ticket;
 
   Future<void> _close() async {
+    final l10n = L10n.of(context);
     final shift = ref.read(sessionControllerProvider).openShift;
     if (shift == null) {
-      setState(() => _error = 'No open shift on this device.');
+      setState(() => _error = l10n.shiftCloseNoOpenShift);
       return;
     }
     setState(() {
@@ -107,7 +109,7 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Could not close the shift. Check your connection.');
+        setState(() => _error = l10n.shiftCloseFailed);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -121,13 +123,14 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final shift = ref.watch(sessionControllerProvider).openShift;
     return Scaffold(
       backgroundColor: const Color(0xFF102028),
       appBar: AppBar(
         backgroundColor: const Color(0xFF102028),
         foregroundColor: Colors.white,
-        title: const Text('Close shift'),
+        title: Text(l10n.shiftCloseTitle),
         leading: _result == null
             ? IconButton(
                 icon: const Icon(Icons.close),
@@ -151,13 +154,14 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
   }
 
   Widget _buildCountStep(int openingBaisas) {
+    final l10n = L10n.of(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _amountCard('Opening float (OMR)', _money(openingBaisas),
+        _amountCard(l10n.shiftCloseOpeningFloatLabel, _money(openingBaisas),
             muted: true),
         const SizedBox(height: 12),
-        _amountCard('Counted drawer cash (OMR)', _money(_closingBaisas)),
+        _amountCard(l10n.shiftCloseCountedDrawerCashLabel, _money(_closingBaisas)),
         if (_error != null) ...[
           const SizedBox(height: 14),
           Text(
@@ -180,7 +184,7 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
                     width: 22,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Close shift'),
+                : Text(l10n.shiftCloseSubmitButton),
           ),
         ),
       ],
@@ -188,12 +192,13 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
   }
 
   Widget _buildResultStep(ShiftCloseResult result) {
+    final l10n = L10n.of(context);
     final variance = result.varianceBaisas;
     final (label, color) = variance == 0
-        ? ('Drawer balanced', const Color(0xFF35C28B))
+        ? (l10n.shiftCloseDrawerBalanced, const Color(0xFF35C28B))
         : variance < 0
-            ? ('Drawer short', const Color(0xFFFF6B6B))
-            : ('Drawer over', const Color(0xFFE0A93B));
+            ? (l10n.shiftCloseDrawerShort, const Color(0xFFFF6B6B))
+            : (l10n.shiftCloseDrawerOver, const Color(0xFFE0A93B));
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -208,10 +213,10 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
           style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 20),
-        _resultRow('Expected cash', _money(result.expectedCashBaisas)),
-        _resultRow('Counted cash', _money(_closingBaisas)),
+        _resultRow(l10n.shiftCloseExpectedCash, _money(result.expectedCashBaisas)),
+        _resultRow(l10n.shiftCloseCountedCash, _money(_closingBaisas)),
         const Divider(color: Colors.white24, height: 28),
-        _resultRow('Variance', _money(variance), color: color, bold: true),
+        _resultRow(l10n.shiftCloseVariance, _money(variance), color: color, bold: true),
         const SizedBox(height: 24),
         if (_ticket != null) ...[
           SizedBox(
@@ -220,9 +225,9 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
             child: OutlinedButton.icon(
               onPressed: () => SunmiReceiptService.printShiftSummary(_ticket!),
               icon: const Icon(Icons.print_outlined, color: Colors.white70),
-              label: const Text(
-                'Print summary',
-                style: TextStyle(color: Colors.white),
+              label: Text(
+                l10n.shiftClosePrintSummary,
+                style: const TextStyle(color: Colors.white),
               ),
             ),
           ),
@@ -233,7 +238,7 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
           height: 52,
           child: FilledButton(
             onPressed: _done,
-            child: const Text('Done'),
+            child: Text(l10n.commonDone),
           ),
         ),
       ],

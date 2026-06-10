@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
 
@@ -37,8 +38,11 @@ class _StaffPinLoginScreenState extends ConsumerState<StaffPinLoginScreen> {
   }
 
   Future<void> _submit() async {
+    // Captured before the first await so the catch blocks below never touch
+    // the context across an async gap.
+    final l10n = L10n.of(context);
     if (_pin.length < _minLen) {
-      setState(() => _error = 'Enter your $_minLen–$_maxLen digit PIN.');
+      setState(() => _error = l10n.pinLoginPinLengthError(_minLen, _maxLen));
       return;
     }
     setState(() {
@@ -76,7 +80,7 @@ class _StaffPinLoginScreenState extends ConsumerState<StaffPinLoginScreen> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          _error = 'Login failed. Please try again.';
+          _error = l10n.pinLoginFailedError;
           _pin = '';
         });
       }
@@ -112,6 +116,7 @@ class _StaffPinLoginScreenState extends ConsumerState<StaffPinLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFF102028),
       body: Center(
@@ -122,18 +127,18 @@ class _StaffPinLoginScreenState extends ConsumerState<StaffPinLoginScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Staff login',
-                  style: TextStyle(
+                Text(
+                  l10n.pinLoginTitle,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Text(
-                  'Enter your PIN to load this branch.',
-                  style: TextStyle(color: Colors.white60, fontSize: 14),
+                Text(
+                  l10n.pinLoginSubtitle,
+                  style: const TextStyle(color: Colors.white60, fontSize: 14),
                 ),
                 const SizedBox(height: 24),
                 _dots(),
@@ -158,7 +163,7 @@ class _StaffPinLoginScreenState extends ConsumerState<StaffPinLoginScreen> {
                             width: 22,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Login'),
+                        : Text(l10n.pinLoginButton),
                   ),
                 ),
               ],
@@ -189,37 +194,42 @@ class _StaffPinLoginScreenState extends ConsumerState<StaffPinLoginScreen> {
 
   Widget _keypad() {
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '<'];
+    // Numeric keypads keep the 1-2-3 order in every locale: pin the grid to
+    // LTR so it does not mirror when the app runs RTL (Arabic).
     return SizedBox(
       width: 300,
-      child: GridView.count(
-        shrinkWrap: true,
-        crossAxisCount: 3,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        physics: const NeverScrollableScrollPhysics(),
-        children: keys.map((k) {
-          if (k.isEmpty) return const SizedBox.shrink();
-          return Material(
-            color: const Color(0xFF1B3540),
-            borderRadius: BorderRadius.circular(16),
-            child: InkWell(
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: GridView.count(
+          shrinkWrap: true,
+          crossAxisCount: 3,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          physics: const NeverScrollableScrollPhysics(),
+          children: keys.map((k) {
+            if (k.isEmpty) return const SizedBox.shrink();
+            return Material(
+              color: const Color(0xFF1B3540),
               borderRadius: BorderRadius.circular(16),
-              onTap: () => k == '<' ? _backspace() : _tap(k),
-              child: Center(
-                child: k == '<'
-                    ? const Icon(Icons.backspace_outlined, color: Colors.white70)
-                    : Text(
-                        k,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w600,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => k == '<' ? _backspace() : _tap(k),
+                child: Center(
+                  child: k == '<'
+                      ? const Icon(Icons.backspace_outlined, color: Colors.white70)
+                      : Text(
+                          k,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
+                ),
               ),
-            ),
-          );
-        }).toList(),
+            );
+          }).toList(),
+        ),
       ),
     );
   }

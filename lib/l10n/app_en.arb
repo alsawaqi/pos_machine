@@ -1,6 +1,5 @@
 {
   "@@locale": "en",
-
   "commonCancel": "Cancel",
   "commonDone": "Done",
   "commonClose": "Close",
@@ -11,21 +10,44 @@
   "commonBack": "Back",
   "commonContinue": "Continue",
   "commonLogout": "Log out",
-
   "settingsTitle": "Settings",
   "settingsSectionServer": "Server",
   "settingsServerAddress": "Server address",
   "settingsServerHint": "e.g. 192.168.1.50:8088",
   "settingsUsingDefault": "Using the built-in default: {url}",
-  "@settingsUsingDefault": { "placeholders": { "url": { "type": "String" } } },
+  "@settingsUsingDefault": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
   "settingsActive": "Active: {url}",
-  "@settingsActive": { "placeholders": { "url": { "type": "String" } } },
+  "@settingsActive": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
   "settingsTestConnection": "Test connection",
   "settingsSaved": "Settings saved.",
   "settingsServerReachable": "Server reachable at {url}",
-  "@settingsServerReachable": { "placeholders": { "url": { "type": "String" } } },
+  "@settingsServerReachable": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
   "settingsServerUnreachable": "Could not reach {url}",
-  "@settingsServerUnreachable": { "placeholders": { "url": { "type": "String" } } },
+  "@settingsServerUnreachable": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
   "settingsResetDefault": "Reset to default",
   "settingsSectionReceipts": "Receipts",
   "settingsPrintReceipts": "Print receipts",
@@ -35,5 +57,205 @@
   "settingsSectionLanguage": "Language",
   "settingsLanguageHint": "Applies immediately across the app.",
   "languageEnglish": "English",
-  "languageArabic": "العربية"
+  "languageArabic": "العربية",
+  "pinLoginTitle": "Staff login",
+  "pinLoginSubtitle": "Enter your PIN to load this branch.",
+  "pinLoginButton": "Login",
+  "pinLoginPinLengthError": "Enter your {min}–{max} digit PIN.",
+  "@pinLoginPinLengthError": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "pinLoginFailedError": "Login failed. Please try again.",
+  "shiftOpenTitle": "Open shift",
+  "shiftOpenSubtitle": "Count the opening cash float.",
+  "shiftOpenWelcomeSubtitle": "Welcome {staffName}. Count the opening cash float.",
+  "@shiftOpenWelcomeSubtitle": {
+    "placeholders": {
+      "staffName": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftOpenCheckingExisting": "Checking for an open shift…",
+  "shiftOpenOpeningCashLabel": "Opening cash (OMR)",
+  "shiftOpenSubmitButton": "Open shift",
+  "shiftOpenErrorNoStaffSession": "No staff session. Please log in again.",
+  "shiftOpenErrorOpenFailed": "Could not open the shift. Check your connection.",
+  "shiftOpenErrorAdoptFailed": "This device already has an open shift, but it could not be loaded. Check your connection and try again.",
+  "shiftCloseTitle": "Close shift",
+  "shiftCloseSubmitButton": "Close shift",
+  "shiftCloseNoOpenShift": "No open shift on this device.",
+  "shiftCloseFailed": "Could not close the shift. Check your connection.",
+  "shiftCloseOpeningFloatLabel": "Opening float (OMR)",
+  "shiftCloseCountedDrawerCashLabel": "Counted drawer cash (OMR)",
+  "shiftCloseDrawerBalanced": "Drawer balanced",
+  "shiftCloseDrawerShort": "Drawer short",
+  "shiftCloseDrawerOver": "Drawer over",
+  "shiftCloseExpectedCash": "Expected cash",
+  "shiftCloseCountedCash": "Counted cash",
+  "shiftCloseVariance": "Variance",
+  "shiftClosePrintSummary": "Print summary",
+  "deviceSetupTitle": "Set up this device",
+  "deviceSetupSubtitle": "Scan or enter the activation code generated for this device in the admin portal. You only do this once.",
+  "deviceSetupScanQrButton": "Scan QR code",
+  "deviceSetupOrEnterManually": "or enter it manually",
+  "deviceSetupActivationCodeLabel": "Activation code",
+  "deviceSetupSettingsTooltip": "Settings",
+  "deviceSetupErrorEnterCode": "Enter the activation code from the admin portal.",
+  "deviceSetupErrorFailed": "Device setup failed. Please try again.",
+  "deviceSetupErrorCameraBlocked": "Camera access is blocked. Enable it in Settings to scan the code (or enter it manually).",
+  "deviceSetupErrorCameraPermission": "Camera permission is needed to scan the QR code (or enter it manually).",
+  "terminalSetupTitle": "Connect This POS Terminal",
+  "terminalSetupSubtitle": "Enter the terminal ID before the staff POS is unlocked. This value is saved locally and used for Payment Terminaly payment requests.",
+  "terminalSetupTerminalIdLabel": "Terminal ID",
+  "terminalSetupTerminalIdHint": "Enter the payment terminal ID",
+  "terminalSetupTerminalIdRequired": "Please enter the terminal ID.",
+  "terminalSetupSaveFailed": "Failed to save the terminal ID: {error}",
+  "@terminalSetupSaveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "terminalSetupContinueButton": "Continue To POS",
+  "qrScannerTitle": "Scan activation code",
+  "qrScannerSwitchCameraTooltip": "Switch camera",
+  "qrScannerHint": "Point the camera at the activation QR code. If it doesn't open, tap the switch-camera icon, or go back and enter the code manually.",
+  "qrScannerCameraStartError": "Could not start the camera ({code}).",
+  "@qrScannerCameraStartError": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "qrScannerErrorHelp": "Try the switch-camera icon above, use the device scanner, or enter the code manually.",
+  "qrScannerEnterManuallyButton": "Enter the code manually",
+  "geofenceCheckingLocationTitle": "Checking location…",
+  "geofenceCheckingLocationMessage": "Acquiring a GPS fix for this branch.",
+  "geofenceLocationRequiredTitle": "Location required",
+  "geofenceLocationRequiredMessage": "Enable location services and grant permission to use the POS.",
+  "geofenceOutsideTitle": "Outside the store area",
+  "geofenceLockedTitle": "Locked",
+  "geofenceOutsideNoDistanceMessage": "This device is outside the permitted branch area.",
+  "geofenceOutsideDistanceMessage": "You are about {distance} m from the branch (allowed within {radius} m). Move closer, or tap Retry to pull the latest branch location/radius set by the admin.",
+  "@geofenceOutsideDistanceMessage": {
+    "placeholders": {
+      "distance": {
+        "type": "int"
+      },
+      "radius": {
+        "type": "int"
+      }
+    }
+  },
+  "expenseTitle": "Log expense",
+  "expenseCategoryLabel": "Category",
+  "expenseAmountOmrLabel": "Amount (OMR)",
+  "expenseNoteOptionalLabel": "Note (optional)",
+  "expenseRecordButton": "Record expense",
+  "expenseRecordedMessage": "Expense recorded.",
+  "expenseAmountGreaterThanZeroError": "Enter an amount greater than zero.",
+  "expenseSubmitFailedError": "Could not log the expense. Check your connection.",
+  "expenseCategoryUtilities": "Utilities",
+  "expenseCategorySupplies": "Supplies",
+  "expenseCategoryMaintenance": "Maintenance",
+  "expenseCategorySalaries": "Salaries",
+  "expenseCategoryOther": "Other",
+  "restockTitle": "Request restock",
+  "restockAddIngredientLabel": "Add ingredient",
+  "restockIngredientHint": "Ingredient",
+  "restockQtyHint": "Qty",
+  "restockNoteLabel": "Note (optional)",
+  "restockSubmitButton": "Submit request",
+  "restockSubmittedSnack": "Restock request submitted.",
+  "restockSubmitFailedError": "Could not submit the request. Check your connection.",
+  "restockPickIngredientError": "Pick an ingredient.",
+  "restockQuantityError": "Enter a quantity greater than zero.",
+  "restockAddAtLeastOneError": "Add at least one ingredient.",
+  "restockEmptyState": "No ingredients available yet.\nSync the device to load the catalogue.",
+  "restockIngredientFallback": "Ingredient #{id}",
+  "@restockIngredientFallback": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "stockCountTitle": "Day-end stock count",
+  "stockCountInstructions": "Count what is physically on the shelf. Leave a row blank to skip it. Shortfalls are recorded as waste, overages as adjustments.",
+  "stockCountInvalidCount": "Invalid count for {name}.",
+  "@stockCountInvalidCount": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "stockCountWholeUnitsOnly": "{name} is counted in whole {unitLabel}s.",
+  "@stockCountWholeUnitsOnly": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "unitLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "stockCountEnterAtLeastOne": "Enter at least one counted amount.",
+  "stockCountSubmittedNoVariance": "Count submitted — everything matched the books.",
+  "stockCountSubmittedWithVariance": "Count submitted — {count} line(s) had a variance.",
+  "@stockCountSubmittedWithVariance": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "stockCountSubmitFailed": "Could not submit the count. Check your connection.",
+  "stockCountRowPieceHint": "Count in {pieceLabel}s · on book: {balance} {unit}",
+  "@stockCountRowPieceHint": {
+    "placeholders": {
+      "pieceLabel": {
+        "type": "String"
+      },
+      "balance": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "stockCountRowOnBook": "On book: {balance} {unit}",
+  "@stockCountRowOnBook": {
+    "placeholders": {
+      "balance": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "stockCountQtyHint": "qty",
+  "stockCountNoteLabel": "Note (optional)",
+  "stockCountSubmitButton": "Submit count ({count})",
+  "@stockCountSubmitButton": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "stockCountEmptyState": "No ingredients available yet.\nSync the device to load the catalogue."
 }

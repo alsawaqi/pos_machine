@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n.dart';
 import '../services/local_storage_service.dart';
 
 class TerminalSetupScreen extends StatefulWidget {
@@ -38,6 +39,7 @@ class _TerminalSetupScreenState extends State<TerminalSetupScreen> {
   }
 
   Future<void> _saveTerminalId() async {
+    final l10n = L10n.of(context);
     final terminalId = _terminalIdController.text.trim();
 
     setState(() {
@@ -47,7 +49,7 @@ class _TerminalSetupScreenState extends State<TerminalSetupScreen> {
 
     if (terminalId.isEmpty) {
       setState(() {
-        _terminalIdError = 'Please enter the terminal ID.';
+        _terminalIdError = l10n.terminalSetupTerminalIdRequired;
       });
       return;
     }
@@ -64,13 +66,14 @@ class _TerminalSetupScreenState extends State<TerminalSetupScreen> {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        _saveError = 'Failed to save the terminal ID: $error';
+        _saveError = l10n.terminalSetupSaveFailed(error.toString());
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFF0D1B22),
       body: Stack(
@@ -139,9 +142,9 @@ class _TerminalSetupScreenState extends State<TerminalSetupScreen> {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Connect This POS Terminal',
-                              style: TextStyle(
+                            Text(
+                              l10n.terminalSetupTitle,
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 28,
                                 fontWeight: FontWeight.w900,
@@ -149,7 +152,7 @@ class _TerminalSetupScreenState extends State<TerminalSetupScreen> {
                             ),
                             const SizedBox(height: 10),
                             Text(
-                              'Enter the terminal ID before the staff POS is unlocked. This value is saved locally and used for Payment Terminaly payment requests.',
+                              l10n.terminalSetupSubtitle,
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.80),
                                 fontSize: 15,
@@ -168,8 +171,8 @@ class _TerminalSetupScreenState extends State<TerminalSetupScreen> {
                               },
                               style: const TextStyle(color: Colors.white),
                               decoration: InputDecoration(
-                                labelText: 'Terminal ID',
-                                hintText: 'Enter the payment terminal ID',
+                                labelText: l10n.terminalSetupTerminalIdLabel,
+                                hintText: l10n.terminalSetupTerminalIdHint,
                                 errorText: _terminalIdError,
                                 labelStyle: TextStyle(
                                   color: Colors.white.withValues(alpha: 0.82),
@@ -239,9 +242,9 @@ class _TerminalSetupScreenState extends State<TerminalSetupScreen> {
                                               ),
                                         ),
                                       )
-                                    : const Text(
-                                        'Continue To POS',
-                                        style: TextStyle(
+                                    : Text(
+                                        l10n.terminalSetupContinueButton,
+                                        style: const TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.w800,
                                         ),
