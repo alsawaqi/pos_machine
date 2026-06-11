@@ -2272,6 +2272,44 @@ class L10nAr extends L10n {
   String get posDiscountDlgReasonRequired => 'أدخل سبب الخصم المخصص.';
 
   @override
+  String get posPaymentBankPos => 'جهاز البنك';
+
+  @override
+  String get displayMethodBankPos => 'جهاز البنك';
+
+  @override
+  String get ctrlMsgBankPosRecording => 'جارٍ تسجيل الدفع عبر جهاز البنك…';
+
+  @override
+  String get ctrlMsgBankPosRecorded => 'تم تسجيل الدفع عبر جهاز البنك.';
+
+  @override
+  String get ctrlMsgBankPosCompleted =>
+      'تم استلام الدفع على جهاز البنك. شكرًا لك!';
+
+  @override
+  String get posCartGift => 'إهداء';
+
+  @override
+  String get posCartGifted => 'مُهدى';
+
+  @override
+  String get posGiftItemApprovalMessage => 'إهداء صنف يتطلب موافقة المدير.';
+
+  @override
+  String get posGiftItemBlockedTitle => 'الطلب مُضاف بالفعل';
+
+  @override
+  String get posGiftItemBlockedMessage =>
+      'الطلب بأكمله مُضاف كضيافة — لا يوجد ما يُهدى.';
+
+  @override
+  String get posGiftItemGiftedTitle => 'تم إهداء الصنف';
+
+  @override
+  String get posGiftItemRemovedTitle => 'أُلغي الإهداء';
+
+  @override
   String get posCancelPageOrderItems => 'أصناف الطلب';
 
   @override

@@ -41,6 +41,10 @@ String mapOrderType(String storageValue) {
 /// pos_machine payment label → pos_api Payment::METHODS.
 String mapPaymentMethod(String label) {
   final l = label.toLowerCase();
+  // P-F5 — the bank's standalone terminal, checked BEFORE 'card' so a label
+  // like "Bank Card POS" never silently records as our Soft POS card money
+  // (bank_pos stays out of the bank-commission base server-side).
+  if (l.contains('bank')) return 'bank_pos';
   if (l.contains('card')) return 'card';
   if (l.contains('gift')) return 'gift';
   if (l.contains('loyalty')) return 'loyalty';
@@ -193,18 +197,41 @@ OrderSyncPayload buildOrderSyncPayload(
   }
   discounts.addAll(lineDiscounts);
 
-  // ---- Phase B — the manager comp (one per order on the device). The wire
-  // supports many rows; the amount is the controller-frozen figure and must
-  // sum exactly to comp_total_baisas (server-enforced). ----
+  // ---- Phase B + P-F5 — comps: the manager's reasoned comp + per-line GIFT
+  // write-offs (is_gift rows, no reason, no cap). Rows must sum EXACTLY to
+  // comp_total_baisas (server-enforced), so gift rows take their face value
+  // capped against the remaining budget (an order-level discount can shrink
+  // the total write-off below the gifted lines' face value) and the reasoned
+  // comp takes whatever the gifts left. ----
   final compBaisas = omrToBaisas(snapshot.compAmount);
   final comps = <Map<String, dynamic>>[];
-  if (compBaisas > 0 && snapshot.compReasonId != null) {
-    comps.add({
-      'comp_reason_id': snapshot.compReasonId,
-      'amount_baisas': compBaisas,
-      if (snapshot.compLineIndex != null) 'line_index': snapshot.compLineIndex,
-      'staff_id': ?staffId,
-    });
+  if (compBaisas > 0) {
+    var remaining = compBaisas;
+    final giftRows = <Map<String, dynamic>>[];
+    for (var i = 0; i < snapshot.items.length; i++) {
+      final giftAmount =
+          (snapshot.items[i]['giftAmount'] as num?)?.toDouble() ?? 0;
+      if (giftAmount <= 0) continue;
+      final amount = omrToBaisas(giftAmount).clamp(0, remaining);
+      if (amount <= 0) continue;
+      remaining -= amount;
+      giftRows.add({
+        'is_gift': true,
+        'amount_baisas': amount,
+        'line_index': i,
+        'staff_id': ?staffId,
+      });
+    }
+    if (remaining > 0 && snapshot.compReasonId != null) {
+      comps.add({
+        'comp_reason_id': snapshot.compReasonId,
+        'amount_baisas': remaining,
+        if (snapshot.compLineIndex != null)
+          'line_index': snapshot.compLineIndex,
+        'staff_id': ?staffId,
+      });
+    }
+    comps.addAll(giftRows);
   }
 
   final order = <String, dynamic>{

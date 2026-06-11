@@ -3732,6 +3732,78 @@ abstract class L10n {
   /// **'Enter a reason for the custom discount.'**
   String get posDiscountDlgReasonRequired;
 
+  /// No description provided for @posPaymentBankPos.
+  ///
+  /// In en, this message translates to:
+  /// **'Bank POS'**
+  String get posPaymentBankPos;
+
+  /// No description provided for @displayMethodBankPos.
+  ///
+  /// In en, this message translates to:
+  /// **'Bank POS'**
+  String get displayMethodBankPos;
+
+  /// No description provided for @ctrlMsgBankPosRecording.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording the bank terminal payment…'**
+  String get ctrlMsgBankPosRecording;
+
+  /// No description provided for @ctrlMsgBankPosRecorded.
+  ///
+  /// In en, this message translates to:
+  /// **'Bank POS payment recorded.'**
+  String get ctrlMsgBankPosRecorded;
+
+  /// No description provided for @ctrlMsgBankPosCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment received on the bank terminal. Thank you!'**
+  String get ctrlMsgBankPosCompleted;
+
+  /// No description provided for @posCartGift.
+  ///
+  /// In en, this message translates to:
+  /// **'Gift'**
+  String get posCartGift;
+
+  /// No description provided for @posCartGifted.
+  ///
+  /// In en, this message translates to:
+  /// **'Gifted'**
+  String get posCartGifted;
+
+  /// No description provided for @posGiftItemApprovalMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Gifting an item needs a manager\'s approval.'**
+  String get posGiftItemApprovalMessage;
+
+  /// No description provided for @posGiftItemBlockedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Already Comped'**
+  String get posGiftItemBlockedTitle;
+
+  /// No description provided for @posGiftItemBlockedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The whole order is already comped — there is nothing left to gift.'**
+  String get posGiftItemBlockedMessage;
+
+  /// No description provided for @posGiftItemGiftedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Item Gifted'**
+  String get posGiftItemGiftedTitle;
+
+  /// No description provided for @posGiftItemRemovedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Gift Removed'**
+  String get posGiftItemRemovedTitle;
+
   /// No description provided for @posCancelPageOrderItems.
   ///
   /// In en, this message translates to:

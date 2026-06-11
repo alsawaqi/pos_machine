@@ -575,12 +575,17 @@ class CartItem {
   int qty;
   List<CartItemModifier> modifiers;
   String notes;
+  // P-F5 — this line is GIFTED: given away whole (a 100% write-off riding
+  // the comp plumbing with is_gift on the wire — no tax, inventory still
+  // consumed). Manager-gated on the screen.
+  bool gifted;
 
   CartItem({
     required this.product,
     this.qty = 1,
     List<CartItemModifier>? modifiers,
     this.notes = '',
+    this.gifted = false,
   }) : modifiers = List<CartItemModifier>.from(modifiers ?? const []);
 
   factory CartItem.fromMap(Map<String, dynamic> map) {
@@ -595,6 +600,7 @@ class CartItem {
           )
           .toList(),
       notes: map['notes']?.toString() ?? '',
+      gifted: map['gifted'] == true,
     );
   }
 
@@ -613,7 +619,9 @@ class CartItem {
     final modifierSignature = modifiers
         .map((modifier) => modifier.id)
         .join('|');
-    return '${product.id}|$modifierSignature|${normalizedNotes.toLowerCase()}';
+    // P-F5 — a gifted line never merges with a paid one (table merges).
+    return '${product.id}|$modifierSignature|${normalizedNotes.toLowerCase()}'
+        '${gifted ? '|gift' : ''}';
   }
 
   List<CartItemModifier> modifiersForGroup(String group) {
@@ -675,6 +683,7 @@ class CartItem {
       'lowStock': product.lowStock,
       'modifiers': modifiers.map((modifier) => modifier.toMap()).toList(),
       'notes': normalizedNotes,
+      if (gifted) 'gifted': true,
       'detailLines': detailLines,
     };
   }

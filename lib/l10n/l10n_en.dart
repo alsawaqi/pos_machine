@@ -2245,6 +2245,45 @@ class L10nEn extends L10n {
       'Enter a reason for the custom discount.';
 
   @override
+  String get posPaymentBankPos => 'Bank POS';
+
+  @override
+  String get displayMethodBankPos => 'Bank POS';
+
+  @override
+  String get ctrlMsgBankPosRecording => 'Recording the bank terminal payment…';
+
+  @override
+  String get ctrlMsgBankPosRecorded => 'Bank POS payment recorded.';
+
+  @override
+  String get ctrlMsgBankPosCompleted =>
+      'Payment received on the bank terminal. Thank you!';
+
+  @override
+  String get posCartGift => 'Gift';
+
+  @override
+  String get posCartGifted => 'Gifted';
+
+  @override
+  String get posGiftItemApprovalMessage =>
+      'Gifting an item needs a manager\'s approval.';
+
+  @override
+  String get posGiftItemBlockedTitle => 'Already Comped';
+
+  @override
+  String get posGiftItemBlockedMessage =>
+      'The whole order is already comped — there is nothing left to gift.';
+
+  @override
+  String get posGiftItemGiftedTitle => 'Item Gifted';
+
+  @override
+  String get posGiftItemRemovedTitle => 'Gift Removed';
+
+  @override
   String get posCancelPageOrderItems => 'Order Items';
 
   @override

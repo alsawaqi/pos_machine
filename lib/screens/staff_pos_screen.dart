@@ -979,6 +979,70 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _vehiclePlateController.text = controller.vehiclePlateNumber;
   }
 
+  /// P-F5 — gift ONE cart line (a 100% write-off riding the comp plumbing,
+  /// marked is_gift on the wire). Gifting needs a manager (fingerprint or
+  /// PIN); un-gifting is free — it only increases what the customer pays.
+  Future<void> _handleGiftItemToggle(CartItem item) async {
+    final l10n = L10n.of(context);
+    if (!item.gifted) {
+      final authorized = await _authorizeManager(
+        subtitle: l10n.posGiftItemApprovalMessage,
+      );
+      if (!mounted) return;
+      if (!authorized) {
+        _showPopupMessage(
+          title: l10n.posManagerApprovalRequiredTitle,
+          message: l10n.posPayGiftDeniedMessage,
+          tone: FeedbackTone.warning,
+        );
+        return;
+      }
+    }
+    final wasGifted = item.gifted;
+    final changed = controller.toggleGiftItem(item);
+    if (!mounted) return;
+    if (!changed) {
+      _showPopupMessage(
+        title: l10n.posGiftItemBlockedTitle,
+        message: l10n.posGiftItemBlockedMessage,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    _showPopupMessage(
+      title: wasGifted
+          ? l10n.posGiftItemRemovedTitle
+          : l10n.posGiftItemGiftedTitle,
+      message: item.product.displayName(isAr),
+      tone: FeedbackTone.success,
+    );
+  }
+
+  /// P-F5 — the customer paid on the bank's standalone terminal; record the
+  /// exact amount (no charge launch, no change math, wire method bank_pos).
+  Future<void> _submitBankPosPayment() async {
+    if (controller.isProcessingPayment) return;
+    controller.setCustomerReferenceNumber(_customerNumberController.text);
+    controller.selectPaymentMethod('Bank POS');
+    final message = await controller.payAndPrint();
+    if (!mounted || message == null || message.isEmpty) return;
+
+    if (controller.cart.isEmpty) {
+      setState(() {
+        _showPaymentPage = false;
+        _cashTenderInput = '';
+        _customerNumberController.clear();
+      });
+    }
+
+    _showPopupMessage(
+      title: _paymentMessageTitle(),
+      message: message,
+      tone: _paymentMessageTone(),
+    );
+  }
+
   Future<void> _submitCardPayment() async {
     if (controller.isProcessingPayment) return;
     controller.setCustomerReferenceNumber(_customerNumberController.text);
@@ -3959,6 +4023,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                             ),
                           ),
                           const SizedBox(height: 14),
+                          // P-F5 — record a payment taken on the bank's own
+                          // standalone terminal (no integration; NOT card
+                          // money for the commission split).
+                          SizedBox(
+                            height: 64,
+                            child: _PaymentMethodActionButton(
+                              label: l10n.posPaymentBankPos,
+                              icon: Icons.account_balance_rounded,
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [Color(0xFF2E5E8C), Color(0xFF234A72)],
+                              ),
+                              onTap: _submitBankPosPayment,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
                           // Phase D4 — gift the whole order (manager-gated;
                           // §6.8 "zero charged… inventory still deducts").
                           SizedBox(
@@ -4707,6 +4788,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                             onCustomize: () {
                               unawaited(_openCustomizeDialog(item));
                             },
+                            onGift: () =>
+                                unawaited(_handleGiftItemToggle(item)),
                             highlighted: pulseNonce > 0,
                             pulseNonce: pulseNonce,
                           ),
@@ -5420,6 +5503,8 @@ class _OrderItemCard extends StatelessWidget {
   final VoidCallback onRemove;
   final VoidCallback onDelete;
   final VoidCallback onCustomize;
+  // P-F5 — toggle this line as a GIFT (manager-gated at the call site).
+  final VoidCallback onGift;
   final bool highlighted;
   final int pulseNonce;
 
@@ -5430,6 +5515,7 @@ class _OrderItemCard extends StatelessWidget {
     required this.onRemove,
     required this.onDelete,
     required this.onCustomize,
+    required this.onGift,
     this.highlighted = false,
     this.pulseNonce = 0,
   });
@@ -5540,6 +5626,54 @@ class _OrderItemCard extends StatelessWidget {
                 Row(
                   children: [
                     const Spacer(),
+                    // P-F5 — gift this line (purple when active).
+                    InkWell(
+                      onTap: onGift,
+                      borderRadius: BorderRadius.circular(18),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: item.gifted
+                              ? const Color(0xFFEFE3F6)
+                              : const Color(0xFFF2F8F9),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: item.gifted
+                                ? const Color(0xFFD4B8E4)
+                                : Colors.white.withValues(alpha: 0.86),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.card_giftcard_rounded,
+                              size: 15,
+                              color: item.gifted
+                                  ? const Color(0xFF6E4385)
+                                  : const Color(0xFF2F3E46),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              item.gifted
+                                  ? l10n.posCartGifted
+                                  : l10n.posCartGift,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: item.gifted
+                                    ? const Color(0xFF6E4385)
+                                    : const Color(0xFF28363E),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
                     InkWell(
                       onTap: onCustomize,
                       borderRadius: BorderRadius.circular(18),

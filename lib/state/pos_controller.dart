@@ -826,6 +826,10 @@ class PosController extends ChangeNotifier {
       if (ld.id != null) map['lineDiscountId'] = ld.id;
       if (ld.amountType != null) map['lineDiscountAmountType'] = ld.amountType;
     }
+    // P-F5 — the gifted line's write-off value, frozen at snapshot time so
+    // the push can emit an is_gift comp row per line.
+    final gift = giftAmountFor(item);
+    if (gift > 0) map['giftAmount'] = gift;
     return map;
   }
 
@@ -837,15 +841,61 @@ class PosController extends ChangeNotifier {
   /// can never leave a stale figure: a line comp = that line's discounted
   /// total; a whole-order comp = the whole discounted subtotal. A comped line
   /// that was removed clears the comp (returns 0).
-  double get compAmount {
-    final comp = appliedComp;
-    if (comp == null) return 0;
-    final lineIndex = comp.lineIndex;
-    if (lineIndex == null) return subtotal;
-    if (lineIndex < 0 || lineIndex >= _cart.length) return 0;
-    final item = _cart[lineIndex];
+  /// P-F5 — a gifted line's write-off value: its discounted total.
+  double giftAmountFor(CartItem item) {
+    if (!item.gifted) return 0;
     final net = item.lineTotal - lineDiscountFor(item).amount;
-    return _roundMoney(net.clamp(0.0, subtotal).toDouble());
+    return _roundMoney(net.clamp(0.0, double.infinity).toDouble());
+  }
+
+  /// P-F5 — total written off by per-item gifts (OMR).
+  double get giftedLinesTotal =>
+      _roundMoney(_cart.fold(0.0, (sum, item) => sum + giftAmountFor(item)));
+
+  bool get hasGiftedLines => _cart.any((item) => item.gifted);
+
+  /// The total write-off: the manager comp + the gifted lines. A FULL-ORDER
+  /// comp covers only what isn't already gifted (no double write-off); a
+  /// line comp on a gifted line counts once (the gift wins).
+  double get compAmount {
+    final gifts = giftedLinesTotal;
+    final comp = appliedComp;
+    if (comp == null) {
+      return _roundMoney(gifts.clamp(0.0, subtotal).toDouble());
+    }
+    final lineIndex = comp.lineIndex;
+    double managerPart;
+    if (lineIndex == null) {
+      managerPart = (subtotal - gifts).clamp(0.0, double.infinity).toDouble();
+    } else if (lineIndex < 0 || lineIndex >= _cart.length) {
+      managerPart = 0;
+    } else {
+      final item = _cart[lineIndex];
+      managerPart = item.gifted
+          ? 0 // the gift already writes this line off
+          : (item.lineTotal - lineDiscountFor(item).amount)
+              .clamp(0.0, double.infinity)
+              .toDouble();
+    }
+    return _roundMoney((managerPart + gifts).clamp(0.0, subtotal).toDouble());
+  }
+
+  /// P-F5 — the manager-comp slice of [compAmount] (what the reasoned comp
+  /// row carries on the wire; the gifted lines ride their own is_gift rows).
+  double get managerCompAmount =>
+      _roundMoney((compAmount - giftedLinesTotal).clamp(0.0, subtotal).toDouble());
+
+  /// P-F5 — toggle a line gift (the screen owns the manager gate). Refused
+  /// while a FULL-ORDER comp is applied — the order is already written off.
+  bool toggleGiftItem(CartItem item) {
+    if (appliedComp != null && appliedComp!.lineIndex == null && !item.gifted) {
+      return false;
+    }
+    item.gifted = !item.gifted;
+    _resetCharityRoundUp();
+    _markOrderUpdated(item.product.id);
+    _broadcast();
+    return true;
   }
 
   /// The taxed base after the comp — comped food is given away, not sold, so
@@ -2036,6 +2086,32 @@ class PosController extends ChangeNotifier {
         paymentStatus = 'Paid';
         lastPaymentMessage = _l10n.ctrlMsgCashPaymentRecorded;
         displayNote = _l10n.ctrlMsgCashPaymentCompleted;
+        _broadcast();
+
+        return await _completeSuccessfulPayment(
+          transactionMethod: transactionMethod,
+          splitCountAtPayment: transactionSplitCount,
+          splitIndexAtPayment: transactionSplitIndex,
+          baseAmount: transactionBaseAmount,
+          isDineInPayment: isDineInPayment,
+          successMessage: lastPaymentMessage,
+        );
+      }
+
+      // P-F5 — BANK POS: the customer paid on the bank's standalone card
+      // terminal; the device only RECORDS it (no Mosambee launch, exact
+      // amount, no change). Must run before the card path below. The wire
+      // method is 'bank_pos' — deliberately NOT card money, so the bank
+      // commission slice stays with the merchant.
+      if (transactionMethod == 'Bank POS') {
+        _clearPaymentLaunchOverlay();
+        paymentStatus = 'Processing payment';
+        displayNote = _l10n.ctrlMsgBankPosRecording;
+        _broadcast();
+
+        paymentStatus = 'Paid';
+        lastPaymentMessage = _l10n.ctrlMsgBankPosRecorded;
+        displayNote = _l10n.ctrlMsgBankPosCompleted;
         _broadcast();
 
         return await _completeSuccessfulPayment(
