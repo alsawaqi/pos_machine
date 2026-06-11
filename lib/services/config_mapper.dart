@@ -23,6 +23,7 @@ class CatalogSnapshot {
     this.customers = const <CustomerRef>[],
     this.ingredients = const <IngredientRef>[],
     this.cancelOrderPositions = const <String>['manager'],
+    this.reportsPositions = const <String>['manager'],
     this.receiptTemplate,
     this.voidReasons = const <VoidReasonRef>[],
     this.compReasons = const <CompReasonRef>[],
@@ -60,6 +61,8 @@ class CatalogSnapshot {
   // v2 #14 — staff positions allowed to cancel an order at the POS (company
   // policy). Defaults to managers-only until a config sync populates it.
   final List<String> cancelOrderPositions;
+  // P-F6 — staff positions allowed to open the branch Reports screen.
+  final List<String> reportsPositions;
   // Per-branch custom receipt template; null = device prints its default.
   final ReceiptTemplate? receiptTemplate;
   // Phase B — void reason codes (the cancel dialog requires one when any
@@ -502,6 +505,8 @@ class ConfigMapper {
     // v2 #14 — company POS policy: which staff positions may cancel an order.
     final settings = (data['settings'] as Map?)?.cast<String, dynamic>() ?? const {};
     final cancelPositions = _strList(settings['order_cancel_positions']);
+    // P-F6 — which staff positions may open the branch Reports screen.
+    final reportsPositions = _strList(settings['reports_positions']);
 
     final metaCompanion = SyncMetaCompanion(
       id: const Value(1),
@@ -510,6 +515,7 @@ class ConfigMapper {
       lastConfigSyncAt: Value(now ?? DateTime.now()),
       configSchemaVersion: Value(cursor ?? _strN(meta['generated_at'])),
       orderCancelPositions: Value(jsonEncode(cancelPositions)),
+      reportsPositions: Value(jsonEncode(reportsPositions)),
     );
 
     return ParsedConfig(
@@ -816,6 +822,7 @@ class ConfigMapper {
       customers: customers,
       ingredients: ingredients,
       cancelOrderPositions: _cancelPositionsFromMeta(meta),
+      reportsPositions: _reportsPositionsFromMeta(meta),
       receiptTemplate: receiptTemplate,
       voidReasons: voidReasonDefs,
       compReasons: compReasonDefs,
@@ -850,8 +857,14 @@ class ConfigMapper {
 
   /// Decode the cached order-cancel policy JSON → position list. Falls back to
   /// managers-only when unset (older cache / never synced) or malformed.
-  static List<String> _cancelPositionsFromMeta(SyncMetaRow? meta) {
-    final json = meta?.orderCancelPositions;
+  static List<String> _cancelPositionsFromMeta(SyncMetaRow? meta) =>
+      _positionsFromJson(meta?.orderCancelPositions);
+
+  /// P-F6 — decode the cached reports-access policy (same fallback).
+  static List<String> _reportsPositionsFromMeta(SyncMetaRow? meta) =>
+      _positionsFromJson(meta?.reportsPositions);
+
+  static List<String> _positionsFromJson(String? json) {
     if (json == null || json.isEmpty) return const ['manager'];
     try {
       final decoded = jsonDecode(json);

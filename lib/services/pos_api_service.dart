@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../core/api_config.dart';
+import '../models/branch_report.dart';
 import '../models/pos_models.dart';
 import 'api_models.dart';
 import 'session_service.dart' show OpenShiftData;
@@ -220,6 +221,27 @@ class PosApiService {
         .whereType<Map>()
         .map((m) => CustomerSearchResult.fromJson(m.cast<String, dynamic>()))
         .toList();
+  }
+
+  /// GET /device/reports/branch — P-F6: the branch report bundle for the
+  /// device's Reports dashboard (branch-scoped aggregates, money in baisas;
+  /// the model converts to OMR). Online-only by nature.
+  Future<BranchReport> fetchBranchReport({
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    String d(DateTime v) =>
+        '${v.year.toString().padLeft(4, '0')}-'
+        '${v.month.toString().padLeft(2, '0')}-'
+        '${v.day.toString().padLeft(2, '0')}';
+    final body = await _send(
+      () => _dio.get('/device/reports/branch', queryParameters: {
+        'from': d(from),
+        'to': d(to),
+      }),
+    );
+    final report = (body.dataMap['report'] as Map?)?.cast<String, dynamic>();
+    return BranchReport.fromJson(report ?? const {});
   }
 
   /// GET /device/customers/{id} — P-F2: the full customer profile for the

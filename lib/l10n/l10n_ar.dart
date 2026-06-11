@@ -2310,6 +2310,127 @@ class L10nAr extends L10n {
   String get posGiftItemRemovedTitle => 'أُلغي الإهداء';
 
   @override
+  String get reportsTitle => 'تقارير الفرع';
+
+  @override
+  String get reportsLoadFailed =>
+      'تعذّر تحميل التقرير. تحقق من الاتصال وحاول مجددًا.';
+
+  @override
+  String get reportsRetry => 'إعادة المحاولة';
+
+  @override
+  String get reportsRangeToday => 'اليوم';
+
+  @override
+  String get reportsRange7d => '7 أيام';
+
+  @override
+  String get reportsRange30d => '30 يومًا';
+
+  @override
+  String get reportsRangeCustom => 'مخصص';
+
+  @override
+  String get reportsNoData => 'لا توجد بيانات لهذه الفترة.';
+
+  @override
+  String get reportsKpiGross => 'إجمالي المبيعات';
+
+  @override
+  String get reportsKpiOrders => 'الطلبات';
+
+  @override
+  String get reportsKpiAvgOrder => 'متوسط الطلب';
+
+  @override
+  String get reportsKpiTax => 'الضريبة';
+
+  @override
+  String get reportsKpiDiscounts => 'الخصومات';
+
+  @override
+  String get reportsKpiCompsGifts => 'الضيافة والإهداءات';
+
+  @override
+  String get reportsKpiCustomers => 'الزبائن';
+
+  @override
+  String get reportsKpiPointsRedeemed => 'نقاط مستبدلة';
+
+  @override
+  String get reportsSalesByDay => 'المبيعات حسب اليوم';
+
+  @override
+  String get reportsSalesByHour => 'المبيعات حسب الساعة';
+
+  @override
+  String get reportsTenderMix => 'طرق الدفع';
+
+  @override
+  String get reportsOrderTypes => 'أنواع الطلبات';
+
+  @override
+  String get reportsTopProducts => 'أكثر المنتجات مبيعًا';
+
+  @override
+  String get reportsStockConsumption => 'استهلاك المخزون';
+
+  @override
+  String get reportsLoyalty => 'الولاء';
+
+  @override
+  String get reportsPointsEarned => 'نقاط مكتسبة';
+
+  @override
+  String get reportsPointsRedeemed => 'نقاط مستبدلة';
+
+  @override
+  String get reportsStampsEarned => 'طوابع مكتسبة';
+
+  @override
+  String get reportsStampsRedeemed => 'طوابع مستبدلة';
+
+  @override
+  String get reportsTopCustomers => 'أفضل الزبائن';
+
+  @override
+  String get reportsDiscounts => 'الخصومات';
+
+  @override
+  String get reportsMethodLoyalty => 'الولاء';
+
+  @override
+  String reportsQtyTimes(String qty) {
+    return '×$qty';
+  }
+
+  @override
+  String reportsOrdersCount(int count) {
+    return '$count طلبات';
+  }
+
+  @override
+  String reportsTimesUsed(int count) {
+    return 'استُخدم $count مرة';
+  }
+
+  @override
+  String get reportsNotAllowedTitle => 'التقارير مقفلة';
+
+  @override
+  String get reportsNotAllowedBody =>
+      'دورك لا يسمح بعرض تقارير الفرع على هذا الجهاز.';
+
+  @override
+  String get reportsChooserDashboardSub =>
+      'المبيعات والمنتجات والزبائن والمخزون لهذا الفرع.';
+
+  @override
+  String get reportsChooserXReportSub =>
+      'طباعة مبيعات الوردية الحالية حتى الآن.';
+
+  @override
   String get posCancelPageOrderItems => 'أصناف الطلب';
 
   @override

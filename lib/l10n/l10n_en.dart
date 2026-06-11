@@ -2284,6 +2284,127 @@ class L10nEn extends L10n {
   String get posGiftItemRemovedTitle => 'Gift Removed';
 
   @override
+  String get reportsTitle => 'Branch Reports';
+
+  @override
+  String get reportsLoadFailed =>
+      'Couldn\'t load the report. Check the connection and try again.';
+
+  @override
+  String get reportsRetry => 'Retry';
+
+  @override
+  String get reportsRangeToday => 'Today';
+
+  @override
+  String get reportsRange7d => '7 days';
+
+  @override
+  String get reportsRange30d => '30 days';
+
+  @override
+  String get reportsRangeCustom => 'Custom';
+
+  @override
+  String get reportsNoData => 'No data for this period.';
+
+  @override
+  String get reportsKpiGross => 'Gross Sales';
+
+  @override
+  String get reportsKpiOrders => 'Orders';
+
+  @override
+  String get reportsKpiAvgOrder => 'Avg Order';
+
+  @override
+  String get reportsKpiTax => 'Tax';
+
+  @override
+  String get reportsKpiDiscounts => 'Discounts';
+
+  @override
+  String get reportsKpiCompsGifts => 'Comps & Gifts';
+
+  @override
+  String get reportsKpiCustomers => 'Customers';
+
+  @override
+  String get reportsKpiPointsRedeemed => 'Points Redeemed';
+
+  @override
+  String get reportsSalesByDay => 'Sales by Day';
+
+  @override
+  String get reportsSalesByHour => 'Sales by Hour';
+
+  @override
+  String get reportsTenderMix => 'Payment Methods';
+
+  @override
+  String get reportsOrderTypes => 'Order Types';
+
+  @override
+  String get reportsTopProducts => 'Top Products';
+
+  @override
+  String get reportsStockConsumption => 'Stock Consumption';
+
+  @override
+  String get reportsLoyalty => 'Loyalty';
+
+  @override
+  String get reportsPointsEarned => 'Points earned';
+
+  @override
+  String get reportsPointsRedeemed => 'Points redeemed';
+
+  @override
+  String get reportsStampsEarned => 'Stamps earned';
+
+  @override
+  String get reportsStampsRedeemed => 'Stamps redeemed';
+
+  @override
+  String get reportsTopCustomers => 'Top Customers';
+
+  @override
+  String get reportsDiscounts => 'Discounts';
+
+  @override
+  String get reportsMethodLoyalty => 'Loyalty';
+
+  @override
+  String reportsQtyTimes(String qty) {
+    return '×$qty';
+  }
+
+  @override
+  String reportsOrdersCount(int count) {
+    return '$count orders';
+  }
+
+  @override
+  String reportsTimesUsed(int count) {
+    return 'used $count×';
+  }
+
+  @override
+  String get reportsNotAllowedTitle => 'Reports Locked';
+
+  @override
+  String get reportsNotAllowedBody =>
+      'Your role is not permitted to view branch reports on this terminal.';
+
+  @override
+  String get reportsChooserDashboardSub =>
+      'Sales, products, customers and stock for this branch.';
+
+  @override
+  String get reportsChooserXReportSub =>
+      'Print the current shift\'s sales so far.';
+
+  @override
   String get posCancelPageOrderItems => 'Order Items';
 
   @override

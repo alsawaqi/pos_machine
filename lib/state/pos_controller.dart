@@ -245,6 +245,10 @@ class PosController extends ChangeNotifier {
   /// config sync populates it; see [positionCanCancelOrders].
   List<String> cancelOrderPositions = const <String>['manager'];
 
+  /// P-F6 — staff positions allowed to open the branch Reports screen
+  /// (`settings.reports_positions`). Managers-only until synced.
+  List<String> reportsPositions = const <String>['manager'];
+
   /// The branch's merchant-authored receipt template (from /device/config).
   /// Null = print the built-in default receipt. Passed to [SunmiReceiptService].
   ReceiptTemplate? receiptTemplate;
@@ -276,6 +280,13 @@ class PosController extends ChangeNotifier {
     if (p.isEmpty) return false;
 
     return cancelOrderPositions.any((allowed) => allowed.trim().toLowerCase() == p);
+  }
+
+  /// P-F6 — whether [position] may open the branch Reports screen.
+  bool positionCanViewReports(String? position) {
+    final p = (position ?? '').trim().toLowerCase();
+    if (p.isEmpty) return false;
+    return reportsPositions.any((allowed) => allowed.trim().toLowerCase() == p);
   }
 
   /// The unmodified catalog (base prices). [allProducts] is this list re-priced
@@ -511,6 +522,7 @@ class PosController extends ChangeNotifier {
     List<LoyaltyRule> loyaltyRules = const <LoyaltyRule>[],
     List<CustomerRef> customers = const <CustomerRef>[],
     List<String> cancelOrderPositions = const <String>['manager'],
+    List<String> reportsPositions = const <String>['manager'],
     ReceiptTemplate? receiptTemplate,
     List<VoidReasonRef> voidReasons = const <VoidReasonRef>[],
     List<CompReasonRef> compReasons = const <CompReasonRef>[],
@@ -532,6 +544,8 @@ class PosController extends ChangeNotifier {
     cachedCustomers = customers;
     this.cancelOrderPositions =
         cancelOrderPositions.isEmpty ? const <String>['manager'] : cancelOrderPositions;
+    this.reportsPositions =
+        reportsPositions.isEmpty ? const <String>['manager'] : reportsPositions;
     this.receiptTemplate = receiptTemplate;
     this.voidReasons = voidReasons;
     this.compReasons = compReasons;

@@ -1466,6 +1466,58 @@
   "posGiftItemBlockedMessage": "The whole order is already comped — there is nothing left to gift.",
   "posGiftItemGiftedTitle": "Item Gifted",
   "posGiftItemRemovedTitle": "Gift Removed",
+  "reportsTitle": "Branch Reports",
+  "reportsLoadFailed": "Couldn't load the report. Check the connection and try again.",
+  "reportsRetry": "Retry",
+  "reportsRangeToday": "Today",
+  "reportsRange7d": "7 days",
+  "reportsRange30d": "30 days",
+  "reportsRangeCustom": "Custom",
+  "reportsNoData": "No data for this period.",
+  "reportsKpiGross": "Gross Sales",
+  "reportsKpiOrders": "Orders",
+  "reportsKpiAvgOrder": "Avg Order",
+  "reportsKpiTax": "Tax",
+  "reportsKpiDiscounts": "Discounts",
+  "reportsKpiCompsGifts": "Comps & Gifts",
+  "reportsKpiCustomers": "Customers",
+  "reportsKpiPointsRedeemed": "Points Redeemed",
+  "reportsSalesByDay": "Sales by Day",
+  "reportsSalesByHour": "Sales by Hour",
+  "reportsTenderMix": "Payment Methods",
+  "reportsOrderTypes": "Order Types",
+  "reportsTopProducts": "Top Products",
+  "reportsStockConsumption": "Stock Consumption",
+  "reportsLoyalty": "Loyalty",
+  "reportsPointsEarned": "Points earned",
+  "reportsPointsRedeemed": "Points redeemed",
+  "reportsStampsEarned": "Stamps earned",
+  "reportsStampsRedeemed": "Stamps redeemed",
+  "reportsTopCustomers": "Top Customers",
+  "reportsDiscounts": "Discounts",
+  "reportsMethodLoyalty": "Loyalty",
+  "reportsQtyTimes": "×{qty}",
+  "@reportsQtyTimes": {
+    "placeholders": {
+      "qty": {"type": "String"}
+    }
+  },
+  "reportsOrdersCount": "{count} orders",
+  "@reportsOrdersCount": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "reportsTimesUsed": "used {count}×",
+  "@reportsTimesUsed": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "reportsNotAllowedTitle": "Reports Locked",
+  "reportsNotAllowedBody": "Your role is not permitted to view branch reports on this terminal.",
+  "reportsChooserDashboardSub": "Sales, products, customers and stock for this branch.",
+  "reportsChooserXReportSub": "Print the current shift's sales so far.",
   "posCancelPageOrderItems": "Order Items",
   "posCancelPageCancellableCount": "{count} cancellable",
   "@posCancelPageCancellableCount": {

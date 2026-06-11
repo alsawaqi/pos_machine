@@ -3804,6 +3804,228 @@ abstract class L10n {
   /// **'Gift Removed'**
   String get posGiftItemRemovedTitle;
 
+  /// No description provided for @reportsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Branch Reports'**
+  String get reportsTitle;
+
+  /// No description provided for @reportsLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the report. Check the connection and try again.'**
+  String get reportsLoadFailed;
+
+  /// No description provided for @reportsRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get reportsRetry;
+
+  /// No description provided for @reportsRangeToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get reportsRangeToday;
+
+  /// No description provided for @reportsRange7d.
+  ///
+  /// In en, this message translates to:
+  /// **'7 days'**
+  String get reportsRange7d;
+
+  /// No description provided for @reportsRange30d.
+  ///
+  /// In en, this message translates to:
+  /// **'30 days'**
+  String get reportsRange30d;
+
+  /// No description provided for @reportsRangeCustom.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom'**
+  String get reportsRangeCustom;
+
+  /// No description provided for @reportsNoData.
+  ///
+  /// In en, this message translates to:
+  /// **'No data for this period.'**
+  String get reportsNoData;
+
+  /// No description provided for @reportsKpiGross.
+  ///
+  /// In en, this message translates to:
+  /// **'Gross Sales'**
+  String get reportsKpiGross;
+
+  /// No description provided for @reportsKpiOrders.
+  ///
+  /// In en, this message translates to:
+  /// **'Orders'**
+  String get reportsKpiOrders;
+
+  /// No description provided for @reportsKpiAvgOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'Avg Order'**
+  String get reportsKpiAvgOrder;
+
+  /// No description provided for @reportsKpiTax.
+  ///
+  /// In en, this message translates to:
+  /// **'Tax'**
+  String get reportsKpiTax;
+
+  /// No description provided for @reportsKpiDiscounts.
+  ///
+  /// In en, this message translates to:
+  /// **'Discounts'**
+  String get reportsKpiDiscounts;
+
+  /// No description provided for @reportsKpiCompsGifts.
+  ///
+  /// In en, this message translates to:
+  /// **'Comps & Gifts'**
+  String get reportsKpiCompsGifts;
+
+  /// No description provided for @reportsKpiCustomers.
+  ///
+  /// In en, this message translates to:
+  /// **'Customers'**
+  String get reportsKpiCustomers;
+
+  /// No description provided for @reportsKpiPointsRedeemed.
+  ///
+  /// In en, this message translates to:
+  /// **'Points Redeemed'**
+  String get reportsKpiPointsRedeemed;
+
+  /// No description provided for @reportsSalesByDay.
+  ///
+  /// In en, this message translates to:
+  /// **'Sales by Day'**
+  String get reportsSalesByDay;
+
+  /// No description provided for @reportsSalesByHour.
+  ///
+  /// In en, this message translates to:
+  /// **'Sales by Hour'**
+  String get reportsSalesByHour;
+
+  /// No description provided for @reportsTenderMix.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment Methods'**
+  String get reportsTenderMix;
+
+  /// No description provided for @reportsOrderTypes.
+  ///
+  /// In en, this message translates to:
+  /// **'Order Types'**
+  String get reportsOrderTypes;
+
+  /// No description provided for @reportsTopProducts.
+  ///
+  /// In en, this message translates to:
+  /// **'Top Products'**
+  String get reportsTopProducts;
+
+  /// No description provided for @reportsStockConsumption.
+  ///
+  /// In en, this message translates to:
+  /// **'Stock Consumption'**
+  String get reportsStockConsumption;
+
+  /// No description provided for @reportsLoyalty.
+  ///
+  /// In en, this message translates to:
+  /// **'Loyalty'**
+  String get reportsLoyalty;
+
+  /// No description provided for @reportsPointsEarned.
+  ///
+  /// In en, this message translates to:
+  /// **'Points earned'**
+  String get reportsPointsEarned;
+
+  /// No description provided for @reportsPointsRedeemed.
+  ///
+  /// In en, this message translates to:
+  /// **'Points redeemed'**
+  String get reportsPointsRedeemed;
+
+  /// No description provided for @reportsStampsEarned.
+  ///
+  /// In en, this message translates to:
+  /// **'Stamps earned'**
+  String get reportsStampsEarned;
+
+  /// No description provided for @reportsStampsRedeemed.
+  ///
+  /// In en, this message translates to:
+  /// **'Stamps redeemed'**
+  String get reportsStampsRedeemed;
+
+  /// No description provided for @reportsTopCustomers.
+  ///
+  /// In en, this message translates to:
+  /// **'Top Customers'**
+  String get reportsTopCustomers;
+
+  /// No description provided for @reportsDiscounts.
+  ///
+  /// In en, this message translates to:
+  /// **'Discounts'**
+  String get reportsDiscounts;
+
+  /// No description provided for @reportsMethodLoyalty.
+  ///
+  /// In en, this message translates to:
+  /// **'Loyalty'**
+  String get reportsMethodLoyalty;
+
+  /// No description provided for @reportsQtyTimes.
+  ///
+  /// In en, this message translates to:
+  /// **'×{qty}'**
+  String reportsQtyTimes(String qty);
+
+  /// No description provided for @reportsOrdersCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} orders'**
+  String reportsOrdersCount(int count);
+
+  /// No description provided for @reportsTimesUsed.
+  ///
+  /// In en, this message translates to:
+  /// **'used {count}×'**
+  String reportsTimesUsed(int count);
+
+  /// No description provided for @reportsNotAllowedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reports Locked'**
+  String get reportsNotAllowedTitle;
+
+  /// No description provided for @reportsNotAllowedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your role is not permitted to view branch reports on this terminal.'**
+  String get reportsNotAllowedBody;
+
+  /// No description provided for @reportsChooserDashboardSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Sales, products, customers and stock for this branch.'**
+  String get reportsChooserDashboardSub;
+
+  /// No description provided for @reportsChooserXReportSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Print the current shift\'s sales so far.'**
+  String get reportsChooserXReportSub;
+
   /// No description provided for @posCancelPageOrderItems.
   ///
   /// In en, this message translates to:

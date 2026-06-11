@@ -191,6 +191,9 @@ class SyncMeta extends Table {
   // (company policy from /device/config `settings.order_cancel_positions`).
   // null = not yet synced → the device falls back to managers-only.
   TextColumn get orderCancelPositions => text().nullable()();
+  // P-F6 — JSON list of staff positions allowed to open the branch Reports
+  // screen (`settings.reports_positions`). null = managers-only fallback.
+  TextColumn get reportsPositions => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

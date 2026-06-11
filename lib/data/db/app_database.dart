@@ -38,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 19;
+  int get schemaVersion => 20;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -138,6 +138,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 19) {
             // v19 — P-F4: order-scope auto-apply flag on discount rules.
             await m.addColumn(discounts, discounts.autoApply);
+          }
+          if (from < 20) {
+            // v20 — P-F6: the device-reports access policy.
+            await m.addColumn(syncMeta, syncMeta.reportsPositions);
           }
         },
       );
@@ -337,6 +341,7 @@ class AppDatabase extends _$AppDatabase {
     required String? cursor,
     required DateTime now,
     String? orderCancelPositions,
+    String? reportsPositions,
   }) {
     return transaction(() async {
       // Upserts (changed rows only — untouched rows survive).
@@ -410,6 +415,9 @@ class AppDatabase extends _$AppDatabase {
         orderCancelPositions: orderCancelPositions == null
             ? const Value.absent()
             : Value(orderCancelPositions),
+        reportsPositions: reportsPositions == null
+            ? const Value.absent()
+            : Value(reportsPositions),
       ));
     });
   }

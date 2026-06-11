@@ -16,6 +16,7 @@ import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
 import '../providers/providers.dart';
+import 'branch_reports_screen.dart';
 import 'log_expense_screen.dart';
 import 'restock_request_screen.dart';
 import 'stock_count_screen.dart';
@@ -232,6 +233,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             loyaltyRules: catalog.loyaltyRules,
             customers: catalog.customers,
             cancelOrderPositions: catalog.cancelOrderPositions,
+            reportsPositions: catalog.reportsPositions,
             receiptTemplate: catalog.receiptTemplate,
             voidReasons: catalog.voidReasons,
             compReasons: catalog.compReasons,
@@ -4318,9 +4320,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           unawaited(_openOrderHistoryDialog());
                           break;
                         case 'Report':
-                          // Gap sweep G3 — the mid-shift X-report this chip
-                          // was reserved for (manager-gated).
-                          unawaited(_openMidShiftReport());
+                          // P-F6 — chooser: the full branch dashboard
+                          // (reports_positions-gated) or the G3 mid-shift
+                          // X-report (manager-gated).
+                          unawaited(_openReportChooser());
                           break;
                         default:
                           _showPlaceholderMessage(
@@ -4532,6 +4535,69 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       case 'shift_summary':
         await _reprintLastShiftSummary();
     }
+  }
+
+  /// P-F6 — the Report chip's chooser: the full branch dashboard or the
+  /// mid-shift X-report.
+  Future<void> _openReportChooser() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) {
+        final l10n = L10n.of(ctx);
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.insights_rounded),
+                title: Text(l10n.reportsTitle),
+                subtitle: Text(l10n.reportsChooserDashboardSub),
+                onTap: () => Navigator.pop(ctx, 'dashboard'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.print_rounded),
+                title: Text(l10n.posMidShiftReportTitle),
+                subtitle: Text(l10n.reportsChooserXReportSub),
+                onTap: () => Navigator.pop(ctx, 'xreport'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.close),
+                title: Text(l10n.commonCancel),
+                onTap: () => Navigator.pop(ctx, null),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (!mounted || action == null) return;
+    if (action == 'dashboard') {
+      await _openBranchReports();
+    } else if (action == 'xreport') {
+      await _openMidShiftReport();
+    }
+  }
+
+  /// P-F6 — the full-screen branch Reports dashboard, allowed only for the
+  /// staff positions the merchant configured (settings.reports_positions).
+  Future<void> _openBranchReports() async {
+    final l10n = L10n.of(context);
+    final position = ref.read(sessionServiceProvider).staff?.position;
+    if (!controller.positionCanViewReports(position)) {
+      _showPopupMessage(
+        title: l10n.reportsNotAllowedTitle,
+        message: l10n.reportsNotAllowedBody,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+    final branch = await ref.read(configRepositoryProvider).getBranch();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BranchReportsScreen(branchName: branch?.name ?? ''),
+      ),
+    );
   }
 
   /// Gap sweep G3 — the mid-shift X-report behind the top-bar Report chip:
