@@ -1518,6 +1518,10 @@
   "reportsNotAllowedBody": "Your role is not permitted to view branch reports on this terminal.",
   "reportsChooserDashboardSub": "Sales, products, customers and stock for this branch.",
   "reportsChooserXReportSub": "Print the current shift's sales so far.",
+  "posMenuCloseShiftAndLogout": "Close Shift & Log Out",
+  "posMenuCloseShiftAndLogoutSub": "Count the drawer, print the shift summary, then sign out.",
+  "posMenuLogoutOnly": "Just Log Out",
+  "posMenuLogoutOnlySub": "The shift stays open — switching staff only.",
   "posCancelPageOrderItems": "Order Items",
   "posCancelPageCancellableCount": "{count} cancellable",
   "@posCancelPageCancellableCount": {

@@ -4026,6 +4026,30 @@ abstract class L10n {
   /// **'Print the current shift\'s sales so far.'**
   String get reportsChooserXReportSub;
 
+  /// No description provided for @posMenuCloseShiftAndLogout.
+  ///
+  /// In en, this message translates to:
+  /// **'Close Shift & Log Out'**
+  String get posMenuCloseShiftAndLogout;
+
+  /// No description provided for @posMenuCloseShiftAndLogoutSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Count the drawer, print the shift summary, then sign out.'**
+  String get posMenuCloseShiftAndLogoutSub;
+
+  /// No description provided for @posMenuLogoutOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Just Log Out'**
+  String get posMenuLogoutOnly;
+
+  /// No description provided for @posMenuLogoutOnlySub.
+  ///
+  /// In en, this message translates to:
+  /// **'The shift stays open — switching staff only.'**
+  String get posMenuLogoutOnlySub;
+
   /// No description provided for @posCancelPageOrderItems.
   ///
   /// In en, this message translates to:

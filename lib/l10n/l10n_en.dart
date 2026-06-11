@@ -2405,6 +2405,20 @@ class L10nEn extends L10n {
       'Print the current shift\'s sales so far.';
 
   @override
+  String get posMenuCloseShiftAndLogout => 'Close Shift & Log Out';
+
+  @override
+  String get posMenuCloseShiftAndLogoutSub =>
+      'Count the drawer, print the shift summary, then sign out.';
+
+  @override
+  String get posMenuLogoutOnly => 'Just Log Out';
+
+  @override
+  String get posMenuLogoutOnlySub =>
+      'The shift stays open — switching staff only.';
+
+  @override
   String get posCancelPageOrderItems => 'Order Items';
 
   @override

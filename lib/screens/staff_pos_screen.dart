@@ -4471,9 +4471,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  /// Staff chip menu — P-F1: ONLY log out / cancel here (per the merchant's
-  /// request); the operational actions moved into Settings (the top-bar gear).
+  /// Staff chip menu. With a shift OPEN the sheet asks THE question — are
+  /// you closing the shift, or just logging out? Closing counts the drawer,
+  /// prints the Z-report, then FORCES the sign-out so the next staff member
+  /// logs in with their own PIN and opens their own shift. "Just log out"
+  /// leaves the shift open (a quick staff switch).
   Future<void> _openStaffMenu() async {
+    final hasOpenShift =
+        ref.read(sessionControllerProvider).openShift != null;
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) {
@@ -4482,12 +4487,26 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(
-                leading: const Icon(Icons.logout),
-                title: Text(l10n.commonLogout),
-                subtitle: Text(l10n.posMenuLogoutSub),
-                onTap: () => Navigator.pop(ctx, 'logout'),
-              ),
+              if (hasOpenShift) ...[
+                ListTile(
+                  leading: const Icon(Icons.point_of_sale_rounded),
+                  title: Text(l10n.posMenuCloseShiftAndLogout),
+                  subtitle: Text(l10n.posMenuCloseShiftAndLogoutSub),
+                  onTap: () => Navigator.pop(ctx, 'close_shift_logout'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.logout),
+                  title: Text(l10n.posMenuLogoutOnly),
+                  subtitle: Text(l10n.posMenuLogoutOnlySub),
+                  onTap: () => Navigator.pop(ctx, 'logout'),
+                ),
+              ] else
+                ListTile(
+                  leading: const Icon(Icons.logout),
+                  title: Text(l10n.commonLogout),
+                  subtitle: Text(l10n.posMenuLogoutSub),
+                  onTap: () => Navigator.pop(ctx, 'logout'),
+                ),
               ListTile(
                 leading: const Icon(Icons.close),
                 title: Text(l10n.commonCancel),
@@ -4501,7 +4520,26 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (!mounted) return;
     if (action == 'logout') {
       await _confirmLogout();
+    } else if (action == 'close_shift_logout') {
+      await _closeShiftThenLogout();
     }
+  }
+
+  /// Close the shift (count → Z-report print → server settle), then sign the
+  /// staff member out so the next one starts with their own PIN + opening
+  /// float. Backing out of the close screen leaves the shift open and stays
+  /// logged in.
+  Future<void> _closeShiftThenLogout() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ShiftCloseScreen()),
+    );
+    if (!mounted) return;
+    // The close screen pops without a result — the shift being GONE is the
+    // success signal (an X-out keeps it open).
+    final stillOpen =
+        ref.read(sessionControllerProvider).openShift != null;
+    if (stillOpen) return;
+    await ref.read(sessionControllerProvider.notifier).logoutStaff();
   }
 
   /// P-F1 — the top-bar gear: Settings, which now hosts the operational
@@ -4517,9 +4555,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (!mounted || action == null) return;
     switch (action) {
       case 'close_shift':
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const ShiftCloseScreen()),
-        );
+        // Closing a shift always ends the session (same policy as the
+        // logout sheet) — the next staff member opens their own shift.
+        await _closeShiftThenLogout();
       case 'log_expense':
         await Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const LogExpenseScreen()),

@@ -2431,6 +2431,19 @@ class L10nAr extends L10n {
       'طباعة مبيعات الوردية الحالية حتى الآن.';
 
   @override
+  String get posMenuCloseShiftAndLogout => 'إغلاق الوردية وتسجيل الخروج';
+
+  @override
+  String get posMenuCloseShiftAndLogoutSub =>
+      'عُدّ الدرج، اطبع ملخص الوردية، ثم سجّل الخروج.';
+
+  @override
+  String get posMenuLogoutOnly => 'تسجيل الخروج فقط';
+
+  @override
+  String get posMenuLogoutOnlySub => 'تبقى الوردية مفتوحة — تبديل الموظف فقط.';
+
+  @override
   String get posCancelPageOrderItems => 'أصناف الطلب';
 
   @override
