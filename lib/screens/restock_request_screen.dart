@@ -131,76 +131,138 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
         ),
         automaticallyImplyLeading: false,
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 460),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ingredients.isEmpty
-                ? _emptyState()
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(l10n.restockAddIngredientLabel,
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 13)),
-                      const SizedBox(height: 8),
-                      _ingredientPicker(ingredients),
-                      const SizedBox(height: 16),
-                      if (_lines.isNotEmpty) ...[
-                        _linesCard(ingredients),
-                        const SizedBox(height: 16),
-                      ],
-                      TextField(
-                        controller: _noteController,
-                        enabled: !_busy,
-                        maxLength: 1000,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          labelText: l10n.restockNoteLabel,
-                          labelStyle: const TextStyle(color: Colors.white54),
-                          counterText: '',
-                          filled: true,
-                          fillColor: const Color(0xFF16313B),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                      if (_error != null) ...[
-                        const SizedBox(height: 14),
-                        Text(
-                          _error!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              color: Color(0xFFFF6B6B), fontSize: 14),
-                        ),
-                      ],
-                      const SizedBox(height: 18),
-                      Center(
-                        child: SizedBox(
-                          width: 260,
-                          height: 52,
-                          child: FilledButton(
-                            onPressed: _busy ? null : _submit,
-                            child: _busy
-                                ? const SizedBox(
-                                    height: 22,
-                                    width: 22,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  )
-                                : Text(l10n.restockSubmitButton),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+      // The Sunmi T3 shows this screen in 15.6" landscape where the stacked
+      // phone-width column crosses the fold once ~7-8 ingredient lines are
+      // added (each dense line is ~48px tall). Wide viewports get a two-pane
+      // row — picker/note/submit left, the added-lines card right with its own
+      // internal scroll — so the form always fits on screen; narrow/portrait
+      // keeps the stacked column. The outer scroll views remain only as a
+      // soft-keyboard safety net.
+      body: LayoutBuilder(builder: (context, constraints) {
+        if (ingredients.isEmpty) {
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: _emptyState(),
+              ),
+            ),
+          );
+        }
+        final twoPane = constraints.maxWidth > 900;
+        final formFields = <Widget>[
+          Text(l10n.restockAddIngredientLabel,
+              style: const TextStyle(color: Colors.white54, fontSize: 13)),
+          const SizedBox(height: 8),
+          _ingredientPicker(ingredients),
+          const SizedBox(height: 16),
+          // Stacked layout keeps the added lines inline between the picker and
+          // the note; the wide layout moves them to the right pane instead.
+          if (!twoPane && _lines.isNotEmpty) ...[
+            _linesCard(ingredients),
+            const SizedBox(height: 16),
+          ],
+          TextField(
+            controller: _noteController,
+            enabled: !_busy,
+            maxLength: 1000,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: l10n.restockNoteLabel,
+              labelStyle: const TextStyle(color: Colors.white54),
+              counterText: '',
+              filled: true,
+              fillColor: const Color(0xFF16313B),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+            ),
           ),
-        ),
-      ),
+          if (_error != null) ...[
+            const SizedBox(height: 14),
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 14),
+            ),
+          ],
+        ];
+        final submitButton = SizedBox(
+          width: 260,
+          height: 52,
+          child: FilledButton(
+            onPressed: _busy ? null : _submit,
+            child: _busy
+                ? const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(l10n.restockSubmitButton),
+          ),
+        );
+        if (twoPane) {
+          return Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // A tight 460 width (not maxWidth): the picker row and note
+                  // field expand to fill it, matching the stacked look.
+                  SizedBox(
+                    width: 460,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ...formFields,
+                        const SizedBox(height: 18),
+                        Center(child: submitButton),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 48),
+                  // Added-lines pane: a long request scrolls inside the card
+                  // only, never the whole page. The fixed width keeps the form
+                  // column from shifting as lines are added and removed.
+                  SizedBox(
+                    width: 420,
+                    child: _lines.isEmpty
+                        ? const SizedBox.shrink()
+                        : ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 480),
+                            child: SingleChildScrollView(
+                              child: _linesCard(ingredients),
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ...formFields,
+                  const SizedBox(height: 18),
+                  Center(child: submitButton),
+                ],
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 
