@@ -2812,4 +2812,9 @@ class L10nAr extends L10n {
 
   @override
   String get posOffersBundleAdd => 'إضافة الباقة';
+
+  @override
+  String posCustomizeMinHint(int n) {
+    return 'اختر $n على الأقل';
+  }
 }

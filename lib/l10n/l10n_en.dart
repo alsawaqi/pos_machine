@@ -2783,4 +2783,9 @@ class L10nEn extends L10n {
 
   @override
   String get posOffersBundleAdd => 'Add Bundle';
+
+  @override
+  String posCustomizeMinHint(int n) {
+    return 'Select at least $n';
+  }
 }

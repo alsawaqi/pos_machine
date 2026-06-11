@@ -758,5 +758,6 @@
   "posOfferTypeSpendGet": "أنفق واحصل",
   "posOffersBundleNeed": "اختر {n}",
   "posOffersBundlePrice": "سعر الباقة:",
-  "posOffersBundleAdd": "إضافة الباقة"
+  "posOffersBundleAdd": "إضافة الباقة",
+  "posCustomizeMinHint": "اختر {n} على الأقل"
 }

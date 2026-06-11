@@ -6580,7 +6580,14 @@ class _CustomizeGroupSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
     final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    // Phase B follow-up — surface WHY Apply is disabled: a group below its
+    // minimum shows the requirement instead of leaving a silent dead button.
+    final requiredMin = group.minSelections > 0
+        ? group.minSelections
+        : (group.requiredSelection ? 1 : 0);
+    final unsatisfied = selectedIds.length < requiredMin;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -6612,6 +6619,17 @@ class _CustomizeGroupSection extends StatelessWidget {
                 color: Color(0xFF17252C),
               ),
             ),
+            if (unsatisfied) ...[
+              const SizedBox(width: 10),
+              Text(
+                l10n.posCustomizeMinHint(requiredMin),
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFB3261E),
+                ),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 10),

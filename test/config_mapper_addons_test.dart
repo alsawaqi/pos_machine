@@ -213,4 +213,64 @@ void main() {
       expect(controller.addonGroupsForProduct(water), isEmpty);
     });
   });
+
+  group('AddonGroup constraint clamping', () {
+    AddonOption opt(int id) => AddonOption(id: id, label: 'O$id', priceDelta: 0);
+
+    test('min above the satisfiable ceiling clamps instead of bricking Apply', () {
+      // min 2 on a SINGLE-choice group can never be satisfied (selection
+      // replaces, never accumulates) — the effective requirement becomes 1.
+      final single = AddonGroup(
+        id: 1,
+        name: 'Size',
+        multiSelect: false,
+        minSelections: 2,
+        options: [opt(1), opt(2)],
+      );
+      expect(single.effectiveMin, 1);
+      expect(single.isRequired, isTrue);
+
+      // min above an explicit max clamps to the max.
+      final overMax = AddonGroup(
+        id: 2,
+        name: 'Extras',
+        multiSelect: true,
+        minSelections: 5,
+        maxSelections: 2,
+        options: [opt(1), opt(2), opt(3)],
+      );
+      expect(overMax.effectiveMin, 2);
+
+      // min above the option count on an unbounded multi group clamps to
+      // the option count (you cannot pick more options than exist).
+      final overOptions = AddonGroup(
+        id: 3,
+        name: 'Sauces',
+        multiSelect: true,
+        minSelections: 9,
+        options: [opt(1), opt(2)],
+      );
+      expect(overOptions.effectiveMin, 2);
+    });
+
+    test('satisfiable configs pass through unchanged', () {
+      final normal = AddonGroup(
+        id: 4,
+        name: 'Size',
+        multiSelect: false,
+        minSelections: 1,
+        options: [opt(1), opt(2)],
+      );
+      expect(normal.effectiveMin, 1);
+
+      final optional = AddonGroup(
+        id: 5,
+        name: 'Extras',
+        multiSelect: true,
+        options: [opt(1)],
+      );
+      expect(optional.effectiveMin, 0);
+      expect(optional.isRequired, isFalse);
+    });
+  });
 }

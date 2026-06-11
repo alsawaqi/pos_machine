@@ -1751,5 +1751,13 @@
     }
   },
   "posOffersBundlePrice": "Bundle price:",
-  "posOffersBundleAdd": "Add Bundle"
+  "posOffersBundleAdd": "Add Bundle",
+  "posCustomizeMinHint": "Select at least {n}",
+  "@posCustomizeMinHint": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  }
 }

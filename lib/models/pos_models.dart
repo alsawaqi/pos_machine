@@ -205,7 +205,14 @@ class AddonGroup {
   final List<AddonOption> options;
 
   /// The effective minimum (a single-select group with min null is optional).
-  int get effectiveMin => minSelections ?? 0;
+  /// CLAMPED to [effectiveMax]: an impossible merchant config (e.g. min 2 on
+  /// a single-choice group) must degrade to a satisfiable requirement, not
+  /// permanently disable the customize sheet's Apply button.
+  int get effectiveMin {
+    final raw = minSelections ?? 0;
+    final ceiling = effectiveMax;
+    return raw > ceiling ? ceiling : raw;
+  }
 
   /// The effective maximum (single-select is implicitly capped at 1).
   int get effectiveMax =>
