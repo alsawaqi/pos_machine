@@ -872,6 +872,38 @@ class MerchantDiscount {
       );
 }
 
+/// P-F8 — the merchant's order-numbering config (settings.order_numbering).
+/// When [enabled], the device asks pos_api for the next sequential number at
+/// PAYMENT time (per-branch or company-wide, optionally daily-reset); the
+/// server-formatted value (e.g. "KLD-0042") becomes the order's receipt
+/// number. Offline orders fall back to the device-local counter.
+class OrderNumberingConfig {
+  final bool enabled;
+  final String prefix;
+  final int pad;
+  final String scope; // branch | company
+  final bool dailyReset;
+
+  const OrderNumberingConfig({
+    this.enabled = false,
+    this.prefix = '',
+    this.pad = 4,
+    this.scope = 'branch',
+    this.dailyReset = false,
+  });
+
+  static const OrderNumberingConfig disabled = OrderNumberingConfig();
+
+  factory OrderNumberingConfig.fromJson(Map<String, dynamic> j) =>
+      OrderNumberingConfig(
+        enabled: j['enabled'] == true,
+        prefix: j['prefix']?.toString() ?? '',
+        pad: (j['pad'] as num?)?.toInt() ?? 4,
+        scope: j['scope']?.toString() ?? 'branch',
+        dailyReset: j['daily_reset'] == true,
+      );
+}
+
 /// A merchant loyalty rule from the config bundle. `type` is visit_based (a
 /// stamp card) or spend_based (points). [config] holds the type-specific
 /// settings; the typed getters parse it (values may arrive as strings).
@@ -1378,6 +1410,10 @@ class OrderSnapshot {
   // P-F4 — the cashier's reason for a manual/custom discount ('' = none);
   // rides order.create's discounts[] entry and lands in the audit row.
   final String discountReason;
+  // P-F8 — the merchant's formatted sequential order number (e.g. "KLD-0042")
+  // allocated server-side at payment time. '' = none (numbering disabled or
+  // the device was offline → the local [orderNumber] stands alone).
+  final String receiptNumber;
   // Loyalty redemption applied to this order (points spent under a rule); sent
   // as loyalty_redeem on order.pay. Null/0 = no redemption.
   final int? loyaltyRedeemRuleId;
@@ -1453,6 +1489,7 @@ class OrderSnapshot {
     this.discountId,
     this.discountAmountType,
     this.discountReason = '',
+    this.receiptNumber = '',
     this.loyaltyRedeemRuleId,
     this.loyaltyRedeemPoints = 0,
     this.loyaltyRedeemStamps = 0,
@@ -1516,6 +1553,7 @@ class OrderSnapshot {
       discountAmount: (map['discountAmount'] as num?)?.toDouble() ?? 0,
       discountLabel: map['discountLabel']?.toString() ?? '',
       discountReason: map['discountReason']?.toString() ?? '',
+      receiptNumber: map['receiptNumber']?.toString() ?? '',
       subtotal: (map['subtotal'] as num?)?.toDouble() ?? 0,
       tax: (map['tax'] as num?)?.toDouble() ?? 0,
       total: (map['total'] as num?)?.toDouble() ?? 0,
@@ -1575,6 +1613,7 @@ class OrderSnapshot {
       'discountAmount': discountAmount,
       'discountLabel': discountLabel,
       if (discountReason.isNotEmpty) 'discountReason': discountReason,
+      if (receiptNumber.isNotEmpty) 'receiptNumber': receiptNumber,
       'subtotal': subtotal,
       'tax': tax,
       'total': total,
@@ -1616,6 +1655,7 @@ class OrderSnapshot {
     int? discountId,
     String? discountAmountType,
     String? discountReason,
+    String? receiptNumber,
     int? loyaltyRedeemRuleId,
     int? loyaltyRedeemPoints,
     int? loyaltyRedeemStamps,
@@ -1660,6 +1700,7 @@ class OrderSnapshot {
       discountId: discountId ?? this.discountId,
       discountAmountType: discountAmountType ?? this.discountAmountType,
       discountReason: discountReason ?? this.discountReason,
+      receiptNumber: receiptNumber ?? this.receiptNumber,
       loyaltyRedeemRuleId: loyaltyRedeemRuleId ?? this.loyaltyRedeemRuleId,
       loyaltyRedeemPoints: loyaltyRedeemPoints ?? this.loyaltyRedeemPoints,
       loyaltyRedeemStamps: loyaltyRedeemStamps ?? this.loyaltyRedeemStamps,
@@ -1713,6 +1754,11 @@ class OrderSnapshot {
   double get canceledAmount => _roundStoredMoney(
     cancellations.fold<double>(0, (sum, entry) => sum + entry.amount),
   );
+
+  /// P-F8 — what receipts/tickets/history show: the merchant's sequential
+  /// number when one was allocated, else the device-local '#N'.
+  String get displayOrderNumber =>
+      receiptNumber.isNotEmpty ? receiptNumber : '#$orderNumber';
 
   bool get isFullyCanceled => cancellations.any((entry) => entry.fullOrder);
 
@@ -1848,6 +1894,8 @@ class OrderHistoryRecord {
       // order.void back to pos_api (the handler is branch-scoped, not
       // creating-device-scoped).
       'serverOrderUuid': json['uuid']?.toString() ?? '',
+      // P-F8 — the merchant's sequential number, when the order has one.
+      'receiptNumber': json['receipt_number']?.toString() ?? '',
     });
 
     return OrderHistoryRecord(

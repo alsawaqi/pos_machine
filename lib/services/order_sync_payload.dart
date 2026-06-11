@@ -238,6 +238,10 @@ OrderSyncPayload buildOrderSyncPayload(
     'uuid': orderUuid,
     'order_type': mapOrderType(snapshot.orderType),
     'source': 'main_pos',
+    // P-F8 — the merchant's sequential receipt number, when one was
+    // allocated (offline orders go up without one).
+    if (snapshot.receiptNumber.isNotEmpty)
+      'receipt_number': snapshot.receiptNumber,
     'subtotal_baisas': omrToBaisas(snapshot.rawSubtotal),
     'discount_total_baisas': omrToBaisas(snapshot.discountAmount),
     if (comps.isNotEmpty) 'comp_total_baisas': compBaisas,

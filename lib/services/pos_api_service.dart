@@ -223,6 +223,27 @@ class PosApiService {
         .toList();
   }
 
+  /// POST /device/orders/next-number — P-F8: atomically allocate the next
+  /// merchant order number (per the company's numbering config: branch or
+  /// company scope, optional daily reset). Returns the server-formatted
+  /// receipt number, or null when numbering is disabled server-side.
+  /// Network failures rethrow — the caller falls back to the local number.
+  Future<({int number, String formatted})?> allocateOrderNumber() async {
+    try {
+      final body =
+          await _send(() => _dio.post('/device/orders/next-number'));
+      final number = (body.dataMap['number'] as num?)?.toInt();
+      final formatted = body.dataMap['formatted']?.toString();
+      if (number == null || formatted == null || formatted.isEmpty) {
+        return null;
+      }
+      return (number: number, formatted: formatted);
+    } on ApiException catch (e) {
+      if (e.code == 'numbering_disabled') return null;
+      rethrow;
+    }
+  }
+
   /// GET /device/reports/branch — P-F6: the branch report bundle for the
   /// device's Reports dashboard (branch-scoped aggregates, money in baisas;
   /// the model converts to OMR). Online-only by nature.

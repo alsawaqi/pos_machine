@@ -109,7 +109,8 @@ class SunmiReceiptService {
       style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.CENTER),
     );
     await SunmiPrinter.printText(
-      'Order #${order.orderNumber}',
+      // P-F8 — the merchant's sequential number when allocated, else '#N'.
+      'Order ${order.displayOrderNumber}',
       style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.CENTER),
     );
     if (order.diningTableName.trim().isNotEmpty) {

@@ -194,6 +194,10 @@ class SyncMeta extends Table {
   // P-F6 — JSON list of staff positions allowed to open the branch Reports
   // screen (`settings.reports_positions`). null = managers-only fallback.
   TextColumn get reportsPositions => text().nullable()();
+  // P-F8 — the merchant's order-numbering config JSON
+  // (`settings.order_numbering`: {enabled, prefix, pad, scope, daily_reset}).
+  // null/absent = numbering disabled (device-local numbers).
+  TextColumn get orderNumberingJson => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

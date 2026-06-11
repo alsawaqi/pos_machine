@@ -170,6 +170,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.onOrderCompleted = _handleOrderCompleted;
     controller.onOrderHeld = _handleOrderHeld;
     controller.onOrderVoided = _handleOrderVoided;
+    // P-F8 — merchant order numbering: the controller asks for the next
+    // sequential number at payment time through this bridge.
+    controller.allocateReceiptNumber =
+        () => ref.read(apiServiceProvider).allocateOrderNumber();
     // Phase G4 — printing is fail-safe (never blocks a sale); this surfaces
     // a throttled staff alert when real hardware fails (paper out / cover).
     controller.onPrintFailed = _handlePrintFailed;
@@ -234,6 +238,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             customers: catalog.customers,
             cancelOrderPositions: catalog.cancelOrderPositions,
             reportsPositions: catalog.reportsPositions,
+            orderNumbering: catalog.orderNumbering,
             receiptTemplate: catalog.receiptTemplate,
             voidReasons: catalog.voidReasons,
             compReasons: catalog.compReasons,
@@ -9375,7 +9380,11 @@ class _OrderHistoryCard extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      l10n.posStorageOrderNumber(record.orderNumber),
+                      // P-F8 — the merchant's sequential number when the
+                      // order has one, else the local 'Order #N'.
+                      snapshot.receiptNumber.isNotEmpty
+                          ? 'Order ${snapshot.receiptNumber}'
+                          : l10n.posStorageOrderNumber(record.orderNumber),
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w900,

@@ -249,6 +249,18 @@ class PosController extends ChangeNotifier {
   /// (`settings.reports_positions`). Managers-only until synced.
   List<String> reportsPositions = const <String>['manager'];
 
+  /// P-F8 — the merchant's order-numbering config (disabled = device-local
+  /// numbers only).
+  OrderNumberingConfig orderNumbering = OrderNumberingConfig.disabled;
+
+  /// P-F8 — the merchant's formatted sequential number for THIS order,
+  /// allocated server-side at payment time ('' until then / offline).
+  String receiptNumber = '';
+
+  /// P-F8 — wired by the screen: asks pos_api for the next merchant order
+  /// number. Null result = numbering disabled server-side; throws offline.
+  Future<({int number, String formatted})?> Function()? allocateReceiptNumber;
+
   /// The branch's merchant-authored receipt template (from /device/config).
   /// Null = print the built-in default receipt. Passed to [SunmiReceiptService].
   ReceiptTemplate? receiptTemplate;
@@ -523,6 +535,7 @@ class PosController extends ChangeNotifier {
     List<CustomerRef> customers = const <CustomerRef>[],
     List<String> cancelOrderPositions = const <String>['manager'],
     List<String> reportsPositions = const <String>['manager'],
+    OrderNumberingConfig orderNumbering = OrderNumberingConfig.disabled,
     ReceiptTemplate? receiptTemplate,
     List<VoidReasonRef> voidReasons = const <VoidReasonRef>[],
     List<CompReasonRef> compReasons = const <CompReasonRef>[],
@@ -546,6 +559,7 @@ class PosController extends ChangeNotifier {
         cancelOrderPositions.isEmpty ? const <String>['manager'] : cancelOrderPositions;
     this.reportsPositions =
         reportsPositions.isEmpty ? const <String>['manager'] : reportsPositions;
+    this.orderNumbering = orderNumbering;
     this.receiptTemplate = receiptTemplate;
     this.voidReasons = voidReasons;
     this.compReasons = compReasons;
@@ -1031,6 +1045,7 @@ class PosController extends ChangeNotifier {
 
     return OrderSnapshot(
       orderNumber: currentOrderNumber,
+      receiptNumber: receiptNumber, // P-F8 — '' until allocated
       orderType: selectedOrderType.storageValue,
       items: _cart.map(_snapshotItem).toList(),
       rawSubtotal: rawSubtotal,
@@ -1717,7 +1732,7 @@ class PosController extends ChangeNotifier {
     bool isReprint = false,
   }) {
     return KitchenTicketData(
-      orderLabel: 'Order #${s.orderNumber}',
+      orderLabel: 'Order ${s.displayOrderNumber}', // P-F8
       orderTypeLabel: OrderTypeLabel.fromStorage(s.orderType).label,
       tableLabel: _composeTableLabel(s.diningTableName, s.diningFloorLabel),
       // selectedDeliveryProvider is the LIVE order's pick — it is only valid
@@ -2052,6 +2067,22 @@ class PosController extends ChangeNotifier {
     _clearPaymentLaunchOverlay();
     isProcessingPayment = true;
     lastPaymentMessage = '';
+
+    // P-F8 — merchant order numbering: allocate the official sequential
+    // number ONCE per order (the first tender of a split wins), short-fused
+    // so an offline/slow till never stalls the sale — the fallback is the
+    // device-local number (receiptNumber stays '').
+    if (orderNumbering.enabled &&
+        receiptNumber.isEmpty &&
+        allocateReceiptNumber != null) {
+      try {
+        final allocated = await allocateReceiptNumber!()
+            .timeout(const Duration(seconds: 3));
+        if (allocated != null) receiptNumber = allocated.formatted;
+      } catch (_) {
+        // Offline / timeout / refused — the local number stands.
+      }
+    }
 
     try {
       if (canOfferCharityRoundUp) {
@@ -3033,6 +3064,7 @@ class PosController extends ChangeNotifier {
     vehiclePlateNumber = '';
     selectedCustomer = null;
     selectedEarnRuleIds = null; // P-F3 — per-order choice
+    receiptNumber = ''; // P-F8 — per-order allocation
     currentOrderReference = '';
     isProcessingPayment = false;
     productSearchQuery = '';

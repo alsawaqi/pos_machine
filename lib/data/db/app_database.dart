@@ -38,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 21;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -142,6 +142,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 20) {
             // v20 — P-F6: the device-reports access policy.
             await m.addColumn(syncMeta, syncMeta.reportsPositions);
+          }
+          if (from < 21) {
+            // v21 — P-F8: the merchant order-numbering config.
+            await m.addColumn(syncMeta, syncMeta.orderNumberingJson);
           }
         },
       );
@@ -342,6 +346,7 @@ class AppDatabase extends _$AppDatabase {
     required DateTime now,
     String? orderCancelPositions,
     String? reportsPositions,
+    String? orderNumberingJson,
   }) {
     return transaction(() async {
       // Upserts (changed rows only — untouched rows survive).
@@ -418,6 +423,9 @@ class AppDatabase extends _$AppDatabase {
         reportsPositions: reportsPositions == null
             ? const Value.absent()
             : Value(reportsPositions),
+        orderNumberingJson: orderNumberingJson == null
+            ? const Value.absent()
+            : Value(orderNumberingJson),
       ));
     });
   }

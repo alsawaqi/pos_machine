@@ -102,9 +102,10 @@ class ConfigRepository {
         deletedExpenseCategoryIds: d.expenseCategories,
         cursor: res.generatedAt,
         now: DateTime.now(),
-        // The position policies are always emitted (full + delta); refresh.
+        // The settings block is always emitted (full + delta); refresh.
         orderCancelPositions: c.meta.orderCancelPositions.value,
         reportsPositions: c.meta.reportsPositions.value,
+        orderNumberingJson: c.meta.orderNumberingJson.value,
       );
       await _session.saveTerminalId(res.terminalId);
       await _session.saveWebsocketConfig(res.websocket);
