@@ -2746,4 +2746,41 @@ class L10nEn extends L10n {
   String ctrlMsgTablesMerged(String source, String target) {
     return 'Merged $source into $target.';
   }
+
+  @override
+  String get posNavOffers => 'Offers';
+
+  @override
+  String get posOffersNone => 'No offers are active for this branch right now.';
+
+  @override
+  String posOffersAppliedTimes(int n) {
+    return 'Applied ×$n';
+  }
+
+  @override
+  String get posOfferTypeBogo => 'Buy & Get';
+
+  @override
+  String get posOfferTypeBundle => 'Bundle';
+
+  @override
+  String get posOfferTypeMultiBuy => 'Multi-Buy';
+
+  @override
+  String get posOfferTypeCheapestFree => 'Cheapest Free';
+
+  @override
+  String get posOfferTypeSpendGet => 'Spend & Get';
+
+  @override
+  String posOffersBundleNeed(int n) {
+    return 'pick $n';
+  }
+
+  @override
+  String get posOffersBundlePrice => 'Bundle price:';
+
+  @override
+  String get posOffersBundleAdd => 'Add Bundle';
 }

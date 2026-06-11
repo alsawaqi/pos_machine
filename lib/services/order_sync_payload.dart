@@ -176,12 +176,28 @@ OrderSyncPayload buildOrderSyncPayload(
 
   // ---- discounts (snapshot-authoritative) ----
   // snapshot.discountAmount is the COMBINED total (order-level + auto-applied
-  // line discounts). Split it back out: the order-level entry carries only its
-  // own portion, then each per-line discount is appended with its line_index.
+  // line discounts + applied OFFERS). Split it back out: the order-level
+  // entry carries only its own portion; line discounts and offer allocations
+  // are appended as their own rows (offers carry offer_id for the by-offer
+  // report).
   final discounts = <Map<String, dynamic>>[];
-  final orderLevelDiscount = (snapshot.discountAmount - lineDiscountSum)
-      .clamp(0.0, double.infinity)
-      .toDouble();
+  final offerEntries = <Map<String, dynamic>>[];
+  var offerSum = 0.0;
+  for (final o in snapshot.offers) {
+    final amount = (o['amount'] as num?)?.toDouble() ?? 0;
+    if (amount <= 0) continue;
+    offerSum += amount;
+    offerEntries.add({
+      'name': o['name']?.toString() ?? 'Offer',
+      'amount_baisas': omrToBaisas(amount),
+      if (o['offer_id'] != null) 'offer_id': o['offer_id'],
+      if (o['line_index'] != null) 'line_index': o['line_index'],
+    });
+  }
+  final orderLevelDiscount =
+      (snapshot.discountAmount - lineDiscountSum - offerSum)
+          .clamp(0.0, double.infinity)
+          .toDouble();
   if (orderLevelDiscount > 0) {
     discounts.add({
       'name': snapshot.discountLabel.isEmpty ? 'Discount' : snapshot.discountLabel,
@@ -196,6 +212,7 @@ OrderSyncPayload buildOrderSyncPayload(
     });
   }
   discounts.addAll(lineDiscounts);
+  discounts.addAll(offerEntries);
 
   // ---- Phase B + P-F5 — comps: the manager's reasoned comp + per-line GIFT
   // write-offs (is_gift rows, no reason, no cap). Rows must sum EXACTLY to

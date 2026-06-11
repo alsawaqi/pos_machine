@@ -579,6 +579,10 @@ class CartItem {
   // the comp plumbing with is_gift on the wire — no tax, inventory still
   // consumed). Manager-gated on the screen.
   bool gifted;
+  // P-F9 — non-empty when this line belongs to a cashier-picked BUNDLE
+  // application ('<offerId>:<instance>'). Bundle lines never merge with
+  // regular lines; the offer engine re-validates the set on every change.
+  String bundleKey;
 
   CartItem({
     required this.product,
@@ -586,6 +590,7 @@ class CartItem {
     List<CartItemModifier>? modifiers,
     this.notes = '',
     this.gifted = false,
+    this.bundleKey = '',
   }) : modifiers = List<CartItemModifier>.from(modifiers ?? const []);
 
   factory CartItem.fromMap(Map<String, dynamic> map) {
@@ -601,6 +606,7 @@ class CartItem {
           .toList(),
       notes: map['notes']?.toString() ?? '',
       gifted: map['gifted'] == true,
+      bundleKey: map['bundleKey']?.toString() ?? '',
     );
   }
 
@@ -619,9 +625,11 @@ class CartItem {
     final modifierSignature = modifiers
         .map((modifier) => modifier.id)
         .join('|');
-    // P-F5 — a gifted line never merges with a paid one (table merges).
+    // P-F5 — a gifted line never merges with a paid one (table merges);
+    // P-F9 — bundle lines stay distinct per bundle instance.
     return '${product.id}|$modifierSignature|${normalizedNotes.toLowerCase()}'
-        '${gifted ? '|gift' : ''}';
+        '${gifted ? '|gift' : ''}'
+        '${bundleKey.isNotEmpty ? '|b:$bundleKey' : ''}';
   }
 
   List<CartItemModifier> modifiersForGroup(String group) {
@@ -684,6 +692,7 @@ class CartItem {
       'modifiers': modifiers.map((modifier) => modifier.toMap()).toList(),
       'notes': normalizedNotes,
       if (gifted) 'gifted': true,
+      if (bundleKey.isNotEmpty) 'bundleKey': bundleKey,
       'detailLines': detailLines,
     };
   }
@@ -870,6 +879,75 @@ class MerchantDiscount {
         label: name,
         discountId: id,
       );
+}
+
+/// P-F9 — a merchant OFFER (promotion) from the config bundle. `type` is one
+/// of bogo | bundle | multi_buy | cheapest_free | spend_get; [config] holds
+/// the type-specific shape (see the offer engine). Shared applicability
+/// (validity window / weekday mask / time window / branch scope) mirrors
+/// [MerchantDiscount]. Auto types self-apply on the device; bundles are
+/// cashier-picked. Money inside config is integer baisas.
+class Offer {
+  final int id;
+  final String name;
+  final String? nameAr;
+  final String type;
+  final Map<String, dynamic> config;
+  final bool autoApply;
+  final DateTime? validityStart;
+  final DateTime? validityEnd;
+  final int? dayOfWeekMask;
+  final String? timeStart; // 'HH:MM:SS'
+  final String? timeEnd;
+  final List<int> branchScope; // empty = all branches
+  final int? maxPerOrder; // null = unlimited applications per order
+  final bool isActive;
+
+  const Offer({
+    required this.id,
+    required this.name,
+    this.nameAr,
+    required this.type,
+    this.config = const {},
+    this.autoApply = true,
+    this.validityStart,
+    this.validityEnd,
+    this.dayOfWeekMask,
+    this.timeStart,
+    this.timeEnd,
+    this.branchScope = const [],
+    this.maxPerOrder,
+    this.isActive = true,
+  });
+
+  bool get isBundle => type == 'bundle';
+
+  /// The name to SHOW for [arabic] UI (identity stays English).
+  String displayName(bool arabic) =>
+      arabic && (nameAr?.trim().isNotEmpty ?? false) ? nameAr! : name;
+
+  /// Usable right now at [branchId] — mirrors MerchantDiscount.appliesAt.
+  bool appliesAt(DateTime now, {required int branchId}) {
+    if (!isActive) return false;
+    if (validityStart != null && now.isBefore(validityStart!)) return false;
+    if (validityEnd != null && now.isAfter(validityEnd!)) return false;
+    final mask = dayOfWeekMask ?? 127;
+    if ((mask & (1 << (now.weekday % 7))) == 0) return false;
+    if (timeStart != null || timeEnd != null) {
+      String pad(int v) => v.toString().padLeft(2, '0');
+      final hhmmss = '${pad(now.hour)}:${pad(now.minute)}:${pad(now.second)}';
+      final start = timeStart ?? '00:00:00';
+      final end = timeEnd ?? '23:59:59';
+      final inWindow = start.compareTo(end) <= 0
+          ? hhmmss.compareTo(start) >= 0 && hhmmss.compareTo(end) <= 0
+          : hhmmss.compareTo(start) >= 0 || hhmmss.compareTo(end) <= 0;
+      if (!inWindow) return false;
+    }
+    if (branchScope.isNotEmpty && !branchScope.contains(branchId)) {
+      return false;
+    }
+    return true;
+  }
 }
 
 /// P-F8 — the merchant's order-numbering config (settings.order_numbering).
@@ -1414,6 +1492,11 @@ class OrderSnapshot {
   // allocated server-side at payment time. '' = none (numbering disabled or
   // the device was offline → the local [orderNumber] stands alone).
   final String receiptNumber;
+  // P-F9 — the applied offers frozen at snapshot time: flattened entries
+  // {offer_id, name, amount (OMR), line_index?} — per-line allocations plus
+  // any order-level (spend_get) amount. Pushed as discounts[] rows carrying
+  // offer_id.
+  final List<Map<String, dynamic>> offers;
   // Loyalty redemption applied to this order (points spent under a rule); sent
   // as loyalty_redeem on order.pay. Null/0 = no redemption.
   final int? loyaltyRedeemRuleId;
@@ -1490,6 +1573,7 @@ class OrderSnapshot {
     this.discountAmountType,
     this.discountReason = '',
     this.receiptNumber = '',
+    this.offers = const <Map<String, dynamic>>[],
     this.loyaltyRedeemRuleId,
     this.loyaltyRedeemPoints = 0,
     this.loyaltyRedeemStamps = 0,
@@ -1554,6 +1638,10 @@ class OrderSnapshot {
       discountLabel: map['discountLabel']?.toString() ?? '',
       discountReason: map['discountReason']?.toString() ?? '',
       receiptNumber: map['receiptNumber']?.toString() ?? '',
+      offers: ((map['offers'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList(),
       subtotal: (map['subtotal'] as num?)?.toDouble() ?? 0,
       tax: (map['tax'] as num?)?.toDouble() ?? 0,
       total: (map['total'] as num?)?.toDouble() ?? 0,
@@ -1614,6 +1702,7 @@ class OrderSnapshot {
       'discountLabel': discountLabel,
       if (discountReason.isNotEmpty) 'discountReason': discountReason,
       if (receiptNumber.isNotEmpty) 'receiptNumber': receiptNumber,
+      if (offers.isNotEmpty) 'offers': offers,
       'subtotal': subtotal,
       'tax': tax,
       'total': total,
@@ -1656,6 +1745,7 @@ class OrderSnapshot {
     String? discountAmountType,
     String? discountReason,
     String? receiptNumber,
+    List<Map<String, dynamic>>? offers,
     int? loyaltyRedeemRuleId,
     int? loyaltyRedeemPoints,
     int? loyaltyRedeemStamps,
@@ -1701,6 +1791,7 @@ class OrderSnapshot {
       discountAmountType: discountAmountType ?? this.discountAmountType,
       discountReason: discountReason ?? this.discountReason,
       receiptNumber: receiptNumber ?? this.receiptNumber,
+      offers: offers ?? this.offers,
       loyaltyRedeemRuleId: loyaltyRedeemRuleId ?? this.loyaltyRedeemRuleId,
       loyaltyRedeemPoints: loyaltyRedeemPoints ?? this.loyaltyRedeemPoints,
       loyaltyRedeemStamps: loyaltyRedeemStamps ?? this.loyaltyRedeemStamps,

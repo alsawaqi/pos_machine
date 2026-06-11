@@ -25,6 +25,7 @@ class CatalogSnapshot {
     this.cancelOrderPositions = const <String>['manager'],
     this.reportsPositions = const <String>['manager'],
     this.orderNumbering = OrderNumberingConfig.disabled,
+    this.offers = const <Offer>[],
     this.receiptTemplate,
     this.voidReasons = const <VoidReasonRef>[],
     this.compReasons = const <CompReasonRef>[],
@@ -66,6 +67,8 @@ class CatalogSnapshot {
   final List<String> reportsPositions;
   // P-F8 — the merchant's order-numbering config (disabled = local numbers).
   final OrderNumberingConfig orderNumbering;
+  // P-F9 — merchant offers (promotions) for the device's offer engine.
+  final List<Offer> offers;
   // Per-branch custom receipt template; null = device prints its default.
   final ReceiptTemplate? receiptTemplate;
   // Phase B — void reason codes (the cancel dialog requires one when any
@@ -96,6 +99,7 @@ class ParsedConfig {
     required this.ingredients,
     this.voidReasons = const [],
     this.compReasons = const [],
+    this.offers = const [],
     required this.meta,
   });
 
@@ -117,6 +121,8 @@ class ParsedConfig {
   // Phase B — void + comp reason code lists.
   final List<VoidReasonsCompanion> voidReasons;
   final List<CompReasonsCompanion> compReasons;
+  // P-F9 — merchant offers (promotions).
+  final List<OffersCompanion> offers;
   final SyncMetaCompanion meta;
 }
 
@@ -136,6 +142,7 @@ class DeletedIds {
     this.customers = const [],
     this.deliveryProviders = const [],
     this.expenseCategories = const [],
+    this.offers = const [],
   });
 
   final List<int> floors;
@@ -150,6 +157,8 @@ class DeletedIds {
   final List<int> customers;
   final List<int> deliveryProviders;
   final List<int> expenseCategories;
+  // P-F9 — soft-deleted offer ids.
+  final List<int> offers;
 }
 
 /// A parsed config delta: the changed-row companions (built via
@@ -505,6 +514,31 @@ class ConfigMapper {
             ))
         .toList();
 
+    // P-F9 — merchant offers (promotions); config passes through as JSON for
+    // the device's offer engine.
+    final offers = _list(data['offers'])
+        .map((o) => OffersCompanion(
+              id: Value(_int(o['id']) ?? 0),
+              name: Value(_str(o['name'])),
+              nameAr: Value(_strN(o['name_ar'])),
+              type: Value(_str(o['type'])),
+              configJson: Value(jsonEncode(o['config'] ?? const {})),
+              autoApply: Value(o['auto_apply'] != false),
+              validityStart: Value(_date(o['validity_start'])),
+              validityEnd: Value(_date(o['validity_end'])),
+              dayofweekMask: Value(_int(o['dayofweek_mask'])),
+              timeStart: Value(_strN(o['time_start'])),
+              timeEnd: Value(_strN(o['time_end'])),
+              branchScopeJson: Value(
+                o['branch_scope_json'] == null
+                    ? null
+                    : jsonEncode(o['branch_scope_json']),
+              ),
+              maxPerOrder: Value(_int(o['max_per_order'])),
+              status: Value(_strN(o['status'])),
+            ))
+        .toList();
+
     // v2 #14 — company POS policy: which staff positions may cancel an order.
     final settings = (data['settings'] as Map?)?.cast<String, dynamic>() ?? const {};
     final cancelPositions = _strList(settings['order_cancel_positions']);
@@ -543,6 +577,7 @@ class ConfigMapper {
       ingredients: ingredients,
       voidReasons: voidReasons,
       compReasons: compReasons,
+      offers: offers,
       meta: metaCompanion,
     );
   }
@@ -570,6 +605,7 @@ class ConfigMapper {
         customers: _intList(del['customers']),
         deliveryProviders: _intList(del['delivery_providers']),
         expenseCategories: _intList(del['expense_categories']),
+        offers: _intList(del['offers']),
       ),
     );
   }
@@ -594,6 +630,7 @@ class ConfigMapper {
     SyncMetaRow? meta,
     List<VoidReasonRow> voidReasonRows = const [],
     List<CompReasonRow> compReasonRows = const [],
+    List<OfferRow> offerRows = const [],
   ]) {
     final sortedCats = [...cats]
       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
@@ -831,6 +868,24 @@ class ConfigMapper {
       cancelOrderPositions: _cancelPositionsFromMeta(meta),
       reportsPositions: _reportsPositionsFromMeta(meta),
       orderNumbering: _orderNumberingFromMeta(meta),
+      offers: offerRows
+          .map((o) => Offer(
+                id: o.id,
+                name: o.name,
+                nameAr: o.nameAr,
+                type: o.type,
+                config: _decodeConfig(o.configJson),
+                autoApply: o.autoApply,
+                validityStart: o.validityStart,
+                validityEnd: o.validityEnd,
+                dayOfWeekMask: o.dayofweekMask,
+                timeStart: o.timeStart,
+                timeEnd: o.timeEnd,
+                branchScope: _branchScope(o.branchScopeJson),
+                maxPerOrder: o.maxPerOrder,
+                isActive: o.status == null || o.status == 'active',
+              ))
+          .toList(),
       receiptTemplate: receiptTemplate,
       voidReasons: voidReasonDefs,
       compReasons: compReasonDefs,

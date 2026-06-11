@@ -9204,6 +9204,822 @@ class CompReasonsCompanion extends UpdateCompanion<CompReasonRow> {
   }
 }
 
+class $OffersTable extends Offers with TableInfo<$OffersTable, OfferRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OffersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _nameArMeta = const VerificationMeta('nameAr');
+  @override
+  late final GeneratedColumn<String> nameAr = GeneratedColumn<String>(
+    'name_ar',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _configJsonMeta = const VerificationMeta(
+    'configJson',
+  );
+  @override
+  late final GeneratedColumn<String> configJson = GeneratedColumn<String>(
+    'config_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _autoApplyMeta = const VerificationMeta(
+    'autoApply',
+  );
+  @override
+  late final GeneratedColumn<bool> autoApply = GeneratedColumn<bool>(
+    'auto_apply',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("auto_apply" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _validityStartMeta = const VerificationMeta(
+    'validityStart',
+  );
+  @override
+  late final GeneratedColumn<DateTime> validityStart =
+      GeneratedColumn<DateTime>(
+        'validity_start',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _validityEndMeta = const VerificationMeta(
+    'validityEnd',
+  );
+  @override
+  late final GeneratedColumn<DateTime> validityEnd = GeneratedColumn<DateTime>(
+    'validity_end',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dayofweekMaskMeta = const VerificationMeta(
+    'dayofweekMask',
+  );
+  @override
+  late final GeneratedColumn<int> dayofweekMask = GeneratedColumn<int>(
+    'dayofweek_mask',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _timeStartMeta = const VerificationMeta(
+    'timeStart',
+  );
+  @override
+  late final GeneratedColumn<String> timeStart = GeneratedColumn<String>(
+    'time_start',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _timeEndMeta = const VerificationMeta(
+    'timeEnd',
+  );
+  @override
+  late final GeneratedColumn<String> timeEnd = GeneratedColumn<String>(
+    'time_end',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _branchScopeJsonMeta = const VerificationMeta(
+    'branchScopeJson',
+  );
+  @override
+  late final GeneratedColumn<String> branchScopeJson = GeneratedColumn<String>(
+    'branch_scope_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _maxPerOrderMeta = const VerificationMeta(
+    'maxPerOrder',
+  );
+  @override
+  late final GeneratedColumn<int> maxPerOrder = GeneratedColumn<int>(
+    'max_per_order',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    nameAr,
+    type,
+    configJson,
+    autoApply,
+    validityStart,
+    validityEnd,
+    dayofweekMask,
+    timeStart,
+    timeEnd,
+    branchScopeJson,
+    maxPerOrder,
+    status,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'offers';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OfferRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('name_ar')) {
+      context.handle(
+        _nameArMeta,
+        nameAr.isAcceptableOrUnknown(data['name_ar']!, _nameArMeta),
+      );
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    }
+    if (data.containsKey('config_json')) {
+      context.handle(
+        _configJsonMeta,
+        configJson.isAcceptableOrUnknown(data['config_json']!, _configJsonMeta),
+      );
+    }
+    if (data.containsKey('auto_apply')) {
+      context.handle(
+        _autoApplyMeta,
+        autoApply.isAcceptableOrUnknown(data['auto_apply']!, _autoApplyMeta),
+      );
+    }
+    if (data.containsKey('validity_start')) {
+      context.handle(
+        _validityStartMeta,
+        validityStart.isAcceptableOrUnknown(
+          data['validity_start']!,
+          _validityStartMeta,
+        ),
+      );
+    }
+    if (data.containsKey('validity_end')) {
+      context.handle(
+        _validityEndMeta,
+        validityEnd.isAcceptableOrUnknown(
+          data['validity_end']!,
+          _validityEndMeta,
+        ),
+      );
+    }
+    if (data.containsKey('dayofweek_mask')) {
+      context.handle(
+        _dayofweekMaskMeta,
+        dayofweekMask.isAcceptableOrUnknown(
+          data['dayofweek_mask']!,
+          _dayofweekMaskMeta,
+        ),
+      );
+    }
+    if (data.containsKey('time_start')) {
+      context.handle(
+        _timeStartMeta,
+        timeStart.isAcceptableOrUnknown(data['time_start']!, _timeStartMeta),
+      );
+    }
+    if (data.containsKey('time_end')) {
+      context.handle(
+        _timeEndMeta,
+        timeEnd.isAcceptableOrUnknown(data['time_end']!, _timeEndMeta),
+      );
+    }
+    if (data.containsKey('branch_scope_json')) {
+      context.handle(
+        _branchScopeJsonMeta,
+        branchScopeJson.isAcceptableOrUnknown(
+          data['branch_scope_json']!,
+          _branchScopeJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('max_per_order')) {
+      context.handle(
+        _maxPerOrderMeta,
+        maxPerOrder.isAcceptableOrUnknown(
+          data['max_per_order']!,
+          _maxPerOrderMeta,
+        ),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  OfferRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OfferRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      nameAr: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name_ar'],
+      ),
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      )!,
+      configJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}config_json'],
+      )!,
+      autoApply: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}auto_apply'],
+      )!,
+      validityStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}validity_start'],
+      ),
+      validityEnd: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}validity_end'],
+      ),
+      dayofweekMask: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}dayofweek_mask'],
+      ),
+      timeStart: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}time_start'],
+      ),
+      timeEnd: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}time_end'],
+      ),
+      branchScopeJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}branch_scope_json'],
+      ),
+      maxPerOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}max_per_order'],
+      ),
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      ),
+    );
+  }
+
+  @override
+  $OffersTable createAlias(String alias) {
+    return $OffersTable(attachedDatabase, alias);
+  }
+}
+
+class OfferRow extends DataClass implements Insertable<OfferRow> {
+  final int id;
+  final String name;
+  final String? nameAr;
+  final String type;
+  final String configJson;
+  final bool autoApply;
+  final DateTime? validityStart;
+  final DateTime? validityEnd;
+  final int? dayofweekMask;
+  final String? timeStart;
+  final String? timeEnd;
+  final String? branchScopeJson;
+  final int? maxPerOrder;
+  final String? status;
+  const OfferRow({
+    required this.id,
+    required this.name,
+    this.nameAr,
+    required this.type,
+    required this.configJson,
+    required this.autoApply,
+    this.validityStart,
+    this.validityEnd,
+    this.dayofweekMask,
+    this.timeStart,
+    this.timeEnd,
+    this.branchScopeJson,
+    this.maxPerOrder,
+    this.status,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || nameAr != null) {
+      map['name_ar'] = Variable<String>(nameAr);
+    }
+    map['type'] = Variable<String>(type);
+    map['config_json'] = Variable<String>(configJson);
+    map['auto_apply'] = Variable<bool>(autoApply);
+    if (!nullToAbsent || validityStart != null) {
+      map['validity_start'] = Variable<DateTime>(validityStart);
+    }
+    if (!nullToAbsent || validityEnd != null) {
+      map['validity_end'] = Variable<DateTime>(validityEnd);
+    }
+    if (!nullToAbsent || dayofweekMask != null) {
+      map['dayofweek_mask'] = Variable<int>(dayofweekMask);
+    }
+    if (!nullToAbsent || timeStart != null) {
+      map['time_start'] = Variable<String>(timeStart);
+    }
+    if (!nullToAbsent || timeEnd != null) {
+      map['time_end'] = Variable<String>(timeEnd);
+    }
+    if (!nullToAbsent || branchScopeJson != null) {
+      map['branch_scope_json'] = Variable<String>(branchScopeJson);
+    }
+    if (!nullToAbsent || maxPerOrder != null) {
+      map['max_per_order'] = Variable<int>(maxPerOrder);
+    }
+    if (!nullToAbsent || status != null) {
+      map['status'] = Variable<String>(status);
+    }
+    return map;
+  }
+
+  OffersCompanion toCompanion(bool nullToAbsent) {
+    return OffersCompanion(
+      id: Value(id),
+      name: Value(name),
+      nameAr: nameAr == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nameAr),
+      type: Value(type),
+      configJson: Value(configJson),
+      autoApply: Value(autoApply),
+      validityStart: validityStart == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validityStart),
+      validityEnd: validityEnd == null && nullToAbsent
+          ? const Value.absent()
+          : Value(validityEnd),
+      dayofweekMask: dayofweekMask == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dayofweekMask),
+      timeStart: timeStart == null && nullToAbsent
+          ? const Value.absent()
+          : Value(timeStart),
+      timeEnd: timeEnd == null && nullToAbsent
+          ? const Value.absent()
+          : Value(timeEnd),
+      branchScopeJson: branchScopeJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(branchScopeJson),
+      maxPerOrder: maxPerOrder == null && nullToAbsent
+          ? const Value.absent()
+          : Value(maxPerOrder),
+      status: status == null && nullToAbsent
+          ? const Value.absent()
+          : Value(status),
+    );
+  }
+
+  factory OfferRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OfferRow(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      nameAr: serializer.fromJson<String?>(json['nameAr']),
+      type: serializer.fromJson<String>(json['type']),
+      configJson: serializer.fromJson<String>(json['configJson']),
+      autoApply: serializer.fromJson<bool>(json['autoApply']),
+      validityStart: serializer.fromJson<DateTime?>(json['validityStart']),
+      validityEnd: serializer.fromJson<DateTime?>(json['validityEnd']),
+      dayofweekMask: serializer.fromJson<int?>(json['dayofweekMask']),
+      timeStart: serializer.fromJson<String?>(json['timeStart']),
+      timeEnd: serializer.fromJson<String?>(json['timeEnd']),
+      branchScopeJson: serializer.fromJson<String?>(json['branchScopeJson']),
+      maxPerOrder: serializer.fromJson<int?>(json['maxPerOrder']),
+      status: serializer.fromJson<String?>(json['status']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'nameAr': serializer.toJson<String?>(nameAr),
+      'type': serializer.toJson<String>(type),
+      'configJson': serializer.toJson<String>(configJson),
+      'autoApply': serializer.toJson<bool>(autoApply),
+      'validityStart': serializer.toJson<DateTime?>(validityStart),
+      'validityEnd': serializer.toJson<DateTime?>(validityEnd),
+      'dayofweekMask': serializer.toJson<int?>(dayofweekMask),
+      'timeStart': serializer.toJson<String?>(timeStart),
+      'timeEnd': serializer.toJson<String?>(timeEnd),
+      'branchScopeJson': serializer.toJson<String?>(branchScopeJson),
+      'maxPerOrder': serializer.toJson<int?>(maxPerOrder),
+      'status': serializer.toJson<String?>(status),
+    };
+  }
+
+  OfferRow copyWith({
+    int? id,
+    String? name,
+    Value<String?> nameAr = const Value.absent(),
+    String? type,
+    String? configJson,
+    bool? autoApply,
+    Value<DateTime?> validityStart = const Value.absent(),
+    Value<DateTime?> validityEnd = const Value.absent(),
+    Value<int?> dayofweekMask = const Value.absent(),
+    Value<String?> timeStart = const Value.absent(),
+    Value<String?> timeEnd = const Value.absent(),
+    Value<String?> branchScopeJson = const Value.absent(),
+    Value<int?> maxPerOrder = const Value.absent(),
+    Value<String?> status = const Value.absent(),
+  }) => OfferRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    nameAr: nameAr.present ? nameAr.value : this.nameAr,
+    type: type ?? this.type,
+    configJson: configJson ?? this.configJson,
+    autoApply: autoApply ?? this.autoApply,
+    validityStart: validityStart.present
+        ? validityStart.value
+        : this.validityStart,
+    validityEnd: validityEnd.present ? validityEnd.value : this.validityEnd,
+    dayofweekMask: dayofweekMask.present
+        ? dayofweekMask.value
+        : this.dayofweekMask,
+    timeStart: timeStart.present ? timeStart.value : this.timeStart,
+    timeEnd: timeEnd.present ? timeEnd.value : this.timeEnd,
+    branchScopeJson: branchScopeJson.present
+        ? branchScopeJson.value
+        : this.branchScopeJson,
+    maxPerOrder: maxPerOrder.present ? maxPerOrder.value : this.maxPerOrder,
+    status: status.present ? status.value : this.status,
+  );
+  OfferRow copyWithCompanion(OffersCompanion data) {
+    return OfferRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      nameAr: data.nameAr.present ? data.nameAr.value : this.nameAr,
+      type: data.type.present ? data.type.value : this.type,
+      configJson: data.configJson.present
+          ? data.configJson.value
+          : this.configJson,
+      autoApply: data.autoApply.present ? data.autoApply.value : this.autoApply,
+      validityStart: data.validityStart.present
+          ? data.validityStart.value
+          : this.validityStart,
+      validityEnd: data.validityEnd.present
+          ? data.validityEnd.value
+          : this.validityEnd,
+      dayofweekMask: data.dayofweekMask.present
+          ? data.dayofweekMask.value
+          : this.dayofweekMask,
+      timeStart: data.timeStart.present ? data.timeStart.value : this.timeStart,
+      timeEnd: data.timeEnd.present ? data.timeEnd.value : this.timeEnd,
+      branchScopeJson: data.branchScopeJson.present
+          ? data.branchScopeJson.value
+          : this.branchScopeJson,
+      maxPerOrder: data.maxPerOrder.present
+          ? data.maxPerOrder.value
+          : this.maxPerOrder,
+      status: data.status.present ? data.status.value : this.status,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OfferRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('nameAr: $nameAr, ')
+          ..write('type: $type, ')
+          ..write('configJson: $configJson, ')
+          ..write('autoApply: $autoApply, ')
+          ..write('validityStart: $validityStart, ')
+          ..write('validityEnd: $validityEnd, ')
+          ..write('dayofweekMask: $dayofweekMask, ')
+          ..write('timeStart: $timeStart, ')
+          ..write('timeEnd: $timeEnd, ')
+          ..write('branchScopeJson: $branchScopeJson, ')
+          ..write('maxPerOrder: $maxPerOrder, ')
+          ..write('status: $status')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    nameAr,
+    type,
+    configJson,
+    autoApply,
+    validityStart,
+    validityEnd,
+    dayofweekMask,
+    timeStart,
+    timeEnd,
+    branchScopeJson,
+    maxPerOrder,
+    status,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OfferRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.nameAr == this.nameAr &&
+          other.type == this.type &&
+          other.configJson == this.configJson &&
+          other.autoApply == this.autoApply &&
+          other.validityStart == this.validityStart &&
+          other.validityEnd == this.validityEnd &&
+          other.dayofweekMask == this.dayofweekMask &&
+          other.timeStart == this.timeStart &&
+          other.timeEnd == this.timeEnd &&
+          other.branchScopeJson == this.branchScopeJson &&
+          other.maxPerOrder == this.maxPerOrder &&
+          other.status == this.status);
+}
+
+class OffersCompanion extends UpdateCompanion<OfferRow> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<String?> nameAr;
+  final Value<String> type;
+  final Value<String> configJson;
+  final Value<bool> autoApply;
+  final Value<DateTime?> validityStart;
+  final Value<DateTime?> validityEnd;
+  final Value<int?> dayofweekMask;
+  final Value<String?> timeStart;
+  final Value<String?> timeEnd;
+  final Value<String?> branchScopeJson;
+  final Value<int?> maxPerOrder;
+  final Value<String?> status;
+  const OffersCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.nameAr = const Value.absent(),
+    this.type = const Value.absent(),
+    this.configJson = const Value.absent(),
+    this.autoApply = const Value.absent(),
+    this.validityStart = const Value.absent(),
+    this.validityEnd = const Value.absent(),
+    this.dayofweekMask = const Value.absent(),
+    this.timeStart = const Value.absent(),
+    this.timeEnd = const Value.absent(),
+    this.branchScopeJson = const Value.absent(),
+    this.maxPerOrder = const Value.absent(),
+    this.status = const Value.absent(),
+  });
+  OffersCompanion.insert({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.nameAr = const Value.absent(),
+    this.type = const Value.absent(),
+    this.configJson = const Value.absent(),
+    this.autoApply = const Value.absent(),
+    this.validityStart = const Value.absent(),
+    this.validityEnd = const Value.absent(),
+    this.dayofweekMask = const Value.absent(),
+    this.timeStart = const Value.absent(),
+    this.timeEnd = const Value.absent(),
+    this.branchScopeJson = const Value.absent(),
+    this.maxPerOrder = const Value.absent(),
+    this.status = const Value.absent(),
+  });
+  static Insertable<OfferRow> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<String>? nameAr,
+    Expression<String>? type,
+    Expression<String>? configJson,
+    Expression<bool>? autoApply,
+    Expression<DateTime>? validityStart,
+    Expression<DateTime>? validityEnd,
+    Expression<int>? dayofweekMask,
+    Expression<String>? timeStart,
+    Expression<String>? timeEnd,
+    Expression<String>? branchScopeJson,
+    Expression<int>? maxPerOrder,
+    Expression<String>? status,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (nameAr != null) 'name_ar': nameAr,
+      if (type != null) 'type': type,
+      if (configJson != null) 'config_json': configJson,
+      if (autoApply != null) 'auto_apply': autoApply,
+      if (validityStart != null) 'validity_start': validityStart,
+      if (validityEnd != null) 'validity_end': validityEnd,
+      if (dayofweekMask != null) 'dayofweek_mask': dayofweekMask,
+      if (timeStart != null) 'time_start': timeStart,
+      if (timeEnd != null) 'time_end': timeEnd,
+      if (branchScopeJson != null) 'branch_scope_json': branchScopeJson,
+      if (maxPerOrder != null) 'max_per_order': maxPerOrder,
+      if (status != null) 'status': status,
+    });
+  }
+
+  OffersCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<String?>? nameAr,
+    Value<String>? type,
+    Value<String>? configJson,
+    Value<bool>? autoApply,
+    Value<DateTime?>? validityStart,
+    Value<DateTime?>? validityEnd,
+    Value<int?>? dayofweekMask,
+    Value<String?>? timeStart,
+    Value<String?>? timeEnd,
+    Value<String?>? branchScopeJson,
+    Value<int?>? maxPerOrder,
+    Value<String?>? status,
+  }) {
+    return OffersCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      nameAr: nameAr ?? this.nameAr,
+      type: type ?? this.type,
+      configJson: configJson ?? this.configJson,
+      autoApply: autoApply ?? this.autoApply,
+      validityStart: validityStart ?? this.validityStart,
+      validityEnd: validityEnd ?? this.validityEnd,
+      dayofweekMask: dayofweekMask ?? this.dayofweekMask,
+      timeStart: timeStart ?? this.timeStart,
+      timeEnd: timeEnd ?? this.timeEnd,
+      branchScopeJson: branchScopeJson ?? this.branchScopeJson,
+      maxPerOrder: maxPerOrder ?? this.maxPerOrder,
+      status: status ?? this.status,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (nameAr.present) {
+      map['name_ar'] = Variable<String>(nameAr.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (configJson.present) {
+      map['config_json'] = Variable<String>(configJson.value);
+    }
+    if (autoApply.present) {
+      map['auto_apply'] = Variable<bool>(autoApply.value);
+    }
+    if (validityStart.present) {
+      map['validity_start'] = Variable<DateTime>(validityStart.value);
+    }
+    if (validityEnd.present) {
+      map['validity_end'] = Variable<DateTime>(validityEnd.value);
+    }
+    if (dayofweekMask.present) {
+      map['dayofweek_mask'] = Variable<int>(dayofweekMask.value);
+    }
+    if (timeStart.present) {
+      map['time_start'] = Variable<String>(timeStart.value);
+    }
+    if (timeEnd.present) {
+      map['time_end'] = Variable<String>(timeEnd.value);
+    }
+    if (branchScopeJson.present) {
+      map['branch_scope_json'] = Variable<String>(branchScopeJson.value);
+    }
+    if (maxPerOrder.present) {
+      map['max_per_order'] = Variable<int>(maxPerOrder.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OffersCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('nameAr: $nameAr, ')
+          ..write('type: $type, ')
+          ..write('configJson: $configJson, ')
+          ..write('autoApply: $autoApply, ')
+          ..write('validityStart: $validityStart, ')
+          ..write('validityEnd: $validityEnd, ')
+          ..write('dayofweekMask: $dayofweekMask, ')
+          ..write('timeStart: $timeStart, ')
+          ..write('timeEnd: $timeEnd, ')
+          ..write('branchScopeJson: $branchScopeJson, ')
+          ..write('maxPerOrder: $maxPerOrder, ')
+          ..write('status: $status')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -9231,6 +10047,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $IngredientsTable ingredients = $IngredientsTable(this);
   late final $VoidReasonsTable voidReasons = $VoidReasonsTable(this);
   late final $CompReasonsTable compReasons = $CompReasonsTable(this);
+  late final $OffersTable offers = $OffersTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -9255,6 +10072,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     ingredients,
     voidReasons,
     compReasons,
+    offers,
   ];
 }
 
@@ -13961,6 +14779,377 @@ typedef $$CompReasonsTableProcessedTableManager =
       CompReasonRow,
       PrefetchHooks Function()
     >;
+typedef $$OffersTableCreateCompanionBuilder =
+    OffersCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> nameAr,
+      Value<String> type,
+      Value<String> configJson,
+      Value<bool> autoApply,
+      Value<DateTime?> validityStart,
+      Value<DateTime?> validityEnd,
+      Value<int?> dayofweekMask,
+      Value<String?> timeStart,
+      Value<String?> timeEnd,
+      Value<String?> branchScopeJson,
+      Value<int?> maxPerOrder,
+      Value<String?> status,
+    });
+typedef $$OffersTableUpdateCompanionBuilder =
+    OffersCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> nameAr,
+      Value<String> type,
+      Value<String> configJson,
+      Value<bool> autoApply,
+      Value<DateTime?> validityStart,
+      Value<DateTime?> validityEnd,
+      Value<int?> dayofweekMask,
+      Value<String?> timeStart,
+      Value<String?> timeEnd,
+      Value<String?> branchScopeJson,
+      Value<int?> maxPerOrder,
+      Value<String?> status,
+    });
+
+class $$OffersTableFilterComposer
+    extends Composer<_$AppDatabase, $OffersTable> {
+  $$OffersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get nameAr => $composableBuilder(
+    column: $table.nameAr,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get configJson => $composableBuilder(
+    column: $table.configJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get autoApply => $composableBuilder(
+    column: $table.autoApply,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get validityStart => $composableBuilder(
+    column: $table.validityStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get validityEnd => $composableBuilder(
+    column: $table.validityEnd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dayofweekMask => $composableBuilder(
+    column: $table.dayofweekMask,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get timeStart => $composableBuilder(
+    column: $table.timeStart,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get timeEnd => $composableBuilder(
+    column: $table.timeEnd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get branchScopeJson => $composableBuilder(
+    column: $table.branchScopeJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get maxPerOrder => $composableBuilder(
+    column: $table.maxPerOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$OffersTableOrderingComposer
+    extends Composer<_$AppDatabase, $OffersTable> {
+  $$OffersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get nameAr => $composableBuilder(
+    column: $table.nameAr,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get configJson => $composableBuilder(
+    column: $table.configJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get autoApply => $composableBuilder(
+    column: $table.autoApply,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get validityStart => $composableBuilder(
+    column: $table.validityStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get validityEnd => $composableBuilder(
+    column: $table.validityEnd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get dayofweekMask => $composableBuilder(
+    column: $table.dayofweekMask,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get timeStart => $composableBuilder(
+    column: $table.timeStart,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get timeEnd => $composableBuilder(
+    column: $table.timeEnd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get branchScopeJson => $composableBuilder(
+    column: $table.branchScopeJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get maxPerOrder => $composableBuilder(
+    column: $table.maxPerOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$OffersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $OffersTable> {
+  $$OffersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get nameAr =>
+      $composableBuilder(column: $table.nameAr, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get configJson => $composableBuilder(
+    column: $table.configJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get autoApply =>
+      $composableBuilder(column: $table.autoApply, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get validityStart => $composableBuilder(
+    column: $table.validityStart,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get validityEnd => $composableBuilder(
+    column: $table.validityEnd,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get dayofweekMask => $composableBuilder(
+    column: $table.dayofweekMask,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get timeStart =>
+      $composableBuilder(column: $table.timeStart, builder: (column) => column);
+
+  GeneratedColumn<String> get timeEnd =>
+      $composableBuilder(column: $table.timeEnd, builder: (column) => column);
+
+  GeneratedColumn<String> get branchScopeJson => $composableBuilder(
+    column: $table.branchScopeJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get maxPerOrder => $composableBuilder(
+    column: $table.maxPerOrder,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+}
+
+class $$OffersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $OffersTable,
+          OfferRow,
+          $$OffersTableFilterComposer,
+          $$OffersTableOrderingComposer,
+          $$OffersTableAnnotationComposer,
+          $$OffersTableCreateCompanionBuilder,
+          $$OffersTableUpdateCompanionBuilder,
+          (OfferRow, BaseReferences<_$AppDatabase, $OffersTable, OfferRow>),
+          OfferRow,
+          PrefetchHooks Function()
+        > {
+  $$OffersTableTableManager(_$AppDatabase db, $OffersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$OffersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$OffersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$OffersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> nameAr = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String> configJson = const Value.absent(),
+                Value<bool> autoApply = const Value.absent(),
+                Value<DateTime?> validityStart = const Value.absent(),
+                Value<DateTime?> validityEnd = const Value.absent(),
+                Value<int?> dayofweekMask = const Value.absent(),
+                Value<String?> timeStart = const Value.absent(),
+                Value<String?> timeEnd = const Value.absent(),
+                Value<String?> branchScopeJson = const Value.absent(),
+                Value<int?> maxPerOrder = const Value.absent(),
+                Value<String?> status = const Value.absent(),
+              }) => OffersCompanion(
+                id: id,
+                name: name,
+                nameAr: nameAr,
+                type: type,
+                configJson: configJson,
+                autoApply: autoApply,
+                validityStart: validityStart,
+                validityEnd: validityEnd,
+                dayofweekMask: dayofweekMask,
+                timeStart: timeStart,
+                timeEnd: timeEnd,
+                branchScopeJson: branchScopeJson,
+                maxPerOrder: maxPerOrder,
+                status: status,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> nameAr = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String> configJson = const Value.absent(),
+                Value<bool> autoApply = const Value.absent(),
+                Value<DateTime?> validityStart = const Value.absent(),
+                Value<DateTime?> validityEnd = const Value.absent(),
+                Value<int?> dayofweekMask = const Value.absent(),
+                Value<String?> timeStart = const Value.absent(),
+                Value<String?> timeEnd = const Value.absent(),
+                Value<String?> branchScopeJson = const Value.absent(),
+                Value<int?> maxPerOrder = const Value.absent(),
+                Value<String?> status = const Value.absent(),
+              }) => OffersCompanion.insert(
+                id: id,
+                name: name,
+                nameAr: nameAr,
+                type: type,
+                configJson: configJson,
+                autoApply: autoApply,
+                validityStart: validityStart,
+                validityEnd: validityEnd,
+                dayofweekMask: dayofweekMask,
+                timeStart: timeStart,
+                timeEnd: timeEnd,
+                branchScopeJson: branchScopeJson,
+                maxPerOrder: maxPerOrder,
+                status: status,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$OffersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $OffersTable,
+      OfferRow,
+      $$OffersTableFilterComposer,
+      $$OffersTableOrderingComposer,
+      $$OffersTableAnnotationComposer,
+      $$OffersTableCreateCompanionBuilder,
+      $$OffersTableUpdateCompanionBuilder,
+      (OfferRow, BaseReferences<_$AppDatabase, $OffersTable, OfferRow>),
+      OfferRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -14003,4 +15192,6 @@ class $AppDatabaseManager {
       $$VoidReasonsTableTableManager(_db, _db.voidReasons);
   $$CompReasonsTableTableManager get compReasons =>
       $$CompReasonsTableTableManager(_db, _db.compReasons);
+  $$OffersTableTableManager get offers =>
+      $$OffersTableTableManager(_db, _db.offers);
 }

@@ -41,6 +41,7 @@ class ConfigRepository {
       // cancel-reason UI never saw a single reason.
       voidReasonRows: parsed.voidReasons,
       compReasonRows: parsed.compReasons,
+      offerRows: parsed.offers,
       meta: parsed.meta,
     );
     await _session.saveTerminalId(config.terminalId);
@@ -88,6 +89,8 @@ class ConfigRepository {
         // (deactivations/deletions heal on the next full sync, like taxes).
         voidReasonRows: c.voidReasons,
         compReasonRows: c.compReasons,
+        offerRows: c.offers,
+        deletedOfferIds: d.offers,
         deletedCategoryIds: d.categories,
         deletedProductIds: d.products,
         deletedFloorIds: d.floors,
@@ -143,6 +146,7 @@ class ConfigRepository {
     // controller.voidReasons/compReasons permanently empty on the device.
     var voidReasons = <VoidReasonRow>[];
     var compReasons = <CompReasonRow>[];
+    var offerRows = <OfferRow>[];
     SyncMetaRow? meta;
     var seenCats = false, seenProds = false, seenFloors = false, seenTables = false, seenTaxes = false;
 
@@ -152,7 +156,7 @@ class ConfigRepository {
           branch, cats, prods, floors, tables, taxes, addonGroups, addons,
           deliveryProviders, expenseCategories, branchStock, discounts,
           loyaltyRules, customers, ingredients, meta,
-          voidReasons, compReasons,
+          voidReasons, compReasons, offerRows,
         ));
       }
     }
@@ -229,6 +233,10 @@ class ConfigRepository {
       }),
       _db.watchCompReasons().listen((v) {
         compReasons = v;
+        emit();
+      }),
+      _db.watchOffers().listen((v) {
+        offerRows = v;
         emit();
       }),
       _db.watchSyncMeta().listen((v) {

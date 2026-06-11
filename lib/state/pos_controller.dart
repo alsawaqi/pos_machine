@@ -10,6 +10,7 @@ import '../services/display_strings.dart';
 import '../services/kitchen_ticket.dart';
 import '../services/local_order_storage_service.dart';
 import '../services/mosambee_payment_service.dart';
+import '../services/offer_engine.dart';
 import '../services/order_sync_payload.dart' show uuidV4;
 import '../services/presentation_service.dart';
 import '../services/sunmi_receipt_service.dart';
@@ -330,6 +331,9 @@ class PosController extends ChangeNotifier {
   /// Merchant discount rules from the cached catalog (from the API). The picker
   /// offers the currently-applicable order-scope ones.
   List<MerchantDiscount> availableDiscounts = const [];
+  /// P-F9 — merchant offers (promotions) from the cached catalog. Auto types
+  /// self-apply via the offer engine; bundles are cashier-picked.
+  List<Offer> availableOffers = const [];
   /// Merchant loyalty rules from the cached catalog (stamp card / points).
   List<LoyaltyRule> loyaltyRules = const [];
   /// Cached customer slice (offline lookup / order attach).
@@ -531,6 +535,7 @@ class PosController extends ChangeNotifier {
         const <({String key, String name})>[],
     Map<int, double> ingredientBalances = const <int, double>{},
     List<MerchantDiscount> discounts = const <MerchantDiscount>[],
+    List<Offer> offers = const <Offer>[],
     List<LoyaltyRule> loyaltyRules = const <LoyaltyRule>[],
     List<CustomerRef> customers = const <CustomerRef>[],
     List<String> cancelOrderPositions = const <String>['manager'],
@@ -552,6 +557,7 @@ class PosController extends ChangeNotifier {
     this.expenseCategories = expenseCategories;
     this.ingredientBalances = ingredientBalances;
     availableDiscounts = discounts;
+    availableOffers = offers;
     _discountBranchId = branchId;
     this.loyaltyRules = loyaltyRules;
     cachedCustomers = customers;
@@ -763,10 +769,10 @@ class PosController extends ChangeNotifier {
             DiscountKind.none => 0.0,
           }
         : 0.0;
-    // Auto-applied product/category line discounts stack on top of any
-    // order-level discount; the combined total is clamped so the order can
-    // never go negative.
-    final combined = orderLevel + lineDiscountTotal;
+    // Auto-applied product/category line discounts + applied OFFERS (P-F9)
+    // stack on top of any order-level discount; the combined total is
+    // clamped so the order can never go negative.
+    final combined = orderLevel + lineDiscountTotal + offerDiscountTotal;
     return _roundMoney(combined.clamp(0.0, rawSubtotal).toDouble());
   }
 
@@ -809,6 +815,53 @@ class PosController extends ChangeNotifier {
   /// Total of auto-applied product/category line discounts across the cart (OMR).
   double get lineDiscountTotal =>
       _cart.fold(0.0, (sum, item) => sum + lineDiscountFor(item).amount);
+
+  /// P-F9 — the offer engine's verdict for the current cart: auto offers
+  /// (bogo / multi-buy / cheapest-free / spend-get) plus any intact
+  /// cashier-picked bundle instances. Pure recompute on every read.
+  List<AppliedOffer> get appliedOffers {
+    final branchId = _discountBranchId;
+    if (branchId == null || availableOffers.isEmpty || _cart.isEmpty) {
+      return const [];
+    }
+    final lineNet = [
+      for (final item in _cart)
+        (item.lineTotal - lineDiscountFor(item).amount)
+            .clamp(0.0, double.infinity)
+            .toDouble(),
+    ];
+    return evaluateOffers(
+      cart: _cart,
+      lineNet: lineNet,
+      offers: [
+        for (final o in availableOffers)
+          if (o.autoApply || o.isBundle) o,
+      ],
+      now: clock(),
+      branchId: branchId,
+    );
+  }
+
+  /// Total taken off by offers (OMR).
+  double get offerDiscountTotal =>
+      _roundMoney(appliedOffers.fold(0.0, (s, o) => s + o.total));
+
+  int _bundleSeq = 0;
+
+  /// P-F9 — add a cashier-picked BUNDLE: the chosen products enter the cart
+  /// tagged with one bundle instance key; the engine prices the intact set
+  /// at the bundle price (removing a piece breaks the bundle — items then
+  /// charge normally).
+  void addBundle(Offer offer, List<Product> picks) {
+    if (picks.isEmpty) return;
+    _ensureOrderReference();
+    final key = '${offer.id}:${++_bundleSeq}';
+    for (final product in picks) {
+      _cart.insert(0, CartItem(product: product, bundleKey: key));
+    }
+    _markOrderUpdated(picks.first.id);
+    _broadcast();
+  }
 
   /// P-F4 — a cashier "clear" suppresses re-auto-application for the rest of
   /// this order (otherwise the rule would snap right back).
@@ -1043,9 +1096,25 @@ class PosController extends ChangeNotifier {
         ? null
         : _findDiningFloorById(activeTable.floorId);
 
+    // P-F9 — freeze the applied offers (flattened allocations).
+    final frozenOffers = <Map<String, dynamic>>[
+      for (final o in appliedOffers) ...[
+        for (final e in o.lineAmounts.entries)
+          {
+            'offer_id': o.offerId,
+            'name': o.name,
+            'amount': e.value,
+            'line_index': e.key,
+          },
+        if (o.orderAmount > 0)
+          {'offer_id': o.offerId, 'name': o.name, 'amount': o.orderAmount},
+      ],
+    ];
+
     return OrderSnapshot(
       orderNumber: currentOrderNumber,
       receiptNumber: receiptNumber, // P-F8 — '' until allocated
+      offers: frozenOffers, // P-F9
       orderType: selectedOrderType.storageValue,
       items: _cart.map(_snapshotItem).toList(),
       rawSubtotal: rawSubtotal,

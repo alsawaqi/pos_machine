@@ -150,6 +150,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   static const _secondaryNavItems = <_NavItemData>[
     _NavItemData('Home', Icons.home_outlined),
+    _NavItemData('Offers', Icons.local_offer_outlined), // P-F9
     _NavItemData('Report', Icons.description_outlined),
     _NavItemData('History', Icons.history_rounded),
   ];
@@ -4297,6 +4298,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // below compares them); only the rendered chip label is localized.
     String navChipTitle(String identity) => switch (identity) {
       'Home' => l10n.posNavHome,
+      'Offers' => l10n.posNavOffers,
       'Report' => l10n.posNavReport,
       'History' => l10n.posNavHistory,
       _ => identity,
@@ -4323,6 +4325,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       switch (entry.value.title) {
                         case 'History':
                           unawaited(_openOrderHistoryDialog());
+                          break;
+                        case 'Offers':
+                          // P-F9 — the merchant's promotions: bundles to
+                          // pick, autos shown with their live status.
+                          unawaited(_openOffersSheet());
                           break;
                         case 'Report':
                           // P-F6 — chooser: the full branch dashboard
@@ -4578,6 +4585,224 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       case 'shift_summary':
         await _reprintLastShiftSummary();
     }
+  }
+
+  /// P-F9 — the Offers sheet: the merchant's currently-valid promotions.
+  /// BUNDLES are tappable (→ the group picker adds the items priced as the
+  /// bundle); auto offers are informational rows showing whether they're
+  /// applied to the current cart right now.
+  Future<void> _openOffersSheet() async {
+    final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final branchId = ref.read(sessionControllerProvider).branchId ?? 0;
+    final now = DateTime.now();
+    final offers = controller.availableOffers
+        .where((o) => o.appliesAt(now, branchId: branchId))
+        .toList();
+    if (offers.isEmpty) {
+      _showPopupMessage(
+        title: l10n.posNavOffers,
+        message: l10n.posOffersNone,
+        tone: FeedbackTone.info,
+      );
+      return;
+    }
+    final appliedById = {
+      for (final a in controller.appliedOffers) a.offerId: a,
+    };
+
+    String typeLabel(String type) => switch (type) {
+          'bogo' => l10n.posOfferTypeBogo,
+          'bundle' => l10n.posOfferTypeBundle,
+          'multi_buy' => l10n.posOfferTypeMultiBuy,
+          'cheapest_free' => l10n.posOfferTypeCheapestFree,
+          'spend_get' => l10n.posOfferTypeSpendGet,
+          _ => type,
+        };
+
+    final picked = await showModalBottomSheet<Offer>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final offer in offers)
+                ListTile(
+                  leading: Icon(
+                    offer.isBundle
+                        ? Icons.lunch_dining_rounded
+                        : Icons.local_offer_outlined,
+                  ),
+                  title: Text(offer.displayName(isAr)),
+                  subtitle: Text(typeLabel(offer.type)),
+                  trailing: offer.isBundle
+                      ? const Icon(Icons.add_circle_outline_rounded)
+                      : appliedById.containsKey(offer.id)
+                          ? Chip(
+                              label: Text(l10n.posOffersAppliedTimes(
+                                appliedById[offer.id]!.applications,
+                              )),
+                              visualDensity: VisualDensity.compact,
+                            )
+                          : null,
+                  onTap: offer.isBundle
+                      ? () => Navigator.pop(ctx, offer)
+                      : null,
+                ),
+              ListTile(
+                leading: const Icon(Icons.close),
+                title: Text(l10n.commonClose),
+                onTap: () => Navigator.pop(ctx),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted || picked == null) return;
+    await _openBundlePicker(picked);
+  }
+
+  /// P-F9 — pick the bundle's items group by group, then add the whole set
+  /// priced as the bundle.
+  Future<void> _openBundlePicker(Offer offer) async {
+    final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final groups = ((offer.config['groups'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((g) => g.cast<String, dynamic>())
+        .toList();
+    if (groups.isEmpty) return;
+
+    final productById = {
+      for (final p in controller.allProducts) int.tryParse(p.id): p,
+    };
+    // counts[group][productId] = picked qty
+    final counts = [for (final _ in groups) <int, int>{}];
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          var allSatisfied = true;
+          final sections = <Widget>[];
+          for (var g = 0; g < groups.length; g++) {
+            final group = groups[g];
+            final need = (group['qty'] as num?)?.toInt() ?? 1;
+            final ids = ((group['product_ids'] as List?) ?? const [])
+                .map((e) => (e as num?)?.toInt())
+                .whereType<int>()
+                .toList();
+            final pickedCount =
+                counts[g].values.fold(0, (s, v) => s + v);
+            if (pickedCount != need) allSatisfied = false;
+            final label = isAr &&
+                    (group['label_ar']?.toString().trim().isNotEmpty ??
+                        false)
+                ? group['label_ar'].toString()
+                : (group['label']?.toString() ?? '');
+            sections.add(Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 6),
+                  child: Text(
+                    '$label — ${l10n.posOffersBundleNeed(need)}'
+                    '  ($pickedCount/$need)',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final id in ids)
+                      if (productById[id] != null)
+                        FilterChip(
+                          label: Text(
+                            counts[g][id] != null && counts[g][id]! > 0
+                                ? '${productById[id]!.displayName(isAr)} ×${counts[g][id]}'
+                                : productById[id]!.displayName(isAr),
+                          ),
+                          selected: (counts[g][id] ?? 0) > 0,
+                          onSelected: (_) => setDialogState(() {
+                            final current = counts[g][id] ?? 0;
+                            final total = counts[g]
+                                .values
+                                .fold(0, (s, v) => s + v);
+                            if (current > 0 && total >= need) {
+                              // Tapping a selected chip at capacity clears it.
+                              counts[g].remove(id);
+                            } else if (total < need) {
+                              counts[g][id] = current + 1;
+                            }
+                          }),
+                        ),
+                  ],
+                ),
+              ],
+            ));
+          }
+          return AlertDialog(
+            title: Text(offer.displayName(isAr)),
+            content: SizedBox(
+              width: 520,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${l10n.posOffersBundlePrice} '
+                      '${SunmiReceiptService.money(((offer.config['price_baisas'] as num?)?.toInt() ?? 0) / 1000.0)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF1E8D54),
+                      ),
+                    ),
+                    ...sections,
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(l10n.commonCancel),
+              ),
+              FilledButton(
+                onPressed:
+                    allSatisfied ? () => Navigator.pop(ctx, true) : null,
+                child: Text(l10n.posOffersBundleAdd),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+
+    final picks = <Product>[];
+    for (var g = 0; g < groups.length; g++) {
+      counts[g].forEach((id, qty) {
+        final product = productById[id];
+        if (product == null) return;
+        for (var i = 0; i < qty; i++) {
+          picks.add(product);
+        }
+      });
+    }
+    controller.addBundle(offer, picks);
+    final isArNow = Localizations.localeOf(context).languageCode == 'ar';
+    _showPopupMessage(
+      title: l10n.posNavOffers,
+      message: offer.displayName(isArNow),
+      tone: FeedbackTone.success,
+    );
   }
 
   /// P-F6 — the Report chip's chooser: the full branch dashboard or the

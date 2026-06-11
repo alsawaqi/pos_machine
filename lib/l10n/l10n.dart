@@ -4594,6 +4594,72 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Merged {source} into {target}.'**
   String ctrlMsgTablesMerged(String source, String target);
+
+  /// No description provided for @posNavOffers.
+  ///
+  /// In en, this message translates to:
+  /// **'Offers'**
+  String get posNavOffers;
+
+  /// No description provided for @posOffersNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No offers are active for this branch right now.'**
+  String get posOffersNone;
+
+  /// No description provided for @posOffersAppliedTimes.
+  ///
+  /// In en, this message translates to:
+  /// **'Applied ×{n}'**
+  String posOffersAppliedTimes(int n);
+
+  /// No description provided for @posOfferTypeBogo.
+  ///
+  /// In en, this message translates to:
+  /// **'Buy & Get'**
+  String get posOfferTypeBogo;
+
+  /// No description provided for @posOfferTypeBundle.
+  ///
+  /// In en, this message translates to:
+  /// **'Bundle'**
+  String get posOfferTypeBundle;
+
+  /// No description provided for @posOfferTypeMultiBuy.
+  ///
+  /// In en, this message translates to:
+  /// **'Multi-Buy'**
+  String get posOfferTypeMultiBuy;
+
+  /// No description provided for @posOfferTypeCheapestFree.
+  ///
+  /// In en, this message translates to:
+  /// **'Cheapest Free'**
+  String get posOfferTypeCheapestFree;
+
+  /// No description provided for @posOfferTypeSpendGet.
+  ///
+  /// In en, this message translates to:
+  /// **'Spend & Get'**
+  String get posOfferTypeSpendGet;
+
+  /// No description provided for @posOffersBundleNeed.
+  ///
+  /// In en, this message translates to:
+  /// **'pick {n}'**
+  String posOffersBundleNeed(int n);
+
+  /// No description provided for @posOffersBundlePrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Bundle price:'**
+  String get posOffersBundlePrice;
+
+  /// No description provided for @posOffersBundleAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Bundle'**
+  String get posOffersBundleAdd;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

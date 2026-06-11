@@ -303,6 +303,31 @@ class Discounts extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+// P-F9 — merchant OFFERS (promotions) from the config bundle: bogo / bundle /
+// multi_buy / cheapest_free / spend_get. configJson holds the type-specific
+// shape; the shared applicability columns mirror Discounts. The device's
+// offer engine evaluates these against the cart.
+@DataClassName('OfferRow')
+class Offers extends Table {
+  IntColumn get id => integer()();
+  TextColumn get name => text().withDefault(const Constant(''))();
+  TextColumn get nameAr => text().nullable()();
+  TextColumn get type => text().withDefault(const Constant(''))();
+  TextColumn get configJson => text().withDefault(const Constant('{}'))();
+  BoolColumn get autoApply => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get validityStart => dateTime().nullable()();
+  DateTimeColumn get validityEnd => dateTime().nullable()();
+  IntColumn get dayofweekMask => integer().nullable()();
+  TextColumn get timeStart => text().nullable()();
+  TextColumn get timeEnd => text().nullable()();
+  TextColumn get branchScopeJson => text().nullable()();
+  IntColumn get maxPerOrder => integer().nullable()();
+  TextColumn get status => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // Merchant loyalty rules from the config bundle (company-scoped). `type` is
 // visit_based (stamp card) | spend_based (points); `configJson` holds the
 // type-specific config (stamps_required / points_per_omr / redemption_value …).

@@ -2775,4 +2775,41 @@ class L10nAr extends L10n {
   String ctrlMsgTablesMerged(String source, String target) {
     return 'تم دمج $source في $target.';
   }
+
+  @override
+  String get posNavOffers => 'العروض';
+
+  @override
+  String get posOffersNone => 'لا توجد عروض فعّالة في هذا الفرع حاليًا.';
+
+  @override
+  String posOffersAppliedTimes(int n) {
+    return 'مطبّق ×$n';
+  }
+
+  @override
+  String get posOfferTypeBogo => 'اشترِ واحصل';
+
+  @override
+  String get posOfferTypeBundle => 'باقة';
+
+  @override
+  String get posOfferTypeMultiBuy => 'شراء متعدد';
+
+  @override
+  String get posOfferTypeCheapestFree => 'الأرخص مجانًا';
+
+  @override
+  String get posOfferTypeSpendGet => 'أنفق واحصل';
+
+  @override
+  String posOffersBundleNeed(int n) {
+    return 'اختر $n';
+  }
+
+  @override
+  String get posOffersBundlePrice => 'سعر الباقة:';
+
+  @override
+  String get posOffersBundleAdd => 'إضافة الباقة';
 }

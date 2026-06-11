@@ -29,6 +29,7 @@ part 'app_database.g.dart';
     Ingredients,
     VoidReasons,
     CompReasons,
+    Offers,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -38,7 +39,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 21;
+  int get schemaVersion => 22;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -147,6 +148,10 @@ class AppDatabase extends _$AppDatabase {
             // v21 — P-F8: the merchant order-numbering config.
             await m.addColumn(syncMeta, syncMeta.orderNumberingJson);
           }
+          if (from < 22) {
+            // v22 — P-F9: merchant offers (promotions).
+            await m.createTable(offers);
+          }
         },
       );
 
@@ -186,6 +191,8 @@ class AppDatabase extends _$AppDatabase {
       select(branchIngredientStock).watch();
 
   Stream<List<DiscountRow>> watchDiscounts() => select(discounts).watch();
+
+  Stream<List<OfferRow>> watchOffers() => select(offers).watch();
 
   Stream<List<LoyaltyRuleRow>> watchLoyaltyRules() =>
       select(loyaltyRules).watch();
@@ -261,6 +268,7 @@ class AppDatabase extends _$AppDatabase {
     required List<IngredientsCompanion> ingredientRows,
     List<VoidReasonsCompanion> voidReasonRows = const [],
     List<CompReasonsCompanion> compReasonRows = const [],
+    List<OffersCompanion> offerRows = const [],
     required SyncMetaCompanion meta,
   }) {
     return transaction(() async {
@@ -281,6 +289,7 @@ class AppDatabase extends _$AppDatabase {
       await delete(ingredients).go();
       await delete(voidReasons).go();
       await delete(compReasons).go();
+      await delete(offers).go();
 
       await into(branchCache).insert(branch);
       await batch((b) {
@@ -300,6 +309,7 @@ class AppDatabase extends _$AppDatabase {
         b.insertAll(ingredients, ingredientRows);
         b.insertAll(voidReasons, voidReasonRows);
         b.insertAll(compReasons, compReasonRows);
+        b.insertAll(offers, offerRows);
       });
       await into(syncMeta).insertOnConflictUpdate(meta);
     });
@@ -330,6 +340,8 @@ class AppDatabase extends _$AppDatabase {
     required List<IngredientsCompanion> ingredientRows,
     List<VoidReasonsCompanion> voidReasonRows = const [],
     List<CompReasonsCompanion> compReasonRows = const [],
+    List<OffersCompanion> offerRows = const [],
+    List<int> deletedOfferIds = const [],
     required List<int> deletedCategoryIds,
     required List<int> deletedProductIds,
     required List<int> deletedFloorIds,
@@ -370,6 +382,7 @@ class AppDatabase extends _$AppDatabase {
         b.insertAllOnConflictUpdate(ingredients, ingredientRows);
         b.insertAllOnConflictUpdate(voidReasons, voidReasonRows);
         b.insertAllOnConflictUpdate(compReasons, compReasonRows);
+        b.insertAllOnConflictUpdate(offers, offerRows);
       });
 
       // Purge soft-deleted ids.
@@ -408,6 +421,9 @@ class AppDatabase extends _$AppDatabase {
       }
       if (deletedExpenseCategoryIds.isNotEmpty) {
         await (delete(expenseCategories)..where((t) => t.id.isIn(deletedExpenseCategoryIds))).go();
+      }
+      if (deletedOfferIds.isNotEmpty) {
+        await (delete(offers)..where((t) => t.id.isIn(deletedOfferIds))).go();
       }
 
       // Advance the cursor only — keep company/branch (absent = unchanged).

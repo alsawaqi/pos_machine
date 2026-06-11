@@ -747,5 +747,16 @@
   "posDiningTableMovedTitle": "تم نقل الطاولة",
   "posDiningTablesMergedTitle": "تم دمج الطاولتين",
   "ctrlMsgTableTransferred": "تم نقل {from} إلى {to} — انتقل الطلب مع الضيوف.",
-  "ctrlMsgTablesMerged": "تم دمج {source} في {target}."
+  "ctrlMsgTablesMerged": "تم دمج {source} في {target}.",
+  "posNavOffers": "العروض",
+  "posOffersNone": "لا توجد عروض فعّالة في هذا الفرع حاليًا.",
+  "posOffersAppliedTimes": "مطبّق ×{n}",
+  "posOfferTypeBogo": "اشترِ واحصل",
+  "posOfferTypeBundle": "باقة",
+  "posOfferTypeMultiBuy": "شراء متعدد",
+  "posOfferTypeCheapestFree": "الأرخص مجانًا",
+  "posOfferTypeSpendGet": "أنفق واحصل",
+  "posOffersBundleNeed": "اختر {n}",
+  "posOffersBundlePrice": "سعر الباقة:",
+  "posOffersBundleAdd": "إضافة الباقة"
 }

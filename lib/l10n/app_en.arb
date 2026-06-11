@@ -1726,5 +1726,30 @@
         "type": "String"
       }
     }
-  }
+  },
+  "posNavOffers": "Offers",
+  "posOffersNone": "No offers are active for this branch right now.",
+  "posOffersAppliedTimes": "Applied ×{n}",
+  "@posOffersAppliedTimes": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "posOfferTypeBogo": "Buy & Get",
+  "posOfferTypeBundle": "Bundle",
+  "posOfferTypeMultiBuy": "Multi-Buy",
+  "posOfferTypeCheapestFree": "Cheapest Free",
+  "posOfferTypeSpendGet": "Spend & Get",
+  "posOffersBundleNeed": "pick {n}",
+  "@posOffersBundleNeed": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "posOffersBundlePrice": "Bundle price:",
+  "posOffersBundleAdd": "Add Bundle"
 }
