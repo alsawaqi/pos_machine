@@ -968,6 +968,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
+    // P-F4 — re-check order-scope auto discounts at the till (time windows
+    // are evaluated against "now"; a no-op when one is applied/suppressed).
+    controller.maybeAutoApplyOrderDiscount();
     setState(() {
       _showPaymentPage = true;
       _cashTenderInput = '';
@@ -11288,12 +11291,109 @@ class _DiscountDialog extends StatefulWidget {
 
 class _DiscountDialogState extends State<_DiscountDialog> {
   late DiscountConfiguration _selected;
+  // P-F4 — free-entry custom percent / fixed amount (they take precedence
+  // over a preset pick) + the reason, REQUIRED for free-entry values.
+  late final TextEditingController _percentCtrl;
+  late final TextEditingController _amountCtrl;
+  late final TextEditingController _reasonCtrl;
+  bool _reasonMissing = false;
 
   @override
   void initState() {
     super.initState();
     _selected = widget.initialDiscount;
+    _percentCtrl = TextEditingController();
+    _amountCtrl = TextEditingController();
+    _reasonCtrl = TextEditingController(text: widget.initialDiscount.reason);
   }
+
+  @override
+  void dispose() {
+    _percentCtrl.dispose();
+    _amountCtrl.dispose();
+    _reasonCtrl.dispose();
+    super.dispose();
+  }
+
+  double? get _customPercent {
+    final v = double.tryParse(_percentCtrl.text.trim());
+    return v != null && v > 0 && v <= 100 ? v : null;
+  }
+
+  double? get _customAmount {
+    final v = double.tryParse(_amountCtrl.text.trim());
+    return v != null && v > 0 ? v : null;
+  }
+
+  bool get _hasCustomEntry => _customPercent != null || _customAmount != null;
+
+  static String _trimNum(double v) =>
+      v == v.roundToDouble() ? v.round().toString() : v.toString();
+
+  /// What Apply pops: a free entry wins over a preset; the reason rides
+  /// whichever configuration is chosen. (Labels stay English — they are
+  /// persisted in snapshots, pushed to the server, and printed.)
+  DiscountConfiguration get _effective {
+    final reason = _reasonCtrl.text.trim();
+    final pct = _customPercent;
+    if (pct != null) {
+      return DiscountConfiguration(
+        kind: DiscountKind.percentage,
+        value: pct,
+        label: '${_trimNum(pct)}% Discount',
+        reason: reason,
+      );
+    }
+    final amt = _customAmount;
+    if (amt != null) {
+      return DiscountConfiguration(
+        kind: DiscountKind.fixedAmount,
+        value: amt,
+        label: '${amt.toStringAsFixed(3)} OMR Discount',
+        reason: reason,
+      );
+    }
+    if (_selected.isActive && reason.isNotEmpty) {
+      return DiscountConfiguration(
+        kind: _selected.kind,
+        value: _selected.value,
+        label: _selected.label,
+        discountId: _selected.discountId,
+        reason: reason,
+      );
+    }
+    return _selected;
+  }
+
+  void _apply() {
+    if (_hasCustomEntry && _reasonCtrl.text.trim().isEmpty) {
+      setState(() => _reasonMissing = true);
+      return;
+    }
+    Navigator.of(context).pop(_effective);
+  }
+
+  InputDecoration _fieldDecoration(String hint) => InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(
+          color: Color(0xFF8B9DA8),
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        isDense: true,
+        filled: true,
+        fillColor: Colors.white.withValues(alpha: 0.86),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFDCE8EC)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFDCE8EC)),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -11436,6 +11536,73 @@ class _DiscountDialogState extends State<_DiscountDialog> {
                 ),
               ],
             ),
+            const SizedBox(height: 18),
+            // P-F4 — free-entry custom values + the (required) reason.
+            Text(
+              l10n.posDiscountDlgCustomSection,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF22323B),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('discount-custom-percent'),
+                    controller: _percentCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: _fieldDecoration(
+                      l10n.posDiscountDlgCustomPercentHint,
+                    ),
+                    onChanged: (v) => setState(() {
+                      if (v.trim().isNotEmpty) _amountCtrl.clear();
+                      _reasonMissing = false;
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('discount-custom-amount'),
+                    controller: _amountCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: _fieldDecoration(
+                      l10n.posDiscountDlgCustomAmountHint,
+                    ),
+                    onChanged: (v) => setState(() {
+                      if (v.trim().isNotEmpty) _percentCtrl.clear();
+                      _reasonMissing = false;
+                    }),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const ValueKey('discount-reason'),
+              controller: _reasonCtrl,
+              maxLength: 160,
+              decoration: _fieldDecoration(l10n.posDiscountDlgReasonHint)
+                  .copyWith(counterText: ''),
+              onChanged: (_) => setState(() => _reasonMissing = false),
+            ),
+            if (_reasonMissing)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  l10n.posDiscountDlgReasonRequired,
+                  style: const TextStyle(
+                    color: Color(0xFFB84524),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
             const SizedBox(height: 22),
             Row(
               children: [
@@ -11453,11 +11620,11 @@ class _DiscountDialogState extends State<_DiscountDialog> {
                   child: _FilledActionButton(
                     // The stored discount label stays English (it is persisted
                     // in snapshots, pushed to the server, and printed).
-                    label: _selected.isActive
-                        ? l10n.posDiscountDlgApply(_selected.label)
+                    label: _selected.isActive || _hasCustomEntry
+                        ? l10n.posDiscountDlgApply(_effective.label)
                         : l10n.commonClose,
-                    onTap: _selected.isActive
-                        ? () => Navigator.of(context).pop(_selected)
+                    onTap: _selected.isActive || _hasCustomEntry
+                        ? _apply
                         : () => Navigator.of(context).pop(),
                   ),
                 ),

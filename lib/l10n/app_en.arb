@@ -1449,6 +1449,11 @@
     }
   },
   "posEarnPickerConfirm": "Confirm",
+  "posDiscountDlgCustomSection": "Custom",
+  "posDiscountDlgCustomPercentHint": "Percent (e.g. 7.5)",
+  "posDiscountDlgCustomAmountHint": "Amount (OMR)",
+  "posDiscountDlgReasonHint": "Reason (required for a custom value)",
+  "posDiscountDlgReasonRequired": "Enter a reason for the custom discount.",
   "posCancelPageOrderItems": "Order Items",
   "posCancelPageCancellableCount": "{count} cancellable",
   "@posCancelPageCancellableCount": {

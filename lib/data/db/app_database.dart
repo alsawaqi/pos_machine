@@ -38,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -134,6 +134,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 18) {
             // v18 — P-F2: cached vehicle-plate links per customer.
             await m.addColumn(cachedCustomers, cachedCustomers.platesJson);
+          }
+          if (from < 19) {
+            // v19 — P-F4: order-scope auto-apply flag on discount rules.
+            await m.addColumn(discounts, discounts.autoApply);
           }
         },
       );

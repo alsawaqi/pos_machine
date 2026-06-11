@@ -687,12 +687,16 @@ class DiscountConfiguration {
   // The merchant rule id when this is a fetched discount (null = manual/ad-hoc).
   // Sent on order.create so the server snapshots the rule for the by-rule report.
   final int? discountId;
+  // P-F4 — the cashier's reason for a manual/custom discount (required by the
+  // dialog for free-entry values). Recorded on the order's discount row.
+  final String reason;
 
   const DiscountConfiguration({
     this.kind = DiscountKind.none,
     this.value = 0,
     this.label = '',
     this.discountId,
+    this.reason = '',
   });
 
   bool get isActive => kind != DiscountKind.none && value > 0;
@@ -710,6 +714,7 @@ class DiscountConfiguration {
       value: (map['value'] as num?)?.toDouble() ?? 0,
       label: map['label']?.toString() ?? '',
       discountId: (map['discountId'] as num?)?.toInt(),
+      reason: map['reason']?.toString() ?? '',
     );
   }
 
@@ -719,6 +724,7 @@ class DiscountConfiguration {
       'value': value,
       'label': label,
       if (discountId != null) 'discountId': discountId,
+      if (reason.isNotEmpty) 'reason': reason,
     };
   }
 }
@@ -754,6 +760,10 @@ class MerchantDiscount {
   final bool stackable;
   final bool requiresManagerApproval;
   final bool isActive;
+  // P-F4 — order-scope rules with autoApply self-apply to every qualifying
+  // order (no cashier action). Product/category scopes auto-apply per line
+  // regardless (the longstanding behavior; the merchant UI forces the flag).
+  final bool autoApply;
   // product/category-scope targets (which products/categories this rule hits);
   // empty for order-scope rules.
   final List<DiscountTarget> targets;
@@ -774,6 +784,7 @@ class MerchantDiscount {
     this.stackable = false,
     this.requiresManagerApproval = false,
     this.isActive = true,
+    this.autoApply = false,
     this.targets = const <DiscountTarget>[],
   });
 
@@ -1355,6 +1366,9 @@ class OrderSnapshot {
   // order.create so the server snapshots the rule (by-rule report). Null = manual.
   final int? discountId;
   final String? discountAmountType;
+  // P-F4 — the cashier's reason for a manual/custom discount ('' = none);
+  // rides order.create's discounts[] entry and lands in the audit row.
+  final String discountReason;
   // Loyalty redemption applied to this order (points spent under a rule); sent
   // as loyalty_redeem on order.pay. Null/0 = no redemption.
   final int? loyaltyRedeemRuleId;
@@ -1429,6 +1443,7 @@ class OrderSnapshot {
     this.cancellations = const [],
     this.discountId,
     this.discountAmountType,
+    this.discountReason = '',
     this.loyaltyRedeemRuleId,
     this.loyaltyRedeemPoints = 0,
     this.loyaltyRedeemStamps = 0,
@@ -1491,6 +1506,7 @@ class OrderSnapshot {
           0,
       discountAmount: (map['discountAmount'] as num?)?.toDouble() ?? 0,
       discountLabel: map['discountLabel']?.toString() ?? '',
+      discountReason: map['discountReason']?.toString() ?? '',
       subtotal: (map['subtotal'] as num?)?.toDouble() ?? 0,
       tax: (map['tax'] as num?)?.toDouble() ?? 0,
       total: (map['total'] as num?)?.toDouble() ?? 0,
@@ -1549,6 +1565,7 @@ class OrderSnapshot {
       'rawSubtotal': rawSubtotal,
       'discountAmount': discountAmount,
       'discountLabel': discountLabel,
+      if (discountReason.isNotEmpty) 'discountReason': discountReason,
       'subtotal': subtotal,
       'tax': tax,
       'total': total,
@@ -1589,6 +1606,7 @@ class OrderSnapshot {
     String? discountLabel,
     int? discountId,
     String? discountAmountType,
+    String? discountReason,
     int? loyaltyRedeemRuleId,
     int? loyaltyRedeemPoints,
     int? loyaltyRedeemStamps,
@@ -1632,6 +1650,7 @@ class OrderSnapshot {
       discountLabel: discountLabel ?? this.discountLabel,
       discountId: discountId ?? this.discountId,
       discountAmountType: discountAmountType ?? this.discountAmountType,
+      discountReason: discountReason ?? this.discountReason,
       loyaltyRedeemRuleId: loyaltyRedeemRuleId ?? this.loyaltyRedeemRuleId,
       loyaltyRedeemPoints: loyaltyRedeemPoints ?? this.loyaltyRedeemPoints,
       loyaltyRedeemStamps: loyaltyRedeemStamps ?? this.loyaltyRedeemStamps,

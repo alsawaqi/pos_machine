@@ -782,6 +782,39 @@ class PosController extends ChangeNotifier {
   double get lineDiscountTotal =>
       _cart.fold(0.0, (sum, item) => sum + lineDiscountFor(item).amount);
 
+  /// P-F4 — a cashier "clear" suppresses re-auto-application for the rest of
+  /// this order (otherwise the rule would snap right back).
+  bool _autoOrderDiscountSuppressed = false;
+
+  /// P-F4 — self-apply the best qualifying ORDER-scope auto_apply rule when
+  /// the discount slot is free. Called when items land in the cart and when
+  /// the payment page opens (time windows re-checked then). Rules that
+  /// require manager approval never auto-apply — nobody approved them.
+  void maybeAutoApplyOrderDiscount() {
+    if (_autoOrderDiscountSuppressed) return;
+    if (discount.isActive || _cart.isEmpty) return;
+    final branchId = _discountBranchId;
+    if (branchId == null) return;
+    final now = clock();
+
+    MerchantDiscount? best;
+    var bestAmount = 0.0;
+    for (final d in availableDiscounts) {
+      if (!d.isOrderScope || !d.autoApply || d.requiresManagerApproval) {
+        continue;
+      }
+      if (!d.appliesAt(now, branchId: branchId)) continue;
+      final amount = d.amountFor(rawSubtotal);
+      if (amount > bestAmount) {
+        bestAmount = amount;
+        best = d;
+      }
+    }
+    if (best == null || bestAmount <= 0) return;
+    discount = best.toConfiguration();
+    _broadcast();
+  }
+
   /// A cart item's snapshot map + its auto-applied line discount, so the order
   /// push can emit a per-line discounts[] entry with line_index.
   Map<String, dynamic> _snapshotItem(CartItem item) {
@@ -941,6 +974,7 @@ class PosController extends ChangeNotifier {
       discountLabel: discount.label,
       discountId: discount.discountId,
       discountAmountType: discount.amountType,
+      discountReason: discount.reason,
       loyaltyRedeemRuleId: loyaltyRedeemRuleId,
       loyaltyRedeemPoints: loyaltyRedeemPoints,
       loyaltyRedeemStamps: loyaltyRedeemStamps,
@@ -1204,6 +1238,9 @@ class PosController extends ChangeNotifier {
     loyaltyRedeemRuleId = null;
     loyaltyRedeemPoints = 0;
     loyaltyRedeemStamps = 0;
+    // P-F4 — an explicit clear means "no discount on THIS order": stop the
+    // auto order-scope rule from re-applying itself.
+    _autoOrderDiscountSuppressed = true;
     _resetCharityRoundUp();
     _broadcast();
   }
@@ -1246,6 +1283,7 @@ class PosController extends ChangeNotifier {
       _cart.insert(0, updatedItem);
     }
     _markOrderUpdated(product.id);
+    maybeAutoApplyOrderDiscount(); // P-F4 — order-scope auto rules
     _broadcast();
   }
 
@@ -2909,6 +2947,7 @@ class PosController extends ChangeNotifier {
     isProcessingPayment = false;
     productSearchQuery = '';
     discount = const DiscountConfiguration();
+    _autoOrderDiscountSuppressed = false; // P-F4 — per-order
     splitCount = 1;
     _splitPayments.clear();
     _lastCardCharge = null;

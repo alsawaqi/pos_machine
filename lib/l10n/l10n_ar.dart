@@ -2257,6 +2257,21 @@ class L10nAr extends L10n {
   String get posEarnPickerConfirm => 'تأكيد';
 
   @override
+  String get posDiscountDlgCustomSection => 'مخصص';
+
+  @override
+  String get posDiscountDlgCustomPercentHint => 'نسبة مئوية (مثل 7.5)';
+
+  @override
+  String get posDiscountDlgCustomAmountHint => 'مبلغ (ر.ع)';
+
+  @override
+  String get posDiscountDlgReasonHint => 'السبب (مطلوب للقيمة المخصصة)';
+
+  @override
+  String get posDiscountDlgReasonRequired => 'أدخل سبب الخصم المخصص.';
+
+  @override
   String get posCancelPageOrderItems => 'أصناف الطلب';
 
   @override

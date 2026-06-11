@@ -6028,6 +6028,21 @@ class $DiscountsTable extends Discounts
         ),
         defaultValue: const Constant(false),
       );
+  static const VerificationMeta _autoApplyMeta = const VerificationMeta(
+    'autoApply',
+  );
+  @override
+  late final GeneratedColumn<bool> autoApply = GeneratedColumn<bool>(
+    'auto_apply',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("auto_apply" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _statusMeta = const VerificationMeta('status');
   @override
   late final GeneratedColumn<String> status = GeneratedColumn<String>(
@@ -6065,6 +6080,7 @@ class $DiscountsTable extends Discounts
     branchScopeJson,
     stackable,
     requiresManagerApproval,
+    autoApply,
     status,
     targetsJson,
   ];
@@ -6179,6 +6195,12 @@ class $DiscountsTable extends Discounts
         ),
       );
     }
+    if (data.containsKey('auto_apply')) {
+      context.handle(
+        _autoApplyMeta,
+        autoApply.isAcceptableOrUnknown(data['auto_apply']!, _autoApplyMeta),
+      );
+    }
     if (data.containsKey('status')) {
       context.handle(
         _statusMeta,
@@ -6259,6 +6281,10 @@ class $DiscountsTable extends Discounts
         DriftSqlType.bool,
         data['${effectivePrefix}requires_manager_approval'],
       )!,
+      autoApply: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}auto_apply'],
+      )!,
       status: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}status'],
@@ -6291,6 +6317,7 @@ class DiscountRow extends DataClass implements Insertable<DiscountRow> {
   final String? branchScopeJson;
   final bool stackable;
   final bool requiresManagerApproval;
+  final bool autoApply;
   final String? status;
   final String targetsJson;
   const DiscountRow({
@@ -6308,6 +6335,7 @@ class DiscountRow extends DataClass implements Insertable<DiscountRow> {
     this.branchScopeJson,
     required this.stackable,
     required this.requiresManagerApproval,
+    required this.autoApply,
     this.status,
     required this.targetsJson,
   });
@@ -6348,6 +6376,7 @@ class DiscountRow extends DataClass implements Insertable<DiscountRow> {
     }
     map['stackable'] = Variable<bool>(stackable);
     map['requires_manager_approval'] = Variable<bool>(requiresManagerApproval);
+    map['auto_apply'] = Variable<bool>(autoApply);
     if (!nullToAbsent || status != null) {
       map['status'] = Variable<String>(status);
     }
@@ -6391,6 +6420,7 @@ class DiscountRow extends DataClass implements Insertable<DiscountRow> {
           : Value(branchScopeJson),
       stackable: Value(stackable),
       requiresManagerApproval: Value(requiresManagerApproval),
+      autoApply: Value(autoApply),
       status: status == null && nullToAbsent
           ? const Value.absent()
           : Value(status),
@@ -6420,6 +6450,7 @@ class DiscountRow extends DataClass implements Insertable<DiscountRow> {
       requiresManagerApproval: serializer.fromJson<bool>(
         json['requiresManagerApproval'],
       ),
+      autoApply: serializer.fromJson<bool>(json['autoApply']),
       status: serializer.fromJson<String?>(json['status']),
       targetsJson: serializer.fromJson<String>(json['targetsJson']),
     );
@@ -6444,6 +6475,7 @@ class DiscountRow extends DataClass implements Insertable<DiscountRow> {
       'requiresManagerApproval': serializer.toJson<bool>(
         requiresManagerApproval,
       ),
+      'autoApply': serializer.toJson<bool>(autoApply),
       'status': serializer.toJson<String?>(status),
       'targetsJson': serializer.toJson<String>(targetsJson),
     };
@@ -6464,6 +6496,7 @@ class DiscountRow extends DataClass implements Insertable<DiscountRow> {
     Value<String?> branchScopeJson = const Value.absent(),
     bool? stackable,
     bool? requiresManagerApproval,
+    bool? autoApply,
     Value<String?> status = const Value.absent(),
     String? targetsJson,
   }) => DiscountRow(
@@ -6488,6 +6521,7 @@ class DiscountRow extends DataClass implements Insertable<DiscountRow> {
     stackable: stackable ?? this.stackable,
     requiresManagerApproval:
         requiresManagerApproval ?? this.requiresManagerApproval,
+    autoApply: autoApply ?? this.autoApply,
     status: status.present ? status.value : this.status,
     targetsJson: targetsJson ?? this.targetsJson,
   );
@@ -6521,6 +6555,7 @@ class DiscountRow extends DataClass implements Insertable<DiscountRow> {
       requiresManagerApproval: data.requiresManagerApproval.present
           ? data.requiresManagerApproval.value
           : this.requiresManagerApproval,
+      autoApply: data.autoApply.present ? data.autoApply.value : this.autoApply,
       status: data.status.present ? data.status.value : this.status,
       targetsJson: data.targetsJson.present
           ? data.targetsJson.value
@@ -6545,6 +6580,7 @@ class DiscountRow extends DataClass implements Insertable<DiscountRow> {
           ..write('branchScopeJson: $branchScopeJson, ')
           ..write('stackable: $stackable, ')
           ..write('requiresManagerApproval: $requiresManagerApproval, ')
+          ..write('autoApply: $autoApply, ')
           ..write('status: $status, ')
           ..write('targetsJson: $targetsJson')
           ..write(')'))
@@ -6567,6 +6603,7 @@ class DiscountRow extends DataClass implements Insertable<DiscountRow> {
     branchScopeJson,
     stackable,
     requiresManagerApproval,
+    autoApply,
     status,
     targetsJson,
   );
@@ -6588,6 +6625,7 @@ class DiscountRow extends DataClass implements Insertable<DiscountRow> {
           other.branchScopeJson == this.branchScopeJson &&
           other.stackable == this.stackable &&
           other.requiresManagerApproval == this.requiresManagerApproval &&
+          other.autoApply == this.autoApply &&
           other.status == this.status &&
           other.targetsJson == this.targetsJson);
 }
@@ -6607,6 +6645,7 @@ class DiscountsCompanion extends UpdateCompanion<DiscountRow> {
   final Value<String?> branchScopeJson;
   final Value<bool> stackable;
   final Value<bool> requiresManagerApproval;
+  final Value<bool> autoApply;
   final Value<String?> status;
   final Value<String> targetsJson;
   const DiscountsCompanion({
@@ -6624,6 +6663,7 @@ class DiscountsCompanion extends UpdateCompanion<DiscountRow> {
     this.branchScopeJson = const Value.absent(),
     this.stackable = const Value.absent(),
     this.requiresManagerApproval = const Value.absent(),
+    this.autoApply = const Value.absent(),
     this.status = const Value.absent(),
     this.targetsJson = const Value.absent(),
   });
@@ -6642,6 +6682,7 @@ class DiscountsCompanion extends UpdateCompanion<DiscountRow> {
     this.branchScopeJson = const Value.absent(),
     this.stackable = const Value.absent(),
     this.requiresManagerApproval = const Value.absent(),
+    this.autoApply = const Value.absent(),
     this.status = const Value.absent(),
     this.targetsJson = const Value.absent(),
   });
@@ -6660,6 +6701,7 @@ class DiscountsCompanion extends UpdateCompanion<DiscountRow> {
     Expression<String>? branchScopeJson,
     Expression<bool>? stackable,
     Expression<bool>? requiresManagerApproval,
+    Expression<bool>? autoApply,
     Expression<String>? status,
     Expression<String>? targetsJson,
   }) {
@@ -6679,6 +6721,7 @@ class DiscountsCompanion extends UpdateCompanion<DiscountRow> {
       if (stackable != null) 'stackable': stackable,
       if (requiresManagerApproval != null)
         'requires_manager_approval': requiresManagerApproval,
+      if (autoApply != null) 'auto_apply': autoApply,
       if (status != null) 'status': status,
       if (targetsJson != null) 'targets_json': targetsJson,
     });
@@ -6699,6 +6742,7 @@ class DiscountsCompanion extends UpdateCompanion<DiscountRow> {
     Value<String?>? branchScopeJson,
     Value<bool>? stackable,
     Value<bool>? requiresManagerApproval,
+    Value<bool>? autoApply,
     Value<String?>? status,
     Value<String>? targetsJson,
   }) {
@@ -6718,6 +6762,7 @@ class DiscountsCompanion extends UpdateCompanion<DiscountRow> {
       stackable: stackable ?? this.stackable,
       requiresManagerApproval:
           requiresManagerApproval ?? this.requiresManagerApproval,
+      autoApply: autoApply ?? this.autoApply,
       status: status ?? this.status,
       targetsJson: targetsJson ?? this.targetsJson,
     );
@@ -6770,6 +6815,9 @@ class DiscountsCompanion extends UpdateCompanion<DiscountRow> {
         requiresManagerApproval.value,
       );
     }
+    if (autoApply.present) {
+      map['auto_apply'] = Variable<bool>(autoApply.value);
+    }
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
@@ -6796,6 +6844,7 @@ class DiscountsCompanion extends UpdateCompanion<DiscountRow> {
           ..write('branchScopeJson: $branchScopeJson, ')
           ..write('stackable: $stackable, ')
           ..write('requiresManagerApproval: $requiresManagerApproval, ')
+          ..write('autoApply: $autoApply, ')
           ..write('status: $status, ')
           ..write('targetsJson: $targetsJson')
           ..write(')'))
@@ -12164,6 +12213,7 @@ typedef $$DiscountsTableCreateCompanionBuilder =
       Value<String?> branchScopeJson,
       Value<bool> stackable,
       Value<bool> requiresManagerApproval,
+      Value<bool> autoApply,
       Value<String?> status,
       Value<String> targetsJson,
     });
@@ -12183,6 +12233,7 @@ typedef $$DiscountsTableUpdateCompanionBuilder =
       Value<String?> branchScopeJson,
       Value<bool> stackable,
       Value<bool> requiresManagerApproval,
+      Value<bool> autoApply,
       Value<String?> status,
       Value<String> targetsJson,
     });
@@ -12263,6 +12314,11 @@ class $$DiscountsTableFilterComposer
 
   ColumnFilters<bool> get requiresManagerApproval => $composableBuilder(
     column: $table.requiresManagerApproval,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get autoApply => $composableBuilder(
+    column: $table.autoApply,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12356,6 +12412,11 @@ class $$DiscountsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get autoApply => $composableBuilder(
+    column: $table.autoApply,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get status => $composableBuilder(
     column: $table.status,
     builder: (column) => ColumnOrderings(column),
@@ -12432,6 +12493,9 @@ class $$DiscountsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get autoApply =>
+      $composableBuilder(column: $table.autoApply, builder: (column) => column);
+
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
 
@@ -12486,6 +12550,7 @@ class $$DiscountsTableTableManager
                 Value<String?> branchScopeJson = const Value.absent(),
                 Value<bool> stackable = const Value.absent(),
                 Value<bool> requiresManagerApproval = const Value.absent(),
+                Value<bool> autoApply = const Value.absent(),
                 Value<String?> status = const Value.absent(),
                 Value<String> targetsJson = const Value.absent(),
               }) => DiscountsCompanion(
@@ -12503,6 +12568,7 @@ class $$DiscountsTableTableManager
                 branchScopeJson: branchScopeJson,
                 stackable: stackable,
                 requiresManagerApproval: requiresManagerApproval,
+                autoApply: autoApply,
                 status: status,
                 targetsJson: targetsJson,
               ),
@@ -12522,6 +12588,7 @@ class $$DiscountsTableTableManager
                 Value<String?> branchScopeJson = const Value.absent(),
                 Value<bool> stackable = const Value.absent(),
                 Value<bool> requiresManagerApproval = const Value.absent(),
+                Value<bool> autoApply = const Value.absent(),
                 Value<String?> status = const Value.absent(),
                 Value<String> targetsJson = const Value.absent(),
               }) => DiscountsCompanion.insert(
@@ -12539,6 +12606,7 @@ class $$DiscountsTableTableManager
                 branchScopeJson: branchScopeJson,
                 stackable: stackable,
                 requiresManagerApproval: requiresManagerApproval,
+                autoApply: autoApply,
                 status: status,
                 targetsJson: targetsJson,
               ),

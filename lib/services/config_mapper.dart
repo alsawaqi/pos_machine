@@ -452,6 +452,7 @@ class ConfigMapper {
               stackable: Value(d['stackable'] == true),
               requiresManagerApproval:
                   Value(d['requires_manager_approval'] == true),
+              autoApply: Value(d['auto_apply'] == true),
               status: Value(_strN(d['status'])),
               targetsJson: Value(jsonEncode(d['targets'] ?? const [])),
             ))
@@ -756,6 +757,7 @@ class ConfigMapper {
               branchScope: _branchScope(d.branchScopeJson),
               stackable: d.stackable,
               requiresManagerApproval: d.requiresManagerApproval,
+              autoApply: d.autoApply,
               isActive: d.status == null || d.status == 'active',
               targets: _discountTargets(d.targetsJson),
             ))

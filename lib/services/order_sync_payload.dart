@@ -187,6 +187,8 @@ OrderSyncPayload buildOrderSyncPayload(
       if (snapshot.discountId != null) 'discount_id': snapshot.discountId,
       if (snapshot.discountAmountType != null)
         'amount_type': snapshot.discountAmountType,
+      // P-F4 — the cashier's reason for a manual/custom discount.
+      if (snapshot.discountReason.isNotEmpty) 'reason': snapshot.discountReason,
     });
   }
   discounts.addAll(lineDiscounts);

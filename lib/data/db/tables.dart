@@ -284,6 +284,9 @@ class Discounts extends Table {
   BoolColumn get stackable => boolean().withDefault(const Constant(false))();
   BoolColumn get requiresManagerApproval =>
       boolean().withDefault(const Constant(false))();
+  // P-F4 — order-scope rules with auto_apply self-apply to every qualifying
+  // order (product/category scopes auto-apply per line regardless).
+  BoolColumn get autoApply => boolean().withDefault(const Constant(false))();
   TextColumn get status => text().nullable()();
   // [{target_type, target_id}] — for product/category scope (cached for a future
   // per-line-discount increment; unused by the order-scope picker today).

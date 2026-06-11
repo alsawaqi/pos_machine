@@ -2229,6 +2229,22 @@ class L10nEn extends L10n {
   String get posEarnPickerConfirm => 'Confirm';
 
   @override
+  String get posDiscountDlgCustomSection => 'Custom';
+
+  @override
+  String get posDiscountDlgCustomPercentHint => 'Percent (e.g. 7.5)';
+
+  @override
+  String get posDiscountDlgCustomAmountHint => 'Amount (OMR)';
+
+  @override
+  String get posDiscountDlgReasonHint => 'Reason (required for a custom value)';
+
+  @override
+  String get posDiscountDlgReasonRequired =>
+      'Enter a reason for the custom discount.';
+
+  @override
   String get posCancelPageOrderItems => 'Order Items';
 
   @override

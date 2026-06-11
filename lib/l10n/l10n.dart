@@ -3702,6 +3702,36 @@ abstract class L10n {
   /// **'Confirm'**
   String get posEarnPickerConfirm;
 
+  /// No description provided for @posDiscountDlgCustomSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom'**
+  String get posDiscountDlgCustomSection;
+
+  /// No description provided for @posDiscountDlgCustomPercentHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Percent (e.g. 7.5)'**
+  String get posDiscountDlgCustomPercentHint;
+
+  /// No description provided for @posDiscountDlgCustomAmountHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Amount (OMR)'**
+  String get posDiscountDlgCustomAmountHint;
+
+  /// No description provided for @posDiscountDlgReasonHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Reason (required for a custom value)'**
+  String get posDiscountDlgReasonHint;
+
+  /// No description provided for @posDiscountDlgReasonRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a reason for the custom discount.'**
+  String get posDiscountDlgReasonRequired;
+
   /// No description provided for @posCancelPageOrderItems.
   ///
   /// In en, this message translates to:
