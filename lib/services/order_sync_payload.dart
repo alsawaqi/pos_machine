@@ -330,6 +330,31 @@ OrderSyncPayload buildOrderSyncPayload(
     };
   }
 
+  // P-G7 — a NO-TENDER delivery-provider order (the Proceed popup set a
+  // provider reference): the second event is order.deliver, never order.pay.
+  // The server lands it pending_verification, consumes inventory, and the
+  // merchant's Deliveries page settles the money later. No loyalty, no
+  // round-up, no tenders by design. Deliberately NOT conditioned on the
+  // provider id: a reference-bearing order with a somehow-missing provider
+  // must FAIL server-side (provider_id required) rather than silently
+  // become a phantom paid-cash sale via the pay branch.
+  final isPendingDelivery = snapshot.orderType == 'delivery' &&
+      snapshot.deliveryReference.isNotEmpty;
+
+  final deliverEvent = <String, dynamic>{
+    'order_uuid': orderUuid,
+    'delivered_at': ts,
+    'delivery': <String, dynamic>{
+      'provider_id': snapshot.deliveryProviderId,
+      'reference': snapshot.deliveryReference,
+      if (snapshot.customerReferenceNumber.trim().isNotEmpty)
+        'customer_phone': snapshot.customerReferenceNumber.trim(),
+      if (snapshot.deliveryDriverPhone.trim().isNotEmpty)
+        'driver_phone': snapshot.deliveryDriverPhone.trim(),
+    },
+    'gps': ?gps,
+  };
+
   final events = <Map<String, dynamic>>[
     {
       'client_event_id': gen(),
@@ -339,9 +364,9 @@ OrderSyncPayload buildOrderSyncPayload(
     },
     {
       'client_event_id': gen(),
-      'event_type': 'order.pay',
+      'event_type': isPendingDelivery ? 'order.deliver' : 'order.pay',
       'client_timestamp': ts,
-      'payload': payEvent,
+      'payload': isPendingDelivery ? deliverEvent : payEvent,
     },
   ];
 

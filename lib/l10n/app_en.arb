@@ -1909,5 +1909,20 @@
   "posNavMessages": "Messages",
   "posMessagesNone": "No announcements for you yet.",
   "posMessagesUntitled": "Announcement",
-  "posMessagesPopupTitle": "New message"
+  "posMessagesPopupTitle": "New message",
+  "posPaymentDeliveryProceed": "Proceed",
+  "posDeliveryRecordedTitle": "Delivery Recorded",
+  "posDeliveryProceedTitle": "Complete Delivery Order",
+  "posDeliveryProceedSubtitle": "No payment is taken at the till — the provider settles later, minus their commission.",
+  "posDeliveryProceedReference": "Provider order number",
+  "posDeliveryProceedReferenceHint": "Required — e.g. TLB-88421",
+  "posDeliveryProceedCustomer": "Customer number",
+  "posDeliveryProceedDriver": "Driver number",
+  "posDeliveryProceedOptionalHint": "Optional",
+  "posDeliveryProceedConfirm": "Complete Order",
+  "ctrlMsgDeliveryRecorded": "Delivery order recorded — pending provider verification.",
+  "ctrlMsgDeliveryCompleted": "Delivery order completed. Awaiting the provider's settlement.",
+  "displayStatusPendingVerification": "Pending verification",
+  "displayMethodDelivery": "Delivery",
+  "posOffersNotForDelivery": "Promotions don't apply to delivery-provider orders — the provider's listed price is final."
 }

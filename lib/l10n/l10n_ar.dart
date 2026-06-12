@@ -3038,4 +3038,53 @@ class L10nAr extends L10n {
 
   @override
   String get posMessagesPopupTitle => 'رسالة جديدة';
+
+  @override
+  String get posPaymentDeliveryProceed => 'متابعة';
+
+  @override
+  String get posDeliveryRecordedTitle => 'تم تسجيل التوصيل';
+
+  @override
+  String get posDeliveryProceedTitle => 'إتمام طلب التوصيل';
+
+  @override
+  String get posDeliveryProceedSubtitle =>
+      'لا يُدفع شيء عند الكاشير — تسدد شركة التوصيل لاحقًا بعد خصم عمولتها.';
+
+  @override
+  String get posDeliveryProceedReference => 'رقم طلب الشركة';
+
+  @override
+  String get posDeliveryProceedReferenceHint => 'إلزامي — مثل TLB-88421';
+
+  @override
+  String get posDeliveryProceedCustomer => 'رقم الزبون';
+
+  @override
+  String get posDeliveryProceedDriver => 'رقم السائق';
+
+  @override
+  String get posDeliveryProceedOptionalHint => 'اختياري';
+
+  @override
+  String get posDeliveryProceedConfirm => 'إتمام الطلب';
+
+  @override
+  String get ctrlMsgDeliveryRecorded =>
+      'تم تسجيل طلب التوصيل — بانتظار تحقق الشركة.';
+
+  @override
+  String get ctrlMsgDeliveryCompleted =>
+      'اكتمل طلب التوصيل. بانتظار تسوية الشركة.';
+
+  @override
+  String get displayStatusPendingVerification => 'بانتظار التحقق';
+
+  @override
+  String get displayMethodDelivery => 'توصيل';
+
+  @override
+  String get posOffersNotForDelivery =>
+      'لا تنطبق العروض على طلبات شركات التوصيل — سعر الشركة المعلن نهائي.';
 }

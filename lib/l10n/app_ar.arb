@@ -822,5 +822,20 @@
   "posNavMessages": "الرسائل",
   "posMessagesNone": "لا توجد إعلانات لك حتى الآن.",
   "posMessagesUntitled": "إعلان",
-  "posMessagesPopupTitle": "رسالة جديدة"
+  "posMessagesPopupTitle": "رسالة جديدة",
+  "posPaymentDeliveryProceed": "متابعة",
+  "posDeliveryRecordedTitle": "تم تسجيل التوصيل",
+  "posDeliveryProceedTitle": "إتمام طلب التوصيل",
+  "posDeliveryProceedSubtitle": "لا يُدفع شيء عند الكاشير — تسدد شركة التوصيل لاحقًا بعد خصم عمولتها.",
+  "posDeliveryProceedReference": "رقم طلب الشركة",
+  "posDeliveryProceedReferenceHint": "إلزامي — مثل TLB-88421",
+  "posDeliveryProceedCustomer": "رقم الزبون",
+  "posDeliveryProceedDriver": "رقم السائق",
+  "posDeliveryProceedOptionalHint": "اختياري",
+  "posDeliveryProceedConfirm": "إتمام الطلب",
+  "ctrlMsgDeliveryRecorded": "تم تسجيل طلب التوصيل — بانتظار تحقق الشركة.",
+  "ctrlMsgDeliveryCompleted": "اكتمل طلب التوصيل. بانتظار تسوية الشركة.",
+  "displayStatusPendingVerification": "بانتظار التحقق",
+  "displayMethodDelivery": "توصيل",
+  "posOffersNotForDelivery": "لا تنطبق العروض على طلبات شركات التوصيل — سعر الشركة المعلن نهائي."
 }

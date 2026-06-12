@@ -1587,6 +1587,15 @@ class OrderSnapshot {
   // order.void to pos_api. Empty for orders never pushed (e.g. demo-only) or
   // records loaded from the server's history.
   final String serverOrderUuid;
+  // P-G7 — the delivery-provider lifecycle, frozen at the Proceed popup.
+  // A non-empty [deliveryReference] marks a NO-TENDER pending-verification
+  // delivery order: the push emits order.create + order.deliver (no pay
+  // event), and the provider settles it later on the merchant's Deliveries
+  // page. The customer number rides [customerReferenceNumber] as usual.
+  final int? deliveryProviderId;
+  final String deliveryProviderName;
+  final String deliveryReference;
+  final String deliveryDriverPhone;
 
   const OrderSnapshot({
     required this.orderNumber,
@@ -1633,6 +1642,10 @@ class OrderSnapshot {
     required this.recentProductId,
     required this.orderUpdateNonce,
     this.serverOrderUuid = '',
+    this.deliveryProviderId,
+    this.deliveryProviderName = '',
+    this.deliveryReference = '',
+    this.deliveryDriverPhone = '',
   });
 
   factory OrderSnapshot.initial() {
@@ -1737,6 +1750,10 @@ class OrderSnapshot {
       recentProductId: map['recentProductId']?.toString() ?? '',
       orderUpdateNonce: (map['orderUpdateNonce'] as num?)?.toInt() ?? 0,
       serverOrderUuid: map['serverOrderUuid']?.toString() ?? '',
+      deliveryProviderId: (map['deliveryProviderId'] as num?)?.toInt(),
+      deliveryProviderName: map['deliveryProviderName']?.toString() ?? '',
+      deliveryReference: map['deliveryReference']?.toString() ?? '',
+      deliveryDriverPhone: map['deliveryDriverPhone']?.toString() ?? '',
     );
   }
 
@@ -1779,6 +1796,12 @@ class OrderSnapshot {
       'recentProductId': recentProductId,
       'orderUpdateNonce': orderUpdateNonce,
       'serverOrderUuid': serverOrderUuid,
+      if (deliveryProviderId != null) 'deliveryProviderId': deliveryProviderId,
+      if (deliveryProviderName.isNotEmpty)
+        'deliveryProviderName': deliveryProviderName,
+      if (deliveryReference.isNotEmpty) 'deliveryReference': deliveryReference,
+      if (deliveryDriverPhone.isNotEmpty)
+        'deliveryDriverPhone': deliveryDriverPhone,
     };
   }
 
@@ -1827,6 +1850,10 @@ class OrderSnapshot {
     String? recentProductId,
     int? orderUpdateNonce,
     String? serverOrderUuid,
+    int? deliveryProviderId,
+    String? deliveryProviderName,
+    String? deliveryReference,
+    String? deliveryDriverPhone,
   }) {
     return OrderSnapshot(
       orderNumber: orderNumber ?? this.orderNumber,
@@ -1879,6 +1906,10 @@ class OrderSnapshot {
       recentProductId: recentProductId ?? this.recentProductId,
       orderUpdateNonce: orderUpdateNonce ?? this.orderUpdateNonce,
       serverOrderUuid: serverOrderUuid ?? this.serverOrderUuid,
+      deliveryProviderId: deliveryProviderId ?? this.deliveryProviderId,
+      deliveryProviderName: deliveryProviderName ?? this.deliveryProviderName,
+      deliveryReference: deliveryReference ?? this.deliveryReference,
+      deliveryDriverPhone: deliveryDriverPhone ?? this.deliveryDriverPhone,
     );
   }
 
@@ -1983,8 +2014,13 @@ class OrderHistoryRecord {
   factory OrderHistoryRecord.fromServerJson(Map<String, dynamic> json) {
     double omr(String key) => ((json[key] as num?)?.toDouble() ?? 0) / 1000.0;
     final status = json['status']?.toString() ?? '';
-    final statusLabel =
-        status.isEmpty ? '' : status[0].toUpperCase() + status.substring(1);
+    // P-G7 — server statuses are snake_case; the local identity strings use
+    // spaces ('pending_verification' → 'Pending verification', which the
+    // display layer then localizes).
+    final statusSpaced = status.replaceAll('_', ' ');
+    final statusLabel = statusSpaced.isEmpty
+        ? ''
+        : statusSpaced[0].toUpperCase() + statusSpaced.substring(1);
     final orderTypeStr = json['order_type']?.toString() ?? 'quick_order';
     final serverId = (json['id'] as num?)?.toInt() ?? 0;
     final total = omr('grand_total_baisas');
@@ -2035,6 +2071,15 @@ class OrderHistoryRecord {
       'serverOrderUuid': json['uuid']?.toString() ?? '',
       // P-F8 — the merchant's sequential number, when the order has one.
       'receiptNumber': json['receipt_number']?.toString() ?? '',
+      // P-G7 — provider linkage for delivery orders (null otherwise).
+      if (json['delivery'] is Map) ...{
+        'deliveryProviderId':
+            ((json['delivery'] as Map)['provider_id'] as num?)?.toInt(),
+        'deliveryProviderName':
+            (json['delivery'] as Map)['provider_name']?.toString() ?? '',
+        'deliveryReference':
+            (json['delivery'] as Map)['reference']?.toString() ?? '',
+      },
     });
 
     return OrderHistoryRecord(

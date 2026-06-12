@@ -4025,7 +4025,39 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       width: 236,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
+                        // P-G7 — a delivery-provider order takes NO tender:
+                        // the provider pays later, minus commission. Proceed
+                        // collects the provider's order number (+ optional
+                        // contacts) and completes as pending verification.
+                        children: controller.selectedOrderType ==
+                                OrderType.delivery
+                            ? [
+                                Expanded(
+                                  child: _PaymentMethodActionButton(
+                                    label: l10n.posPaymentDeliveryProceed,
+                                    icon: Icons.delivery_dining_rounded,
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        Color(0xFF2E5E8C),
+                                        Color(0xFF234A72),
+                                      ],
+                                    ),
+                                    onTap: _openDeliveryProceedDialog,
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                SizedBox(
+                                  height: 86,
+                                  child: _PaymentBottomActionButton(
+                                    label: l10n.commonCancel,
+                                    icon: Icons.close_rounded,
+                                    onTap: _closePaymentPage,
+                                  ),
+                                ),
+                              ]
+                            : [
                           // Expanded (not square AspectRatio): the fixed
                           // 1600x900 canvas leaves this column 592px, so two
                           // 236px squares can never fit — share the height.
@@ -4121,6 +4153,51 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// P-G7 — the delivery Proceed popup: provider order number (REQUIRED) +
+  /// optional customer/driver numbers, then a no-tender completion. The
+  /// order lands pending verification; the merchant settles it on the
+  /// portal Deliveries page when the provider's statement arrives.
+  Future<void> _openDeliveryProceedDialog() async {
+    if (controller.isProcessingPayment) return;
+    final l10n = L10n.of(context);
+    // No provider (e.g. it was retired mid-order, or the pick was somehow
+    // skipped): route through the picker instead of silently no-opping.
+    if (controller.selectedDeliveryProviderId == null) {
+      await _openDeliveryProviderPicker();
+      if (!mounted || controller.selectedDeliveryProviderId == null) return;
+    }
+    final result =
+        await showDialog<({String reference, String customer, String driver})>(
+      context: context,
+      builder: (_) => _DeliveryProceedDialog(
+        initialCustomer: _customerNumberController.text,
+      ),
+    );
+    if (!mounted || result == null) return;
+
+    _customerNumberController.text = result.customer;
+    final message = await controller.completeDeliveryOrder(
+      reference: result.reference,
+      customerPhone: result.customer,
+      driverPhone: result.driver,
+    );
+    if (!mounted || message == null || message.isEmpty) return;
+
+    if (controller.cart.isEmpty) {
+      setState(() {
+        _showPaymentPage = false;
+        _cashTenderInput = '';
+        _customerNumberController.clear();
+      });
+    }
+
+    _showPopupMessage(
+      title: l10n.posDeliveryRecordedTitle,
+      message: message,
+      tone: FeedbackTone.success,
     );
   }
 
@@ -4788,6 +4865,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// applied to the current cart right now.
   Future<void> _openOffersSheet() async {
     final l10n = L10n.of(context);
+    // P-G7 — no promotions on delivery-provider orders: say so instead of
+    // offering bundles whose price would never apply.
+    if (controller.selectedOrderType == OrderType.delivery) {
+      _showPopupMessage(
+        title: l10n.posNavOffers,
+        message: l10n.posOffersNotForDelivery,
+        tone: FeedbackTone.info,
+      );
+      return;
+    }
     final isAr = Localizations.localeOf(context).languageCode == 'ar';
     final branchId = ref.read(sessionControllerProvider).branchId ?? 0;
     final now = DateTime.now();
@@ -11677,6 +11764,214 @@ class _DeliveryProviderPickerDialog extends StatelessWidget {
                     ],
                   ),
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// P-G7 — the delivery Proceed popup. Collects the PROVIDER's order number
+/// (required — alphanumeric, e.g. "TLB-88421") plus optional customer and
+/// driver numbers (digits), each through the kiosk's in-app keyboard. Pops
+/// a record on confirm, null on cancel.
+class _DeliveryProceedDialog extends StatefulWidget {
+  final String initialCustomer;
+
+  const _DeliveryProceedDialog({this.initialCustomer = ''});
+
+  @override
+  State<_DeliveryProceedDialog> createState() => _DeliveryProceedDialogState();
+}
+
+class _DeliveryProceedDialogState extends State<_DeliveryProceedDialog> {
+  String _reference = '';
+  late String _customer = widget.initialCustomer;
+  String _driver = '';
+
+  Future<void> _edit({
+    required String title,
+    required String initial,
+    required bool numbersOnly,
+    required ValueChanged<String> onDone,
+    bool uppercase = false,
+  }) async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (_) => _InAppKeyboardDialog(
+        title: title,
+        initialValue: initial,
+        hintText: '',
+        numbersOnly: numbersOnly,
+      ),
+    );
+    if (!mounted || result == null) return;
+    setState(() => onDone(uppercase ? result.toUpperCase() : result));
+  }
+
+  Widget _fieldRow({
+    required String label,
+    required String value,
+    required String placeholder,
+    required VoidCallback onTap,
+    bool required = false,
+  }) {
+    final hasValue = value.trim().isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF4F6F8),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: required && !hasValue
+                  ? const Color(0xFFE0A23A)
+                  : const Color(0xFFE2E8EC),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF5B6770),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      hasValue ? value : placeholder,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: hasValue
+                            ? const Color(0xFF21262C)
+                            : const Color(0xFFA6B0B8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.edit_rounded, size: 18, color: Color(0xFF5B6770)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
+    final canConfirm = _reference.trim().isNotEmpty;
+
+    return Dialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                l10n.posDeliveryProceedTitle,
+                style: const TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF21262C),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                l10n.posDeliveryProceedSubtitle,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF5B6770),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _fieldRow(
+                label: l10n.posDeliveryProceedReference,
+                value: _reference,
+                placeholder: l10n.posDeliveryProceedReferenceHint,
+                required: true,
+                onTap: () => _edit(
+                  title: l10n.posDeliveryProceedReference,
+                  initial: _reference,
+                  numbersOnly: false,
+                  uppercase: true,
+                  onDone: (v) => _reference = v,
+                ),
+              ),
+              _fieldRow(
+                label: l10n.posDeliveryProceedCustomer,
+                value: _customer,
+                placeholder: l10n.posDeliveryProceedOptionalHint,
+                onTap: () => _edit(
+                  title: l10n.posDeliveryProceedCustomer,
+                  initial: _customer,
+                  numbersOnly: true,
+                  onDone: (v) => _customer = v,
+                ),
+              ),
+              _fieldRow(
+                label: l10n.posDeliveryProceedDriver,
+                value: _driver,
+                placeholder: l10n.posDeliveryProceedOptionalHint,
+                onTap: () => _edit(
+                  title: l10n.posDeliveryProceedDriver,
+                  initial: _driver,
+                  numbersOnly: true,
+                  onDone: (v) => _driver = v,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        foregroundColor: const Color(0xFF5B6770),
+                      ),
+                      child: Text(l10n.commonCancel),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton(
+                      onPressed: canConfirm
+                          ? () => Navigator.of(context).pop((
+                                reference: _reference.trim(),
+                                customer: _customer.trim(),
+                                driver: _driver.trim(),
+                              ))
+                          : null,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF2E5E8C),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: Text(l10n.posDeliveryProceedConfirm),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

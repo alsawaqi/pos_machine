@@ -5044,6 +5044,96 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'New message'**
   String get posMessagesPopupTitle;
+
+  /// No description provided for @posPaymentDeliveryProceed.
+  ///
+  /// In en, this message translates to:
+  /// **'Proceed'**
+  String get posPaymentDeliveryProceed;
+
+  /// No description provided for @posDeliveryRecordedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivery Recorded'**
+  String get posDeliveryRecordedTitle;
+
+  /// No description provided for @posDeliveryProceedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete Delivery Order'**
+  String get posDeliveryProceedTitle;
+
+  /// No description provided for @posDeliveryProceedSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No payment is taken at the till — the provider settles later, minus their commission.'**
+  String get posDeliveryProceedSubtitle;
+
+  /// No description provided for @posDeliveryProceedReference.
+  ///
+  /// In en, this message translates to:
+  /// **'Provider order number'**
+  String get posDeliveryProceedReference;
+
+  /// No description provided for @posDeliveryProceedReferenceHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Required — e.g. TLB-88421'**
+  String get posDeliveryProceedReferenceHint;
+
+  /// No description provided for @posDeliveryProceedCustomer.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer number'**
+  String get posDeliveryProceedCustomer;
+
+  /// No description provided for @posDeliveryProceedDriver.
+  ///
+  /// In en, this message translates to:
+  /// **'Driver number'**
+  String get posDeliveryProceedDriver;
+
+  /// No description provided for @posDeliveryProceedOptionalHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional'**
+  String get posDeliveryProceedOptionalHint;
+
+  /// No description provided for @posDeliveryProceedConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete Order'**
+  String get posDeliveryProceedConfirm;
+
+  /// No description provided for @ctrlMsgDeliveryRecorded.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivery order recorded — pending provider verification.'**
+  String get ctrlMsgDeliveryRecorded;
+
+  /// No description provided for @ctrlMsgDeliveryCompleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivery order completed. Awaiting the provider\'s settlement.'**
+  String get ctrlMsgDeliveryCompleted;
+
+  /// No description provided for @displayStatusPendingVerification.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending verification'**
+  String get displayStatusPendingVerification;
+
+  /// No description provided for @displayMethodDelivery.
+  ///
+  /// In en, this message translates to:
+  /// **'Delivery'**
+  String get displayMethodDelivery;
+
+  /// No description provided for @posOffersNotForDelivery.
+  ///
+  /// In en, this message translates to:
+  /// **'Promotions don\'t apply to delivery-provider orders — the provider\'s listed price is final.'**
+  String get posOffersNotForDelivery;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

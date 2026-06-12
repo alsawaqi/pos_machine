@@ -23,6 +23,8 @@ String localizedPaymentStatus(L10n l10n, String value) => switch (value) {
       'Waiting' => l10n.displayStatusWaiting,
       'Paid' => l10n.displayStatusPaid,
       'Paid (pending reconciliation)' => l10n.displayStatusPaidPendingRecon,
+      // P-G7 — a no-tender delivery order awaiting the provider statement.
+      'Pending verification' => l10n.displayStatusPendingVerification,
       'Awaiting confirmation' => l10n.displayStatusAwaitingConfirmation,
       'Card charge not confirmed' => l10n.displayStatusCardNotConfirmed,
       'Payment canceled' => l10n.displayStatusPaymentCanceled,
@@ -43,5 +45,6 @@ String localizedPaymentMethod(L10n l10n, String value) => switch (value) {
       'Split Payment' => l10n.displayMethodSplit,
       'Gift' => l10n.displayMethodGift,
       'Bank POS' => l10n.displayMethodBankPos, // P-F5
+      'Delivery' => l10n.displayMethodDelivery, // P-G7 — no tender taken
       _ => value,
     };

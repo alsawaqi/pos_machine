@@ -3011,4 +3011,53 @@ class L10nEn extends L10n {
 
   @override
   String get posMessagesPopupTitle => 'New message';
+
+  @override
+  String get posPaymentDeliveryProceed => 'Proceed';
+
+  @override
+  String get posDeliveryRecordedTitle => 'Delivery Recorded';
+
+  @override
+  String get posDeliveryProceedTitle => 'Complete Delivery Order';
+
+  @override
+  String get posDeliveryProceedSubtitle =>
+      'No payment is taken at the till — the provider settles later, minus their commission.';
+
+  @override
+  String get posDeliveryProceedReference => 'Provider order number';
+
+  @override
+  String get posDeliveryProceedReferenceHint => 'Required — e.g. TLB-88421';
+
+  @override
+  String get posDeliveryProceedCustomer => 'Customer number';
+
+  @override
+  String get posDeliveryProceedDriver => 'Driver number';
+
+  @override
+  String get posDeliveryProceedOptionalHint => 'Optional';
+
+  @override
+  String get posDeliveryProceedConfirm => 'Complete Order';
+
+  @override
+  String get ctrlMsgDeliveryRecorded =>
+      'Delivery order recorded — pending provider verification.';
+
+  @override
+  String get ctrlMsgDeliveryCompleted =>
+      'Delivery order completed. Awaiting the provider\'s settlement.';
+
+  @override
+  String get displayStatusPendingVerification => 'Pending verification';
+
+  @override
+  String get displayMethodDelivery => 'Delivery';
+
+  @override
+  String get posOffersNotForDelivery =>
+      'Promotions don\'t apply to delivery-provider orders — the provider\'s listed price is final.';
 }

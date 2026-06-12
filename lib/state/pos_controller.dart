@@ -450,6 +450,19 @@ class PosController extends ChangeNotifier {
 
   String paymentStatus = 'Waiting';
   String selectedPaymentMethod = 'Cash';
+  // P-G7 — the Proceed-popup facts for the in-flight delivery order: the
+  // PROVIDER's order number (required) + the driver's number (optional).
+  // Set by completeDeliveryOrder just before the order finalizes; cleared
+  // with the rest of the per-order state.
+  String deliveryReference = '';
+  String deliveryDriverPhone = '';
+  // The provider FROZEN at the Proceed confirmation, captured BEFORE the
+  // receipt-number await: a config refresh during that await can null
+  // selectedDeliveryProviderId (provider deleted on the portal), and the
+  // snapshot must still carry the provider the cashier actually punched —
+  // otherwise the push would silently fall back to a tendered cash sale.
+  int? _punchedDeliveryProviderId;
+  String _punchedDeliveryProviderName = '';
   String lastCustomerEvent = '';
   String lastPaymentMessage = '';
   String displayNote = '';
@@ -880,7 +893,8 @@ class PosController extends ChangeNotifier {
     CartItem item,
   ) {
     final branchId = _discountBranchId;
-    if (branchId == null) {
+    // P-G7 — no discounts on delivery-provider orders.
+    if (branchId == null || selectedOrderType == OrderType.delivery) {
       return (amount: 0.0, id: null, amountType: null, label: '');
     }
     final productId = int.tryParse(item.product.id);
@@ -918,6 +932,9 @@ class PosController extends ChangeNotifier {
   /// (bogo / multi-buy / cheapest-free / spend-get) plus any intact
   /// cashier-picked bundle instances. Pure recompute on every read.
   List<AppliedOffer> get appliedOffers {
+    // P-G7 — delivery-provider orders carry no promotions: the provider's
+    // listed price is final (same policy as the tax exemption).
+    if (selectedOrderType == OrderType.delivery) return const [];
     final branchId = _discountBranchId;
     if (branchId == null || availableOffers.isEmpty || _cart.isEmpty) {
       return const [];
@@ -951,6 +968,10 @@ class PosController extends ChangeNotifier {
   /// at the bundle price (removing a piece breaks the bundle — items then
   /// charge normally).
   void addBundle(Offer offer, List<Product> picks) {
+    // P-G7 — no promotions on delivery-provider orders: the bundle price
+    // comes from the offer engine, which is delivery-gated, so the items
+    // would silently charge full price. Refuse instead.
+    if (selectedOrderType == OrderType.delivery) return;
     if (picks.isEmpty) return;
     _ensureOrderReference();
     final key = '${offer.id}:${++_bundleSeq}';
@@ -971,6 +992,8 @@ class PosController extends ChangeNotifier {
   /// require manager approval never auto-apply — nobody approved them.
   void maybeAutoApplyOrderDiscount() {
     if (_autoOrderDiscountSuppressed) return;
+    // P-G7 — no discounts on delivery-provider orders.
+    if (selectedOrderType == OrderType.delivery) return;
     if (discount.isActive || _cart.isEmpty) return;
     final branchId = _discountBranchId;
     if (branchId == null) return;
@@ -1067,6 +1090,11 @@ class PosController extends ChangeNotifier {
   /// P-F5 — toggle a line gift (the screen owns the manager gate). Refused
   /// while a FULL-ORDER comp is applied — the order is already written off.
   bool toggleGiftItem(CartItem item) {
+    // P-G7 — no gift write-offs on delivery-provider orders (the provider
+    // pays the punched total; nothing is collected at the till anyway).
+    if (selectedOrderType == OrderType.delivery && !item.gifted) {
+      return false;
+    }
     if (appliedComp != null && appliedComp!.lineIndex == null && !item.gifted) {
       return false;
     }
@@ -1100,6 +1128,9 @@ class PosController extends ChangeNotifier {
   /// The CALLER is responsible for manager authorization + cap validation
   /// against the picked reason's maxAmount.
   void applyComp(AppliedComp comp) {
+    // P-G7 — delivery-provider orders are exempt from EVERYTHING: a comp
+    // would shrink the punched total the provider settles against.
+    if (selectedOrderType == OrderType.delivery) return;
     appliedComp = comp;
     _resetCharityRoundUp();
     _broadcast();
@@ -1177,6 +1208,8 @@ class PosController extends ChangeNotifier {
       _roundMoney(offeredCharityRoundUpTotal - activePaymentBaseTotal);
 
   bool get canOfferCharityRoundUp =>
+      // P-G7 — no round-up on delivery orders (no till money at all).
+      selectedOrderType != OrderType.delivery &&
       (selectedPaymentMethod == 'Credit Card' ||
           (splitCount > 1 && selectedPaymentMethod == 'Cash')) &&
       offeredCharityRoundUpAmount >= 0.001;
@@ -1256,6 +1289,21 @@ class PosController extends ChangeNotifier {
           : 0,
       recentProductId: recentProductId,
       orderUpdateNonce: orderUpdateNonce,
+      // P-G7 — the delivery-provider lifecycle (deliveryReference is only
+      // ever non-empty after completeDeliveryOrder's Proceed popup). The
+      // punched values win: they survive a mid-completion config refresh
+      // that drops the live selection.
+      deliveryProviderId: _punchedDeliveryProviderId ??
+          (selectedOrderType == OrderType.delivery
+              ? selectedDeliveryProviderId
+              : null),
+      deliveryProviderName: _punchedDeliveryProviderName.isNotEmpty
+          ? _punchedDeliveryProviderName
+          : (selectedOrderType == OrderType.delivery
+              ? (selectedDeliveryProvider?.name ?? '')
+              : ''),
+      deliveryReference: deliveryReference,
+      deliveryDriverPhone: deliveryDriverPhone,
     );
   }
 
@@ -1350,6 +1398,14 @@ class PosController extends ChangeNotifier {
     // cashier to pick one. Either way, re-price the menu + cart accordingly.
     if (orderType != OrderType.delivery) {
       selectedDeliveryProviderId = null;
+    } else {
+      // P-G7 — a delivery order is exempt from EVERYTHING: drop any active
+      // discount / loyalty redemption picked up before the switch (the
+      // gates above stop new ones from applying).
+      discount = const DiscountConfiguration();
+      loyaltyRedeemRuleId = null;
+      loyaltyRedeemPoints = 0;
+      loyaltyRedeemStamps = 0;
     }
     _applyDeliveryPricing();
     _broadcast();
@@ -1447,6 +1503,8 @@ class PosController extends ChangeNotifier {
   int loyaltyRedeemStamps = 0;
 
   void applyDiscount(DiscountConfiguration configuration) {
+    // P-G7 — delivery-provider orders take no discounts.
+    if (selectedOrderType == OrderType.delivery) return;
     discount = configuration;
     // A manual/merchant discount reuses the single discount slot — drop any
     // pending loyalty redemption so we don't send a stale redeem on pay.
@@ -1467,6 +1525,8 @@ class PosController extends ChangeNotifier {
     int points = 0,
     int stamps = 0,
   }) {
+    // P-G7 — no loyalty on delivery-provider orders.
+    if (selectedOrderType == OrderType.delivery) return;
     discount = DiscountConfiguration(
       kind: DiscountKind.fixedAmount,
       value: valueOmr,
@@ -2218,6 +2278,72 @@ class PosController extends ChangeNotifier {
       newCancellations.length,
       record.orderNumber,
     );
+  }
+
+  /// P-G7 — complete a delivery-provider order with NO tender. The
+  /// provider's order number is required; the order finalizes as PENDING
+  /// VERIFICATION (prints + saves + pushes order.create + order.deliver,
+  /// never order.pay) and only becomes a sale when the merchant reconciles
+  /// the provider's statement on the portal Deliveries page.
+  Future<String?> completeDeliveryOrder({
+    required String reference,
+    String customerPhone = '',
+    String driverPhone = '',
+  }) async {
+    if (_cart.isEmpty || isProcessingPayment) return null;
+    if (selectedOrderType != OrderType.delivery ||
+        selectedDeliveryProviderId == null) {
+      return null;
+    }
+    final trimmedReference = reference.trim();
+    if (trimmedReference.isEmpty) return null;
+
+    // Freeze the provider NOW — a config refresh during the allocation
+    // await below can drop selectedDeliveryProviderId (provider deleted
+    // on the portal mid-sale), and the punched order must keep the
+    // provider the cashier actually chose.
+    _punchedDeliveryProviderId = selectedDeliveryProviderId;
+    _punchedDeliveryProviderName = selectedDeliveryProvider?.name ?? '';
+
+    _resetCharityRoundUp();
+    _clearPaymentLaunchOverlay();
+    isProcessingPayment = true;
+    lastPaymentMessage = '';
+
+    // P-F8 — a punched delivery order is a real order with a printed
+    // ticket, so it takes a sequential number like any tendered sale
+    // (same short fuse + offline fallback as payAndPrint).
+    if (orderNumbering.enabled &&
+        receiptNumber.isEmpty &&
+        allocateReceiptNumber != null) {
+      try {
+        final allocated = await allocateReceiptNumber!()
+            .timeout(const Duration(seconds: 3));
+        if (allocated != null) receiptNumber = allocated.formatted;
+      } catch (_) {
+        // Offline / timeout / refused — the local number stands.
+      }
+    }
+
+    try {
+      deliveryReference = trimmedReference;
+      deliveryDriverPhone = driverPhone.replaceAll(RegExp(r'\D'), '').trim();
+      // Unconditional, mirroring every tendered path: blanking the field
+      // in the Proceed popup genuinely clears a previously-set customer.
+      setCustomerReferenceNumber(customerPhone);
+      selectedPaymentMethod = 'Delivery';
+      paymentStatus = 'Pending verification';
+      lastPaymentMessage = _l10n.ctrlMsgDeliveryRecorded;
+      displayNote = _l10n.ctrlMsgDeliveryCompleted;
+      _broadcast();
+
+      return await _finishCompletedOrder(
+        isDineInPayment: false,
+        successMessage: lastPaymentMessage,
+      );
+    } finally {
+      isProcessingPayment = false;
+    }
   }
 
   Future<String?> payAndPrint({double? cashTenderedAmount}) async {
@@ -3243,9 +3369,22 @@ class PosController extends ChangeNotifier {
     loyaltyRedeemRuleId = null;
     loyaltyRedeemPoints = 0;
     appliedComp = null;
+    // P-G7 — per-order delivery facts. The provider pick is ALSO cleared:
+    // the next delivery order must go through the picker deliberately (an
+    // inherited provider is financially binding now — it decides who owes
+    // the payout and at which commission %). _applyDeliveryPricing then
+    // restores base prices (next order type is never delivery here).
+    deliveryReference = '';
+    deliveryDriverPhone = '';
+    _punchedDeliveryProviderId = null;
+    _punchedDeliveryProviderName = '';
+    selectedDeliveryProviderId = null;
     showPendingReconciliationPrompt = false;
     _activePaymentBaseOverride = null;
     selectedOrderType = nextOrderType;
+    // P-G7 — with the provider cleared and a non-delivery order type, this
+    // restores base menu prices for the next order.
+    _applyDeliveryPricing();
     if (clearActiveDiningTable) {
       _cancelPendingDiningTablePersistence();
       activeDiningTableId = null;
