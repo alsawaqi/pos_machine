@@ -42,6 +42,7 @@ class ConfigRepository {
       voidReasonRows: parsed.voidReasons,
       compReasonRows: parsed.compReasons,
       offerRows: parsed.offers,
+      staffMessageRows: parsed.staffMessages,
       meta: parsed.meta,
     );
     await _session.saveTerminalId(config.terminalId);
@@ -91,6 +92,8 @@ class ConfigRepository {
         compReasonRows: c.compReasons,
         offerRows: c.offers,
         deletedOfferIds: d.offers,
+        staffMessageRows: c.staffMessages,
+        deletedStaffMessageIds: d.staffMessages,
         deletedCategoryIds: d.categories,
         deletedProductIds: d.products,
         deletedFloorIds: d.floors,
@@ -148,6 +151,7 @@ class ConfigRepository {
     var voidReasons = <VoidReasonRow>[];
     var compReasons = <CompReasonRow>[];
     var offerRows = <OfferRow>[];
+    var staffMessageRows = <StaffMessageRow>[];
     SyncMetaRow? meta;
     var seenCats = false, seenProds = false, seenFloors = false, seenTables = false, seenTaxes = false;
 
@@ -157,7 +161,7 @@ class ConfigRepository {
           branch, cats, prods, floors, tables, taxes, addonGroups, addons,
           deliveryProviders, expenseCategories, branchStock, discounts,
           loyaltyRules, customers, ingredients, meta,
-          voidReasons, compReasons, offerRows,
+          voidReasons, compReasons, offerRows, staffMessageRows,
         ));
       }
     }
@@ -238,6 +242,10 @@ class ConfigRepository {
       }),
       _db.watchOffers().listen((v) {
         offerRows = v;
+        emit();
+      }),
+      _db.watchStaffMessages().listen((v) {
+        staffMessageRows = v;
         emit();
       }),
       _db.watchSyncMeta().listen((v) {

@@ -2999,4 +2999,16 @@ class L10nEn extends L10n {
   String kitchenOperatingAs(String name) {
     return 'as $name';
   }
+
+  @override
+  String get posNavMessages => 'Messages';
+
+  @override
+  String get posMessagesNone => 'No announcements for you yet.';
+
+  @override
+  String get posMessagesUntitled => 'Announcement';
+
+  @override
+  String get posMessagesPopupTitle => 'New message';
 }

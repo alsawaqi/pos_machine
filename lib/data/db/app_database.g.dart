@@ -10132,6 +10132,520 @@ class OffersCompanion extends UpdateCompanion<OfferRow> {
   }
 }
 
+class $StaffMessagesTable extends StaffMessages
+    with TableInfo<$StaffMessagesTable, StaffMessageRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $StaffMessagesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _targetTypeMeta = const VerificationMeta(
+    'targetType',
+  );
+  @override
+  late final GeneratedColumn<String> targetType = GeneratedColumn<String>(
+    'target_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('company'),
+  );
+  static const VerificationMeta _targetStaffIdMeta = const VerificationMeta(
+    'targetStaffId',
+  );
+  @override
+  late final GeneratedColumn<int> targetStaffId = GeneratedColumn<int>(
+    'target_staff_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _bodyMeta = const VerificationMeta('body');
+  @override
+  late final GeneratedColumn<String> body = GeneratedColumn<String>(
+    'body',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _createdByNameMeta = const VerificationMeta(
+    'createdByName',
+  );
+  @override
+  late final GeneratedColumn<String> createdByName = GeneratedColumn<String>(
+    'created_by_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _readStaffIdsJsonMeta = const VerificationMeta(
+    'readStaffIdsJson',
+  );
+  @override
+  late final GeneratedColumn<String> readStaffIdsJson = GeneratedColumn<String>(
+    'read_staff_ids_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    targetType,
+    targetStaffId,
+    title,
+    body,
+    createdByName,
+    createdAt,
+    readStaffIdsJson,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'staff_messages';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<StaffMessageRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('target_type')) {
+      context.handle(
+        _targetTypeMeta,
+        targetType.isAcceptableOrUnknown(data['target_type']!, _targetTypeMeta),
+      );
+    }
+    if (data.containsKey('target_staff_id')) {
+      context.handle(
+        _targetStaffIdMeta,
+        targetStaffId.isAcceptableOrUnknown(
+          data['target_staff_id']!,
+          _targetStaffIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
+    if (data.containsKey('body')) {
+      context.handle(
+        _bodyMeta,
+        body.isAcceptableOrUnknown(data['body']!, _bodyMeta),
+      );
+    }
+    if (data.containsKey('created_by_name')) {
+      context.handle(
+        _createdByNameMeta,
+        createdByName.isAcceptableOrUnknown(
+          data['created_by_name']!,
+          _createdByNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('read_staff_ids_json')) {
+      context.handle(
+        _readStaffIdsJsonMeta,
+        readStaffIdsJson.isAcceptableOrUnknown(
+          data['read_staff_ids_json']!,
+          _readStaffIdsJsonMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  StaffMessageRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return StaffMessageRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      targetType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}target_type'],
+      )!,
+      targetStaffId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}target_staff_id'],
+      ),
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      ),
+      body: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}body'],
+      )!,
+      createdByName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by_name'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      ),
+      readStaffIdsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}read_staff_ids_json'],
+      )!,
+    );
+  }
+
+  @override
+  $StaffMessagesTable createAlias(String alias) {
+    return $StaffMessagesTable(attachedDatabase, alias);
+  }
+}
+
+class StaffMessageRow extends DataClass implements Insertable<StaffMessageRow> {
+  final int id;
+  final String targetType;
+  final int? targetStaffId;
+  final String? title;
+  final String body;
+  final String? createdByName;
+  final DateTime? createdAt;
+  final String readStaffIdsJson;
+  const StaffMessageRow({
+    required this.id,
+    required this.targetType,
+    this.targetStaffId,
+    this.title,
+    required this.body,
+    this.createdByName,
+    this.createdAt,
+    required this.readStaffIdsJson,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['target_type'] = Variable<String>(targetType);
+    if (!nullToAbsent || targetStaffId != null) {
+      map['target_staff_id'] = Variable<int>(targetStaffId);
+    }
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
+    }
+    map['body'] = Variable<String>(body);
+    if (!nullToAbsent || createdByName != null) {
+      map['created_by_name'] = Variable<String>(createdByName);
+    }
+    if (!nullToAbsent || createdAt != null) {
+      map['created_at'] = Variable<DateTime>(createdAt);
+    }
+    map['read_staff_ids_json'] = Variable<String>(readStaffIdsJson);
+    return map;
+  }
+
+  StaffMessagesCompanion toCompanion(bool nullToAbsent) {
+    return StaffMessagesCompanion(
+      id: Value(id),
+      targetType: Value(targetType),
+      targetStaffId: targetStaffId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(targetStaffId),
+      title: title == null && nullToAbsent
+          ? const Value.absent()
+          : Value(title),
+      body: Value(body),
+      createdByName: createdByName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdByName),
+      createdAt: createdAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdAt),
+      readStaffIdsJson: Value(readStaffIdsJson),
+    );
+  }
+
+  factory StaffMessageRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return StaffMessageRow(
+      id: serializer.fromJson<int>(json['id']),
+      targetType: serializer.fromJson<String>(json['targetType']),
+      targetStaffId: serializer.fromJson<int?>(json['targetStaffId']),
+      title: serializer.fromJson<String?>(json['title']),
+      body: serializer.fromJson<String>(json['body']),
+      createdByName: serializer.fromJson<String?>(json['createdByName']),
+      createdAt: serializer.fromJson<DateTime?>(json['createdAt']),
+      readStaffIdsJson: serializer.fromJson<String>(json['readStaffIdsJson']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'targetType': serializer.toJson<String>(targetType),
+      'targetStaffId': serializer.toJson<int?>(targetStaffId),
+      'title': serializer.toJson<String?>(title),
+      'body': serializer.toJson<String>(body),
+      'createdByName': serializer.toJson<String?>(createdByName),
+      'createdAt': serializer.toJson<DateTime?>(createdAt),
+      'readStaffIdsJson': serializer.toJson<String>(readStaffIdsJson),
+    };
+  }
+
+  StaffMessageRow copyWith({
+    int? id,
+    String? targetType,
+    Value<int?> targetStaffId = const Value.absent(),
+    Value<String?> title = const Value.absent(),
+    String? body,
+    Value<String?> createdByName = const Value.absent(),
+    Value<DateTime?> createdAt = const Value.absent(),
+    String? readStaffIdsJson,
+  }) => StaffMessageRow(
+    id: id ?? this.id,
+    targetType: targetType ?? this.targetType,
+    targetStaffId: targetStaffId.present
+        ? targetStaffId.value
+        : this.targetStaffId,
+    title: title.present ? title.value : this.title,
+    body: body ?? this.body,
+    createdByName: createdByName.present
+        ? createdByName.value
+        : this.createdByName,
+    createdAt: createdAt.present ? createdAt.value : this.createdAt,
+    readStaffIdsJson: readStaffIdsJson ?? this.readStaffIdsJson,
+  );
+  StaffMessageRow copyWithCompanion(StaffMessagesCompanion data) {
+    return StaffMessageRow(
+      id: data.id.present ? data.id.value : this.id,
+      targetType: data.targetType.present
+          ? data.targetType.value
+          : this.targetType,
+      targetStaffId: data.targetStaffId.present
+          ? data.targetStaffId.value
+          : this.targetStaffId,
+      title: data.title.present ? data.title.value : this.title,
+      body: data.body.present ? data.body.value : this.body,
+      createdByName: data.createdByName.present
+          ? data.createdByName.value
+          : this.createdByName,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      readStaffIdsJson: data.readStaffIdsJson.present
+          ? data.readStaffIdsJson.value
+          : this.readStaffIdsJson,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StaffMessageRow(')
+          ..write('id: $id, ')
+          ..write('targetType: $targetType, ')
+          ..write('targetStaffId: $targetStaffId, ')
+          ..write('title: $title, ')
+          ..write('body: $body, ')
+          ..write('createdByName: $createdByName, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('readStaffIdsJson: $readStaffIdsJson')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    targetType,
+    targetStaffId,
+    title,
+    body,
+    createdByName,
+    createdAt,
+    readStaffIdsJson,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is StaffMessageRow &&
+          other.id == this.id &&
+          other.targetType == this.targetType &&
+          other.targetStaffId == this.targetStaffId &&
+          other.title == this.title &&
+          other.body == this.body &&
+          other.createdByName == this.createdByName &&
+          other.createdAt == this.createdAt &&
+          other.readStaffIdsJson == this.readStaffIdsJson);
+}
+
+class StaffMessagesCompanion extends UpdateCompanion<StaffMessageRow> {
+  final Value<int> id;
+  final Value<String> targetType;
+  final Value<int?> targetStaffId;
+  final Value<String?> title;
+  final Value<String> body;
+  final Value<String?> createdByName;
+  final Value<DateTime?> createdAt;
+  final Value<String> readStaffIdsJson;
+  const StaffMessagesCompanion({
+    this.id = const Value.absent(),
+    this.targetType = const Value.absent(),
+    this.targetStaffId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.body = const Value.absent(),
+    this.createdByName = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.readStaffIdsJson = const Value.absent(),
+  });
+  StaffMessagesCompanion.insert({
+    this.id = const Value.absent(),
+    this.targetType = const Value.absent(),
+    this.targetStaffId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.body = const Value.absent(),
+    this.createdByName = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.readStaffIdsJson = const Value.absent(),
+  });
+  static Insertable<StaffMessageRow> custom({
+    Expression<int>? id,
+    Expression<String>? targetType,
+    Expression<int>? targetStaffId,
+    Expression<String>? title,
+    Expression<String>? body,
+    Expression<String>? createdByName,
+    Expression<DateTime>? createdAt,
+    Expression<String>? readStaffIdsJson,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (targetType != null) 'target_type': targetType,
+      if (targetStaffId != null) 'target_staff_id': targetStaffId,
+      if (title != null) 'title': title,
+      if (body != null) 'body': body,
+      if (createdByName != null) 'created_by_name': createdByName,
+      if (createdAt != null) 'created_at': createdAt,
+      if (readStaffIdsJson != null) 'read_staff_ids_json': readStaffIdsJson,
+    });
+  }
+
+  StaffMessagesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? targetType,
+    Value<int?>? targetStaffId,
+    Value<String?>? title,
+    Value<String>? body,
+    Value<String?>? createdByName,
+    Value<DateTime?>? createdAt,
+    Value<String>? readStaffIdsJson,
+  }) {
+    return StaffMessagesCompanion(
+      id: id ?? this.id,
+      targetType: targetType ?? this.targetType,
+      targetStaffId: targetStaffId ?? this.targetStaffId,
+      title: title ?? this.title,
+      body: body ?? this.body,
+      createdByName: createdByName ?? this.createdByName,
+      createdAt: createdAt ?? this.createdAt,
+      readStaffIdsJson: readStaffIdsJson ?? this.readStaffIdsJson,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (targetType.present) {
+      map['target_type'] = Variable<String>(targetType.value);
+    }
+    if (targetStaffId.present) {
+      map['target_staff_id'] = Variable<int>(targetStaffId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (body.present) {
+      map['body'] = Variable<String>(body.value);
+    }
+    if (createdByName.present) {
+      map['created_by_name'] = Variable<String>(createdByName.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (readStaffIdsJson.present) {
+      map['read_staff_ids_json'] = Variable<String>(readStaffIdsJson.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StaffMessagesCompanion(')
+          ..write('id: $id, ')
+          ..write('targetType: $targetType, ')
+          ..write('targetStaffId: $targetStaffId, ')
+          ..write('title: $title, ')
+          ..write('body: $body, ')
+          ..write('createdByName: $createdByName, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('readStaffIdsJson: $readStaffIdsJson')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -10160,6 +10674,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $VoidReasonsTable voidReasons = $VoidReasonsTable(this);
   late final $CompReasonsTable compReasons = $CompReasonsTable(this);
   late final $OffersTable offers = $OffersTable(this);
+  late final $StaffMessagesTable staffMessages = $StaffMessagesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10185,6 +10700,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     voidReasons,
     compReasons,
     offers,
+    staffMessages,
   ];
 }
 
@@ -15304,6 +15820,265 @@ typedef $$OffersTableProcessedTableManager =
       OfferRow,
       PrefetchHooks Function()
     >;
+typedef $$StaffMessagesTableCreateCompanionBuilder =
+    StaffMessagesCompanion Function({
+      Value<int> id,
+      Value<String> targetType,
+      Value<int?> targetStaffId,
+      Value<String?> title,
+      Value<String> body,
+      Value<String?> createdByName,
+      Value<DateTime?> createdAt,
+      Value<String> readStaffIdsJson,
+    });
+typedef $$StaffMessagesTableUpdateCompanionBuilder =
+    StaffMessagesCompanion Function({
+      Value<int> id,
+      Value<String> targetType,
+      Value<int?> targetStaffId,
+      Value<String?> title,
+      Value<String> body,
+      Value<String?> createdByName,
+      Value<DateTime?> createdAt,
+      Value<String> readStaffIdsJson,
+    });
+
+class $$StaffMessagesTableFilterComposer
+    extends Composer<_$AppDatabase, $StaffMessagesTable> {
+  $$StaffMessagesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get targetType => $composableBuilder(
+    column: $table.targetType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get targetStaffId => $composableBuilder(
+    column: $table.targetStaffId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdByName => $composableBuilder(
+    column: $table.createdByName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get readStaffIdsJson => $composableBuilder(
+    column: $table.readStaffIdsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$StaffMessagesTableOrderingComposer
+    extends Composer<_$AppDatabase, $StaffMessagesTable> {
+  $$StaffMessagesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get targetType => $composableBuilder(
+    column: $table.targetType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get targetStaffId => $composableBuilder(
+    column: $table.targetStaffId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdByName => $composableBuilder(
+    column: $table.createdByName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get readStaffIdsJson => $composableBuilder(
+    column: $table.readStaffIdsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$StaffMessagesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $StaffMessagesTable> {
+  $$StaffMessagesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get targetType => $composableBuilder(
+    column: $table.targetType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get targetStaffId => $composableBuilder(
+    column: $table.targetStaffId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get body =>
+      $composableBuilder(column: $table.body, builder: (column) => column);
+
+  GeneratedColumn<String> get createdByName => $composableBuilder(
+    column: $table.createdByName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get readStaffIdsJson => $composableBuilder(
+    column: $table.readStaffIdsJson,
+    builder: (column) => column,
+  );
+}
+
+class $$StaffMessagesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $StaffMessagesTable,
+          StaffMessageRow,
+          $$StaffMessagesTableFilterComposer,
+          $$StaffMessagesTableOrderingComposer,
+          $$StaffMessagesTableAnnotationComposer,
+          $$StaffMessagesTableCreateCompanionBuilder,
+          $$StaffMessagesTableUpdateCompanionBuilder,
+          (
+            StaffMessageRow,
+            BaseReferences<_$AppDatabase, $StaffMessagesTable, StaffMessageRow>,
+          ),
+          StaffMessageRow,
+          PrefetchHooks Function()
+        > {
+  $$StaffMessagesTableTableManager(_$AppDatabase db, $StaffMessagesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$StaffMessagesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$StaffMessagesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$StaffMessagesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> targetType = const Value.absent(),
+                Value<int?> targetStaffId = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<String> body = const Value.absent(),
+                Value<String?> createdByName = const Value.absent(),
+                Value<DateTime?> createdAt = const Value.absent(),
+                Value<String> readStaffIdsJson = const Value.absent(),
+              }) => StaffMessagesCompanion(
+                id: id,
+                targetType: targetType,
+                targetStaffId: targetStaffId,
+                title: title,
+                body: body,
+                createdByName: createdByName,
+                createdAt: createdAt,
+                readStaffIdsJson: readStaffIdsJson,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> targetType = const Value.absent(),
+                Value<int?> targetStaffId = const Value.absent(),
+                Value<String?> title = const Value.absent(),
+                Value<String> body = const Value.absent(),
+                Value<String?> createdByName = const Value.absent(),
+                Value<DateTime?> createdAt = const Value.absent(),
+                Value<String> readStaffIdsJson = const Value.absent(),
+              }) => StaffMessagesCompanion.insert(
+                id: id,
+                targetType: targetType,
+                targetStaffId: targetStaffId,
+                title: title,
+                body: body,
+                createdByName: createdByName,
+                createdAt: createdAt,
+                readStaffIdsJson: readStaffIdsJson,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$StaffMessagesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $StaffMessagesTable,
+      StaffMessageRow,
+      $$StaffMessagesTableFilterComposer,
+      $$StaffMessagesTableOrderingComposer,
+      $$StaffMessagesTableAnnotationComposer,
+      $$StaffMessagesTableCreateCompanionBuilder,
+      $$StaffMessagesTableUpdateCompanionBuilder,
+      (
+        StaffMessageRow,
+        BaseReferences<_$AppDatabase, $StaffMessagesTable, StaffMessageRow>,
+      ),
+      StaffMessageRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -15348,4 +16123,6 @@ class $AppDatabaseManager {
       $$CompReasonsTableTableManager(_db, _db.compReasons);
   $$OffersTableTableManager get offers =>
       $$OffersTableTableManager(_db, _db.offers);
+  $$StaffMessagesTableTableManager get staffMessages =>
+      $$StaffMessagesTableTableManager(_db, _db.staffMessages);
 }

@@ -1905,5 +1905,9 @@
         "type": "String"
       }
     }
-  }
+  },
+  "posNavMessages": "Messages",
+  "posMessagesNone": "No announcements for you yet.",
+  "posMessagesUntitled": "Announcement",
+  "posMessagesPopupTitle": "New message"
 }

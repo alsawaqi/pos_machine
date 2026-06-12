@@ -269,6 +269,21 @@ class PosApiService {
     }
   }
 
+  /// POST /device/messages/read — P-G6: record read receipts for staff
+  /// announcements ("sent is not the same as seen"). Idempotent server-side
+  /// (firstOrCreate per message+staff), so re-sending after an offline spell
+  /// is harmless. Returns how many NEW receipts were recorded.
+  Future<int> markMessagesRead({
+    required int staffId,
+    required List<int> messageIds,
+  }) async {
+    final body = await _send(() => _dio.post('/device/messages/read', data: {
+          'staff_id': staffId,
+          'message_ids': messageIds,
+        }));
+    return (body.dataMap['marked'] as num?)?.toInt() ?? 0;
+  }
+
   /// GET /device/reports/branch — P-F6: the branch report bundle for the
   /// device's Reports dashboard (branch-scoped aggregates, money in baisas;
   /// the model converts to OMR). Online-only by nature.

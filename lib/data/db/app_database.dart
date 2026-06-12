@@ -30,6 +30,7 @@ part 'app_database.g.dart';
     VoidReasons,
     CompReasons,
     Offers,
+    StaffMessages,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -39,7 +40,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 24;
+  int get schemaVersion => 25;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -160,6 +161,10 @@ class AppDatabase extends _$AppDatabase {
             // v24 — P-G3: the product behind a product-as-add-on option.
             await m.addColumn(addons, addons.linkedProductId);
           }
+          if (from < 25) {
+            // v25 — P-G6: staff announcements from the portal.
+            await m.createTable(staffMessages);
+          }
         },
       );
 
@@ -201,6 +206,13 @@ class AppDatabase extends _$AppDatabase {
   Stream<List<DiscountRow>> watchDiscounts() => select(discounts).watch();
 
   Stream<List<OfferRow>> watchOffers() => select(offers).watch();
+
+  // P-G6 — staff announcements, newest first.
+  Stream<List<StaffMessageRow>> watchStaffMessages() => (select(staffMessages)
+        ..orderBy([
+          (s) => OrderingTerm(expression: s.createdAt, mode: OrderingMode.desc)
+        ]))
+      .watch();
 
   Stream<List<LoyaltyRuleRow>> watchLoyaltyRules() =>
       select(loyaltyRules).watch();
@@ -277,6 +289,7 @@ class AppDatabase extends _$AppDatabase {
     List<VoidReasonsCompanion> voidReasonRows = const [],
     List<CompReasonsCompanion> compReasonRows = const [],
     List<OffersCompanion> offerRows = const [],
+    List<StaffMessagesCompanion> staffMessageRows = const [],
     required SyncMetaCompanion meta,
   }) {
     return transaction(() async {
@@ -298,6 +311,7 @@ class AppDatabase extends _$AppDatabase {
       await delete(voidReasons).go();
       await delete(compReasons).go();
       await delete(offers).go();
+      await delete(staffMessages).go();
 
       await into(branchCache).insert(branch);
       await batch((b) {
@@ -318,6 +332,7 @@ class AppDatabase extends _$AppDatabase {
         b.insertAll(voidReasons, voidReasonRows);
         b.insertAll(compReasons, compReasonRows);
         b.insertAll(offers, offerRows);
+        b.insertAll(staffMessages, staffMessageRows);
       });
       await into(syncMeta).insertOnConflictUpdate(meta);
     });
@@ -350,6 +365,8 @@ class AppDatabase extends _$AppDatabase {
     List<CompReasonsCompanion> compReasonRows = const [],
     List<OffersCompanion> offerRows = const [],
     List<int> deletedOfferIds = const [],
+    List<StaffMessagesCompanion> staffMessageRows = const [],
+    List<int> deletedStaffMessageIds = const [],
     required List<int> deletedCategoryIds,
     required List<int> deletedProductIds,
     required List<int> deletedFloorIds,
@@ -392,6 +409,7 @@ class AppDatabase extends _$AppDatabase {
         b.insertAllOnConflictUpdate(voidReasons, voidReasonRows);
         b.insertAllOnConflictUpdate(compReasons, compReasonRows);
         b.insertAllOnConflictUpdate(offers, offerRows);
+        b.insertAllOnConflictUpdate(staffMessages, staffMessageRows);
       });
 
       // Purge soft-deleted ids.
@@ -433,6 +451,11 @@ class AppDatabase extends _$AppDatabase {
       }
       if (deletedOfferIds.isNotEmpty) {
         await (delete(offers)..where((t) => t.id.isIn(deletedOfferIds))).go();
+      }
+      if (deletedStaffMessageIds.isNotEmpty) {
+        await (delete(staffMessages)
+              ..where((t) => t.id.isIn(deletedStaffMessageIds)))
+            .go();
       }
 
       // Advance the cursor only — keep company/branch (absent = unchanged).

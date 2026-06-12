@@ -818,5 +818,9 @@
   "kitchenGateHint": "أدخل رمز أحد موظفي المطبخ",
   "kitchenGateConfirm": "فتح المطبخ",
   "kitchenGateInvalid": "هذا الرمز لا يخص موظفًا مسموحًا له بالمطبخ.",
-  "kitchenOperatingAs": "باسم {name}"
+  "kitchenOperatingAs": "باسم {name}",
+  "posNavMessages": "الرسائل",
+  "posMessagesNone": "لا توجد إعلانات لك حتى الآن.",
+  "posMessagesUntitled": "إعلان",
+  "posMessagesPopupTitle": "رسالة جديدة"
 }

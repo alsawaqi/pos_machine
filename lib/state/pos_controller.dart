@@ -350,6 +350,59 @@ class PosController extends ChangeNotifier {
   /// Cached customer slice (offline lookup / order attach).
   List<CustomerRef> cachedCustomers = const [];
 
+  /// P-G6 — staff announcements from the cached catalog (newest first).
+  List<StaffMessage> staffMessages = const [];
+  // Reads recorded on THIS device but possibly not yet reflected in the
+  // server receipts (the POST is best-effort; the next config sync heals
+  // read_staff_ids). Keyed staffId → message ids, so one cashier opening
+  // the sheet never silences another's badge.
+  final Map<int, Set<int>> _localMessageReads = {};
+  // The subset still awaiting a server ACK. Locally-read ids clear the
+  // badge immediately, but stay HERE until a receipt POST succeeds — so a
+  // failed/offline POST is retried on the next sheet open or reconnect
+  // instead of being silently lost behind the local override.
+  final Map<int, Set<int>> _pendingMessageReceipts = {};
+
+  /// The announcements [staffId] should see: company/branch broadcasts plus
+  /// the ones addressed to that staff member (catalog order = newest first).
+  List<StaffMessage> visibleMessagesFor(int staffId) =>
+      staffMessages.where((m) => m.visibleTo(staffId)).toList();
+
+  /// Unread = visible, not in the server receipts, and not locally read.
+  int unreadMessageCountFor(int staffId) {
+    final local = _localMessageReads[staffId] ?? const <int>{};
+    return staffMessages
+        .where((m) =>
+            m.visibleTo(staffId) &&
+            !m.isReadBy(staffId) &&
+            !local.contains(m.id))
+        .length;
+  }
+
+  bool isMessageReadBy(StaffMessage m, int staffId) =>
+      m.isReadBy(staffId) ||
+      (_localMessageReads[staffId]?.contains(m.id) ?? false);
+
+  /// Record local reads (the badge clears immediately; the receipt POST is
+  /// fired separately and ACKed via [markMessageReceiptsAcked]).
+  void markMessagesReadLocal(int staffId, Iterable<int> messageIds) {
+    if (messageIds.isEmpty) return;
+    final ids = messageIds.toSet();
+    (_localMessageReads[staffId] ??= <int>{}).addAll(ids);
+    (_pendingMessageReceipts[staffId] ??= <int>{}).addAll(ids);
+    _broadcast();
+  }
+
+  /// Receipt ids still awaiting a successful POST for [staffId] — the
+  /// batch to (re-)send whenever the sheet opens or connectivity returns.
+  List<int> pendingMessageReceiptIds(int staffId) =>
+      List<int>.unmodifiable(_pendingMessageReceipts[staffId] ?? const <int>{});
+
+  /// The server accepted these receipts — stop retrying them.
+  void markMessageReceiptsAcked(int staffId, Iterable<int> messageIds) {
+    _pendingMessageReceipts[staffId]?.removeAll(messageIds.toSet());
+  }
+
   /// The first active loyalty rule (kept for callers that want a single rule).
   LoyaltyRule? get activeEarnRule {
     for (final r in loyaltyRules) {
@@ -557,6 +610,7 @@ class PosController extends ChangeNotifier {
     List<VoidReasonRef> voidReasons = const <VoidReasonRef>[],
     List<CompReasonRef> compReasons = const <CompReasonRef>[],
     Map<int, List<int>> categoryAddonGroupIds = const <int, List<int>>{},
+    List<StaffMessage> staffMessages = const <StaffMessage>[],
     int? branchId,
   }) {
     this.categories = categories;
@@ -584,6 +638,17 @@ class PosController extends ChangeNotifier {
     this.voidReasons = voidReasons;
     this.compReasons = compReasons;
     this.categoryAddonGroupIds = categoryAddonGroupIds;
+    this.staffMessages = staffMessages;
+    // Receipts that round-tripped (this till's POST landed, or another
+    // till/restart recorded them) no longer need a retry.
+    if (_pendingMessageReceipts.isNotEmpty) {
+      final messagesById = {for (final m in staffMessages) m.id: m};
+      for (final entry in _pendingMessageReceipts.entries) {
+        entry.value.removeWhere(
+          (id) => messagesById[id]?.isReadBy(entry.key) ?? false,
+        );
+      }
+    }
     // Company taxes drive the cart tax lines + total. Stored in the shared
     // source so the persisted / printed order agrees with the live cart.
     activeCompanyTaxes = taxes;

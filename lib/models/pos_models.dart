@@ -962,6 +962,42 @@ class Offer {
   }
 }
 
+/// P-G6 — a staff announcement from the merchant portal (config
+/// `staff_messages` slice). target_type company|branch rows are visible to
+/// every signed-in staff member on this device's branch (the API already
+/// branch-filters); `staff` rows only to [targetStaffId]. [readStaffIds]
+/// mirrors the server read receipts — a message is unread for a staff member
+/// until their id appears here (or in the controller's local read overrides
+/// awaiting the receipt POST).
+class StaffMessage {
+  final int id;
+  final String targetType; // company | branch | staff
+  final int? targetStaffId;
+  final String? title;
+  final String body;
+  final String? createdByName;
+  final DateTime? createdAt;
+  final Set<int> readStaffIds;
+
+  const StaffMessage({
+    required this.id,
+    this.targetType = 'company',
+    this.targetStaffId,
+    this.title,
+    this.body = '',
+    this.createdByName,
+    this.createdAt,
+    this.readStaffIds = const {},
+  });
+
+  /// Visible to [staffId]: broadcast targets always, staff targets only when
+  /// the signed-in staff member is the one addressed.
+  bool visibleTo(int staffId) =>
+      targetType != 'staff' || targetStaffId == staffId;
+
+  bool isReadBy(int staffId) => readStaffIds.contains(staffId);
+}
+
 /// P-F8 — the merchant's order-numbering config (settings.order_numbering).
 /// When [enabled], the device asks pos_api for the next sequential number at
 /// PAYMENT time (per-branch or company-wide, optionally daily-reset); the

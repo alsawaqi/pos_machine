@@ -3026,4 +3026,16 @@ class L10nAr extends L10n {
   String kitchenOperatingAs(String name) {
     return 'باسم $name';
   }
+
+  @override
+  String get posNavMessages => 'الرسائل';
+
+  @override
+  String get posMessagesNone => 'لا توجد إعلانات لك حتى الآن.';
+
+  @override
+  String get posMessagesUntitled => 'إعلان';
+
+  @override
+  String get posMessagesPopupTitle => 'رسالة جديدة';
 }

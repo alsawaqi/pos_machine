@@ -153,6 +153,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _NavItemData('Home', Icons.home_outlined),
     _NavItemData('Offers', Icons.local_offer_outlined), // P-F9
     _NavItemData('Kitchen', Icons.soup_kitchen_outlined), // P-G1
+    _NavItemData('Messages', Icons.mail_outline), // P-G6
     _NavItemData('Report', Icons.description_outlined),
     _NavItemData('History', Icons.history_rounded),
   ];
@@ -237,6 +238,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             expenseCategories: catalog.expenseCategories,
             ingredientBalances: catalog.ingredientBalances,
             discounts: catalog.discounts,
+            // P-G6 sweep fix — offers were never bridged here, so every
+            // catalog emission WIPED controller.availableOffers (the
+            // Offers sheet only worked until the first re-emission).
+            offers: catalog.offers,
             loyaltyRules: catalog.loyaltyRules,
             customers: catalog.customers,
             cancelOrderPositions: catalog.cancelOrderPositions,
@@ -247,7 +252,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             voidReasons: catalog.voidReasons,
             compReasons: catalog.compReasons,
             categoryAddonGroupIds: catalog.categoryAddonGroupIds,
+            staffMessages: catalog.staffMessages,
             branchId: ref.read(sessionControllerProvider).branchId,
+          );
+          // P-G6 — pop a notice when a NEW announcement lands for the
+          // signed-in staff member (delta sync or live push). The first
+          // emission (previous == null) is the initial cache load — silent.
+          _maybeAnnounceNewMessages(
+            previous?.asData?.value,
+            catalog,
           );
         }
       },
@@ -266,6 +279,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           unawaited(
             ref.read(orderSyncRepositoryProvider).flush().catchError((_) => 0),
           );
+          // P-G6 — re-send read receipts that failed while offline.
+          final staffId = ref.read(sessionServiceProvider).staff?.id;
+          if (staffId != null) {
+            _flushMessageReceipts(staffId);
+          }
         }
       },
     );
@@ -4306,6 +4324,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       'Home' => l10n.posNavHome,
       'Offers' => l10n.posNavOffers,
       'Kitchen' => l10n.posNavKitchen,
+      'Messages' => l10n.posNavMessages,
       'Report' => l10n.posNavReport,
       'History' => l10n.posNavHistory,
       _ => identity,
@@ -4328,10 +4347,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     title: navChipTitle(entry.value.title),
                     icon: entry.value.icon,
                     selected: false,
+                    // P-G6 — unread-announcements bubble on the Messages chip.
+                    badgeCount: entry.value.title == 'Messages'
+                        ? _unreadMessagesCount()
+                        : 0,
                     onTap: () {
                       switch (entry.value.title) {
                         case 'History':
                           unawaited(_openOrderHistoryDialog());
+                          break;
+                        case 'Messages':
+                          // P-G6 — staff announcements from the portal.
+                          unawaited(_openMessagesSheet());
                           break;
                         case 'Offers':
                           // P-F9 — the merchant's promotions: bundles to
@@ -4619,6 +4646,140 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       case 'shift_summary':
         await _reprintLastShiftSummary();
     }
+  }
+
+  /// P-G6 — unread announcements for the signed-in staff member (the badge
+  /// on the Messages chip). 0 when nobody is signed in.
+  int _unreadMessagesCount() {
+    final staffId = ref.read(sessionServiceProvider).staff?.id;
+    if (staffId == null) return 0;
+    return controller.unreadMessageCountFor(staffId);
+  }
+
+  /// P-G6 — pop a notice when a catalog refresh brings a NEW unread
+  /// announcement for the signed-in staff member. [prev] null = initial
+  /// load (no popup — the badge already shows the backlog).
+  void _maybeAnnounceNewMessages(CatalogSnapshot? prev, CatalogSnapshot next) {
+    if (prev == null) return;
+    final staffId = ref.read(sessionServiceProvider).staff?.id;
+    if (staffId == null) return;
+    final prevIds = prev.staffMessages.map((m) => m.id).toSet();
+    for (final m in next.staffMessages) {
+      if (prevIds.contains(m.id)) continue;
+      if (!m.visibleTo(staffId) || m.isReadBy(staffId)) continue;
+      final l10n = L10n.of(context);
+      final title = m.title?.trim() ?? '';
+      _showPopupMessage(
+        title: title.isNotEmpty ? title : l10n.posMessagesPopupTitle,
+        message: m.body,
+        tone: FeedbackTone.info,
+        duration: const Duration(seconds: 6),
+      );
+      return; // one popup per refresh — the sheet shows the rest.
+    }
+  }
+
+  /// P-G6 — re-send every receipt not yet ACKed for [staffId]. Success
+  /// ACKs the batch; failure keeps it pending for the next sheet open /
+  /// reconnect, so an offline read still reaches the portal's "seen by"
+  /// list eventually.
+  void _flushMessageReceipts(int staffId) {
+    final pending = controller.pendingMessageReceiptIds(staffId);
+    if (pending.isEmpty) return;
+    unawaited(ref
+        .read(apiServiceProvider)
+        .markMessagesRead(staffId: staffId, messageIds: pending)
+        .then((_) => controller.markMessageReceiptsAcked(staffId, pending))
+        .catchError((_) {}));
+  }
+
+  /// P-G6 — the staff announcements sheet. Opening it marks the visible
+  /// unread messages read: locally at once (the badge clears) plus a
+  /// read-receipt POST so the portal's "seen by" list updates ("sent is
+  /// not the same as seen"). A failed POST stays pending and is retried
+  /// on the next open / reconnect — the server upsert is idempotent.
+  Future<void> _openMessagesSheet() async {
+    final l10n = L10n.of(context);
+    final staffId = ref.read(sessionServiceProvider).staff?.id;
+    if (staffId == null) return;
+    final messages = controller.visibleMessagesFor(staffId);
+    if (messages.isEmpty) {
+      _showPopupMessage(
+        title: l10n.posNavMessages,
+        message: l10n.posMessagesNone,
+        tone: FeedbackTone.info,
+      );
+      return;
+    }
+    // Snapshot unread BEFORE marking, so the sheet can still bold them.
+    final unreadIds = messages
+        .where((m) => !controller.isMessageReadBy(m, staffId))
+        .map((m) => m.id)
+        .toList();
+    final unreadSet = unreadIds.toSet();
+    controller.markMessagesReadLocal(staffId, unreadIds);
+    // POST the pending batch — the fresh reads PLUS any receipt whose
+    // earlier POST failed (offline till). The server upsert is idempotent
+    // and ACKed ids stop retrying.
+    _flushMessageReceipts(staffId);
+
+    String stamp(DateTime at) {
+      final v = at.toLocal();
+      String two(int n) => n.toString().padLeft(2, '0');
+      return '${v.year}-${two(v.month)}-${two(v.day)} ${two(v.hour)}:${two(v.minute)}';
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) {
+        final sheetL10n = L10n.of(ctx);
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.7,
+            ),
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final m in messages)
+                  ListTile(
+                    leading: Icon(
+                      m.targetType == 'staff'
+                          ? Icons.person_outline_rounded
+                          : Icons.campaign_outlined,
+                    ),
+                    title: Text(
+                      (m.title?.trim().isNotEmpty ?? false)
+                          ? m.title!.trim()
+                          : sheetL10n.posMessagesUntitled,
+                      style: TextStyle(
+                        fontWeight: unreadSet.contains(m.id)
+                            ? FontWeight.w800
+                            : FontWeight.w500,
+                      ),
+                    ),
+                    subtitle: Text(
+                      [
+                        m.body,
+                        [
+                          if ((m.createdByName ?? '').trim().isNotEmpty)
+                            m.createdByName!.trim(),
+                          if (m.createdAt != null) stamp(m.createdAt!),
+                        ].join(' · '),
+                      ].where((s) => s.isNotEmpty).join('\n'),
+                    ),
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.close),
+                  title: Text(sheetL10n.commonClose),
+                  onTap: () => Navigator.pop(ctx),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   /// P-F9 — the Offers sheet: the merchant's currently-valid promotions.
@@ -5775,17 +5936,20 @@ class _HeaderNavChip extends StatelessWidget {
   final IconData icon;
   final bool selected;
   final VoidCallback onTap;
+  // P-G6 — optional unread bubble (the Messages chip); 0 = no bubble.
+  final int badgeCount;
 
   const _HeaderNavChip({
     required this.title,
     required this.icon,
     required this.selected,
     required this.onTap,
+    this.badgeCount = 0,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final chip = InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(24),
       child: Container(
@@ -5807,6 +5971,38 @@ class _HeaderNavChip extends StatelessWidget {
           ],
         ),
       ),
+    );
+    if (badgeCount <= 0) return chip;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        chip,
+        PositionedDirectional(
+          top: -4,
+          end: -4,
+          child: IgnorePointer(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              constraints: const BoxConstraints(minWidth: 18),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE53935),
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+              child: Text(
+                badgeCount > 99 ? '99+' : '$badgeCount',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  height: 1.2,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

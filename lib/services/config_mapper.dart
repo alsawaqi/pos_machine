@@ -31,6 +31,7 @@ class CatalogSnapshot {
     this.voidReasons = const <VoidReasonRef>[],
     this.compReasons = const <CompReasonRef>[],
     this.categoryAddonGroupIds = const <int, List<int>>{},
+    this.staffMessages = const <StaffMessage>[],
   });
 
   final List<String> categories;
@@ -80,6 +81,9 @@ class CatalogSnapshot {
   final List<VoidReasonRef> voidReasons;
   final List<CompReasonRef> compReasons;
   final Map<int, List<int>> categoryAddonGroupIds;
+  // P-G6 — staff announcements from the portal (newest first). Visibility per
+  // signed-in staff member is resolved in PosController.visibleMessagesFor.
+  final List<StaffMessage> staffMessages;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -103,6 +107,7 @@ class ParsedConfig {
     this.voidReasons = const [],
     this.compReasons = const [],
     this.offers = const [],
+    this.staffMessages = const [],
     required this.meta,
   });
 
@@ -126,6 +131,8 @@ class ParsedConfig {
   final List<CompReasonsCompanion> compReasons;
   // P-F9 — merchant offers (promotions).
   final List<OffersCompanion> offers;
+  // P-G6 — staff announcements.
+  final List<StaffMessagesCompanion> staffMessages;
   final SyncMetaCompanion meta;
 }
 
@@ -146,6 +153,7 @@ class DeletedIds {
     this.deliveryProviders = const [],
     this.expenseCategories = const [],
     this.offers = const [],
+    this.staffMessages = const [],
   });
 
   final List<int> floors;
@@ -162,6 +170,8 @@ class DeletedIds {
   final List<int> expenseCategories;
   // P-F9 — soft-deleted offer ids.
   final List<int> offers;
+  // P-G6 — retracted staff-message ids.
+  final List<int> staffMessages;
 }
 
 /// A parsed config delta: the changed-row companions (built via
@@ -544,6 +554,22 @@ class ConfigMapper {
             ))
         .toList();
 
+    // P-G6 — staff announcements (last 30 days, newest first from the API).
+    // read_staff_ids carries the server-side receipts so the unread badge
+    // survives a cache wipe / re-sync.
+    final staffMessages = _list(data['staff_messages'])
+        .map((m) => StaffMessagesCompanion(
+              id: Value(_int(m['id']) ?? 0),
+              targetType: Value(_str(m['target_type'])),
+              targetStaffId: Value(_int(m['target_staff_id'])),
+              title: Value(_strN(m['title'])),
+              body: Value(_str(m['body'])),
+              createdByName: Value(_strN(m['created_by_name'])),
+              createdAt: Value(_date(m['created_at'])),
+              readStaffIdsJson: Value(jsonEncode(_intList(m['read_staff_ids']))),
+            ))
+        .toList();
+
     // v2 #14 — company POS policy: which staff positions may cancel an order.
     final settings = (data['settings'] as Map?)?.cast<String, dynamic>() ?? const {};
     final cancelPositions = _strList(settings['order_cancel_positions']);
@@ -586,6 +612,7 @@ class ConfigMapper {
       voidReasons: voidReasons,
       compReasons: compReasons,
       offers: offers,
+      staffMessages: staffMessages,
       meta: metaCompanion,
     );
   }
@@ -614,6 +641,7 @@ class ConfigMapper {
         deliveryProviders: _intList(del['delivery_providers']),
         expenseCategories: _intList(del['expense_categories']),
         offers: _intList(del['offers']),
+        staffMessages: _intList(del['staff_messages']),
       ),
     );
   }
@@ -639,6 +667,7 @@ class ConfigMapper {
     List<VoidReasonRow> voidReasonRows = const [],
     List<CompReasonRow> compReasonRows = const [],
     List<OfferRow> offerRows = const [],
+    List<StaffMessageRow> staffMessageRows = const [],
   ]) {
     final sortedCats = [...cats]
       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
@@ -900,6 +929,22 @@ class ConfigMapper {
       voidReasons: voidReasonDefs,
       compReasons: compReasonDefs,
       categoryAddonGroupIds: categoryAddonGroupIds,
+      staffMessages: ([...staffMessageRows]..sort((a, b) {
+              final ad = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+              final bd = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+              return bd.compareTo(ad);
+            }))
+          .map((m) => StaffMessage(
+                id: m.id,
+                targetType: m.targetType,
+                targetStaffId: m.targetStaffId,
+                title: m.title,
+                body: m.body,
+                createdByName: m.createdByName,
+                createdAt: m.createdAt,
+                readStaffIds: _intsFromJson(m.readStaffIdsJson).toSet(),
+              ))
+          .toList(),
     );
   }
 

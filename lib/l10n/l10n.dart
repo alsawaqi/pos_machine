@@ -5020,6 +5020,30 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'as {name}'**
   String kitchenOperatingAs(String name);
+
+  /// No description provided for @posNavMessages.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages'**
+  String get posNavMessages;
+
+  /// No description provided for @posMessagesNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No announcements for you yet.'**
+  String get posMessagesNone;
+
+  /// No description provided for @posMessagesUntitled.
+  ///
+  /// In en, this message translates to:
+  /// **'Announcement'**
+  String get posMessagesUntitled;
+
+  /// No description provided for @posMessagesPopupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'New message'**
+  String get posMessagesPopupTitle;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

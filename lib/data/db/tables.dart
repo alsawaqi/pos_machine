@@ -334,6 +334,26 @@ class Offers extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+// P-G6 — staff announcements from the portal (config `staff_messages` slice,
+// last 30 days). target_type company|branch rows show for every signed-in
+// staff member; target_type staff rows only for the targeted staff id.
+// readStaffIdsJson mirrors the server read receipts so the unread badge
+// survives a re-sync; local reads are POSTed back via /device/messages/read.
+@DataClassName('StaffMessageRow')
+class StaffMessages extends Table {
+  IntColumn get id => integer()();
+  TextColumn get targetType => text().withDefault(const Constant('company'))();
+  IntColumn get targetStaffId => integer().nullable()();
+  TextColumn get title => text().nullable()();
+  TextColumn get body => text().withDefault(const Constant(''))();
+  TextColumn get createdByName => text().nullable()();
+  DateTimeColumn get createdAt => dateTime().nullable()();
+  TextColumn get readStaffIdsJson => text().withDefault(const Constant('[]'))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // Merchant loyalty rules from the config bundle (company-scoped). `type` is
 // visit_based (stamp card) | spend_based (points); `configJson` holds the
 // type-specific config (stamps_required / points_per_omr / redemption_value …).
