@@ -273,4 +273,137 @@ void main() {
       expect(optional.isRequired, isFalse);
     });
   });
+
+  // P-G3 — product-as-add-on: linked_product_id rides the parse → Drift →
+  // catalog pipeline, and the controller greys an option whose linked
+  // product is sold out at the branch (same pool as its standalone tile).
+  group('P-G3 product-as-add-on', () {
+    test('parse() captures linked_product_id on the addon companion', () {
+      final parsed = ConfigMapper.parse(<String, dynamic>{
+        'addon_groups': [
+          {
+            'id': 5,
+            'name': 'Extras',
+            'selection_mode': 'multiple',
+            'addons': [
+              {
+                'id': 100,
+                'add_on_group_id': 5,
+                'name': 'Cake slice',
+                'price_delta_baisas': 1500,
+                'linked_product_id': 77,
+              },
+              {
+                'id': 101,
+                'add_on_group_id': 5,
+                'name': 'Extra shot',
+                'price_delta_baisas': 300,
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(parsed.addons.first.linkedProductId.value, 77);
+      expect(parsed.addons[1].linkedProductId.value, isNull);
+    });
+
+    test('toCatalog() emits linkedProductId on the AddonOption', () {
+      final catalog = ConfigMapper.toCatalog(
+        null,
+        const <CategoryRow>[],
+        const <ProductRow>[],
+        const <FloorRow>[],
+        const <TableRow>[],
+        const <TaxRow>[],
+        [const AddonGroupRow(id: 5, name: 'Extras', selectionMode: 'multiple')],
+        [
+          const AddonRow(
+            id: 100,
+            addOnGroupId: 5,
+            name: 'Cake slice',
+            priceDeltaBaisas: 1500,
+            isDefault: false,
+            linkedProductId: 77,
+          ),
+          const AddonRow(
+            id: 101,
+            addOnGroupId: 5,
+            name: 'Extra shot',
+            priceDeltaBaisas: 300,
+            isDefault: false,
+          ),
+        ],
+      );
+
+      final options = catalog.addonGroups.single.options;
+      expect(options.first.linkedProductId, 77);
+      expect(options[1].linkedProductId, isNull);
+    });
+
+    test('isAddonOptionUnavailable mirrors the linked product sold-out state', () {
+      final controller = PosController();
+      addTearDown(controller.dispose);
+
+      const cakeInStock = Product(
+        id: '77',
+        name: 'Cake',
+        category: 'Dessert',
+        price: 5,
+        stockMode: 'cooked',
+        branchStockQty: 3,
+      );
+      const juice = Product(
+        id: '78',
+        name: 'Juice',
+        category: 'Drinks',
+        price: 2,
+        stockMode: 'ingredient',
+        recipe: [RecipeLine(ingredientId: 1, quantity: 0.3)],
+      );
+
+      controller.applyCatalog(
+        categories: const ['Dessert', 'Drinks'],
+        products: const [cakeInStock, juice],
+        floors: const <DiningFloor>[],
+        tables: const <DiningTableDefinition>[],
+        // Orange (1): 0.2 L on the shelf — below the 0.3 L one juice needs.
+        ingredientBalances: const {1: 0.2},
+      );
+
+      const cakeOption =
+          AddonOption(id: 1, label: 'Cake slice', priceDelta: 1.5, linkedProductId: 77);
+      const juiceOption =
+          AddonOption(id: 2, label: 'Fresh juice', priceDelta: 1.0, linkedProductId: 78);
+      const classicOption = AddonOption(id: 3, label: 'Extra shot', priceDelta: 0.3);
+      const orphanOption =
+          AddonOption(id: 4, label: 'Ghost', priceDelta: 1.0, linkedProductId: 999);
+
+      // Cake has shelf stock -> sellable; juice is ingredient-short -> grey.
+      expect(controller.isAddonOptionUnavailable(cakeOption), isFalse);
+      expect(controller.isAddonOptionUnavailable(juiceOption), isTrue);
+      // Classic options never grey; a link to a product missing from the
+      // branch catalog greys (can't fulfil it here).
+      expect(controller.isAddonOptionUnavailable(classicOption), isFalse);
+      expect(controller.isAddonOptionUnavailable(orphanOption), isTrue);
+
+      // The cake sells out (shelf hits zero) -> its option greys too.
+      controller.applyCatalog(
+        categories: const ['Dessert'],
+        products: const [
+          Product(
+            id: '77',
+            name: 'Cake',
+            category: 'Dessert',
+            price: 5,
+            stockMode: 'cooked',
+            branchStockQty: 0,
+          ),
+        ],
+        floors: const <DiningFloor>[],
+        tables: const <DiningTableDefinition>[],
+      );
+      expect(controller.isAddonOptionUnavailable(cakeOption), isTrue);
+    });
+  });
 }

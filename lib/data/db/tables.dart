@@ -142,6 +142,8 @@ class Addons extends Table {
   // Phase B — pre-selected when the customize sheet opens.
   BoolColumn get isDefault => boolean().withDefault(const Constant(false))();
   IntColumn get ingredientId => integer().nullable()();
+  // P-G3 — the real product behind this option (greys out when sold out).
+  IntColumn get linkedProductId => integer().nullable()();
   TextColumn get status => text().nullable()();
 
   @override

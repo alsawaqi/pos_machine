@@ -382,6 +382,8 @@ class ConfigMapper {
           // Phase B — pre-selected default in the customize sheet.
           isDefault: Value(a['is_default'] == true),
           ingredientId: Value(_int(a['ingredient_id'])),
+          // P-G3 — the product behind a product-as-add-on option.
+          linkedProductId: Value(_int(a['linked_product_id'])),
           status: Value(_strN(a['status'])),
         ));
       }
@@ -729,6 +731,7 @@ class ConfigMapper {
         labelAr: a.nameAr,
         priceDelta: a.priceDeltaBaisas / 1000.0,
         isDefault: a.isDefault,
+        linkedProductId: a.linkedProductId,
       ));
     }
     final addonGroups = addonGroupRows

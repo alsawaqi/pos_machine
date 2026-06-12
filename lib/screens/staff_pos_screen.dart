@@ -2812,6 +2812,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     label: option.label,
                     labelAr: option.labelAr ?? '',
                     price: option.priceDelta,
+                    // P-G3 — grey the option when its linked product is
+                    // sold out at this branch.
+                    soldOut: controller.isAddonOptionUnavailable(option),
                   ))
               .toList(),
         );
@@ -6335,12 +6338,16 @@ class _ModifierOptionDefinition {
   // Phase C4 — the merchant's Arabic option label, display-only (empty = none).
   final String labelAr;
   final double price;
+  // P-G3 — the product behind this option is sold out at the branch (or
+  // missing from the catalog): the tile greys out and refuses selection.
+  final bool soldOut;
 
   const _ModifierOptionDefinition({
     required this.id,
     required this.label,
     this.labelAr = '',
     required this.price,
+    this.soldOut = false,
   });
 
   /// The option label to SHOW for [arabic] UI (English stays the identity).
@@ -6395,11 +6402,21 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
               selected.length >= group.maxSelections!) {
             break;
           }
-          if (group.options.any((o) => o.id == id)) selected.add(id);
+          // P-G3 — a sold-out default stays unselected.
+          if (group.options.any((o) => o.id == id && !o.soldOut)) {
+            selected.add(id);
+          }
         }
       }
       if (group.requiredSelection && selected.isEmpty) {
-        selected.add(group.options.first.id);
+        // P-G3 — auto-pick the first option that's actually sellable (all
+        // sold out leaves the group empty and Apply blocked).
+        for (final option in group.options) {
+          if (!option.soldOut) {
+            selected.add(option.id);
+            break;
+          }
+        }
       }
     }
   }
@@ -6454,6 +6471,12 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
     _ModifierGroupDefinition group,
     _ModifierOptionDefinition option,
   ) {
+    // P-G3 — a sold-out option can't be picked (deselecting an already
+    // selected one — e.g. on an edited line — stays allowed).
+    if (option.soldOut &&
+        !(_selectedByGroup[group.title]?.contains(option.id) ?? false)) {
+      return;
+    }
     setState(() {
       final selected = _selectedByGroup.putIfAbsent(
         group.title,
@@ -6769,9 +6792,13 @@ class _CustomizationOptionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final l10n = L10n.of(context);
+    // P-G3 — a sold-out option renders grey and refuses the tap (an already
+    // selected one on an edited line stays tappable so it can be removed).
+    final blocked = option.soldOut && !selected;
     return InkWell(
       key: ValueKey('customize-option-${option.id}'),
-      onTap: onTap,
+      onTap: blocked ? null : onTap,
       borderRadius: BorderRadius.circular(18),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 160),
@@ -6780,10 +6807,18 @@ class _CustomizationOptionTile extends StatelessWidget {
           vertical: multiSelect ? 14 : 16,
         ),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFF1FBF4) : Colors.white,
+          color: option.soldOut
+              ? const Color(0xFFF4F6F8)
+              : selected
+                  ? const Color(0xFFF1FBF4)
+                  : Colors.white,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: selected ? const Color(0xFF2C9255) : const Color(0xFFDCE6EA),
+            color: option.soldOut
+                ? const Color(0xFFE0E7EB)
+                : selected
+                    ? const Color(0xFF2C9255)
+                    : const Color(0xFFDCE6EA),
             width: selected ? 1.8 : 1.1,
           ),
           boxShadow: const [
@@ -6813,13 +6848,25 @@ class _CustomizationOptionTile extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: selected
-                            ? const Color(0xFF175E36)
-                            : const Color(0xFF2C3C45),
+                        color: option.soldOut
+                            ? const Color(0xFF9AA8B1)
+                            : selected
+                                ? const Color(0xFF175E36)
+                                : const Color(0xFF2C3C45),
                       ),
                     ),
                   ),
-                  if (option.price > 0)
+                  if (option.soldOut)
+                    Text(
+                      l10n.posProductSoldOutBadge,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFFB3261E),
+                        letterSpacing: 0.5,
+                      ),
+                    )
+                  else if (option.price > 0)
                     Text(
                       '+${SunmiReceiptService.money(option.price)}',
                       style: TextStyle(
@@ -6844,12 +6891,25 @@ class _CustomizationOptionTile extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
-                            color: selected
-                                ? const Color(0xFF175E36)
-                                : const Color(0xFF364852),
+                            color: option.soldOut
+                                ? const Color(0xFF9AA8B1)
+                                : selected
+                                    ? const Color(0xFF175E36)
+                                    : const Color(0xFF364852),
                           ),
                         ),
-                        if (option.price > 0) ...[
+                        if (option.soldOut) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            l10n.posProductSoldOutBadge,
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFFB3261E),
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ] else if (option.price > 0) ...[
                           const SizedBox(height: 4),
                           Text(
                             '+${SunmiReceiptService.money(option.price)}',

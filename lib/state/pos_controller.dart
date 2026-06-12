@@ -712,6 +712,21 @@ class PosController extends ChangeNotifier {
     }
   }
 
+  /// P-G3 — whether the add-on [option] can't be sold right now. An option
+  /// backed by a real product (linked_product_id) greys out when that
+  /// product is sold out at this branch — same pool as its standalone tile —
+  /// or when the product is missing from the branch catalog entirely
+  /// (deleted / not assigned here). Classic options are always sellable.
+  bool isAddonOptionUnavailable(AddonOption option) {
+    final linkedId = option.linkedProductId;
+    if (linkedId == null) return false;
+    final key = linkedId.toString();
+    for (final p in allProducts) {
+      if (p.id == key) return isOutOfStock(p);
+    }
+    return true;
+  }
+
   /// Gap sweep G1 — whether [product] is outside its daily availability
   /// window right now (greyed-out / blocked, distinct from sold-out).
   bool isOutsideHours(Product product) => !product.isAvailableAt(clock());

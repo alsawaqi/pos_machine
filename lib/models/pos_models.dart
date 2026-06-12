@@ -170,6 +170,7 @@ class AddonOption {
     this.labelAr,
     required this.priceDelta,
     this.isDefault = false,
+    this.linkedProductId,
   });
   final int id;
   final String label;
@@ -177,6 +178,10 @@ class AddonOption {
   final double priceDelta; // OMR added to the line when selected
   // Phase B — starts selected when the customize sheet opens.
   final bool isDefault;
+  // P-G3 — the real product this option sells (cake slice = the Cake
+  // product). The option greys out when that product is sold out at the
+  // branch; null = a classic priced/ingredient option, always sellable.
+  final int? linkedProductId;
 }
 
 /// A product's add-on group (e.g. "Size", "Milk", "Extras"), assigned per
