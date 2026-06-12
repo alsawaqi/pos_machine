@@ -18,10 +18,16 @@ import '../services/pos_api_service.dart';
 /// the PIN rides the cancel request and pos_api verifies it against the
 /// company's manager_approval_positions policy.
 class KitchenProductionScreen extends ConsumerStatefulWidget {
-  const KitchenProductionScreen({super.key, this.staffId});
+  const KitchenProductionScreen({super.key, this.staffId, this.staffName});
 
-  /// The logged-in staff member (stamped on start/finish/cancel).
+  /// Who the Kitchen session runs AS (stamped on start/finish/cancel):
+  /// the logged-in staff member, or — P-G1.6 walk-up gate — the kitchen
+  /// staff member whose code opened the screen on someone else's till.
   final int? staffId;
+
+  /// Shown as an "operating as" chip when the walk-up gate opened the
+  /// screen for someone other than the logged-in operator.
+  final String? staffName;
 
   @override
   ConsumerState<KitchenProductionScreen> createState() =>
@@ -177,7 +183,7 @@ class _KitchenProductionScreenState
     final l10n = L10n.of(context);
     final pin = await showDialog<String>(
       context: context,
-      builder: (_) => const _ManagerPinPromptDialog(),
+      builder: (_) => const PinPromptDialog(),
     );
     if (pin == null || pin.isEmpty || !mounted) return;
 
@@ -257,6 +263,25 @@ class _KitchenProductionScreenState
               l10n.kitchenTitle,
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
+            if ((widget.staffName ?? '').isNotEmpty) ...[
+              const SizedBox(width: 12),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  l10n.kitchenOperatingAs(widget.staffName!),
+                  style: const TextStyle(
+                    color: _accent,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
         actions: [
@@ -1190,7 +1215,7 @@ class _DayEndDispositionScreenState
     if (_needsApproval) {
       pin = await showDialog<String>(
         context: context,
-        builder: (_) => const _ManagerPinPromptDialog(),
+        builder: (_) => const PinPromptDialog(),
       );
       if (pin == null || pin.isEmpty || !mounted) return;
     }
@@ -1447,17 +1472,30 @@ class _DayEndDispositionScreenState
   }
 }
 
-/// A minimal manager-PIN prompt for the cancel gate. The PIN itself rides
-/// the cancel request and is verified server-side (the device never decides).
-class _ManagerPinPromptDialog extends StatefulWidget {
-  const _ManagerPinPromptDialog();
+/// A minimal staff-code prompt, returned as the raw PIN string. The PIN
+/// itself always rides a request that is verified server-side (the device
+/// never decides). Defaults to the manager-approval styling used by the
+/// batch-cancel + disposition gates; the P-G1.6 Kitchen walk-up gate
+/// passes its own labels.
+class PinPromptDialog extends StatefulWidget {
+  const PinPromptDialog({
+    super.key,
+    this.title,
+    this.hint,
+    this.confirmLabel,
+    this.confirmColor,
+  });
+
+  final String? title;
+  final String? hint;
+  final String? confirmLabel;
+  final Color? confirmColor;
 
   @override
-  State<_ManagerPinPromptDialog> createState() =>
-      _ManagerPinPromptDialogState();
+  State<PinPromptDialog> createState() => _PinPromptDialogState();
 }
 
-class _ManagerPinPromptDialogState extends State<_ManagerPinPromptDialog> {
+class _PinPromptDialogState extends State<PinPromptDialog> {
   final TextEditingController _pin = TextEditingController();
 
   @override
@@ -1472,7 +1510,7 @@ class _ManagerPinPromptDialogState extends State<_ManagerPinPromptDialog> {
     return AlertDialog(
       backgroundColor: const Color(0xFF16313B),
       title: Text(
-        l10n.kitchenPinTitle,
+        widget.title ?? l10n.kitchenPinTitle,
         style: const TextStyle(color: Colors.white, fontSize: 17),
       ),
       content: TextField(
@@ -1484,7 +1522,7 @@ class _ManagerPinPromptDialogState extends State<_ManagerPinPromptDialog> {
         style: const TextStyle(
             color: Colors.white, fontSize: 22, letterSpacing: 8),
         decoration: InputDecoration(
-          hintText: l10n.kitchenPinHint,
+          hintText: widget.hint ?? l10n.kitchenPinHint,
           hintStyle: const TextStyle(
               color: Colors.white30, fontSize: 14, letterSpacing: 0),
           counterText: '',
@@ -1504,12 +1542,12 @@ class _ManagerPinPromptDialogState extends State<_ManagerPinPromptDialog> {
         ),
         FilledButton(
           style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFFFF6B6B),
+            backgroundColor: widget.confirmColor ?? const Color(0xFFFF6B6B),
           ),
           onPressed: _pin.text.trim().length >= 4
               ? () => Navigator.of(context).pop(_pin.text.trim())
               : null,
-          child: Text(l10n.kitchenCancelBatch),
+          child: Text(widget.confirmLabel ?? l10n.kitchenCancelBatch),
         ),
       ],
     );

@@ -2981,4 +2981,22 @@ class L10nEn extends L10n {
 
   @override
   String get dispositionDone => 'Disposition recorded.';
+
+  @override
+  String get kitchenGateTitle => 'Kitchen staff code';
+
+  @override
+  String get kitchenGateHint => 'Enter a kitchen staff member\'s code';
+
+  @override
+  String get kitchenGateConfirm => 'Open Kitchen';
+
+  @override
+  String get kitchenGateInvalid =>
+      'That code doesn\'t belong to a kitchen-allowed staff member.';
+
+  @override
+  String kitchenOperatingAs(String name) {
+    return 'as $name';
+  }
 }

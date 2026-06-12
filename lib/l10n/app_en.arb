@@ -1893,5 +1893,17 @@
   "dispositionGiftCommentHint": "Who got it? (required — staff name or customer)",
   "dispositionSkip": "Skip for now",
   "dispositionSubmit": "Apply & continue",
-  "dispositionDone": "Disposition recorded."
+  "dispositionDone": "Disposition recorded.",
+  "kitchenGateTitle": "Kitchen staff code",
+  "kitchenGateHint": "Enter a kitchen staff member's code",
+  "kitchenGateConfirm": "Open Kitchen",
+  "kitchenGateInvalid": "That code doesn't belong to a kitchen-allowed staff member.",
+  "kitchenOperatingAs": "as {name}",
+  "@kitchenOperatingAs": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

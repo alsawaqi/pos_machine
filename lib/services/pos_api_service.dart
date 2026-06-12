@@ -128,6 +128,30 @@ class PosApiService {
     }
   }
 
+  /// POST /device/auth/verify-kitchen-pin — P-G1.6 the Kitchen walk-up
+  /// gate: when the logged-in staff member can't open the Kitchen screen,
+  /// a kitchen staff member punches THEIR code and the Kitchen session
+  /// runs as them. Returns the verified staff identity (for batch
+  /// attribution), or null on a rejected PIN. Same conventions as
+  /// [verifyManagerPin].
+  Future<({int id, String name})?> verifyKitchenPin(String pin) async {
+    try {
+      final body = await _send(
+        () => _dio.post('/device/auth/verify-kitchen-pin', data: {'pin': pin}),
+      );
+      if (body.body['ok'] == true) {
+        final staff = (body.body['staff'] as Map?)?.cast<String, dynamic>();
+        final id = (staff?['id'] as num?)?.toInt();
+        if (id == null) return null;
+        return (id: id, name: staff?['name']?.toString() ?? '');
+      }
+      return null;
+    } on ApiException catch (e) {
+      if (e.code == 'invalid_pin') return null;
+      rethrow;
+    }
+  }
+
   /// GET /device/config — full branch-scoped config bundle. Returns the raw
   /// `data` map, the device's terminal_id, `meta.generated_at` (the server
   /// cursor the device persists + replays as `?since=` on the next delta

@@ -4990,6 +4990,36 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Disposition recorded.'**
   String get dispositionDone;
+
+  /// No description provided for @kitchenGateTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Kitchen staff code'**
+  String get kitchenGateTitle;
+
+  /// No description provided for @kitchenGateHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a kitchen staff member\'s code'**
+  String get kitchenGateHint;
+
+  /// No description provided for @kitchenGateConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Kitchen'**
+  String get kitchenGateConfirm;
+
+  /// No description provided for @kitchenGateInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'That code doesn\'t belong to a kitchen-allowed staff member.'**
+  String get kitchenGateInvalid;
+
+  /// No description provided for @kitchenOperatingAs.
+  ///
+  /// In en, this message translates to:
+  /// **'as {name}'**
+  String kitchenOperatingAs(String name);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

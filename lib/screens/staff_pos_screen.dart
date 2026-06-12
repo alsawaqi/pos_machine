@@ -4902,21 +4902,63 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// P-G1 — the full-screen Kitchen production screen, allowed only for the
   /// staff positions the merchant configured (settings.kitchen_positions).
   /// Online-only: the screen fetches fresh balances from pos_api on open.
+  ///
+  /// P-G1.6 — the walk-up gate: when the logged-in staff member is NOT
+  /// allowed, instead of a dead end we prompt for a kitchen staff member's
+  /// code (verified server-side against the same policy) and the Kitchen
+  /// session runs AS them — the chef punches their code on the cashier's
+  /// till, no logout/login dance. Batches attribute to the actual chef.
   Future<void> _openKitchen() async {
     final l10n = L10n.of(context);
     final staff = ref.read(sessionServiceProvider).staff;
+
+    int? kitchenStaffId = staff?.id;
+    String? kitchenStaffName;
+
     if (!controller.positionCanUseKitchen(staff?.position)) {
-      _showPopupMessage(
-        title: l10n.kitchenNotAllowedTitle,
-        message: l10n.kitchenNotAllowedBody,
-        tone: FeedbackTone.warning,
+      final pin = await showDialog<String>(
+        context: context,
+        builder: (_) => PinPromptDialog(
+          title: l10n.kitchenGateTitle,
+          hint: l10n.kitchenGateHint,
+          confirmLabel: l10n.kitchenGateConfirm,
+          confirmColor: const Color(0xFF35C28B),
+        ),
       );
-      return;
+      if (pin == null || pin.isEmpty || !mounted) return;
+
+      try {
+        final verified =
+            await ref.read(apiServiceProvider).verifyKitchenPin(pin);
+        if (!mounted) return;
+        if (verified == null) {
+          _showPopupMessage(
+            title: l10n.kitchenNotAllowedTitle,
+            message: l10n.kitchenGateInvalid,
+            tone: FeedbackTone.warning,
+          );
+          return;
+        }
+        kitchenStaffId = verified.id;
+        kitchenStaffName = verified.name;
+      } on ApiException catch (e) {
+        if (!mounted) return;
+        _showPopupMessage(
+          title: l10n.kitchenNotAllowedTitle,
+          message: e.isNetwork ? l10n.kitchenOffline : e.message,
+          tone: FeedbackTone.warning,
+        );
+        return;
+      }
     }
+
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => KitchenProductionScreen(staffId: staff?.id),
+        builder: (_) => KitchenProductionScreen(
+          staffId: kitchenStaffId,
+          staffName: kitchenStaffName,
+        ),
       ),
     );
     // Whatever the kitchen did (started/finished/cancelled a batch), the

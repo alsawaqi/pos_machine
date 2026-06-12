@@ -813,5 +813,10 @@
   "dispositionGiftCommentHint": "من استلمها؟ (إلزامي — اسم موظف أو زبون)",
   "dispositionSkip": "تخطٍّ الآن",
   "dispositionSubmit": "تطبيق ومتابعة",
-  "dispositionDone": "تم تسجيل التصرف."
+  "dispositionDone": "تم تسجيل التصرف.",
+  "kitchenGateTitle": "رمز موظف المطبخ",
+  "kitchenGateHint": "أدخل رمز أحد موظفي المطبخ",
+  "kitchenGateConfirm": "فتح المطبخ",
+  "kitchenGateInvalid": "هذا الرمز لا يخص موظفًا مسموحًا له بالمطبخ.",
+  "kitchenOperatingAs": "باسم {name}"
 }

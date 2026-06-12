@@ -3008,4 +3008,22 @@ class L10nAr extends L10n {
 
   @override
   String get dispositionDone => 'تم تسجيل التصرف.';
+
+  @override
+  String get kitchenGateTitle => 'رمز موظف المطبخ';
+
+  @override
+  String get kitchenGateHint => 'أدخل رمز أحد موظفي المطبخ';
+
+  @override
+  String get kitchenGateConfirm => 'فتح المطبخ';
+
+  @override
+  String get kitchenGateInvalid =>
+      'هذا الرمز لا يخص موظفًا مسموحًا له بالمطبخ.';
+
+  @override
+  String kitchenOperatingAs(String name) {
+    return 'باسم $name';
+  }
 }
