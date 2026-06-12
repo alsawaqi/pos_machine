@@ -4864,6 +4864,132 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Invalid manager PIN.'**
   String get kitchenPinInvalid;
+
+  /// No description provided for @kitchenFinishTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish {name}'**
+  String kitchenFinishTitle(String name);
+
+  /// No description provided for @kitchenExpiryLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Best before'**
+  String get kitchenExpiryLabel;
+
+  /// No description provided for @kitchenExpiryToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get kitchenExpiryToday;
+
+  /// No description provided for @kitchenExpiryTomorrow.
+  ///
+  /// In en, this message translates to:
+  /// **'Tomorrow'**
+  String get kitchenExpiryTomorrow;
+
+  /// No description provided for @kitchenExpiryInDays.
+  ///
+  /// In en, this message translates to:
+  /// **'In {n} days'**
+  String kitchenExpiryInDays(int n);
+
+  /// No description provided for @kitchenExpiryNever.
+  ///
+  /// In en, this message translates to:
+  /// **'No expiry'**
+  String get kitchenExpiryNever;
+
+  /// No description provided for @kitchenExpiryPickDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick date'**
+  String get kitchenExpiryPickDate;
+
+  /// No description provided for @kitchenExpiryNeverHint.
+  ///
+  /// In en, this message translates to:
+  /// **'This batch will never be flagged at day end.'**
+  String get kitchenExpiryNeverHint;
+
+  /// No description provided for @kitchenExpiryResolvedHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Good until end of {date}.'**
+  String kitchenExpiryResolvedHint(String date);
+
+  /// No description provided for @kitchenExpiresOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Best before {date}'**
+  String kitchenExpiresOn(String date);
+
+  /// No description provided for @dispositionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired Items — Day End'**
+  String get dispositionTitle;
+
+  /// No description provided for @dispositionSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'These cooked pieces have passed their best-before. Decide what happens to each before closing the shift: waste, give away (manager approval + who got it), or keep on sale (manager approval).'**
+  String get dispositionSubtitle;
+
+  /// No description provided for @dispositionExpiredCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{expired} expired of {shelf} on shelf'**
+  String dispositionExpiredCount(String expired, String shelf);
+
+  /// No description provided for @dispositionWaste.
+  ///
+  /// In en, this message translates to:
+  /// **'Waste'**
+  String get dispositionWaste;
+
+  /// No description provided for @dispositionGiveAway.
+  ///
+  /// In en, this message translates to:
+  /// **'Give away'**
+  String get dispositionGiveAway;
+
+  /// No description provided for @dispositionCarryOver.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep on sale'**
+  String get dispositionCarryOver;
+
+  /// No description provided for @dispositionRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'{qty} left to assign'**
+  String dispositionRemaining(String qty);
+
+  /// No description provided for @dispositionGiftCommentHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Who got it? (required — staff name or customer)'**
+  String get dispositionGiftCommentHint;
+
+  /// No description provided for @dispositionSkip.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip for now'**
+  String get dispositionSkip;
+
+  /// No description provided for @dispositionSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Apply & continue'**
+  String get dispositionSubmit;
+
+  /// No description provided for @dispositionDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Disposition recorded.'**
+  String get dispositionDone;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

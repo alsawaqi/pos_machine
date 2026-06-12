@@ -1827,5 +1827,71 @@
   "kitchenBatchCancelled": "Batch cancelled — ingredients returned.",
   "kitchenPinTitle": "Manager approval",
   "kitchenPinHint": "Manager PIN",
-  "kitchenPinInvalid": "Invalid manager PIN."
+  "kitchenPinInvalid": "Invalid manager PIN.",
+  "kitchenFinishTitle": "Finish {name}",
+  "@kitchenFinishTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "kitchenExpiryLabel": "Best before",
+  "kitchenExpiryToday": "Today",
+  "kitchenExpiryTomorrow": "Tomorrow",
+  "kitchenExpiryInDays": "In {n} days",
+  "@kitchenExpiryInDays": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "kitchenExpiryNever": "No expiry",
+  "kitchenExpiryPickDate": "Pick date",
+  "kitchenExpiryNeverHint": "This batch will never be flagged at day end.",
+  "kitchenExpiryResolvedHint": "Good until end of {date}.",
+  "@kitchenExpiryResolvedHint": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "kitchenExpiresOn": "Best before {date}",
+  "@kitchenExpiresOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "dispositionTitle": "Expired Items — Day End",
+  "dispositionSubtitle": "These cooked pieces have passed their best-before. Decide what happens to each before closing the shift: waste, give away (manager approval + who got it), or keep on sale (manager approval).",
+  "dispositionExpiredCount": "{expired} expired of {shelf} on shelf",
+  "@dispositionExpiredCount": {
+    "placeholders": {
+      "expired": {
+        "type": "String"
+      },
+      "shelf": {
+        "type": "String"
+      }
+    }
+  },
+  "dispositionWaste": "Waste",
+  "dispositionGiveAway": "Give away",
+  "dispositionCarryOver": "Keep on sale",
+  "dispositionRemaining": "{qty} left to assign",
+  "@dispositionRemaining": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "dispositionGiftCommentHint": "Who got it? (required — staff name or customer)",
+  "dispositionSkip": "Skip for now",
+  "dispositionSubmit": "Apply & continue",
+  "dispositionDone": "Disposition recorded."
 }

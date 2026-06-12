@@ -2931,4 +2931,81 @@ class L10nAr extends L10n {
 
   @override
   String get kitchenPinInvalid => 'رمز المدير غير صحيح.';
+
+  @override
+  String kitchenFinishTitle(String name) {
+    return 'إنهاء $name';
+  }
+
+  @override
+  String get kitchenExpiryLabel => 'صالح حتى';
+
+  @override
+  String get kitchenExpiryToday => 'اليوم';
+
+  @override
+  String get kitchenExpiryTomorrow => 'غدًا';
+
+  @override
+  String kitchenExpiryInDays(int n) {
+    return 'خلال $n أيام';
+  }
+
+  @override
+  String get kitchenExpiryNever => 'بلا انتهاء';
+
+  @override
+  String get kitchenExpiryPickDate => 'اختر تاريخًا';
+
+  @override
+  String get kitchenExpiryNeverHint => 'لن تُعلَّم هذه الدفعة في نهاية اليوم.';
+
+  @override
+  String kitchenExpiryResolvedHint(String date) {
+    return 'صالحة حتى نهاية $date.';
+  }
+
+  @override
+  String kitchenExpiresOn(String date) {
+    return 'صالح حتى $date';
+  }
+
+  @override
+  String get dispositionTitle => 'أصناف منتهية — نهاية اليوم';
+
+  @override
+  String get dispositionSubtitle =>
+      'هذه القطع المطبوخة تجاوزت تاريخ صلاحيتها. حدّد مصير كل منها قبل إغلاق الوردية: هدر، أو إهداء (بموافقة المدير وذكر المستلم)، أو إبقاؤها للبيع (بموافقة المدير).';
+
+  @override
+  String dispositionExpiredCount(String expired, String shelf) {
+    return '$expired منتهية من أصل $shelf على الرف';
+  }
+
+  @override
+  String get dispositionWaste => 'هدر';
+
+  @override
+  String get dispositionGiveAway => 'إهداء';
+
+  @override
+  String get dispositionCarryOver => 'إبقاء للبيع';
+
+  @override
+  String dispositionRemaining(String qty) {
+    return 'متبقٍ $qty بلا تحديد';
+  }
+
+  @override
+  String get dispositionGiftCommentHint =>
+      'من استلمها؟ (إلزامي — اسم موظف أو زبون)';
+
+  @override
+  String get dispositionSkip => 'تخطٍّ الآن';
+
+  @override
+  String get dispositionSubmit => 'تطبيق ومتابعة';
+
+  @override
+  String get dispositionDone => 'تم تسجيل التصرف.';
 }

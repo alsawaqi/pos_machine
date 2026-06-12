@@ -4552,6 +4552,27 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// float. Backing out of the close screen leaves the shift open and stays
   /// logged in.
   Future<void> _closeShiftThenLogout() async {
+    // P-G1.5 — day-end disposition first: if any cooked pieces expired,
+    // the closer decides waste / give-away / carry-over before the count.
+    // ONLINE-ONLY by design; offline (or no expired stock) just proceeds —
+    // the expired pieces simply wait for the next online close.
+    try {
+      final expired = await ref.read(apiServiceProvider).fetchDisposition();
+      if (!mounted) return;
+      if (expired.isNotEmpty) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => DayEndDispositionScreen(
+              items: expired,
+              staffId: ref.read(sessionServiceProvider).staff?.id,
+            ),
+          ),
+        );
+        if (!mounted) return;
+      }
+    } catch (_) {
+      // Offline / server hiccup: never block closing the shift on it.
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const ShiftCloseScreen()),
     );

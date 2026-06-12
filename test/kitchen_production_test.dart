@@ -172,4 +172,62 @@ void main() {
       expect(data.active, isEmpty);
     });
   });
+
+  // ------------------------------------------------ P-G1.5
+
+  group('batch expiry (P-G1.5)', () {
+    test('defaultBatchExpiry: shelf life N -> end of day N from now', () {
+      final now = DateTime(2026, 6, 12, 14, 30);
+      expect(defaultBatchExpiry(now, 1), DateTime(2026, 6, 13, 23, 59, 59));
+      expect(defaultBatchExpiry(now, 0), DateTime(2026, 6, 12, 23, 59, 59));
+      // Crosses a month boundary cleanly.
+      expect(defaultBatchExpiry(DateTime(2026, 6, 30, 9), 2),
+          DateTime(2026, 7, 2, 23, 59, 59));
+      // No shelf life = never expires.
+      expect(defaultBatchExpiry(now, null), isNull);
+    });
+
+    test('kitchen payload carries shelf life + batch expiry', () {
+      final product = KitchenProduct.fromJson(<String, dynamic>{
+        'id': 1,
+        'uuid': 'u-1',
+        'name': 'Cake',
+        'shelf_life_days': 2,
+      });
+      expect(product.shelfLifeDays, 2);
+
+      final batch = ProductionBatch.fromJson(<String, dynamic>{
+        'uuid': 'p-1',
+        'status': 'finished',
+        'product_id': 1,
+        'quantity': 4.0,
+        'expires_at': '2026-06-13T23:59:59+04:00',
+      });
+      expect(batch.expiresAt, isNotNull);
+      expect(batch.expiresAt!.day, 13);
+
+      // Absent / null = never expires.
+      expect(
+        ProductionBatch.fromJson(const <String, dynamic>{'uuid': 'p'}).expiresAt,
+        isNull,
+      );
+    });
+  });
+
+  group('day-end disposition (P-G1.5)', () {
+    test('parses the /device/disposition items', () {
+      final item = DispositionItem.fromJson(<String, dynamic>{
+        'product_id': 1,
+        'uuid': 'u-1',
+        'name': 'Cake',
+        'name_ar': 'كيكة',
+        'branch_stock_qty': 7.0,
+        'expired_qty': 3.0,
+      });
+      expect(item.productId, 1);
+      expect(item.name, 'Cake');
+      expect(item.branchStockQty, 7.0);
+      expect(item.expiredQty, 3.0);
+    });
+  });
 }

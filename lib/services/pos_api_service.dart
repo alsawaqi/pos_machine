@@ -345,15 +345,55 @@ class PosApiService {
 
   /// POST /device/productions/{uuid}/finish — P-G1: the pieces land in the
   /// branch shelf stock; the server records the duration.
+  ///
+  /// P-G1.5: [expiresAtIso] is the chef's batch expiry from the Finish
+  /// dialog — always sent explicitly (null = "this batch never expires");
+  /// the dialog prefilled it from the product's shelf life.
   Future<ProductionBatch> finishProduction({
     required String uuid,
     int? staffId,
+    String? expiresAtIso,
   }) async {
     final body = await _send(() => _dio.post('/device/productions/$uuid/finish', data: {
           'staff_id': ?staffId,
+          'expires_at': expiresAtIso,
         }));
     final production = (body.dataMap['production'] as Map?)?.cast<String, dynamic>();
     return ProductionBatch.fromJson(production ?? const {});
+  }
+
+  /// GET /device/disposition — P-G1.5: the expired cooked pieces at this
+  /// branch awaiting a day-end decision. Online-only by nature.
+  Future<List<DispositionItem>> fetchDisposition() async {
+    final body = await _send(() => _dio.get('/device/disposition'));
+    final list = body.dataMap['items'];
+    if (list is! List) return const [];
+    return list
+        .whereType<Map>()
+        .map((m) => DispositionItem.fromJson(m.cast<String, dynamic>()))
+        .toList();
+  }
+
+  /// POST /device/disposition — P-G1.5: apply the closer's split (waste /
+  /// give-away / carry-over) for expired pieces. The manager [pin] is
+  /// required server-side when any give-away or carry-over is present.
+  /// Returns false on a bad PIN (code invalid_pin), true on success.
+  Future<bool> applyDisposition({
+    required List<Map<String, dynamic>> items,
+    String? pin,
+    int? staffId,
+  }) async {
+    try {
+      await _send(() => _dio.post('/device/disposition', data: {
+            'items': items,
+            'pin': ?pin,
+            'staff_id': ?staffId,
+          }));
+      return true;
+    } on ApiException catch (e) {
+      if (e.code == 'invalid_pin') return false;
+      rethrow;
+    }
   }
 
   /// POST /device/productions/{uuid}/cancel — P-G1: manager-gated; the PIN is

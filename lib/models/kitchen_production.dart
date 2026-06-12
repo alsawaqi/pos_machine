@@ -4,6 +4,15 @@
 /// counts), never money — so no baisas here.
 library;
 
+/// P-G1.5 — the default batch expiry for a product: end of the day
+/// [shelfLifeDays] from now. Null shelf life = the batch never expires.
+/// Pure so the Finish-dialog chips are unit-testable.
+DateTime? defaultBatchExpiry(DateTime now, int? shelfLifeDays) {
+  if (shelfLifeDays == null) return null;
+  final day = now.add(Duration(days: shelfLifeDays));
+  return DateTime(day.year, day.month, day.day, 23, 59, 59);
+}
+
 /// One cooked product the kitchen can produce.
 class KitchenProduct {
   const KitchenProduct({
@@ -14,6 +23,7 @@ class KitchenProduct {
     this.categoryId,
     this.branchStockQty,
     this.maxProducible,
+    this.shelfLifeDays,
     this.recipe = const <KitchenRecipeLine>[],
   });
 
@@ -25,6 +35,7 @@ class KitchenProduct {
         categoryId: (json['category_id'] as num?)?.toInt(),
         branchStockQty: (json['branch_stock_qty'] as num?)?.toDouble(),
         maxProducible: (json['max_producible'] as num?)?.toInt(),
+        shelfLifeDays: (json['shelf_life_days'] as num?)?.toInt(),
         recipe: (json['recipe'] as List? ?? const [])
             .whereType<Map>()
             .map((m) => KitchenRecipeLine.fromJson(m.cast<String, dynamic>()))
@@ -43,6 +54,10 @@ class KitchenProduct {
   /// Server-computed "can make up to N" from live branch balances;
   /// null = the product has no recipe (unconstrained).
   final int? maxProducible;
+
+  /// P-G1.5 — default shelf life in days (prefills the Finish dialog's
+  /// batch expiry); null = keeps indefinitely.
+  final int? shelfLifeDays;
   final List<KitchenRecipeLine> recipe;
 }
 
@@ -145,6 +160,7 @@ class ProductionBatch {
     required this.quantity,
     this.startedAt,
     this.finishedAt,
+    this.expiresAt,
     this.durationSeconds,
     this.startedBy,
     this.lines = const <ProductionBatchLine>[],
@@ -160,6 +176,7 @@ class ProductionBatch {
         quantity: (json['quantity'] as num?)?.toDouble() ?? 0,
         startedAt: DateTime.tryParse(json['started_at']?.toString() ?? ''),
         finishedAt: DateTime.tryParse(json['finished_at']?.toString() ?? ''),
+        expiresAt: DateTime.tryParse(json['expires_at']?.toString() ?? ''),
         durationSeconds: (json['duration_seconds'] as num?)?.toInt(),
         startedBy: json['started_by']?.toString(),
         lines: (json['lines'] as List? ?? const [])
@@ -176,9 +193,42 @@ class ProductionBatch {
   final double quantity;
   final DateTime? startedAt;
   final DateTime? finishedAt;
+
+  /// P-G1.5 — the chef's batch expiry (null = never expires).
+  final DateTime? expiresAt;
   final int? durationSeconds;
   final String? startedBy;
   final List<ProductionBatchLine> lines;
+}
+
+/// P-G1.5 — one expired-stock line from GET /device/disposition: what the
+/// closer must decide on at day end.
+class DispositionItem {
+  const DispositionItem({
+    required this.productId,
+    required this.uuid,
+    required this.name,
+    this.nameAr,
+    required this.branchStockQty,
+    required this.expiredQty,
+  });
+
+  factory DispositionItem.fromJson(Map<String, dynamic> json) =>
+      DispositionItem(
+        productId: (json['product_id'] as num?)?.toInt() ?? 0,
+        uuid: json['uuid']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        nameAr: json['name_ar']?.toString(),
+        branchStockQty: (json['branch_stock_qty'] as num?)?.toDouble() ?? 0,
+        expiredQty: (json['expired_qty'] as num?)?.toDouble() ?? 0,
+      );
+
+  final int productId;
+  final String uuid;
+  final String name;
+  final String? nameAr;
+  final double branchStockQty;
+  final double expiredQty;
 }
 
 /// The whole GET /device/kitchen payload.

@@ -2903,4 +2903,82 @@ class L10nEn extends L10n {
 
   @override
   String get kitchenPinInvalid => 'Invalid manager PIN.';
+
+  @override
+  String kitchenFinishTitle(String name) {
+    return 'Finish $name';
+  }
+
+  @override
+  String get kitchenExpiryLabel => 'Best before';
+
+  @override
+  String get kitchenExpiryToday => 'Today';
+
+  @override
+  String get kitchenExpiryTomorrow => 'Tomorrow';
+
+  @override
+  String kitchenExpiryInDays(int n) {
+    return 'In $n days';
+  }
+
+  @override
+  String get kitchenExpiryNever => 'No expiry';
+
+  @override
+  String get kitchenExpiryPickDate => 'Pick date';
+
+  @override
+  String get kitchenExpiryNeverHint =>
+      'This batch will never be flagged at day end.';
+
+  @override
+  String kitchenExpiryResolvedHint(String date) {
+    return 'Good until end of $date.';
+  }
+
+  @override
+  String kitchenExpiresOn(String date) {
+    return 'Best before $date';
+  }
+
+  @override
+  String get dispositionTitle => 'Expired Items — Day End';
+
+  @override
+  String get dispositionSubtitle =>
+      'These cooked pieces have passed their best-before. Decide what happens to each before closing the shift: waste, give away (manager approval + who got it), or keep on sale (manager approval).';
+
+  @override
+  String dispositionExpiredCount(String expired, String shelf) {
+    return '$expired expired of $shelf on shelf';
+  }
+
+  @override
+  String get dispositionWaste => 'Waste';
+
+  @override
+  String get dispositionGiveAway => 'Give away';
+
+  @override
+  String get dispositionCarryOver => 'Keep on sale';
+
+  @override
+  String dispositionRemaining(String qty) {
+    return '$qty left to assign';
+  }
+
+  @override
+  String get dispositionGiftCommentHint =>
+      'Who got it? (required — staff name or customer)';
+
+  @override
+  String get dispositionSkip => 'Skip for now';
+
+  @override
+  String get dispositionSubmit => 'Apply & continue';
+
+  @override
+  String get dispositionDone => 'Disposition recorded.';
 }
