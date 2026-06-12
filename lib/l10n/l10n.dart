@@ -4666,6 +4666,204 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Select at least {n}'**
   String posCustomizeMinHint(int n);
+
+  /// No description provided for @posNavKitchen.
+  ///
+  /// In en, this message translates to:
+  /// **'Kitchen'**
+  String get posNavKitchen;
+
+  /// No description provided for @kitchenNotAllowedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Kitchen Locked'**
+  String get kitchenNotAllowedTitle;
+
+  /// No description provided for @kitchenNotAllowedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your role is not permitted to open the kitchen production screen on this terminal.'**
+  String get kitchenNotAllowedBody;
+
+  /// No description provided for @kitchenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Kitchen Production'**
+  String get kitchenTitle;
+
+  /// No description provided for @kitchenRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get kitchenRefresh;
+
+  /// No description provided for @kitchenOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'The kitchen needs a connection — production is validated live by the server.'**
+  String get kitchenOffline;
+
+  /// No description provided for @kitchenLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load the kitchen. Check the connection and try again.'**
+  String get kitchenLoadFailed;
+
+  /// No description provided for @kitchenRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get kitchenRetry;
+
+  /// No description provided for @kitchenNoProducts.
+  ///
+  /// In en, this message translates to:
+  /// **'No cooked products are set up for this branch.\nMark a product as Cooked in the merchant portal first.'**
+  String get kitchenNoProducts;
+
+  /// No description provided for @kitchenOtherCategory.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get kitchenOtherCategory;
+
+  /// No description provided for @kitchenShelfCount.
+  ///
+  /// In en, this message translates to:
+  /// **'On shelf: {count}'**
+  String kitchenShelfCount(String count);
+
+  /// No description provided for @kitchenCanMake.
+  ///
+  /// In en, this message translates to:
+  /// **'Can make up to {count}'**
+  String kitchenCanMake(int count);
+
+  /// No description provided for @kitchenNoRecipe.
+  ///
+  /// In en, this message translates to:
+  /// **'No recipe — quantity is unconstrained'**
+  String get kitchenNoRecipe;
+
+  /// No description provided for @kitchenActiveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'In progress'**
+  String get kitchenActiveTitle;
+
+  /// No description provided for @kitchenNoActive.
+  ///
+  /// In en, this message translates to:
+  /// **'No batches in progress.'**
+  String get kitchenNoActive;
+
+  /// No description provided for @kitchenStartedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Started by {name}'**
+  String kitchenStartedBy(String name);
+
+  /// No description provided for @kitchenFinish.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish'**
+  String get kitchenFinish;
+
+  /// No description provided for @kitchenCancelBatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel batch'**
+  String get kitchenCancelBatch;
+
+  /// No description provided for @kitchenStartBatchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Produce {name}'**
+  String kitchenStartBatchTitle(String name);
+
+  /// No description provided for @kitchenQuantity.
+  ///
+  /// In en, this message translates to:
+  /// **'Quantity (pieces)'**
+  String get kitchenQuantity;
+
+  /// No description provided for @kitchenRecipeLocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Recipe (locked × quantity / available)'**
+  String get kitchenRecipeLocked;
+
+  /// No description provided for @kitchenInsufficient.
+  ///
+  /// In en, this message translates to:
+  /// **'Not enough ingredients at this branch for that quantity.'**
+  String get kitchenInsufficient;
+
+  /// No description provided for @kitchenExtrasTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Extra ingredients (declared)'**
+  String get kitchenExtrasTitle;
+
+  /// No description provided for @kitchenAddExtra.
+  ///
+  /// In en, this message translates to:
+  /// **'Add extra'**
+  String get kitchenAddExtra;
+
+  /// No description provided for @kitchenExtraQtyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Qty {unit}'**
+  String kitchenExtraQtyHint(String unit);
+
+  /// No description provided for @kitchenStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start batch'**
+  String get kitchenStart;
+
+  /// No description provided for @kitchenDialogCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get kitchenDialogCancel;
+
+  /// No description provided for @kitchenBatchStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Batch started — ingredients deducted.'**
+  String get kitchenBatchStarted;
+
+  /// No description provided for @kitchenBatchFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'Batch finished — pieces added to the shelf.'**
+  String get kitchenBatchFinished;
+
+  /// No description provided for @kitchenBatchCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Batch cancelled — ingredients returned.'**
+  String get kitchenBatchCancelled;
+
+  /// No description provided for @kitchenPinTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Manager approval'**
+  String get kitchenPinTitle;
+
+  /// No description provided for @kitchenPinHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Manager PIN'**
+  String get kitchenPinHint;
+
+  /// No description provided for @kitchenPinInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid manager PIN.'**
+  String get kitchenPinInvalid;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

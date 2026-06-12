@@ -108,6 +108,7 @@ class ConfigRepository {
         // The settings block is always emitted (full + delta); refresh.
         orderCancelPositions: c.meta.orderCancelPositions.value,
         reportsPositions: c.meta.reportsPositions.value,
+        kitchenPositions: c.meta.kitchenPositions.value,
         orderNumberingJson: c.meta.orderNumberingJson.value,
       );
       await _session.saveTerminalId(res.terminalId);

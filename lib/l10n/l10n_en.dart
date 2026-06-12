@@ -2788,4 +2788,119 @@ class L10nEn extends L10n {
   String posCustomizeMinHint(int n) {
     return 'Select at least $n';
   }
+
+  @override
+  String get posNavKitchen => 'Kitchen';
+
+  @override
+  String get kitchenNotAllowedTitle => 'Kitchen Locked';
+
+  @override
+  String get kitchenNotAllowedBody =>
+      'Your role is not permitted to open the kitchen production screen on this terminal.';
+
+  @override
+  String get kitchenTitle => 'Kitchen Production';
+
+  @override
+  String get kitchenRefresh => 'Refresh';
+
+  @override
+  String get kitchenOffline =>
+      'The kitchen needs a connection — production is validated live by the server.';
+
+  @override
+  String get kitchenLoadFailed =>
+      'Couldn\'t load the kitchen. Check the connection and try again.';
+
+  @override
+  String get kitchenRetry => 'Retry';
+
+  @override
+  String get kitchenNoProducts =>
+      'No cooked products are set up for this branch.\nMark a product as Cooked in the merchant portal first.';
+
+  @override
+  String get kitchenOtherCategory => 'Other';
+
+  @override
+  String kitchenShelfCount(String count) {
+    return 'On shelf: $count';
+  }
+
+  @override
+  String kitchenCanMake(int count) {
+    return 'Can make up to $count';
+  }
+
+  @override
+  String get kitchenNoRecipe => 'No recipe — quantity is unconstrained';
+
+  @override
+  String get kitchenActiveTitle => 'In progress';
+
+  @override
+  String get kitchenNoActive => 'No batches in progress.';
+
+  @override
+  String kitchenStartedBy(String name) {
+    return 'Started by $name';
+  }
+
+  @override
+  String get kitchenFinish => 'Finish';
+
+  @override
+  String get kitchenCancelBatch => 'Cancel batch';
+
+  @override
+  String kitchenStartBatchTitle(String name) {
+    return 'Produce $name';
+  }
+
+  @override
+  String get kitchenQuantity => 'Quantity (pieces)';
+
+  @override
+  String get kitchenRecipeLocked => 'Recipe (locked × quantity / available)';
+
+  @override
+  String get kitchenInsufficient =>
+      'Not enough ingredients at this branch for that quantity.';
+
+  @override
+  String get kitchenExtrasTitle => 'Extra ingredients (declared)';
+
+  @override
+  String get kitchenAddExtra => 'Add extra';
+
+  @override
+  String kitchenExtraQtyHint(String unit) {
+    return 'Qty $unit';
+  }
+
+  @override
+  String get kitchenStart => 'Start batch';
+
+  @override
+  String get kitchenDialogCancel => 'Cancel';
+
+  @override
+  String get kitchenBatchStarted => 'Batch started — ingredients deducted.';
+
+  @override
+  String get kitchenBatchFinished =>
+      'Batch finished — pieces added to the shelf.';
+
+  @override
+  String get kitchenBatchCancelled => 'Batch cancelled — ingredients returned.';
+
+  @override
+  String get kitchenPinTitle => 'Manager approval';
+
+  @override
+  String get kitchenPinHint => 'Manager PIN';
+
+  @override
+  String get kitchenPinInvalid => 'Invalid manager PIN.';
 }

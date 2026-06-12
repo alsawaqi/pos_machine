@@ -17,6 +17,7 @@ import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
 import '../providers/providers.dart';
 import 'branch_reports_screen.dart';
+import 'kitchen_production_screen.dart';
 import 'log_expense_screen.dart';
 import 'restock_request_screen.dart';
 import 'stock_count_screen.dart';
@@ -151,6 +152,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   static const _secondaryNavItems = <_NavItemData>[
     _NavItemData('Home', Icons.home_outlined),
     _NavItemData('Offers', Icons.local_offer_outlined), // P-F9
+    _NavItemData('Kitchen', Icons.soup_kitchen_outlined), // P-G1
     _NavItemData('Report', Icons.description_outlined),
     _NavItemData('History', Icons.history_rounded),
   ];
@@ -239,6 +241,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             customers: catalog.customers,
             cancelOrderPositions: catalog.cancelOrderPositions,
             reportsPositions: catalog.reportsPositions,
+            kitchenPositions: catalog.kitchenPositions,
             orderNumbering: catalog.orderNumbering,
             receiptTemplate: catalog.receiptTemplate,
             voidReasons: catalog.voidReasons,
@@ -4299,6 +4302,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     String navChipTitle(String identity) => switch (identity) {
       'Home' => l10n.posNavHome,
       'Offers' => l10n.posNavOffers,
+      'Kitchen' => l10n.posNavKitchen,
       'Report' => l10n.posNavReport,
       'History' => l10n.posNavHistory,
       _ => identity,
@@ -4330,6 +4334,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           // P-F9 — the merchant's promotions: bundles to
                           // pick, autos shown with their live status.
                           unawaited(_openOffersSheet());
+                          break;
+                        case 'Kitchen':
+                          // P-G1 — cooked-product batches; gated by the
+                          // merchant's kitchen_positions policy (the
+                          // reports pattern). Online-only.
+                          unawaited(_openKitchen());
                           break;
                         case 'Report':
                           // P-F6 — chooser: the full branch dashboard
@@ -4866,6 +4876,31 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         builder: (_) => BranchReportsScreen(branchName: branch?.name ?? ''),
       ),
     );
+  }
+
+  /// P-G1 — the full-screen Kitchen production screen, allowed only for the
+  /// staff positions the merchant configured (settings.kitchen_positions).
+  /// Online-only: the screen fetches fresh balances from pos_api on open.
+  Future<void> _openKitchen() async {
+    final l10n = L10n.of(context);
+    final staff = ref.read(sessionServiceProvider).staff;
+    if (!controller.positionCanUseKitchen(staff?.position)) {
+      _showPopupMessage(
+        title: l10n.kitchenNotAllowedTitle,
+        message: l10n.kitchenNotAllowedBody,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => KitchenProductionScreen(staffId: staff?.id),
+      ),
+    );
+    // Whatever the kitchen did (started/finished/cancelled a batch), the
+    // server stock changed — refresh the cached config so the tiles agree.
+    unawaited(ref.read(configRepositoryProvider).syncConfig());
   }
 
   /// Gap sweep G3 — the mid-shift X-report behind the top-bar Report chip:

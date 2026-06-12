@@ -1759,5 +1759,73 @@
         "type": "int"
       }
     }
-  }
+  },
+  "posNavKitchen": "Kitchen",
+  "kitchenNotAllowedTitle": "Kitchen Locked",
+  "kitchenNotAllowedBody": "Your role is not permitted to open the kitchen production screen on this terminal.",
+  "kitchenTitle": "Kitchen Production",
+  "kitchenRefresh": "Refresh",
+  "kitchenOffline": "The kitchen needs a connection — production is validated live by the server.",
+  "kitchenLoadFailed": "Couldn't load the kitchen. Check the connection and try again.",
+  "kitchenRetry": "Retry",
+  "kitchenNoProducts": "No cooked products are set up for this branch.\nMark a product as Cooked in the merchant portal first.",
+  "kitchenOtherCategory": "Other",
+  "kitchenShelfCount": "On shelf: {count}",
+  "@kitchenShelfCount": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "kitchenCanMake": "Can make up to {count}",
+  "@kitchenCanMake": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "kitchenNoRecipe": "No recipe — quantity is unconstrained",
+  "kitchenActiveTitle": "In progress",
+  "kitchenNoActive": "No batches in progress.",
+  "kitchenStartedBy": "Started by {name}",
+  "@kitchenStartedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "kitchenFinish": "Finish",
+  "kitchenCancelBatch": "Cancel batch",
+  "kitchenStartBatchTitle": "Produce {name}",
+  "@kitchenStartBatchTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "kitchenQuantity": "Quantity (pieces)",
+  "kitchenRecipeLocked": "Recipe (locked × quantity / available)",
+  "kitchenInsufficient": "Not enough ingredients at this branch for that quantity.",
+  "kitchenExtrasTitle": "Extra ingredients (declared)",
+  "kitchenAddExtra": "Add extra",
+  "kitchenExtraQtyHint": "Qty {unit}",
+  "@kitchenExtraQtyHint": {
+    "placeholders": {
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "kitchenStart": "Start batch",
+  "kitchenDialogCancel": "Cancel",
+  "kitchenBatchStarted": "Batch started — ingredients deducted.",
+  "kitchenBatchFinished": "Batch finished — pieces added to the shelf.",
+  "kitchenBatchCancelled": "Batch cancelled — ingredients returned.",
+  "kitchenPinTitle": "Manager approval",
+  "kitchenPinHint": "Manager PIN",
+  "kitchenPinInvalid": "Invalid manager PIN."
 }

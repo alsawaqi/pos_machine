@@ -24,6 +24,7 @@ class CatalogSnapshot {
     this.ingredients = const <IngredientRef>[],
     this.cancelOrderPositions = const <String>['manager'],
     this.reportsPositions = const <String>['manager'],
+    this.kitchenPositions = const <String>['manager'],
     this.orderNumbering = OrderNumberingConfig.disabled,
     this.offers = const <Offer>[],
     this.receiptTemplate,
@@ -65,6 +66,8 @@ class CatalogSnapshot {
   final List<String> cancelOrderPositions;
   // P-F6 — staff positions allowed to open the branch Reports screen.
   final List<String> reportsPositions;
+  // P-G1 — staff positions allowed to open the Kitchen production screen.
+  final List<String> kitchenPositions;
   // P-F8 — the merchant's order-numbering config (disabled = local numbers).
   final OrderNumberingConfig orderNumbering;
   // P-F9 — merchant offers (promotions) for the device's offer engine.
@@ -544,6 +547,8 @@ class ConfigMapper {
     final cancelPositions = _strList(settings['order_cancel_positions']);
     // P-F6 — which staff positions may open the branch Reports screen.
     final reportsPositions = _strList(settings['reports_positions']);
+    // P-G1 — which staff positions may open the Kitchen production screen.
+    final kitchenPositions = _strList(settings['kitchen_positions']);
     // P-F8 — the merchant's order-numbering config (null = disabled).
     final orderNumbering = settings['order_numbering'];
 
@@ -555,6 +560,7 @@ class ConfigMapper {
       configSchemaVersion: Value(cursor ?? _strN(meta['generated_at'])),
       orderCancelPositions: Value(jsonEncode(cancelPositions)),
       reportsPositions: Value(jsonEncode(reportsPositions)),
+      kitchenPositions: Value(jsonEncode(kitchenPositions)),
       orderNumberingJson:
           Value(orderNumbering is Map ? jsonEncode(orderNumbering) : null),
     );
@@ -867,6 +873,7 @@ class ConfigMapper {
       ingredients: ingredients,
       cancelOrderPositions: _cancelPositionsFromMeta(meta),
       reportsPositions: _reportsPositionsFromMeta(meta),
+      kitchenPositions: _kitchenPositionsFromMeta(meta),
       orderNumbering: _orderNumberingFromMeta(meta),
       offers: offerRows
           .map((o) => Offer(
@@ -926,6 +933,10 @@ class ConfigMapper {
   /// P-F6 — decode the cached reports-access policy (same fallback).
   static List<String> _reportsPositionsFromMeta(SyncMetaRow? meta) =>
       _positionsFromJson(meta?.reportsPositions);
+
+  /// P-G1 — decode the cached Kitchen-screen access policy (same fallback).
+  static List<String> _kitchenPositionsFromMeta(SyncMetaRow? meta) =>
+      _positionsFromJson(meta?.kitchenPositions);
 
   /// P-F8 — decode the cached order-numbering config (disabled on any
   /// absence/failure: the device keeps its local numbers).

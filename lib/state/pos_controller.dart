@@ -250,6 +250,10 @@ class PosController extends ChangeNotifier {
   /// (`settings.reports_positions`). Managers-only until synced.
   List<String> reportsPositions = const <String>['manager'];
 
+  /// P-G1 — staff positions allowed to open the Kitchen production screen
+  /// (`settings.kitchen_positions`). Managers-only until synced.
+  List<String> kitchenPositions = const <String>['manager'];
+
   /// P-F8 — the merchant's order-numbering config (disabled = device-local
   /// numbers only).
   OrderNumberingConfig orderNumbering = OrderNumberingConfig.disabled;
@@ -300,6 +304,13 @@ class PosController extends ChangeNotifier {
     final p = (position ?? '').trim().toLowerCase();
     if (p.isEmpty) return false;
     return reportsPositions.any((allowed) => allowed.trim().toLowerCase() == p);
+  }
+
+  /// P-G1 — whether [position] may open the Kitchen production screen.
+  bool positionCanUseKitchen(String? position) {
+    final p = (position ?? '').trim().toLowerCase();
+    if (p.isEmpty) return false;
+    return kitchenPositions.any((allowed) => allowed.trim().toLowerCase() == p);
   }
 
   /// The unmodified catalog (base prices). [allProducts] is this list re-priced
@@ -540,6 +551,7 @@ class PosController extends ChangeNotifier {
     List<CustomerRef> customers = const <CustomerRef>[],
     List<String> cancelOrderPositions = const <String>['manager'],
     List<String> reportsPositions = const <String>['manager'],
+    List<String> kitchenPositions = const <String>['manager'],
     OrderNumberingConfig orderNumbering = OrderNumberingConfig.disabled,
     ReceiptTemplate? receiptTemplate,
     List<VoidReasonRef> voidReasons = const <VoidReasonRef>[],
@@ -565,6 +577,8 @@ class PosController extends ChangeNotifier {
         cancelOrderPositions.isEmpty ? const <String>['manager'] : cancelOrderPositions;
     this.reportsPositions =
         reportsPositions.isEmpty ? const <String>['manager'] : reportsPositions;
+    this.kitchenPositions =
+        kitchenPositions.isEmpty ? const <String>['manager'] : kitchenPositions;
     this.orderNumbering = orderNumbering;
     this.receiptTemplate = receiptTemplate;
     this.voidReasons = voidReasons;
@@ -674,14 +688,18 @@ class PosController extends ChangeNotifier {
   }
 
   /// Whether [product] is sold out at this branch (greyed-out / blocked on the
-  /// POS). Unit products: branch count ≤ 0. Ingredient products: any recipe
-  /// ingredient's branch balance is below what one unit needs. Untracked
-  /// products are always available.
+  /// POS). Unit products: branch count ≤ 0. Cooked products (P-G1): same
+  /// shelf count, but NO count yet (never produced/allocated here) also means
+  /// sold out — a cooked product starts grey until the kitchen produces.
+  /// Ingredient products: any recipe ingredient's branch balance is below
+  /// what one unit needs. Untracked products are always available.
   bool isOutOfStock(Product product) {
     switch (product.stockMode) {
       case 'unit':
         final qty = product.branchStockQty;
         return qty != null && qty <= 0;
+      case 'cooked':
+        return (product.branchStockQty ?? 0) <= 0;
       case 'ingredient':
         for (final line in product.recipe) {
           if ((ingredientBalances[line.ingredientId] ?? 0) < line.quantity) {

@@ -2817,4 +2817,118 @@ class L10nAr extends L10n {
   String posCustomizeMinHint(int n) {
     return 'اختر $n على الأقل';
   }
+
+  @override
+  String get posNavKitchen => 'المطبخ';
+
+  @override
+  String get kitchenNotAllowedTitle => 'المطبخ مقفل';
+
+  @override
+  String get kitchenNotAllowedBody =>
+      'منصبك الوظيفي لا يسمح بفتح شاشة إنتاج المطبخ على هذا الجهاز.';
+
+  @override
+  String get kitchenTitle => 'إنتاج المطبخ';
+
+  @override
+  String get kitchenRefresh => 'تحديث';
+
+  @override
+  String get kitchenOffline =>
+      'المطبخ يحتاج اتصالًا بالإنترنت — يتحقق الخادم من الإنتاج مباشرةً.';
+
+  @override
+  String get kitchenLoadFailed =>
+      'تعذّر تحميل المطبخ. تحقق من الاتصال وحاول مجددًا.';
+
+  @override
+  String get kitchenRetry => 'إعادة المحاولة';
+
+  @override
+  String get kitchenNoProducts =>
+      'لا توجد منتجات مطبوخة معدّة لهذا الفرع.\nحدّد منتجًا كمطبوخ في بوابة التاجر أولًا.';
+
+  @override
+  String get kitchenOtherCategory => 'أخرى';
+
+  @override
+  String kitchenShelfCount(String count) {
+    return 'على الرف: $count';
+  }
+
+  @override
+  String kitchenCanMake(int count) {
+    return 'يمكن تحضير حتى $count';
+  }
+
+  @override
+  String get kitchenNoRecipe => 'بلا وصفة — الكمية غير مقيّدة';
+
+  @override
+  String get kitchenActiveTitle => 'قيد التحضير';
+
+  @override
+  String get kitchenNoActive => 'لا توجد دفعات قيد التحضير.';
+
+  @override
+  String kitchenStartedBy(String name) {
+    return 'بدأها $name';
+  }
+
+  @override
+  String get kitchenFinish => 'إنهاء';
+
+  @override
+  String get kitchenCancelBatch => 'إلغاء الدفعة';
+
+  @override
+  String kitchenStartBatchTitle(String name) {
+    return 'تحضير $name';
+  }
+
+  @override
+  String get kitchenQuantity => 'الكمية (قطع)';
+
+  @override
+  String get kitchenRecipeLocked => 'الوصفة (مثبتة × الكمية / المتاح)';
+
+  @override
+  String get kitchenInsufficient =>
+      'لا تكفي المكونات في هذا الفرع لهذه الكمية.';
+
+  @override
+  String get kitchenExtrasTitle => 'مكونات إضافية (مصرّح بها)';
+
+  @override
+  String get kitchenAddExtra => 'إضافة مكوّن';
+
+  @override
+  String kitchenExtraQtyHint(String unit) {
+    return 'الكمية $unit';
+  }
+
+  @override
+  String get kitchenStart => 'بدء الدفعة';
+
+  @override
+  String get kitchenDialogCancel => 'إلغاء';
+
+  @override
+  String get kitchenBatchStarted => 'بدأت الدفعة — تم خصم المكونات.';
+
+  @override
+  String get kitchenBatchFinished => 'اكتملت الدفعة — أُضيفت القطع إلى الرف.';
+
+  @override
+  String get kitchenBatchCancelled => 'أُلغيت الدفعة — أُعيدت المكونات.';
+
+  @override
+  String get kitchenPinTitle => 'موافقة المدير';
+
+  @override
+  String get kitchenPinHint => 'رمز المدير';
+
+  @override
+  String get kitchenPinInvalid => 'رمز المدير غير صحيح.';
 }

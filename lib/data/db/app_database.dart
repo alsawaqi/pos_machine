@@ -39,7 +39,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 22;
+  int get schemaVersion => 23;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -151,6 +151,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 22) {
             // v22 — P-F9: merchant offers (promotions).
             await m.createTable(offers);
+          }
+          if (from < 23) {
+            // v23 — P-G1: the device Kitchen-screen access policy.
+            await m.addColumn(syncMeta, syncMeta.kitchenPositions);
           }
         },
       );
@@ -358,6 +362,7 @@ class AppDatabase extends _$AppDatabase {
     required DateTime now,
     String? orderCancelPositions,
     String? reportsPositions,
+    String? kitchenPositions,
     String? orderNumberingJson,
   }) {
     return transaction(() async {
@@ -439,6 +444,9 @@ class AppDatabase extends _$AppDatabase {
         reportsPositions: reportsPositions == null
             ? const Value.absent()
             : Value(reportsPositions),
+        kitchenPositions: kitchenPositions == null
+            ? const Value.absent()
+            : Value(kitchenPositions),
         orderNumberingJson: orderNumberingJson == null
             ? const Value.absent()
             : Value(orderNumberingJson),

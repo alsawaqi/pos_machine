@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../core/api_config.dart';
 import '../models/branch_report.dart';
+import '../models/kitchen_production.dart';
 import '../models/pos_models.dart';
 import 'api_models.dart';
 import 'session_service.dart' show OpenShiftData;
@@ -309,6 +310,72 @@ class PosApiService {
       openedAt: DateTime.tryParse(m['opened_at']?.toString() ?? '') ?? DateTime.now(),
       staffId: (m['staff_id'] as num?)?.toInt() ?? 0,
     );
+  }
+
+  /// GET /device/kitchen — P-G1: the Kitchen screen's data (cooked products
+  /// with live "can make up to N", the extras ingredient picker, and this
+  /// branch's in-progress batches). Online-only by design — production
+  /// validates against fresh balances, so the screen shows fresh numbers.
+  Future<KitchenData> fetchKitchen() async {
+    final body = await _send(() => _dio.get('/device/kitchen'));
+    return KitchenData.fromJson(body.dataMap);
+  }
+
+  /// POST /device/productions — P-G1: start a batch. The recipe amounts are
+  /// locked server-side (quantity x recipe); [extras] are the declared
+  /// beyond-recipe lines. The server deducts the ingredients immediately.
+  Future<ProductionBatch> startProduction({
+    required int productId,
+    required int quantity,
+    int? staffId,
+    List<({int ingredientId, double quantity})> extras = const [],
+  }) async {
+    final body = await _send(() => _dio.post('/device/productions', data: {
+          'product_id': productId,
+          'quantity': quantity,
+          'staff_id': ?staffId,
+          'extras': [
+            for (final e in extras)
+              {'ingredient_id': e.ingredientId, 'quantity': e.quantity},
+          ],
+        }));
+    final production = (body.dataMap['production'] as Map?)?.cast<String, dynamic>();
+    return ProductionBatch.fromJson(production ?? const {});
+  }
+
+  /// POST /device/productions/{uuid}/finish — P-G1: the pieces land in the
+  /// branch shelf stock; the server records the duration.
+  Future<ProductionBatch> finishProduction({
+    required String uuid,
+    int? staffId,
+  }) async {
+    final body = await _send(() => _dio.post('/device/productions/$uuid/finish', data: {
+          'staff_id': ?staffId,
+        }));
+    final production = (body.dataMap['production'] as Map?)?.cast<String, dynamic>();
+    return ProductionBatch.fromJson(production ?? const {});
+  }
+
+  /// POST /device/productions/{uuid}/cancel — P-G1: manager-gated; the PIN is
+  /// verified SERVER-SIDE (manager_approval_positions policy) and the
+  /// ingredients return to the branch shelf. Returns null on a bad PIN
+  /// (code invalid_pin), mirroring [verifyManagerPin].
+  Future<ProductionBatch?> cancelProduction({
+    required String uuid,
+    required String pin,
+    int? staffId,
+  }) async {
+    try {
+      final body = await _send(() => _dio.post('/device/productions/$uuid/cancel', data: {
+            'pin': pin,
+            'staff_id': ?staffId,
+          }));
+      final production = (body.dataMap['production'] as Map?)?.cast<String, dynamic>();
+      return ProductionBatch.fromJson(production ?? const {});
+    } on ApiException catch (e) {
+      if (e.code == 'invalid_pin') return null;
+      rethrow;
+    }
   }
 
   // ---------------------------------------------------------------------------
