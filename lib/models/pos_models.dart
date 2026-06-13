@@ -160,6 +160,25 @@ List<TaxLineAmount> taxLinesFor(double subtotal) => activeCompanyTaxes
 double taxTotalFor(double subtotal) =>
     _roundTax(taxLinesFor(subtotal).fold<double>(0, (s, l) => s + l.amount));
 
+/// PD3b — one stock-usage line on an add-on option: picking the option
+/// consumes ([isRemove] false) or hands back ([isRemove] true) [qty] of an
+/// ingredient ([ingredientId], base-unit qty) XOR a product ([productId]:
+/// packaging, a prepared cooked item, or a bought-in unit product), per ONE
+/// parent line unit. The device gates availability on the 'add' lines it
+/// can see; the server consumes from its own frozen snapshot at pay.
+class AddonConsumptionLine {
+  const AddonConsumptionLine({
+    this.ingredientId,
+    this.productId,
+    this.isRemove = false,
+    required this.qty,
+  });
+  final int? ingredientId;
+  final int? productId;
+  final bool isRemove;
+  final double qty;
+}
+
 /// One selectable add-on within a group (e.g. "Oat milk", "Extra shot"), with
 /// the price it adds to the line. Maps from the API `addons` (price in OMR,
 /// converted from baisas at the catalog boundary).
@@ -171,6 +190,7 @@ class AddonOption {
     required this.priceDelta,
     this.isDefault = false,
     this.linkedProductId,
+    this.consumption = const <AddonConsumptionLine>[],
   });
   final int id;
   final String label;
@@ -182,6 +202,8 @@ class AddonOption {
   // product). The option greys out when that product is sold out at the
   // branch; null = a classic priced/ingredient option, always sellable.
   final int? linkedProductId;
+  // PD3b — the option's stock-usage lines (availability gating).
+  final List<AddonConsumptionLine> consumption;
 }
 
 /// A product's add-on group (e.g. "Size", "Milk", "Extras"), assigned per

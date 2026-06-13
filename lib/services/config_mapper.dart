@@ -287,6 +287,29 @@ class ConfigMapper {
     return const [];
   }
 
+  /// PD3b — decode an addon's cached consumption JSON → gating lines.
+  /// Unknown shapes are dropped silently; the server consumes from its
+  /// frozen snapshot regardless of what the device can see.
+  static List<AddonConsumptionLine> _consumptionFromJson(String json) {
+    if (json.isEmpty || json == '[]') return const [];
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is List) {
+        return decoded
+            .whereType<Map>()
+            .map((m) => AddonConsumptionLine(
+                  ingredientId: (m['ingredient_id'] as num?)?.toInt(),
+                  productId: (m['product_id'] as num?)?.toInt(),
+                  isRemove: m['direction'] == 'remove',
+                  qty: (m['qty'] as num?)?.toDouble() ?? 0,
+                ))
+            .where((l) => l.ingredientId != null || l.productId != null)
+            .toList();
+      }
+    } catch (_) {}
+    return const [];
+  }
+
   /// API `data` map → Drift companions for AppDatabase.replaceConfig. [cursor]
   /// is the envelope's meta.generated_at (a sibling of `data`, so it can't be
   /// read from `data` here) — persisted as the next delta `since`.
@@ -394,6 +417,8 @@ class ConfigMapper {
           ingredientId: Value(_int(a['ingredient_id'])),
           // P-G3 — the product behind a product-as-add-on option.
           linkedProductId: Value(_int(a['linked_product_id'])),
+          // PD3b — the option's stock-usage lines, cached raw.
+          consumptionJson: Value(jsonEncode(_list(a['consumption']))),
           status: Value(_strN(a['status'])),
         ));
       }
@@ -761,6 +786,8 @@ class ConfigMapper {
         priceDelta: a.priceDeltaBaisas / 1000.0,
         isDefault: a.isDefault,
         linkedProductId: a.linkedProductId,
+        // PD3b — stock-usage lines for per-option availability gating.
+        consumption: _consumptionFromJson(a.consumptionJson),
       ));
     }
     final addonGroups = addonGroupRows

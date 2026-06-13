@@ -103,6 +103,7 @@ void main() {
             name: 'Large',
             priceDeltaBaisas: 500,
             isDefault: false,
+            consumptionJson: '[]',
           ),
           const AddonRow(
             id: 101,
@@ -110,6 +111,7 @@ void main() {
             name: 'Extra shot',
             priceDeltaBaisas: 300,
             isDefault: false,
+            consumptionJson: '[]',
           ),
         ],
       );
@@ -155,6 +157,7 @@ void main() {
             name: 'Large',
             priceDeltaBaisas: 500,
             isDefault: false,
+            consumptionJson: '[]',
           ),
           const AddonRow(
             id: 101,
@@ -163,6 +166,7 @@ void main() {
             priceDeltaBaisas: 300,
             status: 'inactive',
             isDefault: false,
+            consumptionJson: '[]',
           ),
         ],
       );
@@ -325,6 +329,7 @@ void main() {
             priceDeltaBaisas: 1500,
             isDefault: false,
             linkedProductId: 77,
+            consumptionJson: '[]',
           ),
           const AddonRow(
             id: 101,
@@ -332,6 +337,7 @@ void main() {
             name: 'Extra shot',
             priceDeltaBaisas: 300,
             isDefault: false,
+            consumptionJson: '[]',
           ),
         ],
       );
@@ -404,6 +410,183 @@ void main() {
         tables: const <DiningTableDefinition>[],
       );
       expect(controller.isAddonOptionUnavailable(cakeOption), isTrue);
+    });
+  });
+
+  // PD3b — per-option stock-usage lines: parse → Drift → catalog, and the
+  // controller gates 'add' lines on what the device can see (ingredient
+  // balances + cached product stock); removal lines never gate; a product
+  // id missing from the config (internal packaging) is skipped.
+  group('PD3b per-option consumption', () {
+    test('parse() caches the consumption lines as JSON', () {
+      final parsed = ConfigMapper.parse(<String, dynamic>{
+        'addon_groups': [
+          {
+            'id': 5,
+            'name': 'Extras',
+            'selection_mode': 'multiple',
+            'addons': [
+              {
+                'id': 100,
+                'add_on_group_id': 5,
+                'name': 'Extra patty',
+                'price_delta_baisas': 500,
+                'consumption': [
+                  {'type': 'product', 'product_id': 3, 'direction': 'add', 'qty': 1, 'unit': null},
+                ],
+              },
+              {
+                'id': 101,
+                'add_on_group_id': 5,
+                'name': 'Plain',
+                'price_delta_baisas': 0,
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(parsed.addons.first.consumptionJson.value, contains('"product_id":3'));
+      expect(parsed.addons[1].consumptionJson.value, '[]');
+    });
+
+    test('toCatalog() decodes the lines onto the AddonOption', () {
+      final catalog = ConfigMapper.toCatalog(
+        null,
+        const <CategoryRow>[],
+        const <ProductRow>[],
+        const <FloorRow>[],
+        const <TableRow>[],
+        const <TaxRow>[],
+        [const AddonGroupRow(id: 5, name: 'Extras', selectionMode: 'multiple')],
+        [
+          const AddonRow(
+            id: 100,
+            addOnGroupId: 5,
+            name: 'No salad',
+            priceDeltaBaisas: 0,
+            isDefault: false,
+            consumptionJson:
+                '[{"type":"ingredient","ingredient_id":11,"product_id":null,"direction":"remove","qty":0.05,"unit":"kg"}]',
+          ),
+        ],
+      );
+
+      final lines = catalog.addonGroups.single.options.single.consumption;
+      expect(lines, hasLength(1));
+      expect(lines.single.ingredientId, 11);
+      expect(lines.single.isRemove, isTrue);
+      expect(lines.single.qty, closeTo(0.05, 0.0001));
+    });
+
+    test('add lines gate on visible stock; removals and unknown ids never do', () {
+      final controller = PosController();
+      addTearDown(controller.dispose);
+
+      controller.applyCatalog(
+        categories: const ['Food'],
+        products: const [
+          Product(
+            id: '3',
+            name: 'Patty',
+            category: 'Food',
+            price: 0.5,
+            stockMode: 'cooked',
+            branchStockQty: 0, // the kitchen has not produced yet
+          ),
+        ],
+        floors: const <DiningFloor>[],
+        tables: const <DiningTableDefinition>[],
+        // Salad (11): 0.02 kg left.
+        ingredientBalances: const {11: 0.02},
+      );
+
+      // An 'add' product line on a sold-out cooked product greys out.
+      const extraPatty = AddonOption(
+        id: 1,
+        label: 'Extra patty',
+        priceDelta: 0.5,
+        consumption: [AddonConsumptionLine(productId: 3, qty: 1)],
+      );
+      expect(controller.isAddonOptionUnavailable(extraPatty), isTrue);
+
+      // An 'add' ingredient line below the branch balance greys out.
+      const extraSalad = AddonOption(
+        id: 2,
+        label: 'Extra salad',
+        priceDelta: 0.1,
+        consumption: [AddonConsumptionLine(ingredientId: 11, qty: 0.05)],
+      );
+      expect(controller.isAddonOptionUnavailable(extraSalad), isTrue);
+
+      // ...but a smaller add fits the remaining 0.02 kg.
+      const lightSalad = AddonOption(
+        id: 3,
+        label: 'Light salad',
+        priceDelta: 0.05,
+        consumption: [AddonConsumptionLine(ingredientId: 11, qty: 0.01)],
+      );
+      expect(controller.isAddonOptionUnavailable(lightSalad), isFalse);
+
+      // A REMOVAL never gates, even of a depleted ingredient.
+      const noSalad = AddonOption(
+        id: 4,
+        label: 'No salad',
+        priceDelta: 0,
+        consumption: [
+          AddonConsumptionLine(ingredientId: 11, isRemove: true, qty: 0.05),
+        ],
+      );
+      expect(controller.isAddonOptionUnavailable(noSalad), isFalse);
+
+      // A product id missing from the config (internal packaging never
+      // ships to the device) is SKIPPED — the option stays sellable.
+      const largeCup = AddonOption(
+        id: 5,
+        label: 'Large',
+        priceDelta: 0.1,
+        consumption: [AddonConsumptionLine(productId: 999, qty: 1)],
+      );
+      expect(controller.isAddonOptionUnavailable(largeCup), isFalse);
+    });
+
+    test('product add lines gate against the line QTY, not just zero stock', () {
+      final controller = PosController();
+      addTearDown(controller.dispose);
+
+      controller.applyCatalog(
+        categories: const ['Food'],
+        products: const [
+          Product(
+            id: '3',
+            name: 'Patty',
+            category: 'Food',
+            price: 0.5,
+            stockMode: 'cooked',
+            branchStockQty: 1, // one left on the shelf
+          ),
+        ],
+        floors: const <DiningFloor>[],
+        tables: const <DiningTableDefinition>[],
+      );
+
+      // Needs 2 with 1 on the shelf — visible shortfall, greyed.
+      const doublePatty = AddonOption(
+        id: 1,
+        label: 'Double patty',
+        priceDelta: 1.0,
+        consumption: [AddonConsumptionLine(productId: 3, qty: 2)],
+      );
+      expect(controller.isAddonOptionUnavailable(doublePatty), isTrue);
+
+      // Needs 1 with 1 on the shelf — fits.
+      const singlePatty = AddonOption(
+        id: 2,
+        label: 'Extra patty',
+        priceDelta: 0.5,
+        consumption: [AddonConsumptionLine(productId: 3, qty: 1)],
+      );
+      expect(controller.isAddonOptionUnavailable(singlePatty), isFalse);
     });
   });
 }

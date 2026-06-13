@@ -144,6 +144,10 @@ class Addons extends Table {
   IntColumn get ingredientId => integer().nullable()();
   // P-G3 — the real product behind this option (greys out when sold out).
   IntColumn get linkedProductId => integer().nullable()();
+  // PD3b — the option's stock-usage lines, cached as the raw JSON array
+  // from /device/config ([{type, ingredient_id|product_id, direction,
+  // qty, unit}]). Drives per-option availability gating.
+  TextColumn get consumptionJson => text().withDefault(const Constant('[]'))();
   TextColumn get status => text().nullable()();
 
   @override

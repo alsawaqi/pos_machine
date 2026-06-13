@@ -794,15 +794,57 @@ class PosController extends ChangeNotifier {
   /// backed by a real product (linked_product_id) greys out when that
   /// product is sold out at this branch — same pool as its standalone tile —
   /// or when the product is missing from the branch catalog entirely
-  /// (deleted / not assigned here). Classic options are always sellable.
+  /// (deleted / not assigned here).
+  ///
+  /// PD3b — an option's 'add' stock-usage lines gate too, on what the
+  /// device can see: ingredient lines against the branch balance; product
+  /// lines against the cached product's stock. A product id MISSING from
+  /// the catalog is SKIPPED, not blocked — internal packaging never
+  /// reaches the device config; the server still consumes it and stock
+  /// may go negative by policy. Removal lines never gate.
   bool isAddonOptionUnavailable(AddonOption option) {
     final linkedId = option.linkedProductId;
-    if (linkedId == null) return false;
-    final key = linkedId.toString();
-    for (final p in allProducts) {
-      if (p.id == key) return isOutOfStock(p);
+    if (linkedId != null) {
+      final key = linkedId.toString();
+      var found = false;
+      for (final p in allProducts) {
+        if (p.id == key) {
+          if (isOutOfStock(p)) return true;
+          found = true;
+          break;
+        }
+      }
+      if (!found) return true;
     }
-    return true;
+
+    for (final line in option.consumption) {
+      if (line.isRemove) continue;
+      final ingredientId = line.ingredientId;
+      if (ingredientId != null) {
+        if ((ingredientBalances[ingredientId] ?? 0) < line.qty) return true;
+        continue;
+      }
+      final productId = line.productId;
+      if (productId == null) continue;
+      final key = productId.toString();
+      for (final p in allProducts) {
+        if (p.id == key) {
+          // Piece-counted products gate against the line's QTY (a
+          // "double patty" needing 2 with 1 on the shelf is short) —
+          // mirroring the ingredient check above. Recipe/untracked
+          // products fall back to the one-unit isOutOfStock check.
+          final shelf = p.branchStockQty;
+          if ((p.stockMode == 'unit' || p.stockMode == 'cooked') && shelf != null) {
+            if (shelf < line.qty) return true;
+          } else if (isOutOfStock(p)) {
+            return true;
+          }
+          break;
+        }
+      }
+    }
+
+    return false;
   }
 
   /// Gap sweep G1 — whether [product] is outside its daily availability

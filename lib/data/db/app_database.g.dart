@@ -3395,6 +3395,18 @@ class $AddonsTable extends Addons with TableInfo<$AddonsTable, AddonRow> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _consumptionJsonMeta = const VerificationMeta(
+    'consumptionJson',
+  );
+  @override
+  late final GeneratedColumn<String> consumptionJson = GeneratedColumn<String>(
+    'consumption_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
   static const VerificationMeta _statusMeta = const VerificationMeta('status');
   @override
   late final GeneratedColumn<String> status = GeneratedColumn<String>(
@@ -3414,6 +3426,7 @@ class $AddonsTable extends Addons with TableInfo<$AddonsTable, AddonRow> {
     isDefault,
     ingredientId,
     linkedProductId,
+    consumptionJson,
     status,
   ];
   @override
@@ -3487,6 +3500,15 @@ class $AddonsTable extends Addons with TableInfo<$AddonsTable, AddonRow> {
         ),
       );
     }
+    if (data.containsKey('consumption_json')) {
+      context.handle(
+        _consumptionJsonMeta,
+        consumptionJson.isAcceptableOrUnknown(
+          data['consumption_json']!,
+          _consumptionJsonMeta,
+        ),
+      );
+    }
     if (data.containsKey('status')) {
       context.handle(
         _statusMeta,
@@ -3534,6 +3556,10 @@ class $AddonsTable extends Addons with TableInfo<$AddonsTable, AddonRow> {
         DriftSqlType.int,
         data['${effectivePrefix}linked_product_id'],
       ),
+      consumptionJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}consumption_json'],
+      )!,
       status: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}status'],
@@ -3556,6 +3582,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
   final bool isDefault;
   final int? ingredientId;
   final int? linkedProductId;
+  final String consumptionJson;
   final String? status;
   const AddonRow({
     required this.id,
@@ -3566,6 +3593,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     required this.isDefault,
     this.ingredientId,
     this.linkedProductId,
+    required this.consumptionJson,
     this.status,
   });
   @override
@@ -3585,6 +3613,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     if (!nullToAbsent || linkedProductId != null) {
       map['linked_product_id'] = Variable<int>(linkedProductId);
     }
+    map['consumption_json'] = Variable<String>(consumptionJson);
     if (!nullToAbsent || status != null) {
       map['status'] = Variable<String>(status);
     }
@@ -3607,6 +3636,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
       linkedProductId: linkedProductId == null && nullToAbsent
           ? const Value.absent()
           : Value(linkedProductId),
+      consumptionJson: Value(consumptionJson),
       status: status == null && nullToAbsent
           ? const Value.absent()
           : Value(status),
@@ -3627,6 +3657,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
       isDefault: serializer.fromJson<bool>(json['isDefault']),
       ingredientId: serializer.fromJson<int?>(json['ingredientId']),
       linkedProductId: serializer.fromJson<int?>(json['linkedProductId']),
+      consumptionJson: serializer.fromJson<String>(json['consumptionJson']),
       status: serializer.fromJson<String?>(json['status']),
     );
   }
@@ -3642,6 +3673,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
       'isDefault': serializer.toJson<bool>(isDefault),
       'ingredientId': serializer.toJson<int?>(ingredientId),
       'linkedProductId': serializer.toJson<int?>(linkedProductId),
+      'consumptionJson': serializer.toJson<String>(consumptionJson),
       'status': serializer.toJson<String?>(status),
     };
   }
@@ -3655,6 +3687,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     bool? isDefault,
     Value<int?> ingredientId = const Value.absent(),
     Value<int?> linkedProductId = const Value.absent(),
+    String? consumptionJson,
     Value<String?> status = const Value.absent(),
   }) => AddonRow(
     id: id ?? this.id,
@@ -3667,6 +3700,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     linkedProductId: linkedProductId.present
         ? linkedProductId.value
         : this.linkedProductId,
+    consumptionJson: consumptionJson ?? this.consumptionJson,
     status: status.present ? status.value : this.status,
   );
   AddonRow copyWithCompanion(AddonsCompanion data) {
@@ -3687,6 +3721,9 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
       linkedProductId: data.linkedProductId.present
           ? data.linkedProductId.value
           : this.linkedProductId,
+      consumptionJson: data.consumptionJson.present
+          ? data.consumptionJson.value
+          : this.consumptionJson,
       status: data.status.present ? data.status.value : this.status,
     );
   }
@@ -3702,6 +3739,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
           ..write('isDefault: $isDefault, ')
           ..write('ingredientId: $ingredientId, ')
           ..write('linkedProductId: $linkedProductId, ')
+          ..write('consumptionJson: $consumptionJson, ')
           ..write('status: $status')
           ..write(')'))
         .toString();
@@ -3717,6 +3755,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     isDefault,
     ingredientId,
     linkedProductId,
+    consumptionJson,
     status,
   );
   @override
@@ -3731,6 +3770,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
           other.isDefault == this.isDefault &&
           other.ingredientId == this.ingredientId &&
           other.linkedProductId == this.linkedProductId &&
+          other.consumptionJson == this.consumptionJson &&
           other.status == this.status);
 }
 
@@ -3743,6 +3783,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
   final Value<bool> isDefault;
   final Value<int?> ingredientId;
   final Value<int?> linkedProductId;
+  final Value<String> consumptionJson;
   final Value<String?> status;
   const AddonsCompanion({
     this.id = const Value.absent(),
@@ -3753,6 +3794,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     this.isDefault = const Value.absent(),
     this.ingredientId = const Value.absent(),
     this.linkedProductId = const Value.absent(),
+    this.consumptionJson = const Value.absent(),
     this.status = const Value.absent(),
   });
   AddonsCompanion.insert({
@@ -3764,6 +3806,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     this.isDefault = const Value.absent(),
     this.ingredientId = const Value.absent(),
     this.linkedProductId = const Value.absent(),
+    this.consumptionJson = const Value.absent(),
     this.status = const Value.absent(),
   }) : addOnGroupId = Value(addOnGroupId);
   static Insertable<AddonRow> custom({
@@ -3775,6 +3818,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     Expression<bool>? isDefault,
     Expression<int>? ingredientId,
     Expression<int>? linkedProductId,
+    Expression<String>? consumptionJson,
     Expression<String>? status,
   }) {
     return RawValuesInsertable({
@@ -3786,6 +3830,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
       if (isDefault != null) 'is_default': isDefault,
       if (ingredientId != null) 'ingredient_id': ingredientId,
       if (linkedProductId != null) 'linked_product_id': linkedProductId,
+      if (consumptionJson != null) 'consumption_json': consumptionJson,
       if (status != null) 'status': status,
     });
   }
@@ -3799,6 +3844,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     Value<bool>? isDefault,
     Value<int?>? ingredientId,
     Value<int?>? linkedProductId,
+    Value<String>? consumptionJson,
     Value<String?>? status,
   }) {
     return AddonsCompanion(
@@ -3810,6 +3856,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
       isDefault: isDefault ?? this.isDefault,
       ingredientId: ingredientId ?? this.ingredientId,
       linkedProductId: linkedProductId ?? this.linkedProductId,
+      consumptionJson: consumptionJson ?? this.consumptionJson,
       status: status ?? this.status,
     );
   }
@@ -3841,6 +3888,9 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     if (linkedProductId.present) {
       map['linked_product_id'] = Variable<int>(linkedProductId.value);
     }
+    if (consumptionJson.present) {
+      map['consumption_json'] = Variable<String>(consumptionJson.value);
+    }
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
@@ -3858,6 +3908,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
           ..write('isDefault: $isDefault, ')
           ..write('ingredientId: $ingredientId, ')
           ..write('linkedProductId: $linkedProductId, ')
+          ..write('consumptionJson: $consumptionJson, ')
           ..write('status: $status')
           ..write(')'))
         .toString();
@@ -12335,6 +12386,7 @@ typedef $$AddonsTableCreateCompanionBuilder =
       Value<bool> isDefault,
       Value<int?> ingredientId,
       Value<int?> linkedProductId,
+      Value<String> consumptionJson,
       Value<String?> status,
     });
 typedef $$AddonsTableUpdateCompanionBuilder =
@@ -12347,6 +12399,7 @@ typedef $$AddonsTableUpdateCompanionBuilder =
       Value<bool> isDefault,
       Value<int?> ingredientId,
       Value<int?> linkedProductId,
+      Value<String> consumptionJson,
       Value<String?> status,
     });
 
@@ -12396,6 +12449,11 @@ class $$AddonsTableFilterComposer
 
   ColumnFilters<int> get linkedProductId => $composableBuilder(
     column: $table.linkedProductId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get consumptionJson => $composableBuilder(
+    column: $table.consumptionJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -12454,6 +12512,11 @@ class $$AddonsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get consumptionJson => $composableBuilder(
+    column: $table.consumptionJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get status => $composableBuilder(
     column: $table.status,
     builder: (column) => ColumnOrderings(column),
@@ -12501,6 +12564,11 @@ class $$AddonsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get consumptionJson => $composableBuilder(
+    column: $table.consumptionJson,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
 }
@@ -12541,6 +12609,7 @@ class $$AddonsTableTableManager
                 Value<bool> isDefault = const Value.absent(),
                 Value<int?> ingredientId = const Value.absent(),
                 Value<int?> linkedProductId = const Value.absent(),
+                Value<String> consumptionJson = const Value.absent(),
                 Value<String?> status = const Value.absent(),
               }) => AddonsCompanion(
                 id: id,
@@ -12551,6 +12620,7 @@ class $$AddonsTableTableManager
                 isDefault: isDefault,
                 ingredientId: ingredientId,
                 linkedProductId: linkedProductId,
+                consumptionJson: consumptionJson,
                 status: status,
               ),
           createCompanionCallback:
@@ -12563,6 +12633,7 @@ class $$AddonsTableTableManager
                 Value<bool> isDefault = const Value.absent(),
                 Value<int?> ingredientId = const Value.absent(),
                 Value<int?> linkedProductId = const Value.absent(),
+                Value<String> consumptionJson = const Value.absent(),
                 Value<String?> status = const Value.absent(),
               }) => AddonsCompanion.insert(
                 id: id,
@@ -12573,6 +12644,7 @@ class $$AddonsTableTableManager
                 isDefault: isDefault,
                 ingredientId: ingredientId,
                 linkedProductId: linkedProductId,
+                consumptionJson: consumptionJson,
                 status: status,
               ),
           withReferenceMapper: (p0) => p0
