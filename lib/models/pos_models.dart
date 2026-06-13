@@ -510,7 +510,11 @@ class Product {
   double deliveryPriceFor(int providerId) =>
       deliveryPriceByProvider[providerId] ?? deliveryPrice ?? price;
 
-  Product copyWith({double? price}) => Product(
+  /// [setBranchStockQty] explicitly overrides the shelf count (a plain
+  /// `double?` param can't distinguish "leave unchanged" from "set to null",
+  /// but the device only ever sets it to a non-null decremented value, so a
+  /// nullable override with a sentinel-free fallback is enough here).
+  Product copyWith({double? price, double? setBranchStockQty}) => Product(
         id: id,
         name: name,
         nameAr: nameAr,
@@ -524,7 +528,7 @@ class Product {
         deliveryPriceByProvider: deliveryPriceByProvider,
         stockMode: stockMode,
         recipe: recipe,
-        branchStockQty: branchStockQty,
+        branchStockQty: setBranchStockQty ?? branchStockQty,
         availableFrom: availableFrom,
         availableUntil: availableUntil,
       );

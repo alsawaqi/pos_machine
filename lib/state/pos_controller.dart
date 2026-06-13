@@ -491,6 +491,14 @@ class PosController extends ChangeNotifier {
   /// or fail order completion.
   void Function(OrderSnapshot snapshot)? onOrderCompleted;
 
+  /// Invoked when a finalized order consumed finite shelf stock — a map of
+  /// {productId → quantity sold} for unit + cooked products only. The screen
+  /// wires this to the Drift cache so the local shelf count survives an app
+  /// restart (until the next /device/config sync brings the server's
+  /// authoritative balance). Fire-and-forget; the in-memory catalog is already
+  /// decremented before this fires so the live tiles are correct immediately.
+  void Function(Map<int, double> soldByProductId)? onShelfStockConsumed;
+
   /// Phase G4 — invoked when a PRINT fails on real hardware (paper out,
   /// cover open, printer fault). jobKind ∈ {'receipt','kitchen','shift'}.
   /// Fire-and-forget: printing is fail-safe and never blocks a sale; this
@@ -856,6 +864,87 @@ class PosController extends ChangeNotifier {
   bool isUnorderable(Product product) =>
       isOutOfStock(product) || isOutsideHours(product);
 
+  /// Total quantity of [productId] already in the current cart, pooled across
+  /// line items (a product split into a plain line + a customized line counts
+  /// once against its shelf).
+  double cartQuantityForProduct(String productId) {
+    var total = 0.0;
+    for (final item in _cart) {
+      if (item.product.id == productId) total += item.qty;
+    }
+    return total;
+  }
+
+  /// #3 — whether [product] has reached its finite shelf cap in the CURRENT
+  /// cart. A unit / cooked product can never be sold beyond the count produced
+  /// or allocated to this branch ("the kitchen made 3, so you can sell 3"):
+  /// the cart for that product may not exceed [Product.branchStockQty].
+  /// Untracked + ingredient products carry no finite shelf count, so they are
+  /// never capped here (ingredient products gate on ingredient balances via
+  /// [isOutOfStock] instead).
+  bool isAtShelfCap(Product product) {
+    if (product.stockMode != 'unit' && product.stockMode != 'cooked') {
+      return false;
+    }
+    final shelf = product.branchStockQty;
+    if (shelf == null) return false; // not unit-tracked at this branch
+    return cartQuantityForProduct(product.id) >= shelf;
+  }
+
+  static double _clampStock(double v) => v < 0 ? 0 : v;
+
+  /// #3 — a finalized sale decrements finite shelf stock LOCALLY so the very
+  /// next order sees the true remaining count (no more "unlimited" cooked sales
+  /// between config syncs). Unit + cooked products only — they hold a
+  /// produced/allocated shelf count; ingredient + untracked products are not
+  /// shelf-counted here. The catalog ([_baseProducts] → [allProducts]) is
+  /// decremented in memory so the live tiles flip immediately, and
+  /// [onShelfStockConsumed] fires so the screen persists it to Drift (surviving
+  /// a restart until the next /device/config sync brings the server's
+  /// authoritative balance). Reads the cart, so it must run BEFORE the
+  /// next-order reset clears it. Add-on linked-product / cooked-component
+  /// consumption is left to the server + the next sync (the device only
+  /// decrements the top-level sold product here).
+  void _consumeShelfStockFromCart() {
+    final sold = <String, double>{};
+    for (final item in _cart) {
+      final mode = item.product.stockMode;
+      if (mode == 'unit' || mode == 'cooked') {
+        sold[item.product.id] = (sold[item.product.id] ?? 0) + item.qty;
+      }
+    }
+    applyShelfStockConsumption(sold);
+  }
+
+  /// Decrement finite shelf stock for [soldByProductId] ({productId → quantity})
+  /// in the in-memory catalog (clamped at 0) and persist via
+  /// [onShelfStockConsumed]. Split out from [_consumeShelfStockFromCart] so the
+  /// sale-decrement path is testable without driving a full payment.
+  @visibleForTesting
+  void applyShelfStockConsumption(Map<String, double> soldByProductId) {
+    if (soldByProductId.isEmpty) return;
+
+    _baseProducts = [
+      for (final p in _baseProducts)
+        (soldByProductId.containsKey(p.id) && p.branchStockQty != null)
+            ? p.copyWith(
+                setBranchStockQty:
+                    _clampStock(p.branchStockQty! - soldByProductId[p.id]!),
+              )
+            : p,
+    ];
+    // Re-publish allProducts from the decremented base (also re-prices the
+    // cart, which is about to be cleared — harmless).
+    _applyDeliveryPricing();
+
+    final byId = <int, double>{};
+    soldByProductId.forEach((id, qty) {
+      final intId = int.tryParse(id);
+      if (intId != null) byId[intId] = qty;
+    });
+    if (byId.isNotEmpty) onShelfStockConsumed?.call(byId);
+  }
+
   /// True when any cached product has a daily window configured — lets the
   /// screen skip minute-tick rebuilds entirely for merchants that never use
   /// time-windowed menus.
@@ -1015,6 +1104,24 @@ class PosController extends ChangeNotifier {
     // would silently charge full price. Refuse instead.
     if (selectedOrderType == OrderType.delivery) return;
     if (picks.isEmpty) return;
+
+    // #3 — a bundle is atomic, so it can't push any finite-shelf (unit/cooked)
+    // pick past its produced count. Tally this bundle's picks per product and,
+    // on top of what's already in the cart, refuse the whole bundle if any
+    // would oversell (it can't be fulfilled).
+    final bundleByProduct = <String, ({Product product, double count})>{};
+    for (final p in picks) {
+      final prev = bundleByProduct[p.id];
+      bundleByProduct[p.id] = (product: p, count: (prev?.count ?? 0) + 1);
+    }
+    for (final entry in bundleByProduct.values) {
+      final p = entry.product;
+      if (p.stockMode != 'unit' && p.stockMode != 'cooked') continue;
+      final shelf = p.branchStockQty;
+      if (shelf == null) continue;
+      if (cartQuantityForProduct(p.id) + entry.count > shelf) return;
+    }
+
     _ensureOrderReference();
     final key = '${offer.id}:${++_bundleSeq}';
     for (final product in picks) {
@@ -1619,6 +1726,12 @@ class PosController extends ChangeNotifier {
   }
 
   void addProduct(Product product) {
+    // #3 — a finite-shelf product (unit/cooked) can't be sold past the
+    // produced/allocated count; once the cart holds the whole shelf, stop.
+    if (isAtShelfCap(product)) {
+      _broadcast();
+      return;
+    }
     final index = _cart.indexWhere(
       (item) => item.product.id == product.id && !item.hasCustomization,
     );
@@ -1639,6 +1752,11 @@ class PosController extends ChangeNotifier {
     final index = _cart.indexOf(item);
     if (index == -1) return;
 
+    // #3 — don't let a "+" push a finite-shelf product past its shelf count.
+    if (isAtShelfCap(_cart[index].product)) {
+      _broadcast();
+      return;
+    }
     _cart[index].qty++;
     _markOrderUpdated(_cart[index].product.id);
     _broadcast();
@@ -2874,6 +2992,10 @@ class PosController extends ChangeNotifier {
     if (isDineInPayment) {
       await _markActiveDiningTablePaid(completedSnapshot);
     }
+
+    // #3 — decrement finite shelf stock (unit/cooked) locally before the cart
+    // is cleared, so the next order can't oversell the produced count.
+    _consumeShelfStockFromCart();
 
     await Future.delayed(const Duration(milliseconds: 700));
     _resetForNextOrder(

@@ -265,6 +265,27 @@ class AppDatabase extends _$AppDatabase {
         OrderOutboxCompanion(attempts: Value(attempts), lastError: Value(error)),
       );
 
+  /// #3 — locally decrement finite shelf stock (unit/cooked products) after a
+  /// sale, clamped at 0, so the produced count survives an app restart until
+  /// the next /device/config sync overwrites it with the server's authoritative
+  /// balance. Only touches rows that already carry a non-null branchStockQty
+  /// (shelf-tracked at this branch). [soldById] = {productId → quantity sold}.
+  Future<void> consumeProductShelfStock(Map<int, double> soldById) async {
+    if (soldById.isEmpty) return;
+    await transaction(() async {
+      for (final entry in soldById.entries) {
+        final row =
+            await (select(products)..where((p) => p.id.equals(entry.key)))
+                .getSingleOrNull();
+        final current = row?.branchStockQty;
+        if (current == null) continue; // not shelf-tracked locally
+        final next = current - entry.value;
+        await (update(products)..where((p) => p.id.equals(entry.key)))
+            .write(ProductsCompanion(branchStockQty: Value(next < 0 ? 0 : next)));
+      }
+    });
+  }
+
   /// True once at least one config sync has populated the cache.
   Future<bool> hasCachedConfig() async {
     final rows = await select(categories).get();

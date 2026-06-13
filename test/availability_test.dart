@@ -352,4 +352,106 @@ void main() {
       expect(ticks, 1);
     });
   });
+
+  // #3 — a cooked/unit product's sellable quantity == the produced shelf count:
+  // the cart can't exceed it, and a sale decrements it (no unlimited resale).
+  group('#3 finite shelf cap + sale decrement', () {
+    PosController withProducts(List<Product> products) {
+      final c = PosController();
+      c.applyCatalog(
+        categories: const ['X'],
+        products: products,
+        floors: const <DiningFloor>[],
+        tables: const <DiningTableDefinition>[],
+      );
+      return c;
+    }
+
+    const unit3 = Product(
+      id: '1', name: 'Cake', category: 'X', price: 1,
+      stockMode: 'unit', branchStockQty: 3,
+    );
+    const cooked2 = Product(
+      id: '2', name: 'Soup', category: 'X', price: 1,
+      stockMode: 'cooked', branchStockQty: 2,
+    );
+
+    test('cart cannot exceed the produced shelf count (unit + cooked)', () {
+      final c = withProducts(const [unit3, cooked2]);
+      addTearDown(c.dispose);
+
+      c.addProduct(unit3);
+      c.addProduct(unit3);
+      c.addProduct(unit3);
+      expect(c.cartQuantityForProduct('1'), 3);
+      expect(c.isAtShelfCap(unit3), isTrue);
+      c.addProduct(unit3); // blocked — only 3 were made
+      expect(c.cartQuantityForProduct('1'), 3);
+
+      c.addProduct(cooked2);
+      c.addProduct(cooked2);
+      expect(c.cartQuantityForProduct('2'), 2);
+      c.addProduct(cooked2); // blocked
+      expect(c.cartQuantityForProduct('2'), 2);
+    });
+
+    test('untracked / unbounded products are never shelf-capped', () {
+      const untracked =
+          Product(id: '5', name: 'U', category: 'X', price: 1, stockMode: 'untracked');
+      // unit mode but no branch count = not shelf-tracked here.
+      const unitNoShelf =
+          Product(id: '6', name: 'N', category: 'X', price: 1, stockMode: 'unit');
+      final c = withProducts(const [untracked, unitNoShelf]);
+      addTearDown(c.dispose);
+      for (var i = 0; i < 5; i++) {
+        c.addProduct(untracked);
+        c.addProduct(unitNoShelf);
+      }
+      expect(c.cartQuantityForProduct('5'), 5);
+      expect(c.cartQuantityForProduct('6'), 5);
+      expect(c.isAtShelfCap(untracked), isFalse);
+      expect(c.isAtShelfCap(unitNoShelf), isFalse);
+    });
+
+    test('a sale decrements the shelf count + fires the persist callback', () {
+      final c = withProducts(const [unit3]);
+      addTearDown(c.dispose);
+      Map<int, double>? persisted;
+      c.onShelfStockConsumed = (m) => persisted = m;
+
+      c.applyShelfStockConsumption({'1': 2.0});
+
+      final p = c.allProducts.firstWhere((x) => x.id == '1');
+      expect(p.branchStockQty, 1); // made 3, sold 2 → 1 left
+      expect(persisted, {1: 2.0});
+      expect(c.isOutOfStock(p), isFalse);
+    });
+
+    test('selling the whole shelf marks it sold out and clamps at 0', () {
+      final c = withProducts(const [unit3]);
+      addTearDown(c.dispose);
+      c.applyShelfStockConsumption({'1': 5.0}); // oversold guard → clamp 0
+      final p = c.allProducts.firstWhere((x) => x.id == '1');
+      expect(p.branchStockQty, 0);
+      expect(c.isOutOfStock(p), isTrue);
+    });
+
+    test('a bundle is refused when it would oversell a finite-shelf pick', () {
+      const offer = Offer(id: 1, name: 'Combo', type: 'bundle');
+      final c = withProducts(const [unit3]);
+      addTearDown(c.dispose);
+
+      // 2 of a 3-shelf product is within the cap.
+      c.addBundle(offer, const [unit3, unit3]);
+      expect(c.cartQuantityForProduct('1'), 2);
+
+      // Another 2 would make 4 > 3 → the whole (atomic) bundle is refused.
+      c.addBundle(offer, const [unit3, unit3]);
+      expect(c.cartQuantityForProduct('1'), 2);
+
+      // A bundle for exactly the remaining 1 is allowed.
+      c.addBundle(offer, const [unit3]);
+      expect(c.cartQuantityForProduct('1'), 3);
+    });
+  });
 }

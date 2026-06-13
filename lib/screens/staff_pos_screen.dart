@@ -149,13 +149,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     OrderType.dineIn,
   ];
 
+  // Home was a no-op placeholder ("you're already home") and History is also
+  // on the bottom action bar — both removed here to declutter the cramped top
+  // bar (the order-history dialog stays reachable from the footer card).
   static const _secondaryNavItems = <_NavItemData>[
-    _NavItemData('Home', Icons.home_outlined),
     _NavItemData('Offers', Icons.local_offer_outlined), // P-F9
     _NavItemData('Kitchen', Icons.soup_kitchen_outlined), // P-G1
     _NavItemData('Messages', Icons.mail_outline), // P-G6
     _NavItemData('Report', Icons.description_outlined),
-    _NavItemData('History', Icons.history_rounded),
   ];
 
   static const _categoryIcons = <String, IconData>{
@@ -172,6 +173,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     super.initState();
     controller = PosController();
     controller.onOrderCompleted = _handleOrderCompleted;
+    // #3 — persist the local shelf-stock decrement to Drift so the produced
+    // count survives a restart (until the next config sync reconciles).
+    controller.onShelfStockConsumed = (sold) =>
+        unawaited(ref.read(appDatabaseProvider).consumeProductShelfStock(sold));
     controller.onOrderHeld = _handleOrderHeld;
     controller.onOrderVoided = _handleOrderVoided;
     // P-F8 — merchant order numbering: the controller asks for the next
@@ -4430,9 +4435,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                         : 0,
                     onTap: () {
                       switch (entry.value.title) {
-                        case 'History':
-                          unawaited(_openOrderHistoryDialog());
-                          break;
                         case 'Messages':
                           // P-G6 — staff announcements from the portal.
                           unawaited(_openMessagesSheet());
@@ -5734,7 +5736,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   controller.addProduct(product);
                                 }
                               },
-                              outOfStock: controller.isOutOfStock(product),
+                              outOfStock: controller.isOutOfStock(product) ||
+                                controller.isAtShelfCap(product),
                               outsideHours: controller.isOutsideHours(product),
                               highlighted: pulseNonce > 0,
                               pulseNonce: pulseNonce,
@@ -5765,7 +5768,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 controller.addProduct(product);
                               }
                             },
-                            outOfStock: controller.isOutOfStock(product),
+                            outOfStock: controller.isOutOfStock(product) ||
+                                controller.isAtShelfCap(product),
                             outsideHours: controller.isOutsideHours(product),
                             compact: compact,
                             highlighted: pulseNonce > 0,
