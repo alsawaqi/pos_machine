@@ -453,6 +453,70 @@ class L10nAr extends L10n {
       'لا توجد مكوّنات متاحة بعد.\nقم بمزامنة الجهاز لتحميل الكتالوج.';
 
   @override
+  String get wasteProductTitle => 'تسجيل الهدر';
+
+  @override
+  String get wasteProductInstructions =>
+      'أدخل كمية كل منتج مطبوخ أو مخزّن تم هدره، ثم اختر السبب. اترك الصف فارغًا لتجاهله.';
+
+  @override
+  String get wasteProductEmptyState =>
+      'لا توجد منتجات مطبوخة أو مخزّنة في هذا الفرع بعد.\nقم بمزامنة الجهاز لتحميل الكتالوج.';
+
+  @override
+  String wasteProductOnShelf(String qty) {
+    return 'على الرف: $qty';
+  }
+
+  @override
+  String get wasteProductReasonLabel => 'السبب';
+
+  @override
+  String get wasteProductNoteLabel => 'ملاحظة (اختياري)';
+
+  @override
+  String get wasteProductNoteRequiredForOther => 'أضف ملاحظة توضّح سبب الهدر.';
+
+  @override
+  String get wasteProductEnterAtLeastOne => 'أدخل كمية لمنتج واحد على الأقل.';
+
+  @override
+  String wasteProductInvalidQty(String name) {
+    return 'كمية غير صحيحة لـ $name.';
+  }
+
+  @override
+  String wasteProductSubmitButton(int count) {
+    return 'تسجيل الهدر ($count)';
+  }
+
+  @override
+  String wasteProductSubmitted(int count) {
+    return 'تم تسجيل هدر $count منتج.';
+  }
+
+  @override
+  String get wasteProductSubmitFailed => 'تعذّر تسجيل الهدر. حاول مرة أخرى.';
+
+  @override
+  String get wasteReasonExpired => 'منتهي الصلاحية';
+
+  @override
+  String get wasteReasonSpoiled => 'تالف';
+
+  @override
+  String get wasteReasonBroken => 'مكسور';
+
+  @override
+  String get wasteReasonDropped => 'سقط';
+
+  @override
+  String get wasteReasonContamination => 'تلوّث';
+
+  @override
+  String get wasteReasonOther => 'أخرى';
+
+  @override
   String get displayOrderTypeQuickOrder => 'طلب سريع';
 
   @override
@@ -1791,6 +1855,13 @@ class L10nAr extends L10n {
 
   @override
   String get posMenuStockCountSub => 'عدّ الرفوف وتسوية الفروقات';
+
+  @override
+  String get posMenuWasteProduct => 'تسجيل الهدر';
+
+  @override
+  String get posMenuWasteProductSub =>
+      'سجّل المنتجات المطبوخة أو المخزّنة المهدورة';
 
   @override
   String get posMenuShiftSummary => 'ملخص الوردية (تقرير Z)';

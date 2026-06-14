@@ -66,6 +66,21 @@ class ExpenseRestockService {
     return _settledResult(data);
   }
 
+  /// Submit product wastage (cooked or bought-in items wasted at this branch)
+  /// and return the settled result (wasted_lines, total_qty). Throws
+  /// [DeviceActionException] on a failed ACK (unknown / ineligible product,
+  /// over-waste beyond the shelf, missing note for an 'other' reason).
+  Future<Map<String, dynamic>> submitProductWaste({
+    required List<ProductWasteLineInput> lines,
+    int? staffId,
+    String? note,
+  }) async {
+    final data = await _api.pushSync([
+      buildProductWasteEvent(lines: lines, staffId: staffId, note: note),
+    ]);
+    return _settledResult(data);
+  }
+
   /// Extract the single event's settled result. A `processed` or `duplicate`
   /// ACK is success (a re-push echoes the original result); a `failed` ACK
   /// raises [DeviceActionException] carrying the server error.

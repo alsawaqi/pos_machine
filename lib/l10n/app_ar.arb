@@ -129,6 +129,52 @@
   "stockCountNoteLabel": "ملاحظة (اختياري)",
   "stockCountSubmitButton": "إرسال الجرد ({count})",
   "stockCountEmptyState": "لا توجد مكوّنات متاحة بعد.\nقم بمزامنة الجهاز لتحميل الكتالوج.",
+  "wasteProductTitle": "تسجيل الهدر",
+  "wasteProductInstructions": "أدخل كمية كل منتج مطبوخ أو مخزّن تم هدره، ثم اختر السبب. اترك الصف فارغًا لتجاهله.",
+  "wasteProductEmptyState": "لا توجد منتجات مطبوخة أو مخزّنة في هذا الفرع بعد.\nقم بمزامنة الجهاز لتحميل الكتالوج.",
+  "wasteProductOnShelf": "على الرف: {qty}",
+  "@wasteProductOnShelf": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "wasteProductReasonLabel": "السبب",
+  "wasteProductNoteLabel": "ملاحظة (اختياري)",
+  "wasteProductNoteRequiredForOther": "أضف ملاحظة توضّح سبب الهدر.",
+  "wasteProductEnterAtLeastOne": "أدخل كمية لمنتج واحد على الأقل.",
+  "wasteProductInvalidQty": "كمية غير صحيحة لـ {name}.",
+  "@wasteProductInvalidQty": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "wasteProductSubmitButton": "تسجيل الهدر ({count})",
+  "@wasteProductSubmitButton": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "wasteProductSubmitted": "تم تسجيل هدر {count} منتج.",
+  "@wasteProductSubmitted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "wasteProductSubmitFailed": "تعذّر تسجيل الهدر. حاول مرة أخرى.",
+  "wasteReasonExpired": "منتهي الصلاحية",
+  "wasteReasonSpoiled": "تالف",
+  "wasteReasonBroken": "مكسور",
+  "wasteReasonDropped": "سقط",
+  "wasteReasonContamination": "تلوّث",
+  "wasteReasonOther": "أخرى",
   "displayOrderTypeQuickOrder": "طلب سريع",
   "displayOrderTypeToGo": "سفري",
   "displayOrderTypeDelivery": "توصيل",
@@ -474,6 +520,8 @@
   "posMenuRequestRestockSub": "اطلب من الفرع تزويد المكوّنات",
   "posMenuStockCount": "جرد نهاية اليوم",
   "posMenuStockCountSub": "عدّ الرفوف وتسوية الفروقات",
+  "posMenuWasteProduct": "تسجيل الهدر",
+  "posMenuWasteProductSub": "سجّل المنتجات المطبوخة أو المخزّنة المهدورة",
   "posMenuShiftSummary": "ملخص الوردية (تقرير Z)",
   "posMenuShiftSummarySub": "إعادة طباعة آخر وردية مغلقة — للمدير فقط",
   "posMenuSettings": "الإعدادات",

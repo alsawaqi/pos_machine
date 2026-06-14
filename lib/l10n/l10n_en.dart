@@ -456,6 +456,73 @@ class L10nEn extends L10n {
       'No ingredients available yet.\nSync the device to load the catalogue.';
 
   @override
+  String get wasteProductTitle => 'Record waste';
+
+  @override
+  String get wasteProductInstructions =>
+      'Enter how many of each cooked or stocked product were wasted, then pick a reason. Leave a row blank to skip it.';
+
+  @override
+  String get wasteProductEmptyState =>
+      'No cooked or stocked products at this branch yet.\nSync the device to load the catalogue.';
+
+  @override
+  String wasteProductOnShelf(String qty) {
+    return 'On shelf: $qty';
+  }
+
+  @override
+  String get wasteProductReasonLabel => 'Reason';
+
+  @override
+  String get wasteProductNoteLabel => 'Note (optional)';
+
+  @override
+  String get wasteProductNoteRequiredForOther =>
+      'Add a note explaining the waste.';
+
+  @override
+  String get wasteProductEnterAtLeastOne =>
+      'Enter a quantity for at least one product.';
+
+  @override
+  String wasteProductInvalidQty(String name) {
+    return 'Invalid quantity for $name.';
+  }
+
+  @override
+  String wasteProductSubmitButton(int count) {
+    return 'Record waste ($count)';
+  }
+
+  @override
+  String wasteProductSubmitted(int count) {
+    return 'Recorded waste for $count product(s).';
+  }
+
+  @override
+  String get wasteProductSubmitFailed =>
+      'Could not record the waste. Please try again.';
+
+  @override
+  String get wasteReasonExpired => 'Expired';
+
+  @override
+  String get wasteReasonSpoiled => 'Spoiled';
+
+  @override
+  String get wasteReasonBroken => 'Broken';
+
+  @override
+  String get wasteReasonDropped => 'Dropped';
+
+  @override
+  String get wasteReasonContamination => 'Contamination';
+
+  @override
+  String get wasteReasonOther => 'Other';
+
+  @override
   String get displayOrderTypeQuickOrder => 'Quick Order';
 
   @override
@@ -1767,6 +1834,12 @@ class L10nEn extends L10n {
 
   @override
   String get posMenuStockCountSub => 'Count the shelf and reconcile variances';
+
+  @override
+  String get posMenuWasteProduct => 'Record waste';
+
+  @override
+  String get posMenuWasteProductSub => 'Log wasted cooked or stocked products';
 
   @override
   String get posMenuShiftSummary => 'Shift summary (Z-report)';

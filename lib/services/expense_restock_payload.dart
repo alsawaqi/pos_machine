@@ -121,6 +121,66 @@ Map<String, dynamic> buildStockCountEvent({
   };
 }
 
+/// The waste reasons offered on the device — mirror of pos_merchant's
+/// App\Enums\WasteReason. 'other' carries a free-text note.
+const productWasteReasons = <String>[
+  'expired',
+  'spoiled',
+  'broken',
+  'dropped',
+  'contamination',
+  'other',
+];
+
+/// One product-waste line as entered in the UI: how many units of a cooked or
+/// bought-in product were wasted, and why.
+class ProductWasteLineInput {
+  const ProductWasteLineInput({
+    required this.productId,
+    required this.qty,
+    required this.reason,
+  });
+  final int productId;
+  final double qty;
+  final String reason;
+}
+
+/// Build the `product.waste` event. Non-positive lines are dropped. Payload:
+///   { lines: [{ product_id, qty, reason }], note?, staff_id?, wasted_at? }
+/// → result { wasted_lines, total_qty }
+Map<String, dynamic> buildProductWasteEvent({
+  required List<ProductWasteLineInput> lines,
+  String? note,
+  int? staffId,
+  DateTime? wastedAt,
+  DateTime? now,
+  String Function()? newUuid,
+}) {
+  final gen = newUuid ?? uuidV4;
+  final ts = (now ?? DateTime.now()).toUtc().toIso8601String();
+
+  final payloadLines = <Map<String, dynamic>>[];
+  for (final l in lines) {
+    if (l.qty <= 0) continue;
+    payloadLines.add(<String, dynamic>{
+      'product_id': l.productId,
+      'qty': l.qty,
+      'reason': l.reason,
+    });
+  }
+
+  final payload = <String, dynamic>{'lines': payloadLines};
+  if (note != null && note.isNotEmpty) payload['note'] = note;
+  if (staffId != null) payload['staff_id'] = staffId;
+  if (wastedAt != null) payload['wasted_at'] = wastedAt.toUtc().toIso8601String();
+  return <String, dynamic>{
+    'client_event_id': gen(),
+    'event_type': 'product.waste',
+    'client_timestamp': ts,
+    'payload': payload,
+  };
+}
+
 /// Build the `restock.request` event. Duplicate ingredient lines are MERGED
 /// (summed) and non-positive quantities dropped — the server rejects a request
 /// that repeats an ingredient_id, so the client must dedupe first.

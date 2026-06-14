@@ -259,6 +259,52 @@
     }
   },
   "stockCountEmptyState": "No ingredients available yet.\nSync the device to load the catalogue.",
+  "wasteProductTitle": "Record waste",
+  "wasteProductInstructions": "Enter how many of each cooked or stocked product were wasted, then pick a reason. Leave a row blank to skip it.",
+  "wasteProductEmptyState": "No cooked or stocked products at this branch yet.\nSync the device to load the catalogue.",
+  "wasteProductOnShelf": "On shelf: {qty}",
+  "@wasteProductOnShelf": {
+    "placeholders": {
+      "qty": {
+        "type": "String"
+      }
+    }
+  },
+  "wasteProductReasonLabel": "Reason",
+  "wasteProductNoteLabel": "Note (optional)",
+  "wasteProductNoteRequiredForOther": "Add a note explaining the waste.",
+  "wasteProductEnterAtLeastOne": "Enter a quantity for at least one product.",
+  "wasteProductInvalidQty": "Invalid quantity for {name}.",
+  "@wasteProductInvalidQty": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "wasteProductSubmitButton": "Record waste ({count})",
+  "@wasteProductSubmitButton": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "wasteProductSubmitted": "Recorded waste for {count} product(s).",
+  "@wasteProductSubmitted": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "wasteProductSubmitFailed": "Could not record the waste. Please try again.",
+  "wasteReasonExpired": "Expired",
+  "wasteReasonSpoiled": "Spoiled",
+  "wasteReasonBroken": "Broken",
+  "wasteReasonDropped": "Dropped",
+  "wasteReasonContamination": "Contamination",
+  "wasteReasonOther": "Other",
   "displayOrderTypeQuickOrder": "Quick Order",
   "displayOrderTypeToGo": "To Go",
   "displayOrderTypeDelivery": "Delivery",
@@ -1140,6 +1186,8 @@
   "posMenuRequestRestockSub": "Ask the branch to restock ingredients",
   "posMenuStockCount": "Day-end stock count",
   "posMenuStockCountSub": "Count the shelf and reconcile variances",
+  "posMenuWasteProduct": "Record waste",
+  "posMenuWasteProductSub": "Log wasted cooked or stocked products",
   "posMenuShiftSummary": "Shift summary (Z-report)",
   "posMenuShiftSummarySub": "Reprint the last closed shift — manager only",
   "posMenuSettings": "Settings",

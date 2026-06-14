@@ -124,6 +124,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   action: 'stock_count',
                 ),
                 _operationTile(
+                  icon: Icons.delete_sweep_rounded,
+                  title: l10n.posMenuWasteProduct,
+                  subtitle: l10n.posMenuWasteProductSub,
+                  action: 'waste_product',
+                ),
+                _operationTile(
                   icon: Icons.summarize_rounded,
                   title: l10n.posMenuShiftSummary,
                   subtitle: l10n.posMenuShiftSummarySub,

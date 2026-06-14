@@ -871,6 +871,114 @@ abstract class L10n {
   /// **'No ingredients available yet.\nSync the device to load the catalogue.'**
   String get stockCountEmptyState;
 
+  /// No description provided for @wasteProductTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Record waste'**
+  String get wasteProductTitle;
+
+  /// No description provided for @wasteProductInstructions.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter how many of each cooked or stocked product were wasted, then pick a reason. Leave a row blank to skip it.'**
+  String get wasteProductInstructions;
+
+  /// No description provided for @wasteProductEmptyState.
+  ///
+  /// In en, this message translates to:
+  /// **'No cooked or stocked products at this branch yet.\nSync the device to load the catalogue.'**
+  String get wasteProductEmptyState;
+
+  /// No description provided for @wasteProductOnShelf.
+  ///
+  /// In en, this message translates to:
+  /// **'On shelf: {qty}'**
+  String wasteProductOnShelf(String qty);
+
+  /// No description provided for @wasteProductReasonLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Reason'**
+  String get wasteProductReasonLabel;
+
+  /// No description provided for @wasteProductNoteLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Note (optional)'**
+  String get wasteProductNoteLabel;
+
+  /// No description provided for @wasteProductNoteRequiredForOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a note explaining the waste.'**
+  String get wasteProductNoteRequiredForOther;
+
+  /// No description provided for @wasteProductEnterAtLeastOne.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a quantity for at least one product.'**
+  String get wasteProductEnterAtLeastOne;
+
+  /// No description provided for @wasteProductInvalidQty.
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid quantity for {name}.'**
+  String wasteProductInvalidQty(String name);
+
+  /// No description provided for @wasteProductSubmitButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Record waste ({count})'**
+  String wasteProductSubmitButton(int count);
+
+  /// No description provided for @wasteProductSubmitted.
+  ///
+  /// In en, this message translates to:
+  /// **'Recorded waste for {count} product(s).'**
+  String wasteProductSubmitted(int count);
+
+  /// No description provided for @wasteProductSubmitFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not record the waste. Please try again.'**
+  String get wasteProductSubmitFailed;
+
+  /// No description provided for @wasteReasonExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get wasteReasonExpired;
+
+  /// No description provided for @wasteReasonSpoiled.
+  ///
+  /// In en, this message translates to:
+  /// **'Spoiled'**
+  String get wasteReasonSpoiled;
+
+  /// No description provided for @wasteReasonBroken.
+  ///
+  /// In en, this message translates to:
+  /// **'Broken'**
+  String get wasteReasonBroken;
+
+  /// No description provided for @wasteReasonDropped.
+  ///
+  /// In en, this message translates to:
+  /// **'Dropped'**
+  String get wasteReasonDropped;
+
+  /// No description provided for @wasteReasonContamination.
+  ///
+  /// In en, this message translates to:
+  /// **'Contamination'**
+  String get wasteReasonContamination;
+
+  /// No description provided for @wasteReasonOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get wasteReasonOther;
+
   /// No description provided for @displayOrderTypeQuickOrder.
   ///
   /// In en, this message translates to:
@@ -2945,6 +3053,18 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Count the shelf and reconcile variances'**
   String get posMenuStockCountSub;
+
+  /// No description provided for @posMenuWasteProduct.
+  ///
+  /// In en, this message translates to:
+  /// **'Record waste'**
+  String get posMenuWasteProduct;
+
+  /// No description provided for @posMenuWasteProductSub.
+  ///
+  /// In en, this message translates to:
+  /// **'Log wasted cooked or stocked products'**
+  String get posMenuWasteProductSub;
 
   /// No description provided for @posMenuShiftSummary.
   ///

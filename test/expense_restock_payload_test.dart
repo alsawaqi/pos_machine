@@ -197,4 +197,49 @@ void main() {
       expect(p['counted_at'], '2026-06-08T22:15:00.000Z');
     });
   });
+
+  group('product.waste payload', () {
+    test('carries product lines + reason + staff + note', () {
+      final event = buildProductWasteEvent(
+        lines: const [
+          ProductWasteLineInput(productId: 5, qty: 3, reason: 'expired'),
+          ProductWasteLineInput(productId: 8, qty: 1.5, reason: 'dropped'),
+        ],
+        staffId: 7,
+        note: 'fridge failed',
+        now: at,
+        newUuid: _seqUuid(),
+      );
+
+      expect(event['event_type'], 'product.waste');
+      expect(event['client_event_id'], 'uuid-0');
+      expect(event['client_timestamp'], '2026-06-08T09:00:00.000Z');
+      final p = event['payload'] as Map<String, dynamic>;
+      final lines = p['lines'] as List;
+      expect(lines, hasLength(2));
+      expect(lines[0], {'product_id': 5, 'qty': 3.0, 'reason': 'expired'});
+      expect(lines[1], {'product_id': 8, 'qty': 1.5, 'reason': 'dropped'});
+      expect(p['staff_id'], 7);
+      expect(p['note'], 'fridge failed');
+    });
+
+    test('drops non-positive lines and omits empty optionals', () {
+      final event = buildProductWasteEvent(
+        lines: const [
+          ProductWasteLineInput(productId: 5, qty: 0, reason: 'expired'),
+          ProductWasteLineInput(productId: 8, qty: -1, reason: 'broken'),
+          ProductWasteLineInput(productId: 9, qty: 2, reason: 'spoiled'),
+        ],
+        now: at,
+        newUuid: _seqUuid(),
+      );
+
+      final p = event['payload'] as Map<String, dynamic>;
+      final lines = p['lines'] as List;
+      expect(lines, hasLength(1));
+      expect(lines[0]['product_id'], 9);
+      expect(p.containsKey('staff_id'), isFalse);
+      expect(p.containsKey('note'), isFalse);
+    });
+  });
 }

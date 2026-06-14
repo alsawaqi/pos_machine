@@ -21,6 +21,7 @@ import 'kitchen_production_screen.dart';
 import 'log_expense_screen.dart';
 import 'restock_request_screen.dart';
 import 'stock_count_screen.dart';
+import 'waste_product_screen.dart';
 import 'settings_screen.dart';
 import 'shift_close_screen.dart';
 import '../services/config_mapper.dart';
@@ -4721,6 +4722,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       case 'stock_count':
         await Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const StockCountScreen()),
+        );
+      case 'waste_product':
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const WasteProductScreen()),
         );
       case 'shift_summary':
         await _reprintLastShiftSummary();
