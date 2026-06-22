@@ -316,6 +316,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // the controller's next-order reset clears it (split tenders carry their own
     // evidence on the snapshot's SplitPaymentRecords).
     final cardCharge = controller.lastCardCharge;
+    // Joined tables (v2) — the head party's joined seats, read NOW: the
+    // controller frees them the instant the order is marked paid, just after
+    // this callback returns its synchronous prefix.
+    final joinedTableIds = controller.joinedTableIdsFor(snapshot.diningTableId);
 
     double? lat;
     double? lng;
@@ -375,6 +379,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             lng: lng,
             staffId: staffId,
             tableId: tableId,
+            joinedTableIds: joinedTableIds,
             customerId: customerId,
             plateNumber: plate.isEmpty ? null : plate,
             deliveryProviderName: deliveryProviderName,
@@ -397,6 +402,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             draft,
             staffId: staffId,
             tableId: int.tryParse(draft.diningTableId),
+            joinedTableIds: controller.joinedTableIdsFor(draft.diningTableId),
           );
     } catch (_) {
       // The outbox persists the mirror before any network call; flush()
@@ -947,12 +953,37 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                     session?.status ??
                                     DiningTableStatus.available;
 
-                                // Gap sweep G2 / P-F1 — occupied tables
-                                // expose Move / Merge via a visible actions
-                                // button (and still on long-press).
+                                // Joined tables — a linked seat shows a
+                                // "Joined → head" badge + the shared bill total
+                                // and routes everything to the head; a head
+                                // shows how many seats are joined under it.
+                                final bool isLinkedSeat =
+                                    session != null && session.isLinkedSecondary;
+                                String? linkedToLabel;
+                                double? groupTotal;
+                                int linkedCount = 0;
+                                if (isLinkedSeat) {
+                                  final headId = session.primaryTableId!;
+                                  linkedToLabel = controller
+                                          .diningTableDefinitionById(headId)
+                                          ?.name ??
+                                      headId;
+                                  groupTotal = controller
+                                      .diningSessionFor(headId)
+                                      ?.total;
+                                } else if (session != null &&
+                                    session.hasJoinedTables) {
+                                  linkedCount = session.linkedTableIds.length;
+                                }
+
+                                // Gap sweep G2 / P-F1 — occupied tables expose
+                                // Move / Join via a visible actions button (and
+                                // still on long-press). A linked seat has no
+                                // actions of its own; manage it from the head.
                                 final openActions =
                                     status == DiningTableStatus.occupied &&
-                                            session != null
+                                            session != null &&
+                                            !isLinkedSeat
                                         ? () => unawaited(
                                             _openDiningTableActionsSheet(
                                                 table, session))
@@ -964,6 +995,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   clock: _clockNow,
                                   onLongPress: openActions,
                                   onActions: openActions,
+                                  linkedToLabel: linkedToLabel,
+                                  groupTotal: groupTotal,
+                                  linkedCount: linkedCount,
                                   onTap: () async {
                                     if (status == DiningTableStatus.paid &&
                                         session != null) {
@@ -974,6 +1008,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                       return;
                                     }
 
+                                    // openDiningTable redirects a linked seat to
+                                    // its head's shared bill.
                                     await controller.openDiningTable(table.id);
                                     if (!mounted) return;
                                     setState(() {
@@ -2120,12 +2156,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               title: Text(l10n.posDiningActionOpen),
               onTap: () => Navigator.pop(ctx, 'open'),
             ),
-            ListTile(
-              leading: const Icon(Icons.swap_horiz_rounded),
-              title: Text(l10n.posDiningActionMove),
-              subtitle: Text(l10n.posDiningActionMoveHint),
-              onTap: () => Navigator.pop(ctx, 'move'),
-            ),
+            // A joined party can't be moved piecemeal — Move only shows for a
+            // standalone occupied table.
+            if (!session.hasJoinedTables)
+              ListTile(
+                leading: const Icon(Icons.swap_horiz_rounded),
+                title: Text(l10n.posDiningActionMove),
+                subtitle: Text(l10n.posDiningActionMoveHint),
+                onTap: () => Navigator.pop(ctx, 'move'),
+              ),
             ListTile(
               leading: const Icon(Icons.call_merge_rounded),
               title: Text(l10n.posDiningActionMerge),
@@ -2154,8 +2193,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
   }
 
-  /// Gap sweep G2 — pick the target table for a move (free tables) or a
-  /// merge (other occupied tables; confirms with both totals first).
+  /// Pick a FREE target table — for a move (relocate the party there) or a
+  /// join (pull the free table into this party's ONE bill; confirms first).
   Future<void> _openTableTargetPicker(
     DiningTableDefinition source,
     DiningTableSession sourceSession, {
@@ -2165,9 +2204,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final targets = controller.diningTableDefinitions.where((t) {
       if (t.id == source.id) return false;
       final session = controller.diningSessionFor(t.id);
-      return merge
-          ? session?.status == DiningTableStatus.occupied
-          : session == null;
+      // Join AND move both target a FREE table: join pulls a free neighbour
+      // into this party (one shared bill); move relocates the party to it.
+      // Never join two running orders — only empty tables are offered.
+      return session == null;
     }).toList();
 
     if (targets.isEmpty) {
@@ -2196,9 +2236,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   Text('${t.name} · ${controller.floorLabelFor(t.floorId)}'),
                   if (merge)
                     Text(
-                      SunmiReceiptService.money(
-                        controller.diningSessionFor(t.id)?.total ?? 0,
-                      ),
+                      l10n.posDiningSeats(t.seats),
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                 ],
@@ -2238,7 +2276,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
 
     final message = merge
-        ? await controller.mergeDiningTables(source.id, targetId)
+        ? await controller.joinDiningTables(source.id, targetId)
         : await controller.transferDiningTable(source.id, targetId);
     if (!mounted) return;
     if (message == null) {
@@ -9066,6 +9104,12 @@ class _DiningTableCard extends StatelessWidget {
   // button for the same sheet (long-press alone was undiscoverable).
   final VoidCallback? onLongPress;
   final VoidCallback? onActions;
+  // Joined tables: on a linked seat, [linkedToLabel] is the head's name and
+  // [groupTotal] is the shared bill; on a head, [linkedCount] is how many seats
+  // are joined under it.
+  final String? linkedToLabel;
+  final double? groupTotal;
+  final int linkedCount;
 
   const _DiningTableCard({
     required this.table,
@@ -9075,6 +9119,9 @@ class _DiningTableCard extends StatelessWidget {
     required this.onTap,
     this.onLongPress,
     this.onActions,
+    this.linkedToLabel,
+    this.groupTotal,
+    this.linkedCount = 0,
   });
 
   @override
@@ -9302,7 +9349,9 @@ class _DiningTableCard extends StatelessWidget {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           _TinyInfoBadge(
-                            label: SunmiReceiptService.money(session!.total),
+                            label: SunmiReceiptService.money(
+                              groupTotal ?? session!.total,
+                            ),
                             strong: true,
                             foreground: const Color(0xFF9E3410),
                           ),
@@ -9334,6 +9383,21 @@ class _DiningTableCard extends StatelessWidget {
                               color: Color(0xFFEA6614),
                             ),
                           ),
+                          // Joined-tables markers (device-local).
+                          if (linkedToLabel != null)
+                            _TinyInfoBadge(
+                              icon: Icons.link_rounded,
+                              label: l10n.posDiningJoinedWith(linkedToLabel!),
+                              tint: const Color(0xFFEDE7FB),
+                              foreground: const Color(0xFF6B4FBB),
+                            ),
+                          if (linkedCount > 0)
+                            _TinyInfoBadge(
+                              icon: Icons.link_rounded,
+                              label: '+$linkedCount',
+                              tint: const Color(0xFFEDE7FB),
+                              foreground: const Color(0xFF6B4FBB),
+                            ),
                         ],
                       )
                     else

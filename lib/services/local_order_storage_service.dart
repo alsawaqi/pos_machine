@@ -137,6 +137,10 @@ class LocalOrderStorageService implements OrderStorageService {
       'paid_snapshot_json': session.paidSnapshot == null
           ? null
           : jsonEncode(session.paidSnapshot!.toMap()),
+      'primary_table_id': session.primaryTableId,
+      'linked_table_ids_json': session.linkedTableIds.isEmpty
+          ? null
+          : jsonEncode(session.linkedTableIds),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
@@ -189,7 +193,7 @@ class LocalOrderStorageService implements OrderStorageService {
 
     return openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE order_history (
@@ -223,7 +227,9 @@ class LocalOrderStorageService implements OrderStorageService {
             occupied_at TEXT,
             paid_at TEXT,
             draft_json TEXT,
-            paid_snapshot_json TEXT
+            paid_snapshot_json TEXT,
+            primary_table_id TEXT,
+            linked_table_ids_json TEXT
           )
         ''');
       },
@@ -286,6 +292,16 @@ class LocalOrderStorageService implements OrderStorageService {
             WHERE order_reference IS NULL
           ''');
         }
+        if (oldVersion < 4) {
+          // Joined tables: a linked seat points at its party's head, the head
+          // lists its linked seats.
+          await db.execute(
+            'ALTER TABLE dining_tables ADD COLUMN primary_table_id TEXT',
+          );
+          await db.execute(
+            'ALTER TABLE dining_tables ADD COLUMN linked_table_ids_json TEXT',
+          );
+        }
       },
     );
   }
@@ -338,7 +354,26 @@ class LocalOrderStorageService implements OrderStorageService {
       paidAt: _parseStoredDate(row['paid_at']),
       draft: draft,
       paidSnapshot: paidSnapshot,
+      primaryTableId: (row['primary_table_id'] as String?)?.trim().isNotEmpty == true
+          ? row['primary_table_id'] as String
+          : null,
+      linkedTableIds: _decodeStringList(row['linked_table_ids_json']),
     );
+  }
+
+  /// Decode a JSON string array column into a List&lt;String&gt; (joined-table
+  /// links). Null / blank / malformed → empty list.
+  List<String> _decodeStringList(Object? value) {
+    if (value is! String || value.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is List) {
+        return decoded.map((e) => e.toString()).toList();
+      }
+    } catch (_) {
+      // fall through
+    }
+    return const [];
   }
 
   Map<String, dynamic> _decodeJsonMap(Object? value) {

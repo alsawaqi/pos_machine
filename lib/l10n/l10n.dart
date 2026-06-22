@@ -4635,14 +4635,20 @@ abstract class L10n {
   /// No description provided for @posDiningActionMerge.
   ///
   /// In en, this message translates to:
-  /// **'Merge into another table'**
+  /// **'Join a free table'**
   String get posDiningActionMerge;
 
   /// No description provided for @posDiningActionMergeHint.
   ///
   /// In en, this message translates to:
-  /// **'Combine this order into another occupied table.'**
+  /// **'Pull a free neighbouring table into this party — one shared bill; both free together.'**
   String get posDiningActionMergeHint;
+
+  /// No description provided for @posDiningJoinedWith.
+  ///
+  /// In en, this message translates to:
+  /// **'Joined → {label}'**
+  String posDiningJoinedWith(String label);
 
   /// No description provided for @posDiningPickFreeTable.
   ///
@@ -4653,19 +4659,19 @@ abstract class L10n {
   /// No description provided for @posDiningPickMergeTarget.
   ///
   /// In en, this message translates to:
-  /// **'Merge into which table?'**
+  /// **'Add which free table?'**
   String get posDiningPickMergeTarget;
 
   /// No description provided for @posDiningMergeConfirmTitle.
   ///
   /// In en, this message translates to:
-  /// **'Merge Tables?'**
+  /// **'Join Tables?'**
   String get posDiningMergeConfirmTitle;
 
   /// No description provided for @posDiningMergeConfirmBody.
   ///
   /// In en, this message translates to:
-  /// **'{source} ({sourceTotal}) will be merged into {target} ({targetTotal}). The source table becomes free; the target keeps its reference and discount.'**
+  /// **'{target} will join {source}\'s party — they share one bill on {source} ({sourceTotal}) and free together when paid.'**
   String posDiningMergeConfirmBody(
     String source,
     String sourceTotal,
@@ -4682,7 +4688,7 @@ abstract class L10n {
   /// No description provided for @posDiningNoMergeTargets.
   ///
   /// In en, this message translates to:
-  /// **'No other occupied tables to merge into.'**
+  /// **'No free tables to add.'**
   String get posDiningNoMergeTargets;
 
   /// No description provided for @posDiningActionFailed.
@@ -4700,7 +4706,7 @@ abstract class L10n {
   /// No description provided for @posDiningTablesMergedTitle.
   ///
   /// In en, this message translates to:
-  /// **'Tables Merged'**
+  /// **'Tables Joined'**
   String get posDiningTablesMergedTitle;
 
   /// No description provided for @ctrlMsgTableTransferred.
@@ -4712,7 +4718,7 @@ abstract class L10n {
   /// No description provided for @ctrlMsgTablesMerged.
   ///
   /// In en, this message translates to:
-  /// **'Merged {source} into {target}.'**
+  /// **'Joined {source} with {target}.'**
   String ctrlMsgTablesMerged(String source, String target);
 
   /// No description provided for @posNavOffers.

@@ -1978,6 +1978,14 @@ class DiningTableSession {
   final DateTime? paidAt;
   final OrderSessionDraft? draft;
   final OrderSnapshot? paidSnapshot;
+  // Joined tables (device-local): a party seated across several tables shares
+  // ONE bill. The PRIMARY (group head) holds the draft + [linkedTableIds] (the
+  // other tables in the party). A SECONDARY table has [primaryTableId] set, no
+  // draft of its own — it just marks that seat occupied and linked to the
+  // head. Tapping any joined table opens the head's shared bill; the whole
+  // group frees together when the bill is paid or discarded.
+  final String? primaryTableId;
+  final List<String> linkedTableIds;
 
   const DiningTableSession({
     required this.tableId,
@@ -1990,7 +1998,16 @@ class DiningTableSession {
     this.paidAt,
     this.draft,
     this.paidSnapshot,
+    this.primaryTableId,
+    this.linkedTableIds = const [],
   });
+
+  /// This table is a linked seat — its bill lives on [primaryTableId].
+  bool get isLinkedSecondary =>
+      primaryTableId != null && primaryTableId!.isNotEmpty;
+
+  /// This table is the head of a joined party (one or more linked seats).
+  bool get hasJoinedTables => linkedTableIds.isNotEmpty;
 
   double get total => switch (status) {
     DiningTableStatus.occupied => draft?.total ?? 0,
@@ -1998,6 +2015,39 @@ class DiningTableSession {
       paidSnapshot?.payableTotal ?? paidSnapshot?.total ?? 0,
     DiningTableStatus.available => 0,
   };
+
+  /// Field-by-field rebuild (mirrors OrderSessionDraft.copyWith). [clearDraft]
+  /// nulls the draft (a secondary carries none); [clearPrimary] detaches a
+  /// seat from its head.
+  DiningTableSession copyWith({
+    DiningTableStatus? status,
+    int? orderNumber,
+    String? orderReference,
+    DateTime? updatedAt,
+    DateTime? occupiedAt,
+    DateTime? paidAt,
+    OrderSessionDraft? draft,
+    OrderSnapshot? paidSnapshot,
+    String? primaryTableId,
+    List<String>? linkedTableIds,
+    bool clearDraft = false,
+    bool clearPrimary = false,
+  }) {
+    return DiningTableSession(
+      tableId: tableId,
+      floorId: floorId,
+      status: status ?? this.status,
+      orderNumber: orderNumber ?? this.orderNumber,
+      orderReference: orderReference ?? this.orderReference,
+      updatedAt: updatedAt ?? this.updatedAt,
+      occupiedAt: occupiedAt ?? this.occupiedAt,
+      paidAt: paidAt ?? this.paidAt,
+      draft: clearDraft ? null : (draft ?? this.draft),
+      paidSnapshot: paidSnapshot ?? this.paidSnapshot,
+      primaryTableId: clearPrimary ? null : (primaryTableId ?? this.primaryTableId),
+      linkedTableIds: linkedTableIds ?? this.linkedTableIds,
+    );
+  }
 }
 
 class OrderHistoryRecord {

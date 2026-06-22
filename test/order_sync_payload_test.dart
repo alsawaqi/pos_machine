@@ -241,6 +241,47 @@ void main() {
       expect(order.containsKey('plate_number'), isFalse);
     });
 
+    test('joined_table_ids ride on the order when a party joins tables', () {
+      final snap = _snapshot(
+        orderType: 'dine_in',
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 1.0, 'lineTotal': 1.0},
+        ],
+        rawSubtotal: 1.0,
+        total: 1.0,
+        diningTableId: '1',
+      );
+
+      final payload = buildOrderSyncPayload(
+        snap,
+        tableId: 1,
+        joinedTableIds: const [2, 3],
+        newUuid: _seqUuid(),
+      );
+      final order =
+          (payload.events[0]['payload'] as Map)['order'] as Map<String, dynamic>;
+      expect(order['table_id'], 1); // the primary
+      expect(order['joined_table_ids'], [2, 3]); // the extra covered tables
+      // joined_table_ids belong on the ORDER, never on the pay event.
+      expect((payload.events[1]['payload'] as Map).containsKey('joined_table_ids'),
+          isFalse);
+    });
+
+    test('no joined_table_ids key for a standalone table', () {
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 1.0, 'lineTotal': 1.0},
+        ],
+        rawSubtotal: 1.0,
+        total: 1.0,
+      );
+      final payload =
+          buildOrderSyncPayload(snap, tableId: 1, newUuid: _seqUuid());
+      final order =
+          (payload.events[0]['payload'] as Map)['order'] as Map<String, dynamic>;
+      expect(order.containsKey('joined_table_ids'), isFalse);
+    });
+
     test('single card tender carries the Soft POS evidence + success status', () {
       final snap = _snapshot(
         items: [
@@ -727,6 +768,19 @@ void main() {
       expect(order['tax_total_baisas'], 0);
       expect(order['grand_total_baisas'], 5000);
       expect(order.containsKey('discounts'), isFalse);
+    });
+
+    test('joined_table_ids ride on a held joined order', () {
+      final event = buildOrderHoldEvent(
+        draft(),
+        orderUuid: 'hold-uuid-1',
+        tableId: 4,
+        joinedTableIds: const [5, 6],
+        newUuid: _seqUuid(),
+      );
+      final order = event!['payload']['order'] as Map<String, dynamic>;
+      expect(order['table_id'], 4);
+      expect(order['joined_table_ids'], [5, 6]);
     });
 
     test('order-level discount rides as one discounts[] row', () {

@@ -1726,12 +1726,20 @@
   "posDiningActionOpen": "Open table",
   "posDiningActionMove": "Move to another table",
   "posDiningActionMoveHint": "The party changed seats — the order follows.",
-  "posDiningActionMerge": "Merge into another table",
-  "posDiningActionMergeHint": "Combine this order into another occupied table.",
+  "posDiningActionMerge": "Join a free table",
+  "posDiningActionMergeHint": "Pull a free neighbouring table into this party — one shared bill; both free together.",
+  "posDiningJoinedWith": "Joined → {label}",
+  "@posDiningJoinedWith": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "posDiningPickFreeTable": "Move to which free table?",
-  "posDiningPickMergeTarget": "Merge into which table?",
-  "posDiningMergeConfirmTitle": "Merge Tables?",
-  "posDiningMergeConfirmBody": "{source} ({sourceTotal}) will be merged into {target} ({targetTotal}). The source table becomes free; the target keeps its reference and discount.",
+  "posDiningPickMergeTarget": "Add which free table?",
+  "posDiningMergeConfirmTitle": "Join Tables?",
+  "posDiningMergeConfirmBody": "{target} will join {source}'s party — they share one bill on {source} ({sourceTotal}) and free together when paid.",
   "@posDiningMergeConfirmBody": {
     "placeholders": {
       "source": {
@@ -1749,10 +1757,10 @@
     }
   },
   "posDiningNoFreeTables": "No free tables available right now.",
-  "posDiningNoMergeTargets": "No other occupied tables to merge into.",
+  "posDiningNoMergeTargets": "No free tables to add.",
   "posDiningActionFailed": "The table state changed — refresh the floor plan and try again.",
   "posDiningTableMovedTitle": "Table Moved",
-  "posDiningTablesMergedTitle": "Tables Merged",
+  "posDiningTablesMergedTitle": "Tables Joined",
   "ctrlMsgTableTransferred": "Moved {from} to {to} — the order followed the party.",
   "@ctrlMsgTableTransferred": {
     "placeholders": {
@@ -1764,7 +1772,7 @@
       }
     }
   },
-  "ctrlMsgTablesMerged": "Merged {source} into {target}.",
+  "ctrlMsgTablesMerged": "Joined {source} with {target}.",
   "@ctrlMsgTablesMerged": {
     "placeholders": {
       "source": {

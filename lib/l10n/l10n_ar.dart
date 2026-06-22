@@ -2797,19 +2797,25 @@ class L10nAr extends L10n {
       'انتقل الضيوف إلى مقاعد أخرى — ينتقل الطلب معهم.';
 
   @override
-  String get posDiningActionMerge => 'الدمج في طاولة أخرى';
+  String get posDiningActionMerge => 'ضم طاولة شاغرة';
 
   @override
-  String get posDiningActionMergeHint => 'ضم هذا الطلب إلى طاولة مشغولة أخرى.';
+  String get posDiningActionMergeHint =>
+      'اضمم طاولة شاغرة مجاورة إلى هذه المجموعة — فاتورة واحدة، وتُفرَّغان معًا.';
+
+  @override
+  String posDiningJoinedWith(String label) {
+    return 'مضمومة ← $label';
+  }
 
   @override
   String get posDiningPickFreeTable => 'النقل إلى أي طاولة شاغرة؟';
 
   @override
-  String get posDiningPickMergeTarget => 'الدمج في أي طاولة؟';
+  String get posDiningPickMergeTarget => 'ضم أي طاولة شاغرة؟';
 
   @override
-  String get posDiningMergeConfirmTitle => 'دمج الطاولتين؟';
+  String get posDiningMergeConfirmTitle => 'ضم الطاولتين؟';
 
   @override
   String posDiningMergeConfirmBody(
@@ -2818,14 +2824,14 @@ class L10nAr extends L10n {
     String target,
     String targetTotal,
   ) {
-    return 'سيُدمج طلب $source ($sourceTotal) في $target ($targetTotal). تصبح طاولة المصدر شاغرة، وتحتفظ الطاولة الهدف بمرجعها وخصمها.';
+    return 'ستنضم $target إلى مجموعة $source — يتشاركان فاتورة واحدة على $source ($sourceTotal) وتُفرَّغان معًا عند الدفع.';
   }
 
   @override
   String get posDiningNoFreeTables => 'لا توجد طاولات شاغرة حاليًا.';
 
   @override
-  String get posDiningNoMergeTargets => 'لا توجد طاولات مشغولة أخرى للدمج.';
+  String get posDiningNoMergeTargets => 'لا توجد طاولات شاغرة للضم.';
 
   @override
   String get posDiningActionFailed =>
@@ -2835,7 +2841,7 @@ class L10nAr extends L10n {
   String get posDiningTableMovedTitle => 'تم نقل الطاولة';
 
   @override
-  String get posDiningTablesMergedTitle => 'تم دمج الطاولتين';
+  String get posDiningTablesMergedTitle => 'تم ضم الطاولتين';
 
   @override
   String ctrlMsgTableTransferred(String from, String to) {
@@ -2844,7 +2850,7 @@ class L10nAr extends L10n {
 
   @override
   String ctrlMsgTablesMerged(String source, String target) {
-    return 'تم دمج $source في $target.';
+    return 'تم ضم $source مع $target.';
   }
 
   @override

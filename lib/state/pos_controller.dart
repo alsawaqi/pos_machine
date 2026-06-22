@@ -1801,7 +1801,39 @@ class PosController extends ChangeNotifier {
     _broadcast();
   }
 
+  /// The group head id for a table — itself if it's a head/standalone, else
+  /// the primary it's linked to.
+  String _diningGroupHeadId(String tableId) {
+    final s = diningSessionFor(tableId);
+    if (s != null && s.isLinkedSecondary && s.primaryTableId != tableId) {
+      return s.primaryTableId!;
+    }
+    return tableId;
+  }
+
+  /// Every table id in a table's joined party (the head + its linked seats).
+  Set<String> _diningGroupIds(String tableId) {
+    final head = _diningGroupHeadId(tableId);
+    final headSession = diningSessionFor(head);
+    return <String>{head, ...?headSession?.linkedTableIds};
+  }
+
+  /// Public lookup of a table definition by id — the floor plan resolves a
+  /// linked seat's head label for the "Joined → …" badge.
+  DiningTableDefinition? diningTableDefinitionById(String id) =>
+      _findDiningTableDefinitionById(id);
+
   Future<void> openDiningTable(String tableId) async {
+    // Joined tables: tapping a linked seat opens the party's shared bill on
+    // the group head, not the empty linked seat.
+    final tapped = diningSessionFor(tableId);
+    if (tapped != null &&
+        tapped.isLinkedSecondary &&
+        tapped.primaryTableId != tableId) {
+      await openDiningTable(tapped.primaryTableId!);
+      return;
+    }
+
     final definition = _findDiningTableDefinitionById(tableId);
     if (definition == null) return;
 
@@ -1885,9 +1917,13 @@ class PosController extends ChangeNotifier {
     if (tableId == null) return;
 
     _cancelPendingDiningTablePersistence();
-    await _orderStorage.clearDiningTable(tableId);
+    // Discarding the bill frees the whole joined party, not just the head.
+    final groupIds = _diningGroupIds(tableId);
+    for (final id in groupIds) {
+      await _orderStorage.clearDiningTable(id);
+    }
     diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
-      ..removeWhere((session) => session.tableId == tableId);
+      ..removeWhere((session) => groupIds.contains(session.tableId));
     _resetForNextOrder(
       advanceOrderNumber: false,
       nextOrderType: OrderType.dineIn,
@@ -1897,15 +1933,22 @@ class PosController extends ChangeNotifier {
   }
 
   Future<void> clearDiningTableById(String tableId) async {
-    if (activeDiningTableId == tableId) {
+    // Resolve to the whole party (head + linked seats) so discarding any one
+    // table frees the joined group together.
+    final groupIds = _diningGroupIds(tableId);
+    final clearsActive =
+        activeDiningTableId != null && groupIds.contains(activeDiningTableId);
+    if (clearsActive) {
       _cancelPendingDiningTablePersistence();
     }
 
-    await _orderStorage.clearDiningTable(tableId);
+    for (final id in groupIds) {
+      await _orderStorage.clearDiningTable(id);
+    }
     diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
-      ..removeWhere((session) => session.tableId == tableId);
+      ..removeWhere((session) => groupIds.contains(session.tableId));
 
-    if (activeDiningTableId == tableId) {
+    if (clearsActive) {
       _resetForNextOrder(
         advanceOrderNumber: false,
         nextOrderType: OrderType.dineIn,
@@ -1936,6 +1979,8 @@ class PosController extends ChangeNotifier {
         diningSessionFor(toTableId) != null) {
       return null;
     }
+    // A joined party can't be moved piecemeal — its seats stay linked.
+    if (source.isLinkedSecondary || source.hasJoinedTables) return null;
 
     final sourceDef = _findDiningTableDefinitionById(fromTableId);
     final newDraft = source.draft!.copyWith(
@@ -1970,83 +2015,84 @@ class PosController extends ChangeNotifier {
     );
   }
 
-  /// Gap sweep G2 — merge an OCCUPIED source table's cart into another
-  /// OCCUPIED target table (parties joined up). Lines combine on
-  /// [CartItem.mergeSignature] (same product + modifiers + notes → qty
-  /// adds; else appended). The TARGET keeps its reference, discount and
-  /// split settings; the source session is dropped — and if its draft was
-  /// mirrored server-side as a held order, the mirror is voided like a
-  /// discard so no stale hold lingers on other terminals.
-  Future<String?> mergeDiningTables(String sourceTableId, String targetTableId) async {
-    if (activeDiningTableId != null || sourceTableId == targetTableId) {
+  /// "Join a free table" — pull a FREE neighbouring table into an OCCUPIED
+  /// party so the whole group shares the party's ONE bill. This deliberately
+  /// does NOT combine two separate orders: the [headTableId] party keeps its
+  /// single order; [freeTableId] becomes a linked seat with no bill of its own,
+  /// and both free together when the order is paid or discarded. The order the
+  /// device sends still carries the head as its primary table_id plus the
+  /// joined seats (see [joinedTableIdsFor]) so the merchant can see which
+  /// tables the one order covered. If a linked seat id is passed for the head
+  /// it resolves to that party's head, so you can keep adding tables to a party.
+  Future<String?> joinDiningTables(
+    String headTableId,
+    String freeTableId,
+  ) async {
+    if (activeDiningTableId != null) return null;
+
+    final head = _diningGroupHeadId(headTableId);
+    if (head == freeTableId) return null;
+
+    final headSession = diningSessionFor(head);
+    final freeSession = diningSessionFor(freeTableId);
+    final freeDef = _findDiningTableDefinitionById(freeTableId);
+    // The party head must be occupied with a bill; the joined table must be
+    // FREE (no session). Joining never merges two running orders.
+    if (headSession == null ||
+        headSession.status != DiningTableStatus.occupied ||
+        headSession.draft == null ||
+        freeDef == null ||
+        freeSession != null) {
       return null;
     }
-    final source = diningSessionFor(sourceTableId);
-    final target = diningSessionFor(targetTableId);
-    if (source == null ||
-        target == null ||
-        source.status != DiningTableStatus.occupied ||
-        target.status != DiningTableStatus.occupied ||
-        source.draft == null ||
-        target.draft == null) {
-      return null;
-    }
-    final sourceDef = _findDiningTableDefinitionById(sourceTableId);
-    final targetDef = _findDiningTableDefinitionById(targetTableId);
+    final headDef = _findDiningTableDefinitionById(head);
 
-    final merged = target.draft!.items
-        .map((item) => CartItem.fromMap(item.toMap()))
-        .toList();
-    for (final item in source.draft!.items) {
-      final index =
-          merged.indexWhere((e) => e.mergeSignature == item.mergeSignature);
-      if (index >= 0) {
-        merged[index].qty += item.qty;
-      } else {
-        merged.add(CartItem.fromMap(item.toMap()));
-      }
-    }
-
-    final mergedDraft = target.draft!.copyWith(items: merged);
-    final earliestOccupied = (source.occupiedAt != null &&
-            (target.occupiedAt == null ||
-                source.occupiedAt!.isBefore(target.occupiedAt!)))
-        ? source.occupiedAt
-        : target.occupiedAt;
-    final mergedSession = DiningTableSession(
-      tableId: target.tableId,
-      floorId: target.floorId,
+    final now = DateTime.now();
+    final linkedIds =
+        <String>{...headSession.linkedTableIds, freeTableId}.toList();
+    final updatedHead = headSession.copyWith(
+      linkedTableIds: linkedIds,
+      updatedAt: now,
+    );
+    final seat = DiningTableSession(
+      tableId: freeTableId,
+      floorId: freeDef.floorId,
       status: DiningTableStatus.occupied,
-      updatedAt: DateTime.now(),
-      orderNumber: target.orderNumber,
-      orderReference: target.orderReference,
-      occupiedAt: earliestOccupied,
-      draft: mergedDraft,
+      updatedAt: now,
+      orderReference: headSession.orderReference,
+      occupiedAt: headSession.occupiedAt ?? now,
+      draft: null,
+      primaryTableId: head,
     );
 
-    await _orderStorage.saveDiningTableSession(mergedSession);
-    await _orderStorage.clearDiningTable(sourceTableId);
-    diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
-      ..removeWhere(
-          (s) => s.tableId == sourceTableId || s.tableId == target.tableId)
-      ..insert(0, mergedSession);
-
-    // The source cart may have been mirrored server-side as a held order
-    // (a resumed hold keeps its uuid) — void the mirror like a discard.
-    final sourceUuid = source.draft!.serverOrderUuid;
-    if (sourceUuid.isNotEmpty && sourceUuid != mergedDraft.serverOrderUuid) {
-      onOrderVoided?.call(
-        sourceUuid,
-        orderNumber: source.orderNumber,
-        reason: 'Merged into ${targetDef?.name ?? targetTableId}',
-      );
-    }
+    await _orderStorage.saveDiningTableSession(updatedHead);
+    await _orderStorage.saveDiningTableSession(seat);
+    diningTableSessions = <DiningTableSession>[
+      updatedHead,
+      seat,
+      ...diningTableSessions.where(
+        (s) => s.tableId != head && s.tableId != freeTableId,
+      ),
+    ];
     _notifySafely();
 
-    return _l10n.ctrlMsgTablesMerged(
-      sourceDef?.name ?? sourceTableId,
-      targetDef?.name ?? targetTableId,
-    );
+    return _l10n.ctrlMsgTablesMerged(freeDef.name, headDef?.name ?? head);
+  }
+
+  /// The joined-seat ids (parsed to ints) for the party headed by [tableId] —
+  /// the joined_table_ids the order payload carries so the server records which
+  /// tables the one shared order covered. Empty for a standalone table. Read at
+  /// order time BEFORE the paid-marking frees the seats (it clears the head's
+  /// linkedTableIds the instant the order is marked paid).
+  List<int> joinedTableIdsFor(String tableId) {
+    final session = diningSessionFor(tableId);
+    if (session == null || session.linkedTableIds.isEmpty) {
+      return const <int>[];
+    }
+    return session.linkedTableIds
+        .map(int.tryParse)
+        .whereType<int>()
+        .toList();
   }
 
   Future<void> openRearDisplay() async {
@@ -3466,13 +3512,18 @@ class PosController extends ChangeNotifier {
     }
 
     final session = _buildActiveDiningTableSession();
-    final updated = List<DiningTableSession>.from(diningTableSessions)
-      ..removeWhere((entry) => entry.tableId == activeDiningTableId);
-
-    if (session != null) {
-      updated.insert(0, session);
+    if (session == null) {
+      // The head's cart emptied. DON'T drop the head here — the debounced
+      // persist below frees the WHOLE joined party (head + linked seats) while
+      // the link is still resolvable; dropping the head now would orphan its
+      // linked seats (occupied, pointing at a vanished head). The brief stale
+      // render clears within the persist debounce window.
+      return;
     }
 
+    final updated = List<DiningTableSession>.from(diningTableSessions)
+      ..removeWhere((entry) => entry.tableId == activeDiningTableId);
+    updated.insert(0, session);
     diningTableSessions = updated;
   }
 
@@ -3488,7 +3539,15 @@ class PosController extends ChangeNotifier {
     try {
       if (session == null) {
         if (existing == null) return;
-        await _orderStorage.clearDiningTable(tableId);
+        // Empty cart — free the WHOLE joined party (head + its linked seats)
+        // from memory + storage, so the linked seats don't orphan.
+        final groupIds = _diningGroupIds(tableId);
+        diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
+          ..removeWhere((s) => groupIds.contains(s.tableId));
+        for (final id in groupIds) {
+          await _orderStorage.clearDiningTable(id);
+        }
+        _notifySafely();
       } else {
         await _orderStorage.saveDiningTableSession(session);
       }
@@ -3536,6 +3595,10 @@ class PosController extends ChangeNotifier {
       paidAt: null,
       draft: createDraft(),
       paidSnapshot: null,
+      // Preserve the joined-party link through the debounced re-persist —
+      // the active table is the head; its linked seats must survive an edit.
+      primaryTableId: existing?.primaryTableId,
+      linkedTableIds: existing?.linkedTableIds ?? const [],
     );
   }
 
@@ -3545,20 +3608,34 @@ class PosController extends ChangeNotifier {
     _cancelPendingDiningTablePersistence();
     await _diningTablePersistQueue;
 
+    final headId = activeDiningTableId;
+    final linkedIds =
+        (headId != null ? diningSessionFor(headId)?.linkedTableIds : null) ??
+            const <String>[];
+
     final paidSession = _buildActiveDiningTableSession(
       paidSnapshot: completedSnapshot,
     );
     if (paidSession == null) return;
 
+    // The paid head is no longer a party — its linked seats free immediately
+    // (the bill they shared is settled); the head shows the paid receipt until
+    // the cashier acknowledges it.
+    final freeIds = linkedIds.toSet();
     diningTableSessions = <DiningTableSession>[
       paidSession,
       ...diningTableSessions.where(
-        (session) => session.tableId != paidSession.tableId,
+        (session) =>
+            session.tableId != paidSession.tableId &&
+            !freeIds.contains(session.tableId),
       ),
     ];
 
     try {
       await _orderStorage.saveDiningTableSession(paidSession);
+      for (final id in freeIds) {
+        await _orderStorage.clearDiningTable(id);
+      }
     } catch (error) {
       debugPrint('Failed to mark dining table as paid: $error');
     }

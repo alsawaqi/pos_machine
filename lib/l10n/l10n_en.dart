@@ -2768,20 +2768,25 @@ class L10nEn extends L10n {
       'The party changed seats — the order follows.';
 
   @override
-  String get posDiningActionMerge => 'Merge into another table';
+  String get posDiningActionMerge => 'Join a free table';
 
   @override
   String get posDiningActionMergeHint =>
-      'Combine this order into another occupied table.';
+      'Pull a free neighbouring table into this party — one shared bill; both free together.';
+
+  @override
+  String posDiningJoinedWith(String label) {
+    return 'Joined → $label';
+  }
 
   @override
   String get posDiningPickFreeTable => 'Move to which free table?';
 
   @override
-  String get posDiningPickMergeTarget => 'Merge into which table?';
+  String get posDiningPickMergeTarget => 'Add which free table?';
 
   @override
-  String get posDiningMergeConfirmTitle => 'Merge Tables?';
+  String get posDiningMergeConfirmTitle => 'Join Tables?';
 
   @override
   String posDiningMergeConfirmBody(
@@ -2790,15 +2795,14 @@ class L10nEn extends L10n {
     String target,
     String targetTotal,
   ) {
-    return '$source ($sourceTotal) will be merged into $target ($targetTotal). The source table becomes free; the target keeps its reference and discount.';
+    return '$target will join $source\'s party — they share one bill on $source ($sourceTotal) and free together when paid.';
   }
 
   @override
   String get posDiningNoFreeTables => 'No free tables available right now.';
 
   @override
-  String get posDiningNoMergeTargets =>
-      'No other occupied tables to merge into.';
+  String get posDiningNoMergeTargets => 'No free tables to add.';
 
   @override
   String get posDiningActionFailed =>
@@ -2808,7 +2812,7 @@ class L10nEn extends L10n {
   String get posDiningTableMovedTitle => 'Table Moved';
 
   @override
-  String get posDiningTablesMergedTitle => 'Tables Merged';
+  String get posDiningTablesMergedTitle => 'Tables Joined';
 
   @override
   String ctrlMsgTableTransferred(String from, String to) {
@@ -2817,7 +2821,7 @@ class L10nEn extends L10n {
 
   @override
   String ctrlMsgTablesMerged(String source, String target) {
-    return 'Merged $source into $target.';
+    return 'Joined $source with $target.';
   }
 
   @override

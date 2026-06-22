@@ -90,6 +90,8 @@ OrderSyncPayload buildOrderSyncPayload(
   double? lng,
   int? staffId,
   int? tableId,
+  // Joined tables (v2) — the EXTRA tables this one shared order covered.
+  List<int> joinedTableIds = const <int>[],
   int? customerId,
   String? plateNumber,
   String? deliveryProviderName,
@@ -271,6 +273,7 @@ OrderSyncPayload buildOrderSyncPayload(
     'gps': ?gps,
     'staff_id': ?staffId,
     'table_id': ?tableId,
+    if (joinedTableIds.isNotEmpty) 'joined_table_ids': joinedTableIds,
     'customer_id': ?customerId,
     'plate_number': ?plate,
     'note': ?note,
@@ -410,6 +413,8 @@ Map<String, dynamic>? buildOrderHoldEvent(
   required String orderUuid,
   int? staffId,
   int? tableId,
+  // Joined tables (v2) — the EXTRA tables this held order's party covered.
+  List<int> joinedTableIds = const <int>[],
   DateTime? now,
   String Function()? newUuid,
 }) {
@@ -473,6 +478,7 @@ Map<String, dynamic>? buildOrderHoldEvent(
       ],
     'staff_id': ?staffId,
     'table_id': ?tableId,
+    if (joinedTableIds.isNotEmpty) 'joined_table_ids': joinedTableIds,
   };
 
   return <String, dynamic>{

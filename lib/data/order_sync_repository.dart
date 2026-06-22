@@ -28,6 +28,7 @@ class OrderSyncRepository {
     double? lng,
     int? staffId,
     int? tableId,
+    List<int> joinedTableIds = const <int>[],
     int? customerId,
     String? plateNumber,
     String? deliveryProviderName,
@@ -40,6 +41,7 @@ class OrderSyncRepository {
       lng: lng,
       staffId: staffId,
       tableId: tableId,
+      joinedTableIds: joinedTableIds,
       customerId: customerId,
       plateNumber: plateNumber,
       deliveryProviderName: deliveryProviderName,
@@ -117,12 +119,14 @@ class OrderSyncRepository {
     OrderSessionDraft draft, {
     int? staffId,
     int? tableId,
+    List<int> joinedTableIds = const <int>[],
   }) async {
     final event = buildOrderHoldEvent(
       draft,
       orderUuid: draft.serverOrderUuid,
       staffId: staffId,
       tableId: tableId,
+      joinedTableIds: joinedTableIds,
     );
     if (event == null) return;
 
