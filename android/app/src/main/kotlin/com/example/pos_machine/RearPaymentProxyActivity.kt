@@ -39,6 +39,14 @@ class RearPaymentProxyActivity : Activity() {
         if (flowStarted) return
         flowStarted = true
 
+        val existingSession = intent.getStringExtra(EXTRA_SESSION_ID)?.trim().orEmpty()
+        if (existingSession.isNotEmpty()) {
+            // A pre-warmed session was supplied → skip login and pay directly on
+            // the rear (customer) display.
+            launchPayment(existingSession)
+            return
+        }
+
         val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)?.trim().orEmpty()
         val userName = intent.getStringExtra(EXTRA_USER_NAME)?.trim().orEmpty()
         val partnerId = intent.getStringExtra(EXTRA_PARTNER_ID)?.trim().orEmpty()
@@ -136,6 +144,10 @@ class RearPaymentProxyActivity : Activity() {
             return
         }
 
+        launchPayment(sessionId)
+    }
+
+    private fun launchPayment(sessionId: String) {
         val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)?.trim().orEmpty()
         val amount = intent.getStringExtra(EXTRA_AMOUNT)?.trim().orEmpty()
         val mobNo = intent.getStringExtra(EXTRA_MOB_NO)?.trim().orEmpty()
@@ -307,6 +319,7 @@ class RearPaymentProxyActivity : Activity() {
         private const val PASSWORD_TOKEN_AES_KEY_HEX =
             "C9DDC0BB57179060D9F2E01BE71D65C71D222A063F4DDA858FDC467B173BD146"
 
+        const val EXTRA_SESSION_ID = "sessionId"
         const val EXTRA_PACKAGE_NAME = "packageName"
         const val EXTRA_USER_NAME = "userName"
         const val EXTRA_PARTNER_ID = "partnerId"

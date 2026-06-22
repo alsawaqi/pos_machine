@@ -5,6 +5,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
+import android.view.InputDevice
+import android.view.MotionEvent
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -99,6 +102,64 @@ class MainActivity : FlutterActivity() {
         )
     }
 
+    /**
+     * The 10.1" USB customer panel (SUNMI NP521) is a separate USB-HID touch device whose touches
+     * the firmware delivers to the MAIN display (this Activity), scaled — so a customer tap lands on
+     * the staff UI. We can't re-associate it to the customer display (system-only permission), so
+     * instead we intercept those events here by hardware id, consume them (so the staff UI does NOT
+     * react), and forward normalized coordinates to the customer Flutter engine, which replays them
+     * as a tap on the customer screen. Real staff touches (different input device) pass through.
+     */
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (RearDisplayHost.hasActiveRearDisplay() && isCustomerPanelEvent(event)) {
+            forwardCustomerTouch(event)
+            return true
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
+    private fun isCustomerPanelEvent(event: MotionEvent): Boolean {
+        val device = event.device ?: return false
+        val isTouchscreen =
+            (device.sources and InputDevice.SOURCE_TOUCHSCREEN) == InputDevice.SOURCE_TOUCHSCREEN
+        if (!isTouchscreen) return false
+        return device.vendorId == SUNMI_CUSTOMER_TOUCH_VENDOR_ID ||
+            device.name == SUNMI_CUSTOMER_TOUCH_DEVICE_NAME
+    }
+
+    private fun forwardCustomerTouch(event: MotionEvent) {
+        val action = when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> "down"
+            MotionEvent.ACTION_MOVE -> "move"
+            MotionEvent.ACTION_UP -> "up"
+            MotionEvent.ACTION_CANCEL -> "cancel"
+            else -> return
+        }
+
+        val width: Float
+        val height: Float
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = windowManager.currentWindowMetrics.bounds
+            width = bounds.width().toFloat()
+            height = bounds.height().toFloat()
+        } else {
+            val metrics = resources.displayMetrics
+            width = metrics.widthPixels.toFloat()
+            height = metrics.heightPixels.toFloat()
+        }
+
+        val nx = (event.rawX / width.coerceAtLeast(1f)).coerceIn(0f, 1f)
+        val ny = (event.rawY / height.coerceAtLeast(1f)).coerceIn(0f, 1f)
+
+        val forwarded = RearDisplayHost.forwardTouchToRear(action, nx.toDouble(), ny.toDouble())
+        if (action == "down" || action == "up") {
+            Log.i(
+                "CustomerTouch",
+                "intercepted action=$action raw=(${event.rawX},${event.rawY}) norm=($nx,$ny) forwarded=$forwarded",
+            )
+        }
+    }
+
     private fun requestSoftPosRuntimePermissions() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
 
@@ -122,5 +183,9 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val SOFTPOS_PERMISSION_REQUEST_CODE = 6201
+
+        // SUNMI NP521 = the 10.1" USB customer-display touch panel (vendor 0x324f).
+        private const val SUNMI_CUSTOMER_TOUCH_VENDOR_ID = 0x324f
+        private const val SUNMI_CUSTOMER_TOUCH_DEVICE_NAME = "SUNMI NP521"
     }
 }

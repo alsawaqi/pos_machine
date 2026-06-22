@@ -10,7 +10,7 @@ class ApiConfig {
 
   static const String baseUrl = String.fromEnvironment(
     'POS_API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8088/api/v1',
+    defaultValue: 'http://localhost:8088/api/v1',
   );
 
   static const Duration connectTimeout = Duration(seconds: 10);

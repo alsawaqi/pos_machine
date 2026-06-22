@@ -218,6 +218,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await controller.init();
       await controller.openRearDisplay();
+      // Pre-warm a Mosambee login session so the first card payment is fast.
+      controller.prewarmCardPayment();
       // Flush any orders queued in a previous session (e.g. completed offline).
       unawaited(ref.read(orderSyncRepositoryProvider).flush().catchError((_) => 0));
       // Phase C3 — subscribe to the branch Reverb channel for live config push.
@@ -3166,22 +3168,35 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   children: [
                     Expanded(
                       child: _pendingReconButton(
-                        label: l10n.posReconCancelRetry,
+                        label: l10n.commonCancel,
                         filled: false,
-                        onTap: () =>
-                            controller.confirmPendingReconciliation(false),
+                        onTap: () => controller.resolvePendingReconciliation(
+                          PendingReconChoice.cancel,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
                       child: _pendingReconButton(
-                        label: l10n.posReconMarkPaidPending,
-                        filled: true,
-                        onTap: () =>
-                            controller.confirmPendingReconciliation(true),
+                        label: l10n.commonRetry,
+                        filled: false,
+                        onTap: () => controller.resolvePendingReconciliation(
+                          PendingReconChoice.retry,
+                        ),
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: _pendingReconButton(
+                    label: l10n.posReconMarkPaidPending,
+                    filled: true,
+                    onTap: () => controller.resolvePendingReconciliation(
+                      PendingReconChoice.record,
+                    ),
+                  ),
                 ),
               ],
             ),

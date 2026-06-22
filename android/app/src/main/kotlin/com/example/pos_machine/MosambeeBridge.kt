@@ -30,11 +30,28 @@ object MosambeeBridge {
     private var launchSurface: String = "front"
     private var flutterChannel: MethodChannel? = null
 
+    // Pre-warmed login session: a separate login yields a reusable sessionId so the
+    // actual card payment can skip the slow login. Single-use — consumed by one payment.
+    private var preparedSessionId: String? = null
+    // Whether the in-flight login should chain into a payment (loginAndPay) or just
+    // store the session for a later payment (prepareLogin).
+    private var loginContinuesToPayment: Boolean = true
+
     fun configure(activity: Activity, channel: MethodChannel) {
         flutterChannel = channel
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "loginAndPay" -> handleLoginAndPay(activity, call.arguments as? Map<*, *>, result)
+                "prepareLogin" ->
+                    handlePrepareLogin(activity, call.arguments as? Map<*, *>, result)
+                "payWithPreparedSession" ->
+                    handlePayWithPreparedSession(activity, call.arguments as? Map<*, *>, result)
+                "hasPreparedSession" ->
+                    result.success(preparedSessionId?.isNotBlank() == true)
+                "clearPreparedSession" -> {
+                    preparedSessionId = null
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -61,16 +78,87 @@ object MosambeeBridge {
         }
     }
 
+    private fun parseArgs(
+        arguments: Map<*, *>?,
+        result: MethodChannel.Result,
+    ): Map<String, Any?>? {
+        val args = arguments ?: run {
+            result.error("BAD_ARGS", "Arguments must be a map", null)
+            return null
+        }
+        return args.entries.associate { (key, value) -> key.toString() to value }
+    }
+
     private fun handleLoginAndPay(
         activity: Activity,
         arguments: Map<*, *>?,
         result: MethodChannel.Result,
     ) {
-        val args = arguments ?: run {
-            result.error("BAD_ARGS", "Arguments must be a map", null)
+        val args = parseArgs(arguments, result) ?: return
+        startLogin(activity, args, result, continuesToPayment = true)
+    }
+
+    /** Pre-warm a login session (no payment) so the next card payment is fast. */
+    private fun handlePrepareLogin(
+        activity: Activity,
+        arguments: Map<*, *>?,
+        result: MethodChannel.Result,
+    ) {
+        if (preparedSessionId?.isNotBlank() == true) {
+            result.success(
+                JSONObject()
+                    .put("stage", "login")
+                    .put("status", "success")
+                    .put("sessionReady", true)
+                    .put("message", "Mosambee session already prepared")
+                    .toString(),
+            )
+            return
+        }
+        val args = parseArgs(arguments, result) ?: return
+        startLogin(activity, args, result, continuesToPayment = false)
+    }
+
+    /** Pay using the pre-warmed session (no login). Returns code NO_SESSION when none is ready. */
+    private fun handlePayWithPreparedSession(
+        activity: Activity,
+        arguments: Map<*, *>?,
+        result: MethodChannel.Result,
+    ) {
+        val args = parseArgs(arguments, result) ?: return
+
+        if (pendingResult != null) {
+            result.error("BUSY", "A transaction is already in progress", null)
             return
         }
 
+        val sessionId = preparedSessionId?.trim().orEmpty()
+        if (sessionId.isEmpty()) {
+            result.success(
+                JSONObject()
+                    .put("stage", "payment")
+                    .put("status", "failed")
+                    .put("code", "NO_SESSION")
+                    .put("message", "No prepared Mosambee login session")
+                    .toString(),
+            )
+            return
+        }
+
+        preparedSessionId = null // single-use; consume it
+        pendingResult = result
+        paymentRequestData = args
+        loginContinuesToPayment = true
+
+        startPaymentWithSession(activity, sessionId, args)
+    }
+
+    private fun startLogin(
+        activity: Activity,
+        args: Map<String, Any?>,
+        result: MethodChannel.Result,
+        continuesToPayment: Boolean,
+    ) {
         if (pendingResult != null) {
             result.error("BUSY", "A transaction is already in progress", null)
             return
@@ -101,9 +189,8 @@ object MosambeeBridge {
         }
 
         pendingResult = result
-        paymentRequestData = args.entries.associate { (key, value) ->
-            key.toString() to value
-        }
+        paymentRequestData = args
+        loginContinuesToPayment = continuesToPayment
 
         val loginIntent = Intent().apply {
             setPackage(packageName)
@@ -118,14 +205,21 @@ object MosambeeBridge {
         try {
             Log.i(
                 TAG,
-                "Starting Mosambee login package=$packageName userName=$userName partnerIdPresent=${partnerId.isNotEmpty()}",
+                "Starting Mosambee login userName=$userName continuesToPayment=$continuesToPayment",
             )
-            launchSurface = startPaymentFlowOnPreferredDisplay(
-                activity = activity,
-                intent = loginIntent,
-                requestCode = LOGIN_REQUEST_CODE,
-                passwordToken = passwordToken,
-            )
+            launchSurface = if (continuesToPayment) {
+                startPaymentFlowOnPreferredDisplay(
+                    activity = activity,
+                    intent = loginIntent,
+                    requestCode = LOGIN_REQUEST_CODE,
+                    passwordToken = passwordToken,
+                )
+            } else {
+                // Pre-warm login stays on the staff (front) display and never chains
+                // into a payment — we only want the reusable session.
+                activity.startActivityForResult(loginIntent, LOGIN_REQUEST_CODE)
+                "front"
+            }
             notifyLaunchState(stage = "login_started", surface = launchSurface)
             Log.i(TAG, "Started Mosambee login on $launchSurface display")
         } catch (error: ActivityNotFoundException) {
@@ -144,6 +238,71 @@ object MosambeeBridge {
                     .put("stage", "login")
                     .put("status", "failed")
                     .put("message", "Unable to launch Mosambee login.")
+                    .put("error", error.toString())
+                    .put("launchSurface", launchSurface)
+                    .toString(),
+            )
+        }
+    }
+
+    private fun startPaymentWithSession(
+        activity: Activity,
+        sessionId: String,
+        args: Map<String, Any?>,
+    ) {
+        val packageName = args["packageName"]?.toString()?.trim().orEmpty()
+        val amount = args["amount"]?.toString()?.trim().orEmpty()
+        val mobNo = args["mobNo"]?.toString()?.trim().orEmpty()
+        val description = args["description"]?.toString()?.trim().orEmpty()
+
+        val paymentIntent = Intent().apply {
+            setPackage(packageName)
+            action = ACTION_PAYMENT
+            putExtra("sessionId", sessionId)
+            putExtra("amount", amount)
+            if (mobNo.isNotEmpty()) putExtra("mobNo", mobNo)
+            if (description.isNotEmpty()) putExtra("description", description)
+        }
+
+        try {
+            Log.i(TAG, "Starting Mosambee payment with prepared session amount=$amount")
+            launchSurface = if (RearDisplayHost.hasActiveRearDisplay()) {
+                val rearIntent = buildRearPaymentProxyIntent(activity, passwordToken = "")
+                    .putExtra(RearPaymentProxyActivity.EXTRA_SESSION_ID, sessionId)
+                if (
+                    RearDisplayHost.startActivityOnRearDisplay(
+                        rearIntent,
+                        hidePresentationAfterLaunch = true,
+                    )
+                ) {
+                    "rear"
+                } else {
+                    Log.w(TAG, "Rear payment launch failed; falling back to front display")
+                    activity.startActivityForResult(paymentIntent, PAYMENT_REQUEST_CODE)
+                    "front"
+                }
+            } else {
+                activity.startActivityForResult(paymentIntent, PAYMENT_REQUEST_CODE)
+                "front"
+            }
+            notifyLaunchState(stage = "payment_started", surface = launchSurface)
+            Log.i(TAG, "Started Mosambee payment on $launchSurface display")
+        } catch (error: ActivityNotFoundException) {
+            deliverAndReset(
+                JSONObject()
+                    .put("stage", "payment")
+                    .put("status", "failed")
+                    .put("message", "Mosambee payment activity was not found.")
+                    .put("error", error.toString())
+                    .put("launchSurface", launchSurface)
+                    .toString(),
+            )
+        } catch (error: Exception) {
+            deliverAndReset(
+                JSONObject()
+                    .put("stage", "payment")
+                    .put("status", "failed")
+                    .put("message", "Unable to launch Mosambee payment.")
                     .put("error", error.toString())
                     .put("launchSurface", launchSurface)
                     .toString(),
@@ -204,6 +363,20 @@ object MosambeeBridge {
                     .put("status", status)
                     .put("message", message)
                     .put("resultCode", resultCode)
+                    .put("launchSurface", launchSurface)
+                    .toString(),
+            )
+            return
+        }
+
+        if (!loginContinuesToPayment) {
+            // Pre-warm: store the reusable session for the next payment and stop here.
+            preparedSessionId = sessionId
+            deliverAndReset(
+                JSONObject()
+                    .put("stage", "login")
+                    .put("status", "success")
+                    .put("sessionReady", true)
                     .put("launchSurface", launchSurface)
                     .toString(),
             )
@@ -392,6 +565,7 @@ object MosambeeBridge {
         pendingResult = null
         paymentRequestData = null
         launchSurface = "front"
+        loginContinuesToPayment = true
     }
 
     private fun generatePasswordToken(userName: String, pin: String): String {

@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -35,9 +36,12 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
 
   OrderSnapshot order = OrderSnapshot.initial();
   bool _sendingCustomerDecision = false;
-  int _touchTestTapCount = 0;
-  String _lastTouchTestMessage = 'Touch test idle';
   late final ScrollController _orderItemsScrollController;
+
+  // Customer-panel taps are intercepted on the main display (MainActivity) and forwarded here as
+  // normalized points; we replay them as synthetic pointers so the customer UI reacts to them.
+  int _syntheticPointerId = 1000;
+  bool _syntheticPointerDown = false;
 
   @override
   void initState() {
@@ -46,6 +50,10 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
     debugPrint('CustomerDisplayScreen initialized.');
 
     _rearDisplayChannel.setMethodCallHandler((call) async {
+      if (call.method == 'syntheticTouch') {
+        _handleSyntheticTouch(call.arguments);
+        return;
+      }
       if (call.method != 'updateOrder') return;
 
       final data = call.arguments;
@@ -65,6 +73,71 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
     _rearDisplayChannel.setMethodCallHandler(null);
     _orderItemsScrollController.dispose();
     super.dispose();
+  }
+
+  /// Replays a customer-panel touch (forwarded from the main display) onto this customer UI.
+  /// [arguments] carries `action` (down/move/up/cancel) and `nx`/`ny` (0..1 fractions of the panel).
+  void _handleSyntheticTouch(dynamic arguments) {
+    if (!mounted) return;
+    if (arguments is! Map) return;
+    final action = arguments['action']?.toString();
+    final nx = (arguments['nx'] as num?)?.toDouble();
+    final ny = (arguments['ny'] as num?)?.toDouble();
+    if (action == null || nx == null || ny == null) return;
+
+    final size = MediaQuery.maybeOf(context)?.size;
+    if (size == null || size.isEmpty) return;
+    final position = Offset(nx * size.width, ny * size.height);
+    _dispatchSyntheticPointer(action, position);
+  }
+
+  void _dispatchSyntheticPointer(String action, Offset position) {
+    final binding = GestureBinding.instance;
+    switch (action) {
+      case 'down':
+        _syntheticPointerId += 1;
+        _syntheticPointerDown = true;
+        binding.handlePointerEvent(
+          PointerDownEvent(
+            pointer: _syntheticPointerId,
+            position: position,
+            kind: PointerDeviceKind.touch,
+          ),
+        );
+        break;
+      case 'move':
+        if (!_syntheticPointerDown) return;
+        binding.handlePointerEvent(
+          PointerMoveEvent(
+            pointer: _syntheticPointerId,
+            position: position,
+            kind: PointerDeviceKind.touch,
+          ),
+        );
+        break;
+      case 'up':
+        if (!_syntheticPointerDown) return;
+        _syntheticPointerDown = false;
+        binding.handlePointerEvent(
+          PointerUpEvent(
+            pointer: _syntheticPointerId,
+            position: position,
+            kind: PointerDeviceKind.touch,
+          ),
+        );
+        break;
+      case 'cancel':
+        if (!_syntheticPointerDown) return;
+        _syntheticPointerDown = false;
+        binding.handlePointerEvent(
+          PointerCancelEvent(
+            pointer: _syntheticPointerId,
+            position: position,
+            kind: PointerDeviceKind.touch,
+          ),
+        );
+        break;
+    }
   }
 
   @override
@@ -98,11 +171,6 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
           SafeArea(
             child: Padding(padding: const EdgeInsets.all(28), child: content),
           ),
-          Positioned(
-            top: 22,
-            right: 22,
-            child: SafeArea(child: _buildTouchTestChip()),
-          ),
           if (_showLoadingOverlay) _buildLoadingOverlay(),
         ],
       ),
@@ -113,13 +181,19 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
       order.paymentStatus == 'Processing payment' &&
       order.paymentMethod.toLowerCase() != 'cash';
   bool get _showCharityPrompt => order.showCharityRoundUpPrompt;
+  // The cashier alone resolves an unconfirmed card charge ("Card charge not
+  // confirmed"); the customer screen must never show the failure or its prompt.
+  bool get _isAwaitingCashier =>
+      order.paymentStatus == 'Card charge not confirmed';
   bool get _showLoadingOverlay =>
-      _sendingCustomerDecision || order.showPaymentLaunchOverlay;
+      _sendingCustomerDecision ||
+      order.showPaymentLaunchOverlay ||
+      _isAwaitingCashier;
   String get _loadingOverlayTitle {
     final l10n = L10n.of(context);
-    return _sendingCustomerDecision
-        ? l10n.cdProcessingSelectionTitle
-        : order.paymentOverlayTitle.isEmpty
+    if (_sendingCustomerDecision) return l10n.cdProcessingSelectionTitle;
+    if (_isAwaitingCashier) return l10n.cdPreparingPaymentTitle;
+    return order.paymentOverlayTitle.isEmpty
         ? l10n.cdPreparingPaymentTitle
         : order.paymentOverlayTitle;
   }
@@ -129,6 +203,8 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
     if (_sendingCustomerDecision) {
       return l10n.cdProcessingSelectionMessage;
     }
+    // Neutral wait copy — never surface the card-failure note to the customer.
+    if (_isAwaitingCashier) return l10n.cdPreparingPaymentMessage;
 
     return order.note.isEmpty ? l10n.cdPreparingPaymentMessage : order.note;
   }
@@ -265,7 +341,9 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
           ),
           const Spacer(),
           _StatusPill(
-            label: localizedPaymentStatus(l10n, order.paymentStatus),
+            label: _isAwaitingCashier
+                ? localizedPaymentStatus(l10n, 'Processing payment')
+                : localizedPaymentStatus(l10n, order.paymentStatus),
             active: order.paymentStatus != 'Waiting',
             success: _isPaid,
           ),
@@ -1443,93 +1521,6 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
     );
   }
 
-  Widget _buildTouchTestChip() {
-    final l10n = L10n.of(context);
-    final hasPassed = _touchTestTapCount > 0;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: _runTouchTest,
-        borderRadius: BorderRadius.circular(22),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: hasPassed
-                  ? const [Color(0xFF2B8E64), Color(0xFF236E4F)]
-                  : const [Color(0xFF0D7B99), Color(0xFF0A5C72)],
-            ),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x22000000),
-                blurRadius: 18,
-                offset: Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                hasPassed ? Icons.touch_app_rounded : Icons.ads_click_rounded,
-                color: Colors.white,
-                size: 22,
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    hasPassed
-                        ? l10n.cdTouchOkCount(_touchTestTapCount)
-                        : l10n.cdTouchTestTitle,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    hasPassed ? _lastTouchTestMessage : l10n.cdTouchTestHint,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withValues(alpha: 0.92),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _runTouchTest() async {
-    final l10n = L10n.of(context);
-    final nextCount = _touchTestTapCount + 1;
-    final now = TimeOfDay.now();
-    final formattedTime =
-        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    final message = l10n.cdTouchDetectedAt(formattedTime, nextCount);
-
-    setState(() {
-      _touchTestTapCount = nextCount;
-      _lastTouchTestMessage = message;
-    });
-
-    await _sendCustomerEvent(message);
-  }
-
   Future<void> _sendCharityDecision(bool accepted) async {
     if (_sendingCustomerDecision) return;
 
@@ -1572,17 +1563,6 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
           _sendingCustomerDecision = false;
         });
       }
-    }
-  }
-
-  Future<void> _sendCustomerEvent(String message) async {
-    try {
-      await _rearDisplayChannel.invokeMethod<bool>('customerEvent', {
-        'type': 'customer_event',
-        'message': message,
-      });
-    } catch (error) {
-      debugPrint('CustomerDisplayScreen failed to send customer event: $error');
     }
   }
 

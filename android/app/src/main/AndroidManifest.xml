@@ -63,6 +63,11 @@
     <queries>
         <package android:name="com.sunmi.fingerprintservice"/>
         <package android:name="com.mosambee.dhofar.softpos"/>
+        <!-- Sunmi USB customer-display control service (bound for touch/screen control). -->
+        <package android:name="com.sunmi.usbscreen"/>
+        <intent>
+            <action android:name="com.sunmi.usbscreen.IUsbScreenInterface"/>
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

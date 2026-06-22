@@ -165,6 +165,24 @@ object RearDisplayHost {
         return true
     }
 
+    /**
+     * Forwards a customer-panel touch (intercepted on the main display in MainActivity) to the rear
+     * customer engine as a normalized point, which replays it as a synthetic pointer on the customer
+     * UI. nx/ny are 0..1 fractions of the panel surface.
+     */
+    fun forwardTouchToRear(action: String, nx: Double, ny: Double): Boolean {
+        val engineId = activeEngineId ?: return false
+        val flutterEngine = FlutterEngineCache.getInstance().get(engineId) ?: return false
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, REAR_CHANNEL)
+            .invokeMethod(
+                "syntheticTouch",
+                mapOf("action" to action, "nx" to nx, "ny" to ny),
+            )
+
+        return true
+    }
+
     fun transferDataToFront(arguments: Any?): Boolean {
         val binaryMessenger = frontBinaryMessenger ?: run {
             Log.w(TAG, "Unable to transfer data to front display because the messenger is missing.")

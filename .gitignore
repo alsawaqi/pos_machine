@@ -12,7 +12,8 @@
 .swiftpm/
 migrate_working_dir/
 
-.codex_inspect
+.codex_inspect/
+.cladue
 
 
 # IntelliJ related

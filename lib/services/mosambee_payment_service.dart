@@ -68,6 +68,11 @@ class MosambeePaymentResult {
   /// pending reconciliation rather than losing the sale.
   bool get isUncertain => !isSuccess && !isCanceled;
 
+  /// The native bridge had no pre-warmed login session to pay with (so the caller
+  /// should fall back to a full login+pay).
+  bool get isNoSession =>
+      _lookupString(payload, const ['code']).toUpperCase() == 'NO_SESSION';
+
   /// The acquirer transaction reference (RRN / txn id) — the key the bank
   /// settlement file is matched on. Looks top-level and inside receiptResponse.
   String? get softposReference => _firstNonEmpty(const [
@@ -195,6 +200,94 @@ class MosambeePaymentService {
     _ensureHandlerInstalled();
   }
 
+  Map<String, String> _loginArgs(String terminalId) => {
+    'userName': terminalId,
+    'pin': terminalPin,
+    'partnerId': partnerId,
+    'packageName': appPackageName,
+  };
+
+  Map<String, String> _paymentArgs(double amountOmr) => {
+    'packageName': appPackageName,
+    'amount': (amountOmr * 1000).round().toString(),
+    'mobNo': '',
+    'description': 'Mithqal POS Order',
+  };
+
+  Future<String?>? _prepareInFlight;
+
+  /// Pre-warm a Mosambee login session so the next card payment can skip the
+  /// (slow) login. Best-effort and idempotent — it de-duplicates an in-flight
+  /// warm-up and never throws.
+  Future<void> prepareSession() async {
+    final existing = _prepareInFlight;
+    if (existing != null) {
+      await existing.catchError((_) => null);
+      return;
+    }
+    final future = _prepareSessionOnce();
+    _prepareInFlight = future;
+    try {
+      await future;
+    } catch (_) {
+      // best-effort warm-up; ignore failures
+    } finally {
+      if (identical(_prepareInFlight, future)) _prepareInFlight = null;
+    }
+  }
+
+  Future<String?> _prepareSessionOnce() async {
+    final terminalId = (await LocalStorageService.getTerminalId())?.trim();
+    if (terminalId == null || terminalId.isEmpty) {
+      return null; // not configured — nothing to warm
+    }
+    return _platform.invokeMethod<String>('prepareLogin', _loginArgs(terminalId));
+  }
+
+  /// Pay using the pre-warmed session (fast — no login). Falls back to a full
+  /// [loginAndPay] when no warm session is available (already consumed, expired,
+  /// or never prepared), so a sale never fails just because the session lapsed.
+  Future<MosambeePaymentResult> payWithPreparedSession(double amountOmr) async {
+    // Let any in-flight pre-warm finish first, to avoid a native BUSY race.
+    final inFlight = _prepareInFlight;
+    if (inFlight != null) {
+      await inFlight.catchError((_) => null);
+    }
+
+    try {
+      final raw = await _platform.invokeMethod<String>(
+        'payWithPreparedSession',
+        _paymentArgs(amountOmr),
+      );
+      final result = MosambeePaymentResult.fromRaw(raw);
+      if (result.isNoSession) {
+        return loginAndPay(amountOmr);
+      }
+      return result;
+    } on PlatformException catch (error) {
+      if (error.code == 'BUSY') {
+        return loginAndPay(amountOmr);
+      }
+      return MosambeePaymentResult.fromRaw(
+        jsonEncode({
+          'stage': 'flutter_platform',
+          'status': 'failed',
+          'code': error.code,
+          'message': error.message,
+          'details': error.details,
+        }),
+      );
+    } catch (error) {
+      return MosambeePaymentResult.fromRaw(
+        jsonEncode({
+          'stage': 'flutter',
+          'status': 'failed',
+          'error': error.toString(),
+        }),
+      );
+    }
+  }
+
   Future<MosambeePaymentResult> loginAndPay(double amountOmr) async {
     try {
       final terminalId = (await LocalStorageService.getTerminalId())?.trim();
@@ -206,13 +299,8 @@ class MosambeePaymentService {
       }
 
       final result = await _platform.invokeMethod<String>('loginAndPay', {
-        'userName': terminalId,
-        'pin': terminalPin,
-        'partnerId': partnerId,
-        'packageName': appPackageName,
-        'amount': (amountOmr * 1000).round().toString(),
-        'mobNo': '',
-        'description': 'Mithqal POS Order',
+        ..._loginArgs(terminalId),
+        ..._paymentArgs(amountOmr),
       });
 
       return MosambeePaymentResult.fromRaw(result);

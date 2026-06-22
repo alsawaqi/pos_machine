@@ -15,6 +15,14 @@ import '../services/order_sync_payload.dart' show uuidV4;
 import '../services/presentation_service.dart';
 import '../services/sunmi_receipt_service.dart';
 
+/// The cashier's resolution of an unconfirmed card charge (the "Card charge not
+/// confirmed" prompt): cancel/abort the charge, force-record it as pending
+/// reconciliation, or retry by re-launching the payment terminal.
+enum PendingReconChoice { cancel, record, retry }
+
+/// Outcome of a (possibly retried) card charge attempt.
+enum _CardChargeOutcome { success, recordPending, aborted }
+
 class PosController extends ChangeNotifier {
   static const Duration _rearDisplaySyncDebounceDuration = Duration(
     milliseconds: 250,
@@ -561,7 +569,7 @@ class PosController extends ChangeNotifier {
   int _activeCharityRoundUpPromptId = 0;
   bool _charityPromptCanceled = false;
   int _referenceSequence = 0;
-  Completer<bool>? _pendingReconCompleter;
+  Completer<PendingReconChoice>? _pendingReconCompleter;
   double _pendingReconAmount = 0;
 
   PosController({OrderStorageService? orderStorage})
@@ -2645,45 +2653,44 @@ class PosController extends ChangeNotifier {
         );
       }
 
-      _clearPaymentLaunchOverlay();
-      paymentStatus = 'Processing payment';
-      displayNote = charityRoundUpAccepted
-          ? _l10n.ctrlMsgTapToPayRoundUp
-          : _l10n.ctrlMsgTapToPay;
-      _broadcast();
-
       debugPrint(
         'PosController invoking Mosambee loginAndPay with amount=${payableTotal.toStringAsFixed(3)}',
       );
 
-      final paymentResult = await _paymentBridge.loginAndPay(payableTotal);
+      final (cardOutcome, paymentResult) = await _runCardCharge(
+        amount: payableTotal,
+        processingNote: charityRoundUpAccepted
+            ? _l10n.ctrlMsgTapToPayRoundUp
+            : _l10n.ctrlMsgTapToPay,
+      );
 
-      if (!paymentResult.isSuccess) {
-        // Uncertain (NFC timeout / ambiguous, not an explicit cancel): offer the
-        // cashier to force-record the charge as pending reconciliation so the
-        // sale isn't lost — the admin queue settles it against the bank file.
-        if (paymentResult.isUncertain &&
-            await _promptForPendingReconciliation(amount: payableTotal)) {
-          _clearPaymentLaunchOverlay();
-          paymentStatus = 'Paid (pending reconciliation)';
-          lastPaymentMessage = _l10n.ctrlMsgCardPendingReconRecorded;
-          displayNote = _l10n.ctrlMsgPaymentPendingBankThanks;
-          _broadcast();
+      // Uncertain charge force-recorded by the cashier (settles against the bank
+      // file via the admin queue) so the sale isn't lost.
+      if (cardOutcome == _CardChargeOutcome.recordPending) {
+        _clearPaymentLaunchOverlay();
+        paymentStatus = 'Paid (pending reconciliation)';
+        lastPaymentMessage = _l10n.ctrlMsgCardPendingReconRecorded;
+        displayNote = _l10n.ctrlMsgPaymentPendingBankThanks;
+        _broadcast();
 
-          return await _completeSuccessfulPayment(
-            transactionMethod: transactionMethod,
-            splitCountAtPayment: transactionSplitCount,
-            splitIndexAtPayment: transactionSplitIndex,
-            baseAmount: transactionBaseAmount,
-            isDineInPayment: isDineInPayment,
-            successMessage: lastPaymentMessage,
-            cardCharge: _cardChargeFromResult(
-              paymentResult,
-              status: 'pending_reconciliation',
-            ),
-          );
-        }
+        // Re-warm a login session for the next card sale.
+        prewarmCardPayment();
 
+        return await _completeSuccessfulPayment(
+          transactionMethod: transactionMethod,
+          splitCountAtPayment: transactionSplitCount,
+          splitIndexAtPayment: transactionSplitIndex,
+          baseAmount: transactionBaseAmount,
+          isDineInPayment: isDineInPayment,
+          successMessage: lastPaymentMessage,
+          cardCharge: _cardChargeFromResult(
+            paymentResult,
+            status: 'pending_reconciliation',
+          ),
+        );
+      }
+
+      if (cardOutcome == _CardChargeOutcome.aborted) {
         _clearPaymentLaunchOverlay();
         paymentStatus = paymentResult.isCanceled
             ? 'Payment canceled'
@@ -2703,6 +2710,9 @@ class PosController extends ChangeNotifier {
           ? _l10n.ctrlMsgPaymentApprovedRoundUpNote
           : _l10n.ctrlMsgPaymentApprovedNote;
       _broadcast();
+
+      // Re-warm a login session for the next card sale.
+      prewarmCardPayment();
 
       return await _completeSuccessfulPayment(
         transactionMethod: transactionMethod,
@@ -2770,36 +2780,33 @@ class PosController extends ChangeNotifier {
         }
       }
 
-      _clearPaymentLaunchOverlay();
-      paymentStatus = 'Processing payment';
-      displayNote = charityRoundUpAccepted
-          ? _l10n.ctrlMsgTapForRemainingSplitRoundUp
-          : _l10n.ctrlMsgTapForRemainingSplit;
-      _broadcast();
-
       debugPrint(
         'PosController invoking Mosambee split card payment with amount=${payableTotal.toStringAsFixed(3)}',
       );
 
-      final paymentResult = await _paymentBridge.loginAndPay(payableTotal);
+      final (cardOutcome, paymentResult) = await _runCardCharge(
+        amount: payableTotal,
+        processingNote: charityRoundUpAccepted
+            ? _l10n.ctrlMsgTapForRemainingSplitRoundUp
+            : _l10n.ctrlMsgTapForRemainingSplit,
+      );
 
-      var cardChargeStatus = 'success';
-      if (!paymentResult.isSuccess) {
-        // Uncertain charge → let the cashier force-record the card leg as
-        // pending reconciliation; otherwise abort the whole split.
-        if (!(paymentResult.isUncertain &&
-            await _promptForPendingReconciliation(amount: payableTotal))) {
-          _clearPaymentLaunchOverlay();
-          paymentStatus = paymentResult.isCanceled
-              ? 'Payment canceled'
-              : 'Payment failed';
-          lastPaymentMessage = paymentResult.userMessage;
-          displayNote = paymentResult.userMessage;
-          _broadcast();
-          return lastPaymentMessage;
-        }
-        cardChargeStatus = 'pending_reconciliation';
+      // Cashier canceled the unconfirmed card leg (or it hard-failed) → abort the
+      // whole split.
+      if (cardOutcome == _CardChargeOutcome.aborted) {
+        _clearPaymentLaunchOverlay();
+        paymentStatus = paymentResult.isCanceled
+            ? 'Payment canceled'
+            : 'Payment failed';
+        lastPaymentMessage = paymentResult.userMessage;
+        displayNote = paymentResult.userMessage;
+        _broadcast();
+        return lastPaymentMessage;
       }
+
+      final cardChargeStatus = cardOutcome == _CardChargeOutcome.recordPending
+          ? 'pending_reconciliation'
+          : 'success';
 
       final cardPaidAmount = payableTotal;
       final cardRoundUpAmount = charityRoundUpAccepted
@@ -2857,6 +2864,9 @@ class PosController extends ChangeNotifier {
           ? _l10n.ctrlMsgSplitCompletedRoundUpNote
           : _l10n.ctrlMsgSplitCompletedNote;
       _broadcast();
+
+      // Re-warm a login session for the next card sale.
+      prewarmCardPayment();
 
       return await _finishCompletedOrder(
         isDineInPayment: isDineInPayment,
@@ -3226,20 +3236,72 @@ class PosController extends ChangeNotifier {
   /// The card amount awaiting a force-record decision (for the dialog message).
   double get pendingReconciliationAmount => _pendingReconAmount;
 
-  /// Ask the cashier whether to force-record an unconfirmed card charge as
-  /// pending reconciliation. Resolves true to record, false to abort. Awaited
-  /// inline inside the pay flow, so the in-flight transaction context survives.
-  Future<bool> _promptForPendingReconciliation({required double amount}) async {
-    if (_pendingReconCompleter != null && !_pendingReconCompleter!.isCompleted) {
-      _pendingReconCompleter!.complete(false);
+  /// Pre-warm a Mosambee login session so the next card payment skips the (slow)
+  /// login. Best-effort, Android-only, fire-and-forget. Call it when the POS
+  /// screen opens, when the app resumes, and right after a card sale completes.
+  void prewarmCardPayment() {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    unawaited(_paymentBridge.prepareSession());
+  }
+
+  /// Launches a card charge via the payment terminal and, on an UNCERTAIN result
+  /// (e.g. an NFC timeout), asks the cashier to cancel, force-record as pending
+  /// reconciliation, or retry. Retry re-launches the terminal; the loop repeats
+  /// until the cashier resolves it. Returns the outcome plus the last result.
+  Future<(_CardChargeOutcome, MosambeePaymentResult)> _runCardCharge({
+    required double amount,
+    required String processingNote,
+  }) async {
+    while (true) {
+      _clearPaymentLaunchOverlay();
+      paymentStatus = 'Processing payment';
+      displayNote = processingNote;
+      _broadcast();
+
+      final result = await _paymentBridge.payWithPreparedSession(amount);
+      if (result.isSuccess) {
+        return (_CardChargeOutcome.success, result);
+      }
+
+      if (result.isUncertain) {
+        final choice = await _promptForPendingReconciliation(amount: amount);
+        if (choice == PendingReconChoice.retry) {
+          continue; // re-launch the payment terminal
+        }
+        if (choice == PendingReconChoice.record) {
+          return (_CardChargeOutcome.recordPending, result);
+        }
+        return (_CardChargeOutcome.aborted, result); // cancel
+      }
+
+      // An explicit cancel or a hard failure — no retry/record offered.
+      return (_CardChargeOutcome.aborted, result);
     }
-    _pendingReconCompleter = Completer<bool>();
+  }
+
+  /// Ask the cashier how to resolve an unconfirmed card charge (cancel, record as
+  /// pending reconciliation, or retry). Awaited inline inside the pay flow, so
+  /// the in-flight transaction context survives.
+  Future<PendingReconChoice> _promptForPendingReconciliation({
+    required double amount,
+  }) async {
+    if (_pendingReconCompleter != null && !_pendingReconCompleter!.isCompleted) {
+      _pendingReconCompleter!.complete(PendingReconChoice.cancel);
+    }
+    _pendingReconCompleter = Completer<PendingReconChoice>();
     _pendingReconAmount = amount;
 
+    // Set the neutral "awaiting cashier" status and restore the customer UI FIRST —
+    // the card payment left the customer panel mirroring the staff screen. Only once
+    // the customer is back on its own neutral overlay do we show the staff-only
+    // "Card charge not confirmed" dialog, so the customer never sees it mirrored.
     paymentStatus = 'Card charge not confirmed';
-    showPendingReconciliationPrompt = true;
     _clearPaymentLaunchOverlay();
     displayNote = _l10n.ctrlMsgCardUnconfirmedReviewing;
+    _broadcast();
+    await _restoreRearDisplayAfterPaymentIfNeeded();
+
+    showPendingReconciliationPrompt = true;
     _broadcast();
 
     try {
@@ -3249,21 +3311,23 @@ class PosController extends ChangeNotifier {
     } on TimeoutException {
       showPendingReconciliationPrompt = false;
       _broadcast();
-      return false;
+      return PendingReconChoice.cancel;
     } finally {
       _pendingReconCompleter = null;
     }
   }
 
-  /// Cashier's answer to the pending-reconciliation prompt: [forceRecord] true
-  /// records the card leg as pending_reconciliation, false aborts the payment.
-  void confirmPendingReconciliation(bool forceRecord) {
+  /// Cashier's answer to the "Card charge not confirmed" prompt:
+  /// [PendingReconChoice.record] force-records the card leg as
+  /// pending_reconciliation, [PendingReconChoice.retry] re-launches the payment
+  /// terminal to try again, and [PendingReconChoice.cancel] aborts the charge.
+  void resolvePendingReconciliation(PendingReconChoice choice) {
     if (_pendingReconCompleter == null || _pendingReconCompleter!.isCompleted) {
       return;
     }
     showPendingReconciliationPrompt = false;
     _broadcast();
-    _pendingReconCompleter!.complete(forceRecord);
+    _pendingReconCompleter!.complete(choice);
   }
 
   void _markOrderUpdated(String productId) {
