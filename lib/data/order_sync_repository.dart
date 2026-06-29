@@ -208,6 +208,19 @@ class OrderSyncRepository {
     return synced;
   }
 
+  /// Phase 3C — best-effort online push of a single advertising-display
+  /// telemetry event (→ pos_marketing_impressions). Deliberately NOT durably
+  /// queued: a dropped play on a flaky link is acceptable for analytics, and the
+  /// high volume would otherwise bloat the order outbox. Idempotent server-side
+  /// on the event's client_event_id.
+  Future<void> pushSliderDisplay(Map<String, dynamic> event) async {
+    try {
+      await _api.pushSync([event]);
+    } catch (_) {
+      // best-effort telemetry — drop on any network/transport failure.
+    }
+  }
+
   Stream<List<OrderOutboxRow>> watchPending() => _db.watchPendingOutbox();
 
   String _firstError(List<Map<String, dynamic>> results) {

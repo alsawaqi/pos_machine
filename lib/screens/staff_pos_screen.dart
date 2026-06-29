@@ -174,6 +174,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     super.initState();
     controller = PosController();
     controller.onOrderCompleted = _handleOrderCompleted;
+    // Phase 3C — push advertising-slide play-time telemetry (best-effort).
+    controller.onSliderDisplay = (event) => unawaited(
+          ref.read(orderSyncRepositoryProvider).pushSliderDisplay(
+                // Phase 1A — fold in anonymous audience counts (no-op when off).
+                ref.read(audienceServiceProvider).enrich(event),
+              ),
+        );
     // #3 — persist the local shelf-stock decrement to Drift so the produced
     // count survives a restart (until the next config sync reconciles).
     controller.onShelfStockConsumed = (sold) =>
@@ -199,6 +206,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     ref.listenManual(settingsControllerProvider, (prev, next) {
       controller.printReceipts = next.printReceipts;
       controller.printKitchenTickets = next.printKitchenTickets;
+      // Phase 1A — start/stop the audience camera when the operator toggles it.
+      if (prev?.audienceMeasurement != next.audienceMeasurement) {
+        final audience = ref.read(audienceServiceProvider);
+        unawaited(next.audienceMeasurement ? audience.start() : audience.stop());
+      }
     });
     _customerNumberController = TextEditingController();
     _vehiclePlateController = TextEditingController();
@@ -224,6 +236,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       unawaited(ref.read(orderSyncRepositoryProvider).flush().catchError((_) => 0));
       // Phase C3 — subscribe to the branch Reverb channel for live config push.
       ref.read(liveSyncProvider).start();
+      // Phase 1A — start anonymous audience measurement if the operator enabled
+      // it (off by default; camera + on-device face counting only).
+      if (ref.read(settingsControllerProvider).audienceMeasurement) {
+        unawaited(ref.read(audienceServiceProvider).start());
+      }
     });
 
     // Bridge: feed the branch catalog (from the Drift cache, refreshed from
@@ -261,6 +278,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             compReasons: catalog.compReasons,
             categoryAddonGroupIds: catalog.categoryAddonGroupIds,
             staffMessages: catalog.staffMessages,
+            adSlides: catalog.adSlides,
             branchId: ref.read(sessionControllerProvider).branchId,
           );
           // P-G6 — pop a notice when a NEW announcement lands for the
@@ -633,6 +651,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.dispose();
     _catalogSub?.close();
     _connectivitySub?.close();
+    // Phase 1A — release the audience camera when leaving the POS.
+    unawaited(ref.read(audienceServiceProvider).stop());
     super.dispose();
   }
 

@@ -5,6 +5,7 @@ import '../core/api_config.dart';
 import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/settings_service.dart';
+import 'audience_spike_screen.dart';
 
 /// Device-local POS settings: the server address (so a real device can be
 /// pointed at the right backend without a rebuild), a connection test, and the
@@ -249,6 +250,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               const Divider(color: Colors.white12, height: 36),
+              // Phase 1A — anonymous on-device audience measurement (camera).
+              _sectionLabel('Audience measurement'),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: settings.audienceMeasurement,
+                onChanged: (v) => ref
+                    .read(settingsControllerProvider.notifier)
+                    .setAudienceMeasurement(v),
+                title: const Text(
+                  'Count viewers on the customer screen',
+                  style: TextStyle(color: Colors.white),
+                ),
+                subtitle: const Text(
+                  'Anonymous on-device face counting while ads play. No images are stored — counts only.',
+                  style: TextStyle(color: Colors.white54),
+                ),
+              ),
+              const Divider(color: Colors.white12, height: 36),
               // Phase C4 (§9.8) — the language toggle (also a Phase 9 #92
               // deliverable: "Settings: language toggle, …").
               _sectionLabel(l10n.settingsSectionLanguage),
@@ -279,6 +298,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Text(
                 l10n.settingsLanguageHint,
                 style: const TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              const Divider(color: Colors.white12, height: 36),
+              // FEASIBILITY SPIKE — anonymous on-device audience counting on the
+              // customer screen. Debug entry only; not wired to any backend yet.
+              _sectionLabel('Audience (experimental)'),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.groups_2_outlined, color: Colors.white70),
+                title: const Text(
+                  'Audience camera spike',
+                  style: TextStyle(color: Colors.white),
+                ),
+                subtitle: const Text(
+                  'Live face count from the customer-facing camera (debug)',
+                  style: TextStyle(color: Colors.white54),
+                ),
+                trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AudienceSpikeScreen()),
+                ),
               ),
             ],
           ),

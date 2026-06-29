@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
@@ -8,6 +9,7 @@ import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
 import '../services/display_strings.dart';
 import '../services/sunmi_receipt_service.dart';
+import '../widgets/ad_slider.dart';
 import '../widgets/animated_feedback_widgets.dart';
 
 const bool _customerVisualEffectsEnabled = bool.fromEnvironment(
@@ -38,6 +40,13 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   bool _sendingCustomerDecision = false;
   late final ScrollController _orderItemsScrollController;
 
+  // Phase 3 — the advertising loop pushed from the main engine (separate from
+  // the order snapshot). When non-empty the screen runs ad-first: a continuous
+  // slider behind the order/payment UI. The GlobalKey keeps the AdSlider's
+  // state (timer + video) alive as it resizes between full-screen and split.
+  List<SliderSlide> _adSlides = const [];
+  final GlobalKey _adSliderKey = GlobalKey();
+
   // Customer-panel taps are intercepted on the main display (MainActivity) and forwarded here as
   // normalized points; we replay them as synthetic pointers so the customer UI reacts to them.
   int _syntheticPointerId = 1000;
@@ -57,7 +66,23 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
       if (call.method != 'updateOrder') return;
 
       final data = call.arguments;
-      if (data is Map && data['type'] == 'order_snapshot') {
+      if (data is! Map) return;
+
+      // Phase 3 — the advertising loop arrives on its own message so order
+      // updates never restart playback. Replace the cached slides wholesale.
+      if (data['type'] == 'slider_set') {
+        final raw = (data['slides'] as List?) ?? const [];
+        setState(() {
+          _adSlides = raw
+              .whereType<Map>()
+              .map((e) => SliderSlide.fromJson(Map<String, dynamic>.from(e)))
+              .where((s) => s.url.isNotEmpty)
+              .toList();
+        });
+        return;
+      }
+
+      if (data['type'] == 'order_snapshot') {
         setState(() {
           order = OrderSnapshot.fromMap(Map<String, dynamic>.from(data));
           if (!order.showCharityRoundUpPrompt) {
@@ -142,6 +167,13 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Phase 3 — run ad-first when an advertising loop is assigned to this
+    // device; otherwise the original customer screen, untouched.
+    if (_adSlides.isNotEmpty) return _buildAdFirstScaffold();
+    return _buildLegacyScaffold();
+  }
+
+  Widget _buildLegacyScaffold() {
     final showTapPrompt = _showTapToPayPrompt;
     final content = _showCharityPrompt
         ? _buildCharityRoundUpLayout()
@@ -173,6 +205,291 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
           ),
           if (_showLoadingOverlay) _buildLoadingOverlay(),
         ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // Phase 3 — ad-first customer screen
+  // ===========================================================================
+
+  /// The advertising loop runs continuously; the order/payment UI layers over
+  /// it. States: idle / paid → full-screen ad; taking an order → split (ad +
+  /// order); card round-up → a transparent prompt over the ad; processing → a
+  /// translucent loading veil over the ad. The ad never stops or restarts as
+  /// these change — only its geometry animates.
+  Widget _buildAdFirstScaffold() {
+    // Customer is present (split) while there's an order that isn't yet paid.
+    final showSplit = order.items.isNotEmpty && order.paymentStatus != 'Paid';
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
+          final h = constraints.maxHeight;
+          final halfW = w / 2;
+
+          return Stack(
+            children: [
+              // The persistent ad loop — full-bleed, or the left half in split
+              // mode. Same AdSlider element throughout (the GlobalKey keeps its
+              // playback alive across the resize).
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeInOut,
+                left: 0,
+                top: 0,
+                bottom: 0,
+                right: showSplit ? halfW : 0,
+                child: AdSlider(
+                  key: _adSliderKey,
+                  slides: _adSlides,
+                  onSlideElapsed: _reportSlideDisplay,
+                ),
+              ),
+              // The order panel slides into the right half while the customer
+              // is ordering, and off-screen otherwise.
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeInOut,
+                top: 0,
+                bottom: 0,
+                width: halfW,
+                right: showSplit ? 0 : -halfW,
+                child: _buildSplitOrderPanel(),
+              ),
+              // Transparent prompt/veil over the running ad.
+              if (_showCharityPrompt) _buildCharityOverlay(w, h),
+              if (_showPaymentInProgress) _buildAdFirstPaymentOverlay(),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// The order half of the split — the existing order layout in an opaque panel
+  /// so the customer reads their order beside the running ad.
+  /// The order half of the split. The full-screen order layout (hero metrics +
+  /// items side by side) is too tall/wide for a half-width customer strip and
+  /// overflows, so the split uses a compact, overflow-proof layout: the
+  /// scrollable items list fills the space above a thin total bar.
+  Widget _buildSplitOrderPanel() {
+    final l10n = L10n.of(context);
+    return DecoratedBox(
+      decoration: const BoxDecoration(color: _pageBackground),
+      child: Stack(
+        children: [
+          const _CustomerBackdrop(),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _buildItemsPanel()),
+                  const SizedBox(height: 12),
+                  _customerGlass(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 16,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            l10n.cdHeroOrderTotal,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: _body,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          SunmiReceiptService.money(order.total),
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            color: _headline,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The charity round-up prompt as a centered, transparent overlay — the ad
+  /// keeps playing (dimmed) behind it; the customer taps Yes/No on the card.
+  Widget _buildCharityOverlay(double w, double h) {
+    final cardW = (w * (w > 1100 ? 0.62 : 0.86)).clamp(320.0, 1000.0);
+    final cardH = (h * 0.84).clamp(320.0, 760.0);
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.black.withValues(alpha: 0.4),
+        child: Center(
+          child: SizedBox(
+            width: cardW,
+            height: cardH,
+            child: _buildCharityPromptCard(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Phase 3C — report a slide's actual on-screen time back to the main engine
+  /// (the customer engine has no API client); it enqueues a slider.display sync
+  /// event. Near-instant skips (unplayable media) are ignored.
+  void _reportSlideDisplay(SliderSlide slide, int shownMs) {
+    if (shownMs < 250) return;
+    unawaited(
+      _rearDisplayChannel.invokeMethod<void>('customerEvent', <String, dynamic>{
+        'type': 'slider.display',
+        'slider_id': slide.sliderId,
+        'slider_item_id': slide.itemId,
+        'content_asset_id': slide.contentAssetId,
+        'advertiser_id': slide.advertiserId,
+        'duration_ms': shownMs,
+      }).catchError((_) {}),
+    );
+  }
+
+  /// Any card-payment-in-progress state on the ad-first screen — from the moment
+  /// the customer taps the round-up choice, through the terminal opening (on the
+  /// STAFF display now), until the charge settles.
+  bool get _showPaymentInProgress => _showLoadingOverlay || _showTapToPayPrompt;
+
+  /// Card payment in progress on the AD-FIRST screen. The Mosambee terminal now
+  /// opens on the STAFF display, so the customer sees only a branded, blurred
+  /// overlay over the still-running ad: a "Connecting to payment" spinner card
+  /// and an NFC "tap here to pay" panel — never the raw terminal UI.
+  Widget _buildAdFirstPaymentOverlay() {
+    final l10n = L10n.of(context);
+    return Positioned.fill(
+      child: AbsorbPointer(
+        absorbing: true,
+        child: ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFF06141B).withValues(alpha: 0.46),
+              ),
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final wide = constraints.maxWidth > 720;
+                      final connecting = Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 440),
+                          child: ProfessionalProcessingCard(
+                            title: _loadingOverlayTitle,
+                            message: _loadingOverlayMessage,
+                            badge: l10n.cdBadgeSecureCardPayment,
+                            icon: Icons.credit_card_rounded,
+                            accent: _accentDeep,
+                            accentGlow: const Color(0xFF1498B9),
+                          ),
+                        ),
+                      );
+                      if (!wide) {
+                        return Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Flexible(child: connecting),
+                            const SizedBox(height: 16),
+                            _buildNfcTapPanel(l10n),
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(child: connecting),
+                          const SizedBox(width: 20),
+                          _buildNfcTapPanel(l10n),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The NFC "tap here to pay" indicator shown beside the connecting card while
+  /// the staff-side terminal waits for the customer's card.
+  Widget _buildNfcTapPanel(L10n l10n) {
+    return SizedBox(
+      width: 240,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 128,
+              height: 128,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.12),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.42),
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1498B9).withValues(alpha: 0.45),
+                    blurRadius: 34,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.contactless_rounded,
+                size: 68,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              l10n.cdTapToPayTitle,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 23,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              l10n.cdContactlessHoldHint,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.3,
+                fontWeight: FontWeight.w600,
+                color: Colors.white.withValues(alpha: 0.86),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

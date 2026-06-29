@@ -57,6 +57,13 @@ dependencies:
     sdk: flutter
   intl: ^0.20.2
   fl_chart: ^1.2.0
+  # Phase 3 — customer-screen advertising slider media playback.
+  video_player: ^2.9.2
+  cached_network_image: ^3.4.1
+  # Audience-measurement feasibility spike — on-device face counting on the
+  # customer screen (camera frames → ML Kit, processed in-memory, never stored).
+  camera: ^0.11.0+2
+  google_mlkit_face_detection: ^0.13.1
 
 dev_dependencies:
   flutter_test:

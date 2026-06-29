@@ -266,25 +266,14 @@ object MosambeeBridge {
 
         try {
             Log.i(TAG, "Starting Mosambee payment with prepared session amount=$amount")
-            launchSurface = if (RearDisplayHost.hasActiveRearDisplay()) {
-                val rearIntent = buildRearPaymentProxyIntent(activity, passwordToken = "")
-                    .putExtra(RearPaymentProxyActivity.EXTRA_SESSION_ID, sessionId)
-                if (
-                    RearDisplayHost.startActivityOnRearDisplay(
-                        rearIntent,
-                        hidePresentationAfterLaunch = true,
-                    )
-                ) {
-                    "rear"
-                } else {
-                    Log.w(TAG, "Rear payment launch failed; falling back to front display")
-                    activity.startActivityForResult(paymentIntent, PAYMENT_REQUEST_CODE)
-                    "front"
-                }
-            } else {
-                activity.startActivityForResult(paymentIntent, PAYMENT_REQUEST_CODE)
-                "front"
-            }
+            // Phase 3 — the card terminal ALWAYS opens on the MAIN (staff)
+            // display, never the customer/rear screen. This keeps the rear
+            // Flutter presentation ALIVE so it can show the branded
+            // "Connecting to payment" + NFC tap overlay with the ad blurred
+            // behind, instead of the raw Mosambee SoftPOS UI taking over the
+            // customer screen.
+            activity.startActivityForResult(paymentIntent, PAYMENT_REQUEST_CODE)
+            launchSurface = "front"
             notifyLaunchState(stage = "payment_started", surface = launchSurface)
             Log.i(TAG, "Started Mosambee payment on $launchSurface display")
         } catch (error: ActivityNotFoundException) {
@@ -507,20 +496,9 @@ object MosambeeBridge {
         requestCode: Int,
         passwordToken: String,
     ): String {
-        if (requestCode == LOGIN_REQUEST_CODE && RearDisplayHost.hasActiveRearDisplay()) {
-            val rearIntent = buildRearPaymentProxyIntent(activity, passwordToken)
-            if (
-                RearDisplayHost.startActivityOnRearDisplay(
-                    rearIntent,
-                    hidePresentationAfterLaunch = true,
-                )
-            ) {
-                return "rear"
-            }
-
-            Log.w(TAG, "Rear payment launch failed; falling back to front display")
-        }
-
+        // Phase 3 — login + payment always run on the MAIN (staff) display so
+        // the customer/rear screen keeps showing the ad + branded overlay
+        // (never the raw Mosambee UI).
         activity.startActivityForResult(intent, requestCode)
         return "front"
     }

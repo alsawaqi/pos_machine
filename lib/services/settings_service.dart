@@ -11,6 +11,7 @@ class AppSettings {
     this.printReceipts = true,
     this.printKitchenTickets = true,
     this.language = 'en',
+    this.audienceMeasurement = false,
   });
 
   /// Operator-set server base URL. Null/empty ⇒ fall back to the compile-time
@@ -29,6 +30,10 @@ class AppSettings {
   /// the whole app RTL via MaterialApp's locale.
   final String language;
 
+  /// Phase 1A — opt-in to anonymous on-device audience measurement (the
+  /// customer-facing camera counts faces while ads play). Default OFF.
+  final bool audienceMeasurement;
+
   /// The base URL actually used for API calls.
   String get effectiveBaseUrl =>
       (serverBaseUrl != null && serverBaseUrl!.isNotEmpty)
@@ -44,12 +49,14 @@ class AppSettings {
     bool? printReceipts,
     bool? printKitchenTickets,
     String? language,
+    bool? audienceMeasurement,
   }) =>
       AppSettings(
         serverBaseUrl: serverBaseUrl ?? this.serverBaseUrl,
         printReceipts: printReceipts ?? this.printReceipts,
         printKitchenTickets: printKitchenTickets ?? this.printKitchenTickets,
         language: language ?? this.language,
+        audienceMeasurement: audienceMeasurement ?? this.audienceMeasurement,
       );
 }
 
@@ -62,12 +69,14 @@ class SettingsService {
   static const _kPrintReceipts = 'print_receipts';
   static const _kPrintKitchenTickets = 'print_kitchen_tickets';
   static const _kLanguage = 'app_language';
+  static const _kAudience = 'audience_measurement';
 
   AppSettings snapshot() => AppSettings(
         serverBaseUrl: _prefs.getString(_kBaseUrl),
         printReceipts: _prefs.getBool(_kPrintReceipts) ?? true,
         printKitchenTickets: _prefs.getBool(_kPrintKitchenTickets) ?? true,
         language: _prefs.getString(_kLanguage) == 'ar' ? 'ar' : 'en',
+        audienceMeasurement: _prefs.getBool(_kAudience) ?? false,
       );
 
   /// The base URL the API client should use right now.
@@ -94,6 +103,10 @@ class SettingsService {
 
   Future<void> saveLanguage(String value) async {
     await _prefs.setString(_kLanguage, value == 'ar' ? 'ar' : 'en');
+  }
+
+  Future<void> saveAudienceMeasurement(bool value) async {
+    await _prefs.setBool(_kAudience, value);
   }
 
   /// Normalize an operator-entered server URL: trim, default the scheme to

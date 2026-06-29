@@ -360,6 +360,11 @@ class PosController extends ChangeNotifier {
 
   /// P-G6 — staff announcements from the cached catalog (newest first).
   List<StaffMessage> staffMessages = const [];
+
+  /// Phase 3 — the advertising loop (ordered slides) for the customer screen,
+  /// from the cached catalog. Pushed to the secondary display on its own
+  /// channel so its continuous playback is independent of order updates.
+  List<SliderSlide> adSlides = const [];
   // Reads recorded on THIS device but possibly not yet reflected in the
   // server receipts (the POST is best-effort; the next config sync heals
   // read_staff_ids). Keyed staffId → message ids, so one cashier opening
@@ -499,6 +504,12 @@ class PosController extends ChangeNotifier {
   /// or fail order completion.
   void Function(OrderSnapshot snapshot)? onOrderCompleted;
 
+  /// Phase 3C — invoked for each advertising-slide play reported by the
+  /// customer screen, carrying a ready-to-push `slider.display` sync event
+  /// (client_event_id minted here). The screen wires this to a best-effort
+  /// online telemetry push (→ pos_marketing_impressions). Fire-and-forget.
+  void Function(Map<String, dynamic> event)? onSliderDisplay;
+
   /// Invoked when a finalized order consumed finite shelf stock — a map of
   /// {productId → quantity sold} for unit + cooked products only. The screen
   /// wires this to the Drift cache so the local shelf count survives an app
@@ -599,6 +610,28 @@ class PosController extends ChangeNotifier {
           if (event['type'] == 'customer_event') {
             lastCustomerEvent = event['message']?.toString() ?? '';
             _notifySafely();
+            return;
+          }
+
+          // Phase 3C — an advertising slide finished on the customer screen.
+          // Mint a sync event (stable client_event_id for idempotency) and hand
+          // it to the screen's best-effort telemetry push.
+          if (event['type'] == 'slider.display') {
+            final nowIso = DateTime.now().toUtc().toIso8601String();
+            onSliderDisplay?.call(<String, dynamic>{
+              'client_event_id': uuidV4(),
+              'event_type': 'slider.display',
+              'client_timestamp': nowIso,
+              'payload': <String, dynamic>{
+                'slider_id': (event['slider_id'] as num?)?.toInt(),
+                'slider_item_id': (event['slider_item_id'] as num?)?.toInt(),
+                'content_asset_id': (event['content_asset_id'] as num?)?.toInt(),
+                'advertiser_id': (event['advertiser_id'] as num?)?.toInt(),
+                'duration_ms': (event['duration_ms'] as num?)?.toInt(),
+                'played_at': nowIso,
+              },
+            });
+            return;
           }
         });
         await syncRearDisplay();
@@ -640,6 +673,7 @@ class PosController extends ChangeNotifier {
     List<CompReasonRef> compReasons = const <CompReasonRef>[],
     Map<int, List<int>> categoryAddonGroupIds = const <int, List<int>>{},
     List<StaffMessage> staffMessages = const <StaffMessage>[],
+    List<SliderSlide> adSlides = const <SliderSlide>[],
     int? branchId,
   }) {
     this.categories = categories;
@@ -668,6 +702,12 @@ class PosController extends ChangeNotifier {
     this.compReasons = compReasons;
     this.categoryAddonGroupIds = categoryAddonGroupIds;
     this.staffMessages = staffMessages;
+    // Phase 3 — refresh the customer-screen ad loop and push it to the
+    // secondary display (no-op off-device / when unchanged downstream).
+    this.adSlides = adSlides;
+    if (_presentationEnabled) {
+      unawaited(_presentation.sendSlides(adSlides));
+    }
     // Receipts that round-tripped (this till's POST landed, or another
     // till/restart recorded them) no longer need a retry.
     if (_pendingMessageReceipts.isNotEmpty) {
@@ -2104,6 +2144,9 @@ class PosController extends ChangeNotifier {
       if (rearDisplayOpened) {
         await Future.delayed(const Duration(milliseconds: 450));
         await syncRearDisplay();
+        // Phase 3 — re-seed the freshly opened display with the current ad
+        // loop so it isn't blank until the next catalog change.
+        await _presentation.resendSlides();
       }
     } on MissingPluginException {
       _presentationEnabled = false;

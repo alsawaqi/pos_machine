@@ -31,6 +31,8 @@ part 'app_database.g.dart';
     CompReasons,
     Offers,
     StaffMessages,
+    MarketingSliders,
+    MarketingSliderItems,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -40,7 +42,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 26;
+  int get schemaVersion => 27;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -169,6 +171,12 @@ class AppDatabase extends _$AppDatabase {
             // v26 — PD3b: per-option stock-usage lines (availability gating).
             await m.addColumn(addons, addons.consumptionJson);
           }
+          if (from < 27) {
+            // v27 — Phase 3: marketing advertising sliders for the customer
+            // (secondary) screen.
+            await m.createTable(marketingSliders);
+            await m.createTable(marketingSliderItems);
+          }
         },
       );
 
@@ -210,6 +218,16 @@ class AppDatabase extends _$AppDatabase {
   Stream<List<DiscountRow>> watchDiscounts() => select(discounts).watch();
 
   Stream<List<OfferRow>> watchOffers() => select(offers).watch();
+
+  // Phase 3 — marketing sliders + their slides for the customer-screen ad loop.
+  Stream<List<MarketingSliderRow>> watchSliders() => (select(marketingSliders)
+        ..orderBy([(s) => OrderingTerm(expression: s.displayOrder)]))
+      .watch();
+
+  Stream<List<MarketingSliderItemRow>> watchSliderItems() =>
+      (select(marketingSliderItems)
+            ..orderBy([(i) => OrderingTerm(expression: i.sortOrder)]))
+          .watch();
 
   // P-G6 — staff announcements, newest first.
   Stream<List<StaffMessageRow>> watchStaffMessages() => (select(staffMessages)
@@ -315,6 +333,8 @@ class AppDatabase extends _$AppDatabase {
     List<CompReasonsCompanion> compReasonRows = const [],
     List<OffersCompanion> offerRows = const [],
     List<StaffMessagesCompanion> staffMessageRows = const [],
+    List<MarketingSlidersCompanion> sliderRows = const [],
+    List<MarketingSliderItemsCompanion> sliderItemRows = const [],
     required SyncMetaCompanion meta,
   }) {
     return transaction(() async {
@@ -337,6 +357,8 @@ class AppDatabase extends _$AppDatabase {
       await delete(compReasons).go();
       await delete(offers).go();
       await delete(staffMessages).go();
+      await delete(marketingSliders).go();
+      await delete(marketingSliderItems).go();
 
       await into(branchCache).insert(branch);
       await batch((b) {
@@ -358,6 +380,8 @@ class AppDatabase extends _$AppDatabase {
         b.insertAll(compReasons, compReasonRows);
         b.insertAll(offers, offerRows);
         b.insertAll(staffMessages, staffMessageRows);
+        b.insertAll(marketingSliders, sliderRows);
+        b.insertAll(marketingSliderItems, sliderItemRows);
       });
       await into(syncMeta).insertOnConflictUpdate(meta);
     });
@@ -392,6 +416,10 @@ class AppDatabase extends _$AppDatabase {
     List<int> deletedOfferIds = const [],
     List<StaffMessagesCompanion> staffMessageRows = const [],
     List<int> deletedStaffMessageIds = const [],
+    // Phase 3 — the slider slice always arrives in full, so it is replaced
+    // wholesale (no per-row delta / deleted ids); an empty list = no ads here.
+    List<MarketingSlidersCompanion> sliderRows = const [],
+    List<MarketingSliderItemsCompanion> sliderItemRows = const [],
     required List<int> deletedCategoryIds,
     required List<int> deletedProductIds,
     required List<int> deletedFloorIds,
@@ -416,6 +444,10 @@ class AppDatabase extends _$AppDatabase {
       if (hasBranch) {
         await into(branchCache).insertOnConflictUpdate(branch);
       }
+      // Phase 3 — sliders are sent in full every pull; replace wholesale so
+      // removed sliders/slides disappear without a deleted-ids list.
+      await delete(marketingSliders).go();
+      await delete(marketingSliderItems).go();
       await batch((b) {
         b.insertAllOnConflictUpdate(categories, categoryRows);
         b.insertAllOnConflictUpdate(products, productRows);
@@ -435,6 +467,8 @@ class AppDatabase extends _$AppDatabase {
         b.insertAllOnConflictUpdate(compReasons, compReasonRows);
         b.insertAllOnConflictUpdate(offers, offerRows);
         b.insertAllOnConflictUpdate(staffMessages, staffMessageRows);
+        b.insertAll(marketingSliders, sliderRows);
+        b.insertAll(marketingSliderItems, sliderItemRows);
       });
 
       // Purge soft-deleted ids.

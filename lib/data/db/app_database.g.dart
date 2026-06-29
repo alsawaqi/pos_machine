@@ -10697,6 +10697,915 @@ class StaffMessagesCompanion extends UpdateCompanion<StaffMessageRow> {
   }
 }
 
+class $MarketingSlidersTable extends MarketingSliders
+    with TableInfo<$MarketingSlidersTable, MarketingSliderRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MarketingSlidersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _uuidMeta = const VerificationMeta('uuid');
+  @override
+  late final GeneratedColumn<String> uuid = GeneratedColumn<String>(
+    'uuid',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _loopIntervalSecondsMeta =
+      const VerificationMeta('loopIntervalSeconds');
+  @override
+  late final GeneratedColumn<int> loopIntervalSeconds = GeneratedColumn<int>(
+    'loop_interval_seconds',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(6),
+  );
+  static const VerificationMeta _displayOrderMeta = const VerificationMeta(
+    'displayOrder',
+  );
+  @override
+  late final GeneratedColumn<int> displayOrder = GeneratedColumn<int>(
+    'display_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    uuid,
+    name,
+    loopIntervalSeconds,
+    displayOrder,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'marketing_sliders';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<MarketingSliderRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('uuid')) {
+      context.handle(
+        _uuidMeta,
+        uuid.isAcceptableOrUnknown(data['uuid']!, _uuidMeta),
+      );
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('loop_interval_seconds')) {
+      context.handle(
+        _loopIntervalSecondsMeta,
+        loopIntervalSeconds.isAcceptableOrUnknown(
+          data['loop_interval_seconds']!,
+          _loopIntervalSecondsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('display_order')) {
+      context.handle(
+        _displayOrderMeta,
+        displayOrder.isAcceptableOrUnknown(
+          data['display_order']!,
+          _displayOrderMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  MarketingSliderRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MarketingSliderRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      uuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}uuid'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      loopIntervalSeconds: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}loop_interval_seconds'],
+      )!,
+      displayOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}display_order'],
+      )!,
+    );
+  }
+
+  @override
+  $MarketingSlidersTable createAlias(String alias) {
+    return $MarketingSlidersTable(attachedDatabase, alias);
+  }
+}
+
+class MarketingSliderRow extends DataClass
+    implements Insertable<MarketingSliderRow> {
+  final int id;
+  final String uuid;
+  final String name;
+  final int loopIntervalSeconds;
+  final int displayOrder;
+  const MarketingSliderRow({
+    required this.id,
+    required this.uuid,
+    required this.name,
+    required this.loopIntervalSeconds,
+    required this.displayOrder,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['uuid'] = Variable<String>(uuid);
+    map['name'] = Variable<String>(name);
+    map['loop_interval_seconds'] = Variable<int>(loopIntervalSeconds);
+    map['display_order'] = Variable<int>(displayOrder);
+    return map;
+  }
+
+  MarketingSlidersCompanion toCompanion(bool nullToAbsent) {
+    return MarketingSlidersCompanion(
+      id: Value(id),
+      uuid: Value(uuid),
+      name: Value(name),
+      loopIntervalSeconds: Value(loopIntervalSeconds),
+      displayOrder: Value(displayOrder),
+    );
+  }
+
+  factory MarketingSliderRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MarketingSliderRow(
+      id: serializer.fromJson<int>(json['id']),
+      uuid: serializer.fromJson<String>(json['uuid']),
+      name: serializer.fromJson<String>(json['name']),
+      loopIntervalSeconds: serializer.fromJson<int>(
+        json['loopIntervalSeconds'],
+      ),
+      displayOrder: serializer.fromJson<int>(json['displayOrder']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'uuid': serializer.toJson<String>(uuid),
+      'name': serializer.toJson<String>(name),
+      'loopIntervalSeconds': serializer.toJson<int>(loopIntervalSeconds),
+      'displayOrder': serializer.toJson<int>(displayOrder),
+    };
+  }
+
+  MarketingSliderRow copyWith({
+    int? id,
+    String? uuid,
+    String? name,
+    int? loopIntervalSeconds,
+    int? displayOrder,
+  }) => MarketingSliderRow(
+    id: id ?? this.id,
+    uuid: uuid ?? this.uuid,
+    name: name ?? this.name,
+    loopIntervalSeconds: loopIntervalSeconds ?? this.loopIntervalSeconds,
+    displayOrder: displayOrder ?? this.displayOrder,
+  );
+  MarketingSliderRow copyWithCompanion(MarketingSlidersCompanion data) {
+    return MarketingSliderRow(
+      id: data.id.present ? data.id.value : this.id,
+      uuid: data.uuid.present ? data.uuid.value : this.uuid,
+      name: data.name.present ? data.name.value : this.name,
+      loopIntervalSeconds: data.loopIntervalSeconds.present
+          ? data.loopIntervalSeconds.value
+          : this.loopIntervalSeconds,
+      displayOrder: data.displayOrder.present
+          ? data.displayOrder.value
+          : this.displayOrder,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MarketingSliderRow(')
+          ..write('id: $id, ')
+          ..write('uuid: $uuid, ')
+          ..write('name: $name, ')
+          ..write('loopIntervalSeconds: $loopIntervalSeconds, ')
+          ..write('displayOrder: $displayOrder')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, uuid, name, loopIntervalSeconds, displayOrder);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MarketingSliderRow &&
+          other.id == this.id &&
+          other.uuid == this.uuid &&
+          other.name == this.name &&
+          other.loopIntervalSeconds == this.loopIntervalSeconds &&
+          other.displayOrder == this.displayOrder);
+}
+
+class MarketingSlidersCompanion extends UpdateCompanion<MarketingSliderRow> {
+  final Value<int> id;
+  final Value<String> uuid;
+  final Value<String> name;
+  final Value<int> loopIntervalSeconds;
+  final Value<int> displayOrder;
+  const MarketingSlidersCompanion({
+    this.id = const Value.absent(),
+    this.uuid = const Value.absent(),
+    this.name = const Value.absent(),
+    this.loopIntervalSeconds = const Value.absent(),
+    this.displayOrder = const Value.absent(),
+  });
+  MarketingSlidersCompanion.insert({
+    this.id = const Value.absent(),
+    this.uuid = const Value.absent(),
+    this.name = const Value.absent(),
+    this.loopIntervalSeconds = const Value.absent(),
+    this.displayOrder = const Value.absent(),
+  });
+  static Insertable<MarketingSliderRow> custom({
+    Expression<int>? id,
+    Expression<String>? uuid,
+    Expression<String>? name,
+    Expression<int>? loopIntervalSeconds,
+    Expression<int>? displayOrder,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (uuid != null) 'uuid': uuid,
+      if (name != null) 'name': name,
+      if (loopIntervalSeconds != null)
+        'loop_interval_seconds': loopIntervalSeconds,
+      if (displayOrder != null) 'display_order': displayOrder,
+    });
+  }
+
+  MarketingSlidersCompanion copyWith({
+    Value<int>? id,
+    Value<String>? uuid,
+    Value<String>? name,
+    Value<int>? loopIntervalSeconds,
+    Value<int>? displayOrder,
+  }) {
+    return MarketingSlidersCompanion(
+      id: id ?? this.id,
+      uuid: uuid ?? this.uuid,
+      name: name ?? this.name,
+      loopIntervalSeconds: loopIntervalSeconds ?? this.loopIntervalSeconds,
+      displayOrder: displayOrder ?? this.displayOrder,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (uuid.present) {
+      map['uuid'] = Variable<String>(uuid.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (loopIntervalSeconds.present) {
+      map['loop_interval_seconds'] = Variable<int>(loopIntervalSeconds.value);
+    }
+    if (displayOrder.present) {
+      map['display_order'] = Variable<int>(displayOrder.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MarketingSlidersCompanion(')
+          ..write('id: $id, ')
+          ..write('uuid: $uuid, ')
+          ..write('name: $name, ')
+          ..write('loopIntervalSeconds: $loopIntervalSeconds, ')
+          ..write('displayOrder: $displayOrder')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $MarketingSliderItemsTable extends MarketingSliderItems
+    with TableInfo<$MarketingSliderItemsTable, MarketingSliderItemRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MarketingSliderItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sliderIdMeta = const VerificationMeta(
+    'sliderId',
+  );
+  @override
+  late final GeneratedColumn<int> sliderId = GeneratedColumn<int>(
+    'slider_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentAssetIdMeta = const VerificationMeta(
+    'contentAssetId',
+  );
+  @override
+  late final GeneratedColumn<int> contentAssetId = GeneratedColumn<int>(
+    'content_asset_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _advertiserIdMeta = const VerificationMeta(
+    'advertiserId',
+  );
+  @override
+  late final GeneratedColumn<int> advertiserId = GeneratedColumn<int>(
+    'advertiser_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _durationSecondsMeta = const VerificationMeta(
+    'durationSeconds',
+  );
+  @override
+  late final GeneratedColumn<int> durationSeconds = GeneratedColumn<int>(
+    'duration_seconds',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(6),
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('image'),
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _thumbnailUrlMeta = const VerificationMeta(
+    'thumbnailUrl',
+  );
+  @override
+  late final GeneratedColumn<String> thumbnailUrl = GeneratedColumn<String>(
+    'thumbnail_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sliderId,
+    contentAssetId,
+    advertiserId,
+    sortOrder,
+    durationSeconds,
+    type,
+    url,
+    thumbnailUrl,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'marketing_slider_items';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<MarketingSliderItemRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('slider_id')) {
+      context.handle(
+        _sliderIdMeta,
+        sliderId.isAcceptableOrUnknown(data['slider_id']!, _sliderIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sliderIdMeta);
+    }
+    if (data.containsKey('content_asset_id')) {
+      context.handle(
+        _contentAssetIdMeta,
+        contentAssetId.isAcceptableOrUnknown(
+          data['content_asset_id']!,
+          _contentAssetIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_contentAssetIdMeta);
+    }
+    if (data.containsKey('advertiser_id')) {
+      context.handle(
+        _advertiserIdMeta,
+        advertiserId.isAcceptableOrUnknown(
+          data['advertiser_id']!,
+          _advertiserIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('duration_seconds')) {
+      context.handle(
+        _durationSecondsMeta,
+        durationSeconds.isAcceptableOrUnknown(
+          data['duration_seconds']!,
+          _durationSecondsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    }
+    if (data.containsKey('thumbnail_url')) {
+      context.handle(
+        _thumbnailUrlMeta,
+        thumbnailUrl.isAcceptableOrUnknown(
+          data['thumbnail_url']!,
+          _thumbnailUrlMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  MarketingSliderItemRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MarketingSliderItemRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      sliderId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}slider_id'],
+      )!,
+      contentAssetId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}content_asset_id'],
+      )!,
+      advertiserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}advertiser_id'],
+      ),
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      durationSeconds: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}duration_seconds'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      )!,
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      )!,
+      thumbnailUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}thumbnail_url'],
+      ),
+    );
+  }
+
+  @override
+  $MarketingSliderItemsTable createAlias(String alias) {
+    return $MarketingSliderItemsTable(attachedDatabase, alias);
+  }
+}
+
+class MarketingSliderItemRow extends DataClass
+    implements Insertable<MarketingSliderItemRow> {
+  final int id;
+  final int sliderId;
+  final int contentAssetId;
+  final int? advertiserId;
+  final int sortOrder;
+  final int durationSeconds;
+  final String type;
+  final String url;
+  final String? thumbnailUrl;
+  const MarketingSliderItemRow({
+    required this.id,
+    required this.sliderId,
+    required this.contentAssetId,
+    this.advertiserId,
+    required this.sortOrder,
+    required this.durationSeconds,
+    required this.type,
+    required this.url,
+    this.thumbnailUrl,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['slider_id'] = Variable<int>(sliderId);
+    map['content_asset_id'] = Variable<int>(contentAssetId);
+    if (!nullToAbsent || advertiserId != null) {
+      map['advertiser_id'] = Variable<int>(advertiserId);
+    }
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['duration_seconds'] = Variable<int>(durationSeconds);
+    map['type'] = Variable<String>(type);
+    map['url'] = Variable<String>(url);
+    if (!nullToAbsent || thumbnailUrl != null) {
+      map['thumbnail_url'] = Variable<String>(thumbnailUrl);
+    }
+    return map;
+  }
+
+  MarketingSliderItemsCompanion toCompanion(bool nullToAbsent) {
+    return MarketingSliderItemsCompanion(
+      id: Value(id),
+      sliderId: Value(sliderId),
+      contentAssetId: Value(contentAssetId),
+      advertiserId: advertiserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(advertiserId),
+      sortOrder: Value(sortOrder),
+      durationSeconds: Value(durationSeconds),
+      type: Value(type),
+      url: Value(url),
+      thumbnailUrl: thumbnailUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(thumbnailUrl),
+    );
+  }
+
+  factory MarketingSliderItemRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MarketingSliderItemRow(
+      id: serializer.fromJson<int>(json['id']),
+      sliderId: serializer.fromJson<int>(json['sliderId']),
+      contentAssetId: serializer.fromJson<int>(json['contentAssetId']),
+      advertiserId: serializer.fromJson<int?>(json['advertiserId']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      durationSeconds: serializer.fromJson<int>(json['durationSeconds']),
+      type: serializer.fromJson<String>(json['type']),
+      url: serializer.fromJson<String>(json['url']),
+      thumbnailUrl: serializer.fromJson<String?>(json['thumbnailUrl']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'sliderId': serializer.toJson<int>(sliderId),
+      'contentAssetId': serializer.toJson<int>(contentAssetId),
+      'advertiserId': serializer.toJson<int?>(advertiserId),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'durationSeconds': serializer.toJson<int>(durationSeconds),
+      'type': serializer.toJson<String>(type),
+      'url': serializer.toJson<String>(url),
+      'thumbnailUrl': serializer.toJson<String?>(thumbnailUrl),
+    };
+  }
+
+  MarketingSliderItemRow copyWith({
+    int? id,
+    int? sliderId,
+    int? contentAssetId,
+    Value<int?> advertiserId = const Value.absent(),
+    int? sortOrder,
+    int? durationSeconds,
+    String? type,
+    String? url,
+    Value<String?> thumbnailUrl = const Value.absent(),
+  }) => MarketingSliderItemRow(
+    id: id ?? this.id,
+    sliderId: sliderId ?? this.sliderId,
+    contentAssetId: contentAssetId ?? this.contentAssetId,
+    advertiserId: advertiserId.present ? advertiserId.value : this.advertiserId,
+    sortOrder: sortOrder ?? this.sortOrder,
+    durationSeconds: durationSeconds ?? this.durationSeconds,
+    type: type ?? this.type,
+    url: url ?? this.url,
+    thumbnailUrl: thumbnailUrl.present ? thumbnailUrl.value : this.thumbnailUrl,
+  );
+  MarketingSliderItemRow copyWithCompanion(MarketingSliderItemsCompanion data) {
+    return MarketingSliderItemRow(
+      id: data.id.present ? data.id.value : this.id,
+      sliderId: data.sliderId.present ? data.sliderId.value : this.sliderId,
+      contentAssetId: data.contentAssetId.present
+          ? data.contentAssetId.value
+          : this.contentAssetId,
+      advertiserId: data.advertiserId.present
+          ? data.advertiserId.value
+          : this.advertiserId,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      durationSeconds: data.durationSeconds.present
+          ? data.durationSeconds.value
+          : this.durationSeconds,
+      type: data.type.present ? data.type.value : this.type,
+      url: data.url.present ? data.url.value : this.url,
+      thumbnailUrl: data.thumbnailUrl.present
+          ? data.thumbnailUrl.value
+          : this.thumbnailUrl,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MarketingSliderItemRow(')
+          ..write('id: $id, ')
+          ..write('sliderId: $sliderId, ')
+          ..write('contentAssetId: $contentAssetId, ')
+          ..write('advertiserId: $advertiserId, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('durationSeconds: $durationSeconds, ')
+          ..write('type: $type, ')
+          ..write('url: $url, ')
+          ..write('thumbnailUrl: $thumbnailUrl')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    sliderId,
+    contentAssetId,
+    advertiserId,
+    sortOrder,
+    durationSeconds,
+    type,
+    url,
+    thumbnailUrl,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MarketingSliderItemRow &&
+          other.id == this.id &&
+          other.sliderId == this.sliderId &&
+          other.contentAssetId == this.contentAssetId &&
+          other.advertiserId == this.advertiserId &&
+          other.sortOrder == this.sortOrder &&
+          other.durationSeconds == this.durationSeconds &&
+          other.type == this.type &&
+          other.url == this.url &&
+          other.thumbnailUrl == this.thumbnailUrl);
+}
+
+class MarketingSliderItemsCompanion
+    extends UpdateCompanion<MarketingSliderItemRow> {
+  final Value<int> id;
+  final Value<int> sliderId;
+  final Value<int> contentAssetId;
+  final Value<int?> advertiserId;
+  final Value<int> sortOrder;
+  final Value<int> durationSeconds;
+  final Value<String> type;
+  final Value<String> url;
+  final Value<String?> thumbnailUrl;
+  const MarketingSliderItemsCompanion({
+    this.id = const Value.absent(),
+    this.sliderId = const Value.absent(),
+    this.contentAssetId = const Value.absent(),
+    this.advertiserId = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.durationSeconds = const Value.absent(),
+    this.type = const Value.absent(),
+    this.url = const Value.absent(),
+    this.thumbnailUrl = const Value.absent(),
+  });
+  MarketingSliderItemsCompanion.insert({
+    this.id = const Value.absent(),
+    required int sliderId,
+    required int contentAssetId,
+    this.advertiserId = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.durationSeconds = const Value.absent(),
+    this.type = const Value.absent(),
+    this.url = const Value.absent(),
+    this.thumbnailUrl = const Value.absent(),
+  }) : sliderId = Value(sliderId),
+       contentAssetId = Value(contentAssetId);
+  static Insertable<MarketingSliderItemRow> custom({
+    Expression<int>? id,
+    Expression<int>? sliderId,
+    Expression<int>? contentAssetId,
+    Expression<int>? advertiserId,
+    Expression<int>? sortOrder,
+    Expression<int>? durationSeconds,
+    Expression<String>? type,
+    Expression<String>? url,
+    Expression<String>? thumbnailUrl,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sliderId != null) 'slider_id': sliderId,
+      if (contentAssetId != null) 'content_asset_id': contentAssetId,
+      if (advertiserId != null) 'advertiser_id': advertiserId,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (durationSeconds != null) 'duration_seconds': durationSeconds,
+      if (type != null) 'type': type,
+      if (url != null) 'url': url,
+      if (thumbnailUrl != null) 'thumbnail_url': thumbnailUrl,
+    });
+  }
+
+  MarketingSliderItemsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? sliderId,
+    Value<int>? contentAssetId,
+    Value<int?>? advertiserId,
+    Value<int>? sortOrder,
+    Value<int>? durationSeconds,
+    Value<String>? type,
+    Value<String>? url,
+    Value<String?>? thumbnailUrl,
+  }) {
+    return MarketingSliderItemsCompanion(
+      id: id ?? this.id,
+      sliderId: sliderId ?? this.sliderId,
+      contentAssetId: contentAssetId ?? this.contentAssetId,
+      advertiserId: advertiserId ?? this.advertiserId,
+      sortOrder: sortOrder ?? this.sortOrder,
+      durationSeconds: durationSeconds ?? this.durationSeconds,
+      type: type ?? this.type,
+      url: url ?? this.url,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (sliderId.present) {
+      map['slider_id'] = Variable<int>(sliderId.value);
+    }
+    if (contentAssetId.present) {
+      map['content_asset_id'] = Variable<int>(contentAssetId.value);
+    }
+    if (advertiserId.present) {
+      map['advertiser_id'] = Variable<int>(advertiserId.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (durationSeconds.present) {
+      map['duration_seconds'] = Variable<int>(durationSeconds.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (thumbnailUrl.present) {
+      map['thumbnail_url'] = Variable<String>(thumbnailUrl.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MarketingSliderItemsCompanion(')
+          ..write('id: $id, ')
+          ..write('sliderId: $sliderId, ')
+          ..write('contentAssetId: $contentAssetId, ')
+          ..write('advertiserId: $advertiserId, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('durationSeconds: $durationSeconds, ')
+          ..write('type: $type, ')
+          ..write('url: $url, ')
+          ..write('thumbnailUrl: $thumbnailUrl')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -10726,6 +11635,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $CompReasonsTable compReasons = $CompReasonsTable(this);
   late final $OffersTable offers = $OffersTable(this);
   late final $StaffMessagesTable staffMessages = $StaffMessagesTable(this);
+  late final $MarketingSlidersTable marketingSliders = $MarketingSlidersTable(
+    this,
+  );
+  late final $MarketingSliderItemsTable marketingSliderItems =
+      $MarketingSliderItemsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10752,6 +11666,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     compReasons,
     offers,
     staffMessages,
+    marketingSliders,
+    marketingSliderItems,
   ];
 }
 
@@ -16151,6 +17067,508 @@ typedef $$StaffMessagesTableProcessedTableManager =
       StaffMessageRow,
       PrefetchHooks Function()
     >;
+typedef $$MarketingSlidersTableCreateCompanionBuilder =
+    MarketingSlidersCompanion Function({
+      Value<int> id,
+      Value<String> uuid,
+      Value<String> name,
+      Value<int> loopIntervalSeconds,
+      Value<int> displayOrder,
+    });
+typedef $$MarketingSlidersTableUpdateCompanionBuilder =
+    MarketingSlidersCompanion Function({
+      Value<int> id,
+      Value<String> uuid,
+      Value<String> name,
+      Value<int> loopIntervalSeconds,
+      Value<int> displayOrder,
+    });
+
+class $$MarketingSlidersTableFilterComposer
+    extends Composer<_$AppDatabase, $MarketingSlidersTable> {
+  $$MarketingSlidersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get uuid => $composableBuilder(
+    column: $table.uuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get loopIntervalSeconds => $composableBuilder(
+    column: $table.loopIntervalSeconds,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get displayOrder => $composableBuilder(
+    column: $table.displayOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$MarketingSlidersTableOrderingComposer
+    extends Composer<_$AppDatabase, $MarketingSlidersTable> {
+  $$MarketingSlidersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get uuid => $composableBuilder(
+    column: $table.uuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get loopIntervalSeconds => $composableBuilder(
+    column: $table.loopIntervalSeconds,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get displayOrder => $composableBuilder(
+    column: $table.displayOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$MarketingSlidersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $MarketingSlidersTable> {
+  $$MarketingSlidersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get uuid =>
+      $composableBuilder(column: $table.uuid, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get loopIntervalSeconds => $composableBuilder(
+    column: $table.loopIntervalSeconds,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get displayOrder => $composableBuilder(
+    column: $table.displayOrder,
+    builder: (column) => column,
+  );
+}
+
+class $$MarketingSlidersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $MarketingSlidersTable,
+          MarketingSliderRow,
+          $$MarketingSlidersTableFilterComposer,
+          $$MarketingSlidersTableOrderingComposer,
+          $$MarketingSlidersTableAnnotationComposer,
+          $$MarketingSlidersTableCreateCompanionBuilder,
+          $$MarketingSlidersTableUpdateCompanionBuilder,
+          (
+            MarketingSliderRow,
+            BaseReferences<
+              _$AppDatabase,
+              $MarketingSlidersTable,
+              MarketingSliderRow
+            >,
+          ),
+          MarketingSliderRow,
+          PrefetchHooks Function()
+        > {
+  $$MarketingSlidersTableTableManager(
+    _$AppDatabase db,
+    $MarketingSlidersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MarketingSlidersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MarketingSlidersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MarketingSlidersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> uuid = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<int> loopIntervalSeconds = const Value.absent(),
+                Value<int> displayOrder = const Value.absent(),
+              }) => MarketingSlidersCompanion(
+                id: id,
+                uuid: uuid,
+                name: name,
+                loopIntervalSeconds: loopIntervalSeconds,
+                displayOrder: displayOrder,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> uuid = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<int> loopIntervalSeconds = const Value.absent(),
+                Value<int> displayOrder = const Value.absent(),
+              }) => MarketingSlidersCompanion.insert(
+                id: id,
+                uuid: uuid,
+                name: name,
+                loopIntervalSeconds: loopIntervalSeconds,
+                displayOrder: displayOrder,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$MarketingSlidersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $MarketingSlidersTable,
+      MarketingSliderRow,
+      $$MarketingSlidersTableFilterComposer,
+      $$MarketingSlidersTableOrderingComposer,
+      $$MarketingSlidersTableAnnotationComposer,
+      $$MarketingSlidersTableCreateCompanionBuilder,
+      $$MarketingSlidersTableUpdateCompanionBuilder,
+      (
+        MarketingSliderRow,
+        BaseReferences<
+          _$AppDatabase,
+          $MarketingSlidersTable,
+          MarketingSliderRow
+        >,
+      ),
+      MarketingSliderRow,
+      PrefetchHooks Function()
+    >;
+typedef $$MarketingSliderItemsTableCreateCompanionBuilder =
+    MarketingSliderItemsCompanion Function({
+      Value<int> id,
+      required int sliderId,
+      required int contentAssetId,
+      Value<int?> advertiserId,
+      Value<int> sortOrder,
+      Value<int> durationSeconds,
+      Value<String> type,
+      Value<String> url,
+      Value<String?> thumbnailUrl,
+    });
+typedef $$MarketingSliderItemsTableUpdateCompanionBuilder =
+    MarketingSliderItemsCompanion Function({
+      Value<int> id,
+      Value<int> sliderId,
+      Value<int> contentAssetId,
+      Value<int?> advertiserId,
+      Value<int> sortOrder,
+      Value<int> durationSeconds,
+      Value<String> type,
+      Value<String> url,
+      Value<String?> thumbnailUrl,
+    });
+
+class $$MarketingSliderItemsTableFilterComposer
+    extends Composer<_$AppDatabase, $MarketingSliderItemsTable> {
+  $$MarketingSliderItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sliderId => $composableBuilder(
+    column: $table.sliderId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get contentAssetId => $composableBuilder(
+    column: $table.contentAssetId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get advertiserId => $composableBuilder(
+    column: $table.advertiserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get durationSeconds => $composableBuilder(
+    column: $table.durationSeconds,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get thumbnailUrl => $composableBuilder(
+    column: $table.thumbnailUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$MarketingSliderItemsTableOrderingComposer
+    extends Composer<_$AppDatabase, $MarketingSliderItemsTable> {
+  $$MarketingSliderItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sliderId => $composableBuilder(
+    column: $table.sliderId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get contentAssetId => $composableBuilder(
+    column: $table.contentAssetId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get advertiserId => $composableBuilder(
+    column: $table.advertiserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get durationSeconds => $composableBuilder(
+    column: $table.durationSeconds,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get thumbnailUrl => $composableBuilder(
+    column: $table.thumbnailUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$MarketingSliderItemsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $MarketingSliderItemsTable> {
+  $$MarketingSliderItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get sliderId =>
+      $composableBuilder(column: $table.sliderId, builder: (column) => column);
+
+  GeneratedColumn<int> get contentAssetId => $composableBuilder(
+    column: $table.contentAssetId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get advertiserId => $composableBuilder(
+    column: $table.advertiserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<int> get durationSeconds => $composableBuilder(
+    column: $table.durationSeconds,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<String> get thumbnailUrl => $composableBuilder(
+    column: $table.thumbnailUrl,
+    builder: (column) => column,
+  );
+}
+
+class $$MarketingSliderItemsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $MarketingSliderItemsTable,
+          MarketingSliderItemRow,
+          $$MarketingSliderItemsTableFilterComposer,
+          $$MarketingSliderItemsTableOrderingComposer,
+          $$MarketingSliderItemsTableAnnotationComposer,
+          $$MarketingSliderItemsTableCreateCompanionBuilder,
+          $$MarketingSliderItemsTableUpdateCompanionBuilder,
+          (
+            MarketingSliderItemRow,
+            BaseReferences<
+              _$AppDatabase,
+              $MarketingSliderItemsTable,
+              MarketingSliderItemRow
+            >,
+          ),
+          MarketingSliderItemRow,
+          PrefetchHooks Function()
+        > {
+  $$MarketingSliderItemsTableTableManager(
+    _$AppDatabase db,
+    $MarketingSliderItemsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MarketingSliderItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MarketingSliderItemsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$MarketingSliderItemsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> sliderId = const Value.absent(),
+                Value<int> contentAssetId = const Value.absent(),
+                Value<int?> advertiserId = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<int> durationSeconds = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String> url = const Value.absent(),
+                Value<String?> thumbnailUrl = const Value.absent(),
+              }) => MarketingSliderItemsCompanion(
+                id: id,
+                sliderId: sliderId,
+                contentAssetId: contentAssetId,
+                advertiserId: advertiserId,
+                sortOrder: sortOrder,
+                durationSeconds: durationSeconds,
+                type: type,
+                url: url,
+                thumbnailUrl: thumbnailUrl,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int sliderId,
+                required int contentAssetId,
+                Value<int?> advertiserId = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<int> durationSeconds = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String> url = const Value.absent(),
+                Value<String?> thumbnailUrl = const Value.absent(),
+              }) => MarketingSliderItemsCompanion.insert(
+                id: id,
+                sliderId: sliderId,
+                contentAssetId: contentAssetId,
+                advertiserId: advertiserId,
+                sortOrder: sortOrder,
+                durationSeconds: durationSeconds,
+                type: type,
+                url: url,
+                thumbnailUrl: thumbnailUrl,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$MarketingSliderItemsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $MarketingSliderItemsTable,
+      MarketingSliderItemRow,
+      $$MarketingSliderItemsTableFilterComposer,
+      $$MarketingSliderItemsTableOrderingComposer,
+      $$MarketingSliderItemsTableAnnotationComposer,
+      $$MarketingSliderItemsTableCreateCompanionBuilder,
+      $$MarketingSliderItemsTableUpdateCompanionBuilder,
+      (
+        MarketingSliderItemRow,
+        BaseReferences<
+          _$AppDatabase,
+          $MarketingSliderItemsTable,
+          MarketingSliderItemRow
+        >,
+      ),
+      MarketingSliderItemRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -16197,4 +17615,8 @@ class $AppDatabaseManager {
       $$OffersTableTableManager(_db, _db.offers);
   $$StaffMessagesTableTableManager get staffMessages =>
       $$StaffMessagesTableTableManager(_db, _db.staffMessages);
+  $$MarketingSlidersTableTableManager get marketingSliders =>
+      $$MarketingSlidersTableTableManager(_db, _db.marketingSliders);
+  $$MarketingSliderItemsTableTableManager get marketingSliderItems =>
+      $$MarketingSliderItemsTableTableManager(_db, _db.marketingSliderItems);
 }

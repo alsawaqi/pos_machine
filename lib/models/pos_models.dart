@@ -1024,6 +1024,58 @@ class StaffMessage {
   bool isReadBy(int staffId) => readStaffIds.contains(staffId);
 }
 
+/// Phase 3 — one slide in the customer-screen advertising loop: a resolved
+/// image or video with its on-screen [durationSeconds] (the device caps even a
+/// longer video at this). [sliderId] + [contentAssetId] + [advertiserId] travel
+/// with it so the device can attribute play-time telemetry. Carries toJson /
+/// fromJson because the slide list is shipped to the customer (secondary)
+/// Flutter engine over the presentation method channel.
+class SliderSlide {
+  final int itemId;
+  final int sliderId;
+  final int contentAssetId;
+  final int? advertiserId;
+  final String type; // 'image' | 'video'
+  final String url;
+  final String? thumbnailUrl;
+  final int durationSeconds;
+
+  const SliderSlide({
+    required this.itemId,
+    required this.sliderId,
+    required this.contentAssetId,
+    this.advertiserId,
+    required this.type,
+    required this.url,
+    this.thumbnailUrl,
+    required this.durationSeconds,
+  });
+
+  bool get isVideo => type == 'video';
+
+  Map<String, dynamic> toJson() => {
+        'item_id': itemId,
+        'slider_id': sliderId,
+        'content_asset_id': contentAssetId,
+        'advertiser_id': advertiserId,
+        'type': type,
+        'url': url,
+        'thumbnail_url': thumbnailUrl,
+        'duration_seconds': durationSeconds,
+      };
+
+  factory SliderSlide.fromJson(Map<String, dynamic> j) => SliderSlide(
+        itemId: (j['item_id'] as num?)?.toInt() ?? 0,
+        sliderId: (j['slider_id'] as num?)?.toInt() ?? 0,
+        contentAssetId: (j['content_asset_id'] as num?)?.toInt() ?? 0,
+        advertiserId: (j['advertiser_id'] as num?)?.toInt(),
+        type: j['type']?.toString() ?? 'image',
+        url: j['url']?.toString() ?? '',
+        thumbnailUrl: j['thumbnail_url']?.toString(),
+        durationSeconds: (j['duration_seconds'] as num?)?.toInt() ?? 6,
+      );
+}
+
 /// P-F8 — the merchant's order-numbering config (settings.order_numbering).
 /// When [enabled], the device asks pos_api for the next sequential number at
 /// PAYMENT time (per-branch or company-wide, optionally daily-reset); the

@@ -43,6 +43,8 @@ class ConfigRepository {
       compReasonRows: parsed.compReasons,
       offerRows: parsed.offers,
       staffMessageRows: parsed.staffMessages,
+      sliderRows: parsed.sliders,
+      sliderItemRows: parsed.sliderItems,
       meta: parsed.meta,
     );
     await _session.saveTerminalId(config.terminalId);
@@ -94,6 +96,8 @@ class ConfigRepository {
         deletedOfferIds: d.offers,
         staffMessageRows: c.staffMessages,
         deletedStaffMessageIds: d.staffMessages,
+        sliderRows: c.sliders,
+        sliderItemRows: c.sliderItems,
         deletedCategoryIds: d.categories,
         deletedProductIds: d.products,
         deletedFloorIds: d.floors,
@@ -152,6 +156,8 @@ class ConfigRepository {
     var compReasons = <CompReasonRow>[];
     var offerRows = <OfferRow>[];
     var staffMessageRows = <StaffMessageRow>[];
+    var sliderRows = <MarketingSliderRow>[];
+    var sliderItemRows = <MarketingSliderItemRow>[];
     SyncMetaRow? meta;
     var seenCats = false, seenProds = false, seenFloors = false, seenTables = false, seenTaxes = false;
 
@@ -162,6 +168,7 @@ class ConfigRepository {
           deliveryProviders, expenseCategories, branchStock, discounts,
           loyaltyRules, customers, ingredients, meta,
           voidReasons, compReasons, offerRows, staffMessageRows,
+          sliderRows, sliderItemRows,
         ));
       }
     }
@@ -246,6 +253,14 @@ class ConfigRepository {
       }),
       _db.watchStaffMessages().listen((v) {
         staffMessageRows = v;
+        emit();
+      }),
+      _db.watchSliders().listen((v) {
+        sliderRows = v;
+        emit();
+      }),
+      _db.watchSliderItems().listen((v) {
+        sliderItemRows = v;
         emit();
       }),
       _db.watchSyncMeta().listen((v) {

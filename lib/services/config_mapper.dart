@@ -32,6 +32,7 @@ class CatalogSnapshot {
     this.compReasons = const <CompReasonRef>[],
     this.categoryAddonGroupIds = const <int, List<int>>{},
     this.staffMessages = const <StaffMessage>[],
+    this.adSlides = const <SliderSlide>[],
   });
 
   final List<String> categories;
@@ -84,6 +85,10 @@ class CatalogSnapshot {
   // P-G6 — staff announcements from the portal (newest first). Visibility per
   // signed-in staff member is resolved in PosController.visibleMessagesFor.
   final List<StaffMessage> staffMessages;
+  // Phase 3 — the advertising loop for the customer (secondary) screen: every
+  // slide across all sliders targeting this device, in play order. Empty = no
+  // ad assigned (the customer screen falls back to its non-ad layout).
+  final List<SliderSlide> adSlides;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -108,6 +113,8 @@ class ParsedConfig {
     this.compReasons = const [],
     this.offers = const [],
     this.staffMessages = const [],
+    this.sliders = const [],
+    this.sliderItems = const [],
     required this.meta,
   });
 
@@ -133,6 +140,9 @@ class ParsedConfig {
   final List<OffersCompanion> offers;
   // P-G6 — staff announcements.
   final List<StaffMessagesCompanion> staffMessages;
+  // Phase 3 — marketing slider loops + their slides (full replace each pull).
+  final List<MarketingSlidersCompanion> sliders;
+  final List<MarketingSliderItemsCompanion> sliderItems;
   final SyncMetaCompanion meta;
 }
 
@@ -595,6 +605,38 @@ class ConfigMapper {
             ))
         .toList();
 
+    // Phase 3 — marketing sliders (advertising loop for the customer screen).
+    // Each slider nests its ordered items; pos_api already resolved each item's
+    // media (type/url) + capped duration. Flattened into two companion lists.
+    final sliders = <MarketingSlidersCompanion>[];
+    final sliderItems = <MarketingSliderItemsCompanion>[];
+    var sliderOrder = 0;
+    for (final s in _list(data['sliders'])) {
+      final sid = _int(s['id']) ?? 0;
+      final loopInterval = _int(s['loop_interval_seconds']) ?? 6;
+      sliders.add(MarketingSlidersCompanion(
+        id: Value(sid),
+        uuid: Value(_str(s['uuid'])),
+        name: Value(_str(s['name'])),
+        loopIntervalSeconds: Value(loopInterval),
+        displayOrder: Value(sliderOrder++),
+      ));
+      for (final it in _list(s['items'])) {
+        final type = _str(it['type']);
+        sliderItems.add(MarketingSliderItemsCompanion(
+          id: Value(_int(it['id']) ?? 0),
+          sliderId: Value(sid),
+          contentAssetId: Value(_int(it['content_asset_id']) ?? 0),
+          advertiserId: Value(_int(it['advertiser_id'])),
+          sortOrder: Value(_int(it['sort_order']) ?? 0),
+          durationSeconds: Value(_int(it['duration_seconds']) ?? loopInterval),
+          type: Value(type.isEmpty ? 'image' : type),
+          url: Value(_str(it['url'])),
+          thumbnailUrl: Value(_strN(it['thumbnail_url'])),
+        ));
+      }
+    }
+
     // v2 #14 — company POS policy: which staff positions may cancel an order.
     final settings = (data['settings'] as Map?)?.cast<String, dynamic>() ?? const {};
     final cancelPositions = _strList(settings['order_cancel_positions']);
@@ -638,6 +680,8 @@ class ConfigMapper {
       compReasons: compReasons,
       offers: offers,
       staffMessages: staffMessages,
+      sliders: sliders,
+      sliderItems: sliderItems,
       meta: metaCompanion,
     );
   }
@@ -693,6 +737,8 @@ class ConfigMapper {
     List<CompReasonRow> compReasonRows = const [],
     List<OfferRow> offerRows = const [],
     List<StaffMessageRow> staffMessageRows = const [],
+    List<MarketingSliderRow> sliderRows = const [],
+    List<MarketingSliderItemRow> sliderItemRows = const [],
   ]) {
     final sortedCats = [...cats]
       ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
@@ -855,6 +901,28 @@ class ConfigMapper {
 
     final receiptTemplate = _receiptTemplate(branch?.receiptTemplateJson);
 
+    // Phase 3 — flatten every slider's slides into one play-ordered ad loop:
+    // by slider display order, then each slide's sort order. Empty-url slides
+    // are dropped (defensive — pos_api already filtered un-resolved assets).
+    final sliderOrderById = {for (final s in sliderRows) s.id: s.displayOrder};
+    final adSlides = ([...sliderItemRows]..sort((a, b) {
+          final so = (sliderOrderById[a.sliderId] ?? 1 << 30)
+              .compareTo(sliderOrderById[b.sliderId] ?? 1 << 30);
+          return so != 0 ? so : a.sortOrder.compareTo(b.sortOrder);
+        }))
+        .where((i) => i.url.isNotEmpty)
+        .map((i) => SliderSlide(
+              itemId: i.id,
+              sliderId: i.sliderId,
+              contentAssetId: i.contentAssetId,
+              advertiserId: i.advertiserId,
+              type: i.type,
+              url: i.url,
+              thumbnailUrl: i.thumbnailUrl,
+              durationSeconds: i.durationSeconds,
+            ))
+        .toList();
+
     final discounts = discountRows
         .map((d) => MerchantDiscount(
               id: d.id,
@@ -972,6 +1040,7 @@ class ConfigMapper {
                 readStaffIds: _intsFromJson(m.readStaffIdsJson).toSet(),
               ))
           .toList(),
+      adSlides: adSlides,
     );
   }
 

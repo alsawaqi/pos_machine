@@ -14,6 +14,7 @@ import '../l10n/l10n.dart';
 import '../data/db/app_database.dart';
 import '../data/order_sync_repository.dart';
 import '../services/api_models.dart';
+import '../services/audience_service.dart';
 import '../services/config_mapper.dart';
 import '../services/expense_restock_service.dart';
 import '../services/geofence_service.dart';
@@ -68,6 +69,11 @@ class SettingsController extends Notifier<AppSettings> {
   /// (MaterialApp watches [localeProvider]).
   Future<void> setLanguage(String value) async {
     await _svc.saveLanguage(value);
+    state = _svc.snapshot();
+  }
+
+  Future<void> setAudienceMeasurement(bool value) async {
+    await _svc.saveAudienceMeasurement(value);
     state = _svc.snapshot();
   }
 }
@@ -192,6 +198,15 @@ final orderSyncRepositoryProvider = Provider<OrderSyncRepository>(
   ),
 );
 
+/// Phase 1A — anonymous on-device audience measurement (customer-facing camera
+/// → ML Kit face counts), folded into slider.display telemetry. Off unless the
+/// operator enables it in Settings. Auxiliary: never blocks the POS.
+final audienceServiceProvider = Provider<AudienceService>((ref) {
+  final service = AudienceService();
+  ref.onDispose(() => unawaited(service.stop()));
+  return service;
+});
+
 /// The cached catalog, streamed from Drift. Drives the bridge into PosController.
 final catalogProvider = StreamProvider<CatalogSnapshot>(
   (ref) => ref.read(configRepositoryProvider).watchCatalog(),
@@ -236,11 +251,16 @@ final liveSyncProvider = Provider<LiveSyncService>((ref) {
               socketId: socketId,
               channelName: channelName,
             ),
-    onLiveEvent: (_) {
+    onLiveEvent: (eventType) {
       // Trailing-edge debounce: a completion burst (create+pay+donation, plus
-      // our own echo) coalesces into ONE delta sync.
+      // our own echo) coalesces into ONE delta sync. Marketing-slider edits use
+      // a much shorter window so the customer-screen ad loop refreshes almost
+      // instantly when admin changes a slider (images/order/interval).
+      final delay = eventType == 'marketing.sliders.changed'
+          ? const Duration(milliseconds: 700)
+          : const Duration(seconds: 3);
       debounce?.cancel();
-      debounce = Timer(const Duration(seconds: 3), () {
+      debounce = Timer(delay, () {
         unawaited(
           ref.read(configRepositoryProvider).syncConfig().catchError((_) {}),
         );

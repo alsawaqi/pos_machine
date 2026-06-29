@@ -16,6 +16,10 @@ class PresentationService {
   final String _engineTag =
       'customer_display_${DateTime.now().microsecondsSinceEpoch}';
   int? _activeDisplayId;
+  // Phase 3 — the advertising loop last pushed to the customer screen, kept so
+  // we can re-send it the moment a (re)opened display is ready (it runs its own
+  // playback timer, independent of order updates).
+  List<SliderSlide> _lastSlides = const [];
   final bool _supportsRearDisplay =
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
@@ -175,6 +179,32 @@ class PresentationService {
       ...snapshot.toMap(),
     });
   }
+
+  /// Phase 3 — push the advertising loop to the customer screen. Sent on a
+  /// separate `slider_set` message (NOT folded into the frequent order push) so
+  /// the secondary updates the loop only when it actually changes, and its
+  /// continuous playback is never restarted by an order update. Remembered so a
+  /// freshly (re)opened display can be re-seeded via [resendSlides].
+  Future<void> sendSlides(List<SliderSlide> slides) async {
+    _lastSlides = slides;
+    if (!_supportsRearDisplay) return;
+
+    // Best-effort: a missing channel (no rear display / test host) or a
+    // not-yet-ready display must never bubble up and fail the caller (e.g. a
+    // catalog apply). Mirrors how the controller treats the presentation path.
+    try {
+      await _hostChannel.invokeMethod<void>('transferDataToRear', {
+        'type': 'slider_set',
+        'slides': slides.map((s) => s.toJson()).toList(),
+      });
+    } catch (_) {
+      // swallow — the loop re-seeds on the next catalog change / display open
+    }
+  }
+
+  /// Re-send the last-known loop (e.g. right after the rear display opens or
+  /// reconnects, so it isn't left blank until the next catalog change).
+  Future<void> resendSlides() => sendSlides(_lastSlides);
 
   void listenFromCustomer(void Function(dynamic data) onData) {
     _frontChannel.setMethodCallHandler((call) async {

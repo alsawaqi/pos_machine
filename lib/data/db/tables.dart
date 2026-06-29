@@ -433,3 +433,43 @@ class Ingredients extends Table {
   @override
   Set<Column> get primaryKey => {id};
 }
+
+// Phase 3 — marketing advertising sliders the device plays on its customer
+// (secondary) screen. Platform-curated, NOT company-scoped: pos_api already
+// filtered the /device/config `sliders` slice to THIS device's targeting, so
+// the device just caches + plays whatever it receives. Replaced WHOLESALE on
+// every config pull (full + delta) — the slice always rides in full, so item
+// edits propagate without per-row delta bookkeeping. One header row per loop.
+@DataClassName('MarketingSliderRow')
+class MarketingSliders extends Table {
+  IntColumn get id => integer()();
+  TextColumn get uuid => text().withDefault(const Constant(''))();
+  TextColumn get name => text().withDefault(const Constant(''))();
+  IntColumn get loopIntervalSeconds => integer().withDefault(const Constant(6))();
+  // Server insertion order — when more than one slider targets this device,
+  // their slides play in this order (lower first).
+  IntColumn get displayOrder => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+// One slide in a slider: an advertiser content asset with the resolved media
+// (type + absolute url) and the on-screen duration the device honours for
+// images and (capped) videos alike. slider_id + content_asset_id + advertiser_id
+// ride along so the device can attribute play-time telemetry per slider/advertiser.
+@DataClassName('MarketingSliderItemRow')
+class MarketingSliderItems extends Table {
+  IntColumn get id => integer()();
+  IntColumn get sliderId => integer()();
+  IntColumn get contentAssetId => integer()();
+  IntColumn get advertiserId => integer().nullable()();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  IntColumn get durationSeconds => integer().withDefault(const Constant(6))();
+  TextColumn get type => text().withDefault(const Constant('image'))(); // image | video
+  TextColumn get url => text().withDefault(const Constant(''))();
+  TextColumn get thumbnailUrl => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
