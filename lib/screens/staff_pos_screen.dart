@@ -125,6 +125,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   final ManagerAuthorizationService _managerAuthorization =
       ManagerAuthorizationService();
   Timer? _clockTimer;
+  Timer? _configPollTimer;
   Timer? _popupTimer;
   bool _showPaymentPage = false;
   String _cashTenderInput = '';
@@ -241,6 +242,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       if (ref.read(settingsControllerProvider).audienceMeasurement) {
         unawaited(ref.read(audienceServiceProvider).start());
       }
+      // Periodic config poll — a safety net for when real-time push is off
+      // (e.g. prod BROADCAST_CONNECTION=log or an unreachable Reverb): pull a
+      // delta config every 60s so admin slider/menu edits reach the screen
+      // within a minute even without a live event.
+      _configPollTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+        unawaited(
+          ref.read(configRepositoryProvider).syncConfig().catchError((_) {}),
+        );
+      });
     });
 
     // Bridge: feed the branch catalog (from the Drift cache, refreshed from
@@ -642,6 +652,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   @override
   void dispose() {
     _clockTimer?.cancel();
+    _configPollTimer?.cancel();
     _popupTimer?.cancel();
     _clockNow.dispose();
     _currentOrderScrollController.dispose();
