@@ -48,6 +48,7 @@ class ConfigRepository {
       meta: parsed.meta,
     );
     await _session.saveTerminalId(config.terminalId);
+    await _session.saveTerminalPin(config.terminalPin);
     // Phase C3 — where to dial Reverb (null = live push off server-side).
     await _session.saveWebsocketConfig(config.websocket);
   }
@@ -119,6 +120,7 @@ class ConfigRepository {
         orderNumberingJson: c.meta.orderNumberingJson.value,
       );
       await _session.saveTerminalId(res.terminalId);
+      await _session.saveTerminalPin(res.terminalPin);
       await _session.saveWebsocketConfig(res.websocket);
     } catch (_) {
       // Self-heal: drop back to a full sync on any delta failure.

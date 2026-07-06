@@ -45,6 +45,7 @@ class SessionState {
     this.branchId,
     this.kioskId,
     this.terminalId,
+    this.terminalPin,
     this.staff,
     this.openShift,
   });
@@ -54,6 +55,7 @@ class SessionState {
   final int? branchId;
   final String? kioskId; // fetched at activation (layer 1)
   final String? terminalId; // fetched at activation + refreshed from config (Soft POS)
+  final String? terminalPin; // bank-issued Mosambee login PIN (null = default)
   final StaffSessionData? staff;
   final OpenShiftData? openShift;
 
@@ -78,6 +80,7 @@ class SessionService {
   static const _kDeviceToken = 'device_token'; // secure storage
   static const _kKioskId = 'kiosk_id';
   static const _kTerminalId = 'terminal_id';
+  static const _kTerminalPin = 'terminal_pin';
   static const _kCompanyId = 'company_id';
   static const _kBranchId = 'branch_id';
   static const _kStaff = 'staff_session_json';
@@ -93,6 +96,7 @@ class SessionService {
 
   String? get kioskId => _prefs.getString(_kKioskId);
   String? get terminalId => _prefs.getString(_kTerminalId);
+  String? get terminalPin => _prefs.getString(_kTerminalPin);
   int? get companyId => _prefs.getInt(_kCompanyId);
   int? get branchId => _prefs.getInt(_kBranchId);
 
@@ -127,6 +131,7 @@ class SessionService {
         branchId: branchId,
         kioskId: kioskId,
         terminalId: terminalId,
+        terminalPin: terminalPin,
         staff: staff,
         openShift: openShift,
       );
@@ -142,6 +147,7 @@ class SessionService {
     if (result.terminalId != null) {
       await _prefs.setString(_kTerminalId, result.terminalId!);
     }
+    await saveTerminalPin(result.terminalPin);
     if (result.companyId != null) {
       await _prefs.setInt(_kCompanyId, result.companyId!);
     }
@@ -154,6 +160,18 @@ class SessionService {
   Future<void> saveTerminalId(String? terminalId) async {
     if (terminalId == null || terminalId.isEmpty) return;
     await _prefs.setString(_kTerminalId, terminalId);
+  }
+
+  /// Refresh the Mosambee terminal PIN from the server (activation + config).
+  /// Unlike [saveTerminalId] (keep-last-known), null/empty REMOVES the cached
+  /// value — an admin clearing the PIN must revert the device to the default.
+  Future<void> saveTerminalPin(String? terminalPin) async {
+    final trimmed = terminalPin?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      await _prefs.remove(_kTerminalPin);
+    } else {
+      await _prefs.setString(_kTerminalPin, trimmed);
+    }
   }
 
   /// Phase C3 — the Reverb endpoint from /device/config meta.websocket
@@ -225,6 +243,7 @@ class SessionService {
     await _prefs.remove(_kBranchId);
     await _prefs.remove(_kKioskId);
     await _prefs.remove(_kTerminalId);
+    await _prefs.remove(_kTerminalPin);
     await _prefs.remove(_kWebsocket);
     await _prefs.remove(_kLastShiftSummary);
   }

@@ -186,8 +186,15 @@ class MosambeePaymentService {
   static void Function(Map<String, dynamic> event)? _launchStateListener;
 
   static const String appPackageName = 'com.mosambee.dhofar.softpos';
-  static const String terminalPin = '1321';
+  static const String defaultTerminalPin = '1321';
   static const String partnerId = '';
+
+  /// The Mosambee login PIN to use: the bank-issued per-device PIN cached
+  /// under prefs 'terminal_pin' when set, else the [defaultTerminalPin].
+  static String effectivePin(String? cached) =>
+      (cached == null || cached.trim().isEmpty)
+          ? defaultTerminalPin
+          : cached.trim();
 
   MosambeePaymentService() {
     _ensureHandlerInstalled();
@@ -200,9 +207,9 @@ class MosambeePaymentService {
     _ensureHandlerInstalled();
   }
 
-  Map<String, String> _loginArgs(String terminalId) => {
+  Map<String, String> _loginArgs(String terminalId, String pin) => {
     'userName': terminalId,
-    'pin': terminalPin,
+    'pin': pin,
     'partnerId': partnerId,
     'packageName': appPackageName,
   };
@@ -241,7 +248,13 @@ class MosambeePaymentService {
     if (terminalId == null || terminalId.isEmpty) {
       return null; // not configured — nothing to warm
     }
-    return _platform.invokeMethod<String>('prepareLogin', _loginArgs(terminalId));
+    final pin = MosambeePaymentService.effectivePin(
+      await LocalStorageService.getTerminalPin(),
+    );
+    return _platform.invokeMethod<String>(
+      'prepareLogin',
+      _loginArgs(terminalId, pin),
+    );
   }
 
   /// Pay using the pre-warmed session (fast — no login). Falls back to a full
@@ -298,8 +311,11 @@ class MosambeePaymentService {
         );
       }
 
+      final pin = MosambeePaymentService.effectivePin(
+        await LocalStorageService.getTerminalPin(),
+      );
       final result = await _platform.invokeMethod<String>('loginAndPay', {
-        ..._loginArgs(terminalId),
+        ..._loginArgs(terminalId, pin),
         ..._paymentArgs(amountOmr),
       });
 

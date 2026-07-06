@@ -12,6 +12,7 @@ class PairResult {
     this.branchId,
     this.kioskId,
     this.terminalId,
+    this.terminalPin,
     this.deviceName,
   });
 
@@ -21,6 +22,7 @@ class PairResult {
   final int? branchId;
   final String? kioskId;
   final String? terminalId;
+  final String? terminalPin; // bank-issued Mosambee PIN (null = default)
   final String? deviceName;
 
   factory PairResult.fromJson(Map<String, dynamic> json) {
@@ -32,6 +34,7 @@ class PairResult {
       branchId: (device?['branch_id'] as num?)?.toInt(),
       kioskId: device?['kiosk_id'] as String?,
       terminalId: device?['terminal_id'] as String?,
+      terminalPin: device?['terminal_pin'] as String?,
       deviceName: device?['name'] as String?,
     );
   }

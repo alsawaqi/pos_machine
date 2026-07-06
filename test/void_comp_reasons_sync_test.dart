@@ -24,6 +24,7 @@ class _FakeApi implements PosApiService {
       ({
         Map<String, dynamic> data,
         String? terminalId,
+        String? terminalPin,
         String? generatedAt,
         Map<String, dynamic>? websocket
       })> fetchConfig() async {
@@ -31,6 +32,7 @@ class _FakeApi implements PosApiService {
     return (
       data: fullPayload,
       terminalId: null,
+      terminalPin: null,
       generatedAt: 'CURSOR-$fullCalls',
       websocket: null,
     );
@@ -41,6 +43,7 @@ class _FakeApi implements PosApiService {
       ({
         Map<String, dynamic> data,
         String? terminalId,
+        String? terminalPin,
         String? generatedAt,
         Map<String, dynamic>? websocket
       })> fetchConfigDelta(String since) async {
@@ -50,6 +53,7 @@ class _FakeApi implements PosApiService {
     return (
       data: delta,
       terminalId: null,
+      terminalPin: null,
       generatedAt: 'CURSOR-D$deltaCalls',
       websocket: null,
     );
@@ -63,6 +67,9 @@ class _FakeApi implements PosApiService {
 class _FakeSession implements SessionService {
   @override
   Future<void> saveTerminalId(String? terminalId) async {}
+
+  @override
+  Future<void> saveTerminalPin(String? terminalPin) async {}
 
   @override
   Future<void> saveWebsocketConfig(Map<String, dynamic>? config) async {}
