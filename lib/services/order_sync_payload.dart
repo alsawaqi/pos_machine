@@ -373,26 +373,41 @@ OrderSyncPayload buildOrderSyncPayload(
     },
   ];
 
-  // ---- round-up donation: rides a CARD tender (the server attaches it to the
-  // latest card payment). Sum split round-ups, else the single round-up. ----
-  final hasCard = payments.any((p) => p['method'] == 'card');
-  var roundUp = 0.0;
+  // ---- round-up donations: each accepted round-up rides ITS OWN card leg.
+  // One donation.record per rounding card leg, carrying payment_index — the
+  // leg's position in payments[] (the server inserts payment rows in array
+  // order, so the index maps to the exact pos_payments row). Every charity
+  // transaction therefore traces to the guest who rounded, even when two
+  // card guests in one split both round up. Non-card legs can never round
+  // (canOfferCharityRoundUp is card-only); a stale flag on one is skipped
+  // defensively — never transmit a donation with no card charge behind it. ----
+  final donationLegs = <Map<String, int>>[];
   if (snapshot.splitPayments.isNotEmpty) {
-    for (final rec in snapshot.splitPayments) {
-      if (rec.charityRoundUpAccepted) roundUp += rec.charityRoundUpAmount;
+    for (var i = 0; i < snapshot.splitPayments.length; i++) {
+      final rec = snapshot.splitPayments[i];
+      final legBaisas = omrToBaisas(rec.charityRoundUpAmount);
+      if (rec.charityRoundUpAccepted &&
+          legBaisas > 0 &&
+          payments[i]['method'] == 'card') {
+        donationLegs.add({'index': i, 'baisas': legBaisas});
+      }
     }
   } else if (snapshot.charityRoundUpAccepted) {
-    roundUp = snapshot.charityRoundUpAmount;
+    final singleBaisas = omrToBaisas(snapshot.charityRoundUpAmount);
+    final cardIndex = payments.indexWhere((p) => p['method'] == 'card');
+    if (singleBaisas > 0 && cardIndex >= 0) {
+      donationLegs.add({'index': cardIndex, 'baisas': singleBaisas});
+    }
   }
-  final roundUpBaisas = omrToBaisas(roundUp);
-  if (hasCard && roundUpBaisas > 0) {
+  for (final leg in donationLegs) {
     events.add({
       'client_event_id': gen(),
       'event_type': 'donation.record',
       'client_timestamp': ts,
       'payload': {
         'order_uuid': orderUuid,
-        'amount_baisas': roundUpBaisas,
+        'amount_baisas': leg['baisas'],
+        'payment_index': leg['index'],
         'occurred_at': ts,
       },
     });

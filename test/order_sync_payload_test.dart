@@ -131,12 +131,13 @@ void main() {
       expect((payments.first as Map)['method'], 'card');
       expect((payments.first as Map)['amount_baisas'], 5250); // == grand
 
-      // donation.record (rode the card payment)
+      // donation.record (rode the card payment — payment_index addresses it)
       final donation = payload.events[2];
       expect(donation['event_type'], 'donation.record');
       final donP = donation['payload'] as Map<String, dynamic>;
       expect(donP['order_uuid'], 'uuid-0');
       expect(donP['amount_baisas'], 750);
+      expect(donP['payment_index'], 0);
     });
 
     // DEFENSE-IN-DEPTH: the UI gate (canOfferCharityRoundUp, card legs only)
@@ -186,6 +187,61 @@ void main() {
           0, (s, p) => s + ((p as Map)['amount_baisas'] as int));
       expect(sum, 10000); // exactly grand_total, no ±drift
       expect((payments[2] as Map)['method'], 'card');
+    });
+
+    test('split: each rounding CARD leg emits ITS OWN donation with payment_index',
+        () {
+      // Two card guests each round up their own share; the cash guest cannot.
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 10.0, 'lineTotal': 10.0},
+        ],
+        rawSubtotal: 10.0,
+        total: 10.0,
+        paymentMethod: 'Split Payment',
+        splitPayments: [
+          _split(1, 'Cash', 3.0),
+          _split(2, 'Credit Card', 3.5, roundUp: true, roundUpAmount: 0.5),
+          _split(3, 'Credit Card', 3.5, roundUp: true, roundUpAmount: 0.2),
+        ],
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final donations = payload.events
+          .where((e) => e['event_type'] == 'donation.record')
+          .map((e) => e['payload'] as Map<String, dynamic>)
+          .toList();
+
+      // One donation PER rounding card leg — traceable to the exact guest.
+      expect(donations.length, 2);
+      expect(donations[0]['payment_index'], 1);
+      expect(donations[0]['amount_baisas'], 500);
+      expect(donations[1]['payment_index'], 2);
+      expect(donations[1]['amount_baisas'], 200);
+    });
+
+    test('split: a stale round-up flag on a CASH leg is never transmitted', () {
+      // Defense-in-depth behind the card-only offer gate: even if a cash leg
+      // somehow carries an accepted round-up, no donation may ride it (the
+      // money would be in the till, not in any card charge).
+      final snap = _snapshot(
+        items: [
+          {'id': '5', 'qty': 1, 'unitPrice': 10.0, 'lineTotal': 10.0},
+        ],
+        rawSubtotal: 10.0,
+        total: 10.0,
+        paymentMethod: 'Split Payment',
+        splitPayments: [
+          _split(1, 'Cash', 5.0, roundUp: true, roundUpAmount: 0.4),
+          _split(2, 'Credit Card', 5.0),
+        ],
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      expect(
+        payload.events.where((e) => e['event_type'] == 'donation.record'),
+        isEmpty,
+      );
     });
 
     test('non-catalog (non-numeric) product ids are dropped from lines', () {
@@ -839,15 +895,17 @@ void main() {
 }
 
 SplitPaymentRecord _split(int index, String method, double base,
-        {CardCharge? cardCharge}) =>
+        {CardCharge? cardCharge,
+        bool roundUp = false,
+        double roundUpAmount = 0}) =>
     SplitPaymentRecord(
       splitIndex: index,
       splitCount: 3,
       paymentMethod: method,
       baseAmount: base,
-      charityRoundUpAccepted: false,
-      charityRoundUpAmount: 0,
-      paidAmount: base,
+      charityRoundUpAccepted: roundUp,
+      charityRoundUpAmount: roundUpAmount,
+      paidAmount: base + (roundUp ? roundUpAmount : 0),
       paidAt: DateTime.fromMillisecondsSinceEpoch(0),
       cardCharge: cardCharge,
     );
