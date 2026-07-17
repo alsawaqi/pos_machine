@@ -4404,6 +4404,42 @@ abstract class L10n {
   /// **'Use Single Bill'**
   String get posSplitDlgUseSingleBill;
 
+  /// No description provided for @posSplitDlgCustomAmounts.
+  ///
+  /// In en, this message translates to:
+  /// **'Customize amounts'**
+  String get posSplitDlgCustomAmounts;
+
+  /// No description provided for @posSplitDlgGuestN.
+  ///
+  /// In en, this message translates to:
+  /// **'Guest {n}'**
+  String posSplitDlgGuestN(int n);
+
+  /// No description provided for @posSplitDlgLastGuestRemainder.
+  ///
+  /// In en, this message translates to:
+  /// **'Guest {n} pays the remainder'**
+  String posSplitDlgLastGuestRemainder(int n);
+
+  /// No description provided for @posSplitDlgAmountsInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Each guest must pay more than zero.'**
+  String get posSplitDlgAmountsInvalid;
+
+  /// No description provided for @posSplitPlanRejectedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The custom amounts no longer match the order total — the split was not applied.'**
+  String get posSplitPlanRejectedMessage;
+
+  /// No description provided for @posSplitCustomReadyMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The order is split across {count} guests with custom amounts — guest 1 pays {amount}.'**
+  String posSplitCustomReadyMessage(int count, String amount);
+
   /// No description provided for @displayMethodCardShort.
   ///
   /// In en, this message translates to:

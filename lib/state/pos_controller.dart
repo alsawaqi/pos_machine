@@ -453,6 +453,15 @@ class PosController extends ChangeNotifier {
   }
   int splitCount = 1;
   final List<SplitPaymentRecord> _splitPayments = [];
+  /// Custom per-guest base amounts (3dp OMR), length == [splitCount], set by
+  /// the split dialog's customize mode. Null ⇒ equal shares. Transient: never
+  /// persisted into drafts — a held order resumed mid-plan falls back to
+  /// equal shares (the remainder rule still closes the legs to the total).
+  List<double>? _splitPlanAmounts;
+  /// [orderUpdateNonce] at the moment the plan was applied. Any cart addition
+  /// afterwards bumps the nonce and inerts the plan — a swapped cart whose
+  /// new total COINCIDES with the planned one must not resurrect old amounts.
+  int _splitPlanNonce = 0;
   /// Soft POS evidence for the most recent single (non-split) card payment.
   /// Captured at completion and read synchronously by the order-push bridge
   /// before the next-order reset clears it. Split tenders carry their own
@@ -1350,6 +1359,13 @@ class PosController extends ChangeNotifier {
   int get paidSplitCount =>
       splitCount > 1 ? _splitPayments.length.clamp(0, splitCount).toInt() : 0;
 
+  /// The active custom split plan (per-guest base amounts), or null when the
+  /// split is equal-shares. Read-only — apply a new plan via [setSplitPlan].
+  List<double>? get splitPlanAmounts {
+    final plan = _splitPlanAmounts;
+    return plan == null ? null : List.unmodifiable(plan);
+  }
+
   int get activeSplitIndex {
     if (splitCount <= 1) return 1;
     if (paidSplitCount >= splitCount) return splitCount;
@@ -1386,6 +1402,23 @@ class PosController extends ChangeNotifier {
       return _roundMoney(
         (total - _splitBasePaidTotal).clamp(0.0, double.infinity).toDouble(),
       );
+    }
+
+    // Custom plan: the next guest pays their planned share — but only while
+    // the cart is untouched since planning (nonce) AND the plan still matches
+    // the live total. A cart edited after planning silently falls back to
+    // equal shares rather than charging stale figures; the nonce also blocks
+    // a swapped cart whose new total merely coincides with the planned one.
+    final plan = _splitPlanAmounts;
+    if (plan != null &&
+        plan.length == splitCount &&
+        _splitPlanNonce == orderUpdateNonce) {
+      final planTotal = _roundMoney(
+        plan.fold<double>(0, (sum, amount) => sum + amount),
+      );
+      if ((planTotal - total).abs() <= 0.0005) {
+        return _roundMoney(plan[paidSplitCount]);
+      }
     }
 
     return _roundMoney(total / splitCount);
@@ -1768,14 +1801,43 @@ class PosController extends ChangeNotifier {
     if (hasRecordedSplitPayments) return;
     splitCount = count < 1 ? 1 : count;
     _splitPayments.clear();
+    _splitPlanAmounts = null;
     _resetCharityRoundUp();
     _broadcast();
+  }
+
+  /// Applies a CUSTOM split: each guest pays an arbitrary share instead of an
+  /// equal one. Non-final shares must each be at least one baisa AND leave at
+  /// least a baisa over; the LAST share is rewritten to the exact remainder so
+  /// the legs always close to the total (3dp hand-entry drift never strands a
+  /// baisa). Returns false when the plan is rejected — the caller must NOT
+  /// present the split as active in that case.
+  bool setSplitPlan(List<double> amounts) {
+    if (hasRecordedSplitPayments) return false;
+    if (amounts.length < 2) return false;
+    final shares = amounts.map(_roundMoney).toList();
+    final head = shares.sublist(0, shares.length - 1);
+    if (head.any((amount) => amount < 0.001)) return false;
+    final headTotal = _roundMoney(
+      head.fold<double>(0, (sum, amount) => sum + amount),
+    );
+    final remainder = _roundMoney(total - headTotal);
+    if (remainder < 0.001) return false;
+    shares[shares.length - 1] = remainder;
+    splitCount = shares.length;
+    _splitPayments.clear();
+    _splitPlanAmounts = shares;
+    _splitPlanNonce = orderUpdateNonce;
+    _resetCharityRoundUp();
+    _broadcast();
+    return true;
   }
 
   void clearSplit() {
     if (hasRecordedSplitPayments) return;
     splitCount = 1;
     _splitPayments.clear();
+    _splitPlanAmounts = null;
     _resetCharityRoundUp();
     _broadcast();
   }
@@ -1904,6 +1966,7 @@ class PosController extends ChangeNotifier {
     selectedPaymentMethod = 'Cash';
     lastPaymentMessage = '';
     _splitPayments.clear();
+    _splitPlanAmounts = null;
     _clearPaymentLaunchOverlay();
     _resetCharityRoundUp();
 
@@ -1923,6 +1986,7 @@ class PosController extends ChangeNotifier {
       discount = session.draft!.discount;
       splitCount = session.draft!.splitCount;
       _splitPayments.clear();
+      _splitPlanAmounts = null;
       displayNote = session.draft!.note.isNotEmpty
           ? session.draft!.note
           : _l10n.ctrlMsgEditingTableOnFloor(
@@ -2315,6 +2379,7 @@ class PosController extends ChangeNotifier {
     discount = record.draft.discount;
     splitCount = record.draft.splitCount;
     _splitPayments.clear();
+    _splitPlanAmounts = null;
     _reserveOrderNumber(currentOrderNumber);
     paymentStatus = 'Waiting';
     selectedPaymentMethod = 'Cash';
@@ -3720,6 +3785,7 @@ class PosController extends ChangeNotifier {
     _autoOrderDiscountSuppressed = false; // P-F4 — per-order
     splitCount = 1;
     _splitPayments.clear();
+    _splitPlanAmounts = null;
     _lastCardCharge = null;
     loyaltyRedeemRuleId = null;
     loyaltyRedeemPoints = 0;

@@ -2667,6 +2667,40 @@ class L10nAr extends L10n {
   String get posSplitDlgUseSingleBill => 'استخدام فاتورة واحدة';
 
   @override
+  String get posSplitDlgCustomAmounts => 'تخصيص المبالغ';
+
+  @override
+  String posSplitDlgGuestN(int n) {
+    return 'الضيف $n';
+  }
+
+  @override
+  String posSplitDlgLastGuestRemainder(int n) {
+    return 'الضيف $n يدفع المتبقي';
+  }
+
+  @override
+  String get posSplitDlgAmountsInvalid =>
+      'يجب أن يدفع كل ضيف مبلغًا أكبر من صفر.';
+
+  @override
+  String get posSplitPlanRejectedMessage =>
+      'المبالغ المخصصة لم تعد تطابق إجمالي الطلب — لم يتم تطبيق التقسيم.';
+
+  @override
+  String posSplitCustomReadyMessage(int count, String amount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count ضيف',
+      many: '$count ضيفًا',
+      few: '$count ضيوف',
+      two: 'ضيفين',
+    );
+    return 'تم تقسيم الطلب على $_temp0 بمبالغ مخصصة — الضيف 1 يدفع $amount.';
+  }
+
+  @override
   String get displayMethodCardShort => 'البطاقة';
 
   @override

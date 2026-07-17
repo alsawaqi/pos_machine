@@ -2638,6 +2638,31 @@ class L10nEn extends L10n {
   String get posSplitDlgUseSingleBill => 'Use Single Bill';
 
   @override
+  String get posSplitDlgCustomAmounts => 'Customize amounts';
+
+  @override
+  String posSplitDlgGuestN(int n) {
+    return 'Guest $n';
+  }
+
+  @override
+  String posSplitDlgLastGuestRemainder(int n) {
+    return 'Guest $n pays the remainder';
+  }
+
+  @override
+  String get posSplitDlgAmountsInvalid => 'Each guest must pay more than zero.';
+
+  @override
+  String get posSplitPlanRejectedMessage =>
+      'The custom amounts no longer match the order total — the split was not applied.';
+
+  @override
+  String posSplitCustomReadyMessage(int count, String amount) {
+    return 'The order is split across $count guests with custom amounts — guest 1 pays $amount.';
+  }
+
+  @override
   String get displayMethodCardShort => 'Card';
 
   @override

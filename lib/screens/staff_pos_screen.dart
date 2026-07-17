@@ -2788,29 +2788,49 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
-    final split = await showDialog<int>(
+    final result = await showDialog<_SplitBillResult>(
       context: context,
       barrierDismissible: true,
       builder: (context) => _SplitBillDialog(
         initialSplitCount: controller.splitCount,
+        initialPlan: controller.splitPlanAmounts,
         total: controller.total,
       ),
     );
 
-    if (split == null) return;
+    if (result == null) return;
 
-    if (split <= 1) {
+    if (result.splitCount <= 1) {
       controller.clearSplit();
       _showPopupMessage(
         title: l10n.posSplitClearedTitle,
         message: l10n.posSplitClearedMessage,
         tone: FeedbackTone.info,
       );
+    } else if (result.customAmounts != null) {
+      // A rejected plan (e.g. the cart changed under the open dialog) must
+      // never be announced as active — the next tender would charge the full
+      // total while the cashier believes a split is running.
+      final applied = controller.setSplitPlan(result.customAmounts!);
+      if (applied) {
+        _showPopupMessage(
+          title: l10n.posSplitReadyTitle,
+          message: l10n.posSplitCustomReadyMessage(result.splitCount,
+              SunmiReceiptService.money(controller.activePaymentBaseTotal)),
+          tone: FeedbackTone.success,
+        );
+      } else {
+        _showPopupMessage(
+          title: l10n.posSplitDlgTitle,
+          message: l10n.posSplitPlanRejectedMessage,
+          tone: FeedbackTone.warning,
+        );
+      }
     } else {
-      controller.setSplitCount(split);
+      controller.setSplitCount(result.splitCount);
       _showPopupMessage(
         title: l10n.posSplitReadyTitle,
-        message: l10n.posSplitReadyMessage(split,
+        message: l10n.posSplitReadyMessage(result.splitCount,
             SunmiReceiptService.money(controller.activePaymentBaseTotal)),
         tone: FeedbackTone.success,
       );
@@ -12935,12 +12955,24 @@ class _DiscountChoice extends StatelessWidget {
   }
 }
 
+/// The split dialog's outcome: how many guests, and — when the cashier
+/// customized the shares — each guest's exact amount (already closing to the
+/// total, the last entry being the remainder).
+class _SplitBillResult {
+  final int splitCount;
+  final List<double>? customAmounts;
+
+  const _SplitBillResult(this.splitCount, this.customAmounts);
+}
+
 class _SplitBillDialog extends StatefulWidget {
   final int initialSplitCount;
+  final List<double>? initialPlan;
   final double total;
 
   const _SplitBillDialog({
     required this.initialSplitCount,
+    required this.initialPlan,
     required this.total,
   });
 
@@ -12950,12 +12982,95 @@ class _SplitBillDialog extends StatefulWidget {
 
 class _SplitBillDialogState extends State<_SplitBillDialog> {
   late int _splitCount;
+  bool _customize = false;
+  final List<TextEditingController> _amountCtrls = [];
 
   @override
   void initState() {
     super.initState();
     _splitCount = widget.initialSplitCount;
+    final plan = widget.initialPlan;
+    if (plan != null && plan.length == _splitCount && _splitCount > 1) {
+      _customize = true;
+      for (var i = 0; i < _splitCount - 1; i++) {
+        _amountCtrls.add(
+          TextEditingController(text: plan[i].toStringAsFixed(3)),
+        );
+      }
+    }
   }
+
+  @override
+  void dispose() {
+    for (final ctrl in _amountCtrls) {
+      ctrl.dispose();
+    }
+    super.dispose();
+  }
+
+  /// Guests 1..N-1 get a field; guest N is always the remainder. Re-seeds
+  /// with equal shares whenever the guest count changes.
+  void _seedControllers() {
+    // The old controllers may still be attached to mounted TextFields until
+    // the setState rebuild lands — dispose them after this frame, not now.
+    final stale = List<TextEditingController>.of(_amountCtrls);
+    if (stale.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        for (final ctrl in stale) {
+          ctrl.dispose();
+        }
+      });
+    }
+    _amountCtrls.clear();
+    final share = _splitCount > 1
+        ? double.parse((widget.total / _splitCount).toStringAsFixed(3))
+        : widget.total;
+    for (var i = 0; i < _splitCount - 1; i++) {
+      _amountCtrls.add(
+        TextEditingController(text: share.toStringAsFixed(3)),
+      );
+    }
+  }
+
+  double? _parsedAmount(int index) {
+    var text = _amountCtrls[index].text.trim();
+    // Arabic-keyboard entry: Arabic-Indic digits, the Arabic decimal
+    // separator, and the comma many cashiers type for a decimal point.
+    const easternDigits = '٠١٢٣٤٥٦٧٨٩';
+    for (var d = 0; d < easternDigits.length; d++) {
+      text = text.replaceAll(easternDigits[d], '$d');
+    }
+    text = text.replaceAll('٫', '.').replaceAll(',', '.');
+    final value = double.tryParse(text);
+    if (value == null) return null;
+    // Round FIRST, then validate — '0.0004' rounds to 0.000 and must be
+    // rejected here exactly like setSplitPlan rejects it, or the dialog
+    // would bless a plan the controller then refuses.
+    final rounded = double.parse(value.toStringAsFixed(3));
+    if (rounded < 0.001) return null;
+    return rounded;
+  }
+
+  double get _customRemainder {
+    var head = 0.0;
+    for (var i = 0; i < _amountCtrls.length; i++) {
+      head += _parsedAmount(i) ?? 0;
+    }
+    return double.parse((widget.total - head).toStringAsFixed(3));
+  }
+
+  bool get _customPlanValid {
+    for (var i = 0; i < _amountCtrls.length; i++) {
+      if (_parsedAmount(i) == null) return false;
+    }
+    // The remainder guest must get at least a baisa too (setSplitPlan's rule).
+    return _customRemainder >= 0.001;
+  }
+
+  List<double> get _customAmounts => [
+        for (var i = 0; i < _amountCtrls.length; i++) _parsedAmount(i)!,
+        _customRemainder,
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -12963,6 +13078,7 @@ class _SplitBillDialogState extends State<_SplitBillDialog> {
     final share = _splitCount > 1
         ? double.parse((widget.total / _splitCount).toStringAsFixed(3))
         : widget.total;
+    final customizing = _customize && _splitCount > 1;
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 180, vertical: 100),
@@ -12970,7 +13086,8 @@ class _SplitBillDialogState extends State<_SplitBillDialog> {
       child: _glassPanel(
         padding: const EdgeInsets.all(22),
         tint: const Color(0xEFF8FBFD),
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -13004,45 +13121,173 @@ class _SplitBillDialogState extends State<_SplitBillDialog> {
                       : l10n.posSplitDlgGuests(count),
                   selected: _splitCount == count,
                   onTap: () => setState(() {
+                    final changed = count != _splitCount;
                     _splitCount = count;
+                    if (_customize && count > 1) {
+                      // Re-tapping the selected chip must not wipe amounts
+                      // the cashier already typed.
+                      if (changed) _seedControllers();
+                    } else {
+                      _customize = false;
+                    }
                   }),
                 );
               }),
             ),
-            const SizedBox(height: 20),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.88),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.92)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            if (_splitCount > 1) ...[
+              const SizedBox(height: 14),
+              Row(
                 children: [
-                  Text(
-                    _splitCount > 1
-                        ? l10n.posSplitDlgEachGuestPays
-                        : l10n.posSplitDlgSinglePaymentTotal,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF5D6E79),
+                  Expanded(
+                    child: Text(
+                      l10n.posSplitDlgCustomAmounts,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF18262F),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    SunmiReceiptService.money(share),
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF1D8D53),
-                    ),
+                  Switch(
+                    value: _customize,
+                    activeThumbColor: const Color(0xFF1D8D53),
+                    onChanged: (value) => setState(() {
+                      _customize = value;
+                      if (value) _seedControllers();
+                    }),
                   ),
                 ],
               ),
-            ),
+            ],
+            const SizedBox(height: 12),
+            if (customizing)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.88),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.92),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 230),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            for (var i = 0; i < _amountCtrls.length; i++)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: TextField(
+                                  controller: _amountCtrls[i],
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                                  onChanged: (_) => setState(() {}),
+                                  decoration: InputDecoration(
+                                    labelText:
+                                        l10n.posSplitDlgGuestN(i + 1),
+                                    suffixText: 'OMR',
+                                    isDense: true,
+                                    border: const OutlineInputBorder(),
+                                    errorText: _parsedAmount(i) == null
+                                        ? l10n.posSplitDlgAmountsInvalid
+                                        : null,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            l10n.posSplitDlgLastGuestRemainder(_splitCount),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF5D6E79),
+                            ),
+                          ),
+                        ),
+                        Text(
+                          SunmiReceiptService.money(
+                            _customRemainder < 0 ? 0 : _customRemainder,
+                          ),
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: _customRemainder > 0
+                                ? const Color(0xFF1D8D53)
+                                : const Color(0xFFC0392B),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_customRemainder <= 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          l10n.posSplitDlgAmountsInvalid,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFFC0392B),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 18,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.88),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.92),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _splitCount > 1
+                          ? l10n.posSplitDlgEachGuestPays
+                          : l10n.posSplitDlgSinglePaymentTotal,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF5D6E79),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      SunmiReceiptService.money(share),
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF1D8D53),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 20),
             Row(
               children: [
@@ -13059,12 +13304,22 @@ class _SplitBillDialogState extends State<_SplitBillDialog> {
                     label: _splitCount > 1
                         ? l10n.posSplitDlgApplySplit
                         : l10n.posSplitDlgUseSingleBill,
-                    onTap: () => Navigator.of(context).pop(_splitCount),
+                    // Null while invalid — the button greys out instead of
+                    // silently swallowing taps.
+                    onTap: customizing && !_customPlanValid
+                        ? null
+                        : () => Navigator.of(context).pop(
+                              _SplitBillResult(
+                                _splitCount,
+                                customizing ? _customAmounts : null,
+                              ),
+                            ),
                   ),
                 ),
               ],
             ),
           ],
+          ),
         ),
       ),
     );

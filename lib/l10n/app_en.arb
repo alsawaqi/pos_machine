@@ -1674,6 +1674,36 @@
   "posSplitDlgSinglePaymentTotal": "Single payment total",
   "posSplitDlgApplySplit": "Apply Split",
   "posSplitDlgUseSingleBill": "Use Single Bill",
+  "posSplitDlgCustomAmounts": "Customize amounts",
+  "posSplitDlgGuestN": "Guest {n}",
+  "@posSplitDlgGuestN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "posSplitDlgLastGuestRemainder": "Guest {n} pays the remainder",
+  "@posSplitDlgLastGuestRemainder": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "posSplitDlgAmountsInvalid": "Each guest must pay more than zero.",
+  "posSplitPlanRejectedMessage": "The custom amounts no longer match the order total — the split was not applied.",
+  "posSplitCustomReadyMessage": "The order is split across {count} guests with custom amounts — guest 1 pays {amount}.",
+  "@posSplitCustomReadyMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "displayMethodCardShort": "Card",
   "displayMethodGift": "Gift",
   "ctrlMsgGiftRecorded": "Gift order recorded — nothing charged.",
