@@ -1407,8 +1407,15 @@ class PosController extends ChangeNotifier {
   bool get canOfferCharityRoundUp =>
       // P-G7 — no round-up on delivery orders (no till money at all).
       selectedOrderType != OrderType.delivery &&
-      (selectedPaymentMethod == 'Credit Card' ||
-          (splitCount > 1 && selectedPaymentMethod == 'Cash')) &&
+      // CARD legs only. The round-up must ride the card charge (the bank
+      // collects sale + round-up in one lump and the platform forwards the
+      // round-up to charity). A round-up accepted on a CASH leg — previously
+      // allowed inside a split — puts the money in the till instead: the sync
+      // payload only transmits donations when a card tender exists, so a
+      // cash-only split silently kept untracked charity cash, and even in a
+      // mixed split the cash-leg round-up never reached the bank lump. Plain
+      // cash sales never offered round-up; this makes splits consistent.
+      selectedPaymentMethod == 'Credit Card' &&
       offeredCharityRoundUpAmount >= 0.001;
 
   DiningTableSession? diningSessionFor(String tableId) {

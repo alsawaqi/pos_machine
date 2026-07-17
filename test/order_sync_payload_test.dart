@@ -139,6 +139,9 @@ void main() {
       expect(donP['amount_baisas'], 750);
     });
 
+    // DEFENSE-IN-DEPTH: the UI gate (canOfferCharityRoundUp, card legs only)
+    // prevents this state from arising; the builder still refuses to emit a
+    // donation with no card tender to attach it to.
     test('cash order has no donation event even if round-up flagged', () {
       final snap = _snapshot(
         items: [
