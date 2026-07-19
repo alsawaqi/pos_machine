@@ -157,7 +157,7 @@ class PosApiService {
   /// cursor the device persists + replays as `?since=` on the next delta
   /// call), and `meta.websocket` (Phase C3 — where to dial Reverb; null =
   /// live push not configured server-side).
-  Future<({Map<String, dynamic> data, String? terminalId, String? terminalPin, String? generatedAt, Map<String, dynamic>? websocket})> fetchConfig() async {
+  Future<({Map<String, dynamic> data, String? terminalId, String? terminalPin, String? generatedAt, Map<String, dynamic>? websocket, bool? audienceMeasurement})> fetchConfig() async {
     final body = await _send(() => _dio.get('/device/config'));
     return (
       data: body.dataMap,
@@ -165,13 +165,15 @@ class PosApiService {
       terminalPin: body.metaMap['terminal_pin'] as String?,
       generatedAt: body.metaMap['generated_at'] as String?,
       websocket: (body.metaMap['websocket'] as Map?)?.cast<String, dynamic>(),
+      // Marketing #46 — server-driven audience gate; absent on older servers.
+      audienceMeasurement: body.metaMap['audience_measurement'] as bool?,
     );
   }
 
   /// GET `/device/config/delta?since=...` — only rows changed since the cursor,
   /// plus `data.deleted{}` (per-entity ids to purge). `meta.generated_at` is the
   /// next cursor. `since` is the previous sync's generated_at (ISO-8601).
-  Future<({Map<String, dynamic> data, String? terminalId, String? terminalPin, String? generatedAt, Map<String, dynamic>? websocket})> fetchConfigDelta(String since) async {
+  Future<({Map<String, dynamic> data, String? terminalId, String? terminalPin, String? generatedAt, Map<String, dynamic>? websocket, bool? audienceMeasurement})> fetchConfigDelta(String since) async {
     final body = await _send(
       () => _dio.get('/device/config/delta', queryParameters: {'since': since}),
     );
@@ -181,6 +183,8 @@ class PosApiService {
       terminalPin: body.metaMap['terminal_pin'] as String?,
       generatedAt: body.metaMap['generated_at'] as String?,
       websocket: (body.metaMap['websocket'] as Map?)?.cast<String, dynamic>(),
+      // Marketing #46 — server-driven audience gate; absent on older servers.
+      audienceMeasurement: body.metaMap['audience_measurement'] as bool?,
     );
   }
 

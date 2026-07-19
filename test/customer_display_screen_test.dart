@@ -77,10 +77,10 @@ void main() {
       expect(find.text('Processing Selection'), findsOneWidget);
       expect(charityDecisionCalls, 1);
 
-      await tester.tap(find.text('Touch Test'), warnIfMissed: false);
-      await tester.pump();
-
-      expect(find.textContaining('Touch OK'), findsNothing);
+      // The Touch Test affordance was removed from the display UI — while
+      // the blocking overlay is up there is nothing else to poke, and no
+      // stray touch-test call may reach the host.
+      expect(find.text('Touch Test'), findsNothing);
       expect(charityDecisionCalls, 1);
       expect(touchTestCalls, 0);
 

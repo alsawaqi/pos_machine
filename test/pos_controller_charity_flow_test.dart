@@ -155,6 +155,9 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({'terminal_id': 'TERM-1001'});
+    // The expectations in this file are written against 5% VAT — taxes are
+    // config-driven now (empty ⇒ no tax), so seed the historical rate.
+    activeCompanyTaxes = const [CompanyTax(name: 'VAT', ratePercent: 5)];
     fakeStorage = _FakeOrderStorageService();
     await fakeStorage.clearAllData();
 
@@ -179,6 +182,7 @@ void main() {
   });
 
   tearDown(() {
+    activeCompanyTaxes = const <CompanyTax>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(hostChannel, null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -411,6 +415,11 @@ void main() {
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(paymentChannel, (call) async {
+            // No pre-warmed session in tests — report NO_SESSION so the
+            // service takes its documented fallback into loginAndPay.
+            if (call.method == 'payWithPreparedSession') {
+              return '{"status":"failed","code":"NO_SESSION"}';
+            }
             if (call.method == 'loginAndPay') {
               final arguments = Map<String, dynamic>.from(
                 call.arguments as Map,
@@ -451,6 +460,11 @@ void main() {
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(paymentChannel, (call) async {
+            // No pre-warmed session in tests — report NO_SESSION so the
+            // service takes its documented fallback into loginAndPay.
+            if (call.method == 'payWithPreparedSession') {
+              return '{"status":"failed","code":"NO_SESSION"}';
+            }
             if (call.method == 'loginAndPay') {
               final arguments = Map<String, dynamic>.from(
                 call.arguments as Map,
@@ -490,6 +504,11 @@ void main() {
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(paymentChannel, (call) async {
+            // No pre-warmed session in tests — report NO_SESSION so the
+            // service takes its documented fallback into loginAndPay.
+            if (call.method == 'payWithPreparedSession') {
+              return '{"status":"failed","code":"NO_SESSION"}';
+            }
             if (call.method == 'loginAndPay') {
               final arguments = Map<String, dynamic>.from(
                 call.arguments as Map,
@@ -569,6 +588,11 @@ void main() {
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(paymentChannel, (call) async {
+            // No pre-warmed session in tests — report NO_SESSION so the
+            // service takes its documented fallback into loginAndPay.
+            if (call.method == 'payWithPreparedSession') {
+              return '{"status":"failed","code":"NO_SESSION"}';
+            }
             if (call.method == 'loginAndPay') {
               await _sendPaymentLaunchState(
                 stage: 'login_started',
@@ -625,6 +649,11 @@ void main() {
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(paymentChannel, (call) async {
+            // No pre-warmed session in tests — report NO_SESSION so the
+            // service takes its documented fallback into loginAndPay.
+            if (call.method == 'payWithPreparedSession') {
+              return '{"status":"failed","code":"NO_SESSION"}';
+            }
             if (call.method == 'loginAndPay') {
               loginAndPayCalls++;
               return '{"status":"success","message":"Payment approved."}';
@@ -669,8 +698,9 @@ void main() {
       final firstPayment = controller.payAndPrint(cashTenderedAmount: 1.000);
       await tester.pump();
 
-      expect(controller.showCharityRoundUpPrompt, isTrue);
-      controller.confirmCharityRoundUp(true);
+      // CASH legs never get the charity prompt (the f7930fd till-leak fix:
+      // round-up is card-legs-only) — the payment records straight away.
+      expect(controller.showCharityRoundUpPrompt, isFalse);
       await tester.pump(const Duration(milliseconds: 800));
       final firstMessage = await firstPayment;
 
@@ -683,8 +713,7 @@ void main() {
       final secondPayment = controller.payAndPrint(cashTenderedAmount: 1.000);
       await tester.pump();
 
-      expect(controller.showCharityRoundUpPrompt, isTrue);
-      controller.confirmCharityRoundUp(false);
+      expect(controller.showCharityRoundUpPrompt, isFalse);
       await tester.pump(const Duration(milliseconds: 800));
       final secondMessage = await secondPayment;
 
@@ -698,8 +727,13 @@ void main() {
       expect(completedSnapshot.paymentMethod, 'Split Payment');
       expect(completedSnapshot.splitCount, 2);
       expect(splitPayments, hasLength(2));
-      expect(splitPayments.first, containsPair('charityRoundUpAccepted', true));
-      expect(splitPayments.first, containsPair('paidAmount', 1.000));
+      // 1.575 total → equal shares 0.787 + 0.788 (the LAST leg absorbs the
+      // baisa drift); no charity money on either cash leg.
+      expect(
+        splitPayments.first,
+        containsPair('charityRoundUpAccepted', false),
+      );
+      expect(splitPayments.first, containsPair('paidAmount', 0.787));
       expect(splitPayments.last, containsPair('charityRoundUpAccepted', false));
       expect(splitPayments.last, containsPair('paidAmount', 0.788));
       expect(
@@ -708,7 +742,7 @@ void main() {
             .fold<double>(0, (sum, amount) => sum + amount),
         closeTo(completedSnapshot.total, 0.001),
       );
-      expect(completedSnapshot.payableTotal, closeTo(1.788, 0.001));
+      expect(completedSnapshot.payableTotal, closeTo(1.575, 0.001));
     },
     variant: _androidOnly,
   );
@@ -720,6 +754,11 @@ void main() {
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(paymentChannel, (call) async {
+            // No pre-warmed session in tests — report NO_SESSION so the
+            // service takes its documented fallback into loginAndPay.
+            if (call.method == 'payWithPreparedSession') {
+              return '{"status":"failed","code":"NO_SESSION"}';
+            }
             if (call.method == 'loginAndPay') {
               final arguments = Map<String, dynamic>.from(
                 call.arguments as Map,
@@ -781,6 +820,11 @@ void main() {
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(paymentChannel, (call) async {
+            // No pre-warmed session in tests — report NO_SESSION so the
+            // service takes its documented fallback into loginAndPay.
+            if (call.method == 'payWithPreparedSession') {
+              return '{"status":"failed","code":"NO_SESSION"}';
+            }
             if (call.method == 'loginAndPay') {
               final arguments = Map<String, dynamic>.from(
                 call.arguments as Map,

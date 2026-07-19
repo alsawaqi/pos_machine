@@ -23,6 +23,13 @@ abstract class OrderStorageService {
   Future<void> clearAllData();
 }
 
+/// Test-only replacement consulted by [PosController]'s default wiring —
+/// same convention as Flutter's `debug*Override` globals. Widget tests pump
+/// the REAL app (no constructor injection point), and the sqflite-FFI
+/// database cannot complete its I/O inside testWidgets' FakeAsync zone — so
+/// tests park an in-memory fake here. Never set in production.
+OrderStorageService? debugOrderStorageOverride;
+
 class LocalOrderStorageService implements OrderStorageService {
   LocalOrderStorageService._();
 

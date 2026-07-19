@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
+import '../services/audience_service.dart' show AudienceService;
 import '../services/display_strings.dart';
 import '../services/local_order_storage_service.dart';
 import '../services/manager_authorization_service.dart';
@@ -209,8 +210,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       controller.printKitchenTickets = next.printKitchenTickets;
       // Phase 1A — start/stop the audience camera when the operator toggles it.
       if (prev?.audienceMeasurement != next.audienceMeasurement) {
-        final audience = ref.read(audienceServiceProvider);
-        unawaited(next.audienceMeasurement ? audience.start() : audience.stop());
+        _applyAudienceGate();
       }
     });
     _customerNumberController = TextEditingController();
@@ -237,18 +237,24 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       unawaited(ref.read(orderSyncRepositoryProvider).flush().catchError((_) => 0));
       // Phase C3 — subscribe to the branch Reverb channel for live config push.
       ref.read(liveSyncProvider).start();
-      // Phase 1A — start anonymous audience measurement if the operator enabled
-      // it (off by default; camera + on-device face counting only).
-      if (ref.read(settingsControllerProvider).audienceMeasurement) {
-        unawaited(ref.read(audienceServiceProvider).start());
-      }
+      // Phase 1A — start anonymous audience measurement when the gate allows
+      // (off by default; camera + on-device face counting only).
+      _applyAudienceGate();
       // Periodic config poll — a safety net for when real-time push is off
       // (e.g. prod BROADCAST_CONNECTION=log or an unreachable Reverb): pull a
       // delta config every 60s so admin slider/menu edits reach the screen
       // within a minute even without a live event.
       _configPollTimer = Timer.periodic(const Duration(seconds: 60), (_) {
         unawaited(
-          ref.read(configRepositoryProvider).syncConfig().catchError((_) {}),
+          ref
+              .read(configRepositoryProvider)
+              .syncConfig()
+              // Marketing #46 — the poll may have refreshed the server-driven
+              // audience consent; apply it without waiting for a restart.
+              .then((_) {
+                if (mounted) _applyAudienceGate();
+              })
+              .catchError((_) {}),
         );
       });
     });
@@ -649,6 +655,29 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
+  /// Captured for [dispose] — Riverpod forbids `ref.read` once the element
+  /// is unmounting, so the teardown target is grabbed while `ref` is live.
+  AudienceService? _audienceService;
+
+  /// Marketing #46 — the EFFECTIVE audience-measurement gate: the
+  /// server-driven consent (admin-set per merchant, from /device/config meta)
+  /// SUPERSEDES the device-local Settings toggle; the local switch only
+  /// matters while the server hasn't stated a policy (older pos_api).
+  /// start()/stop() are both idempotent, so re-applying is always safe.
+  void _applyAudienceGate() {
+    final server = ref.read(sessionServiceProvider).serverAudienceMeasurement;
+    final enabled =
+        server ?? ref.read(settingsControllerProvider).audienceMeasurement;
+    final audience = ref.read(audienceServiceProvider);
+    unawaited(enabled ? audience.start() : audience.stop());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _audienceService = ref.read(audienceServiceProvider);
+  }
+
   @override
   void dispose() {
     _clockTimer?.cancel();
@@ -663,7 +692,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _catalogSub?.close();
     _connectivitySub?.close();
     // Phase 1A — release the audience camera when leaving the POS.
-    unawaited(ref.read(audienceServiceProvider).stop());
+    unawaited(_audienceService?.stop());
     super.dispose();
   }
 

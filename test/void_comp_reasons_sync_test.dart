@@ -26,7 +26,8 @@ class _FakeApi implements PosApiService {
         String? terminalId,
         String? terminalPin,
         String? generatedAt,
-        Map<String, dynamic>? websocket
+        Map<String, dynamic>? websocket,
+        bool? audienceMeasurement
       })> fetchConfig() async {
     fullCalls++;
     return (
@@ -35,6 +36,7 @@ class _FakeApi implements PosApiService {
       terminalPin: null,
       generatedAt: 'CURSOR-$fullCalls',
       websocket: null,
+      audienceMeasurement: null,
     );
   }
 
@@ -45,7 +47,8 @@ class _FakeApi implements PosApiService {
         String? terminalId,
         String? terminalPin,
         String? generatedAt,
-        Map<String, dynamic>? websocket
+        Map<String, dynamic>? websocket,
+        bool? audienceMeasurement
       })> fetchConfigDelta(String since) async {
     deltaCalls++;
     final delta = deltaPayload;
@@ -56,6 +59,7 @@ class _FakeApi implements PosApiService {
       terminalPin: null,
       generatedAt: 'CURSOR-D$deltaCalls',
       websocket: null,
+      audienceMeasurement: null,
     );
   }
 
@@ -73,6 +77,9 @@ class _FakeSession implements SessionService {
 
   @override
   Future<void> saveWebsocketConfig(Map<String, dynamic>? config) async {}
+
+  @override
+  Future<void> saveServerAudienceMeasurement(bool? enabled) async {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError(

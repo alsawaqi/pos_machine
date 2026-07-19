@@ -51,6 +51,8 @@ class ConfigRepository {
     await _session.saveTerminalPin(config.terminalPin);
     // Phase C3 — where to dial Reverb (null = live push off server-side).
     await _session.saveWebsocketConfig(config.websocket);
+    // Marketing #46 — the admin-set audience-measurement consent.
+    await _session.saveServerAudienceMeasurement(config.audienceMeasurement);
   }
 
   /// Incremental sync (Phase 7): a DELTA when we hold a cursor from a prior
@@ -122,6 +124,8 @@ class ConfigRepository {
       await _session.saveTerminalId(res.terminalId);
       await _session.saveTerminalPin(res.terminalPin);
       await _session.saveWebsocketConfig(res.websocket);
+      // Marketing #46 — the admin-set audience-measurement consent.
+      await _session.saveServerAudienceMeasurement(res.audienceMeasurement);
     } catch (_) {
       // Self-heal: drop back to a full sync on any delta failure.
       await fetchAndCache();

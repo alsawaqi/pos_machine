@@ -87,6 +87,7 @@ class SessionService {
   static const _kShift = 'open_shift_json';
   static const _kWebsocket = 'websocket_config_json';
   static const _kLastShiftSummary = 'last_shift_summary_json';
+  static const _kAudienceServer = 'audience_measurement_server';
 
   String? _deviceToken; // in-memory cache for the dio interceptor
 
@@ -192,6 +193,20 @@ class SessionService {
       await _prefs.remove(_kWebsocket);
     } else {
       await _prefs.setString(_kWebsocket, jsonEncode(config));
+    }
+  }
+
+  /// Marketing #46 — the server-driven audience-measurement consent from
+  /// /device/config meta. Null = the server didn't state a policy (older
+  /// pos_api) — the device-local Settings toggle stays in charge then.
+  bool? get serverAudienceMeasurement =>
+      _prefs.containsKey(_kAudienceServer) ? _prefs.getBool(_kAudienceServer) : null;
+
+  Future<void> saveServerAudienceMeasurement(bool? enabled) async {
+    if (enabled == null) {
+      await _prefs.remove(_kAudienceServer);
+    } else {
+      await _prefs.setBool(_kAudienceServer, enabled);
     }
   }
 

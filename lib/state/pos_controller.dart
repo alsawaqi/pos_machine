@@ -593,7 +593,10 @@ class PosController extends ChangeNotifier {
   double _pendingReconAmount = 0;
 
   PosController({OrderStorageService? orderStorage})
-    : _orderStorage = orderStorage ?? LocalOrderStorageService.instance {
+    : _orderStorage =
+          orderStorage ??
+          debugOrderStorageOverride ??
+          LocalOrderStorageService.instance {
     _paymentBridge.setLaunchStateListener(_handlePaymentLaunchState);
   }
 
