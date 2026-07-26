@@ -504,6 +504,45 @@ Map<String, dynamic>? buildOrderHoldEvent(
   };
 }
 
+/// Build a single `order.transfer` event: the current cart parked as a held
+/// mirror ADDRESSED to another device in the same branch (the send leg of
+/// device↔device order transfer). The payload is exactly order.hold's `order`
+/// block plus `target_device_id` — the server upserts it as held, stamps the
+/// target, and the target device claims it from its inbox
+/// (POST /device/transfers/{uuid}/claim). Pushed ONLINE with an inline ACK
+/// (never the durable outbox — you transferred to a live colleague's
+/// terminal). Returns null when the draft has no pushable lines. Pure.
+Map<String, dynamic>? buildOrderTransferEvent(
+  OrderSessionDraft draft, {
+  required String orderUuid,
+  required int targetDeviceId,
+  int? staffId,
+  int? tableId,
+  List<int> joinedTableIds = const <int>[],
+  DateTime? now,
+  String Function()? newUuid,
+}) {
+  final hold = buildOrderHoldEvent(
+    draft,
+    orderUuid: orderUuid,
+    staffId: staffId,
+    tableId: tableId,
+    joinedTableIds: joinedTableIds,
+    now: now,
+    newUuid: newUuid,
+  );
+  if (hold == null) return null;
+
+  return <String, dynamic>{
+    ...hold,
+    'event_type': 'order.transfer',
+    'payload': <String, dynamic>{
+      'target_device_id': targetDeviceId,
+      ...(hold['payload'] as Map<String, dynamic>),
+    },
+  };
+}
+
 /// Build a single `order.void` event for [orderUuid] (the server matches by the
 /// order_uuid that order.create used). The server voids the WHOLE order and
 /// unwinds its inventory / loyalty / round-up / commission, idempotently. The

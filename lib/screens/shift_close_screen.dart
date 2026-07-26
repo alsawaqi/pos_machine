@@ -114,6 +114,15 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
         });
       }
     } on ShiftException catch (e) {
+      // HH-2 — a shared shift can be closed from the OTHER terminal (the
+      // handheld). This device's local record is then stale: heal by
+      // marking it closed instead of dead-ending the till on an error it
+      // can never resolve ("shift already closed" forever).
+      if (e.message.toLowerCase().contains('already closed')) {
+        await ref.read(sessionControllerProvider.notifier).markShiftClosed();
+        if (mounted) Navigator.of(context).pop();
+        return;
+      }
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
       if (mounted) {

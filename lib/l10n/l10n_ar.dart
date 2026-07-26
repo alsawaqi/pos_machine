@@ -1751,6 +1751,65 @@ class L10nAr extends L10n {
   String get posPaymentRedeemLoyalty => 'استبدال نقاط الولاء';
 
   @override
+  String get posPaymentTransfer => 'تحويل';
+
+  @override
+  String get posTransferDialogTitle => 'تحويل الطلب';
+
+  @override
+  String get posTransferSendSection => 'إرسال الطلب الحالي إلى';
+
+  @override
+  String get posTransferIncomingSection => 'التحويلات الواردة';
+
+  @override
+  String get posTransferNoDevices => 'لا توجد أجهزة أخرى في هذا الفرع.';
+
+  @override
+  String get posTransferNoIncoming => 'لا توجد تحويلات بانتظار الاستلام.';
+
+  @override
+  String get posTransferReceive => 'استلام';
+
+  @override
+  String get posTransferEmptyCartTitle => 'لا يوجد ما يُحوَّل';
+
+  @override
+  String get posTransferEmptyCartMessage => 'أضف أصنافًا إلى الطلب قبل تحويله.';
+
+  @override
+  String get posTransferSentTitle => 'تم تحويل الطلب';
+
+  @override
+  String get posTransferReceivedTitle => 'تم استلام الطلب';
+
+  @override
+  String get posTransferFailedTitle => 'فشل التحويل';
+
+  @override
+  String get posTransferReplaceCartTitle => 'استبدال الطلب الحالي؟';
+
+  @override
+  String get posTransferReplaceCartMessage =>
+      'استلام هذا التحويل يمسح الطلب الموجود في السلة حاليًا.';
+
+  @override
+  String get posTransferBlockedMessage =>
+      'لا يمكن تحويل الطلبات التي تحتوي على خصومات أو ضيافة أو أصناف مُهداة أو باقات أو دفعات مقسّمة أو طلبات توصيل. أزلها أو أكمل البيع على هذا الجهاز.';
+
+  @override
+  String get posTransferReceiveBlockedMessage =>
+      'أكمل عملية الدفع الجارية قبل استلام طلب محوَّل.';
+
+  @override
+  String get posTransferConflictMessage =>
+      'كانت هناك عملية دفع جارية أثناء تحويل الطلب، لذا بقيت السلة كما هي. تحقق من الجهاز الآخر قبل تحصيل المبلغ مرتين.';
+
+  @override
+  String get posTransferClaimedPendingMessage =>
+      'تم استلام الطلب — سيتم تحميله فور إتمام عملية البيع الحالية.';
+
+  @override
   String get posPaymentAddDiscount => 'إضافة خصم';
 
   @override

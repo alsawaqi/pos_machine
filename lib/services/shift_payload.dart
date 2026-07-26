@@ -63,6 +63,11 @@ Map<String, dynamic> buildShiftOpenEvent({
       'staff_id': staffId,
       'opening_cash_baisas': openingCashBaisas,
       'opened_at': opened,
+      // HH-2 — opt into the STAFF-shared shift model: one open shift per
+      // staff per branch, adopted by every terminal they log into (probe
+      // GET /device/shift/current?staff_id), close attributed by staff.
+      // Builds that predate this flag keep pure per-device semantics.
+      'shared_shift': true,
     },
   };
 }

@@ -9,8 +9,11 @@ import '../services/shift_service.dart';
 
 /// Shown after staff login when the device has no open cash-drawer shift. The
 /// cashier counts the opening float and opens the shift; on success the gate
-/// flips into the POS. A shift is per-device, so once open the next cashier
-/// inherits it (no re-prompt).
+/// flips into the POS. Once open on this device the next cashier inherits it
+/// (no re-prompt), and HH-2 makes the shift STAFF-shared across terminals:
+/// the probe looks the logged-in staff member's open shift up branch-wide, so
+/// whoever opened on the handheld walks straight through here (and vice
+/// versa) — one float count a day.
 class ShiftOpenScreen extends ConsumerStatefulWidget {
   const ShiftOpenScreen({super.key});
 
@@ -43,10 +46,14 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
 
   /// Fetch the server's current open shift and adopt it locally. Returns true if
   /// adopted (the gate rebuilds into the POS and this screen is disposed). When
-  /// not [silent], a failure surfaces a help message.
+  /// not [silent], a failure surfaces a help message. Probes by the logged-in
+  /// staff member first (their shift may live on another branch device), then
+  /// falls back to this device's own drawer server-side.
   Future<bool> _adoptExistingShift({bool silent = false}) async {
     try {
-      final existing = await ref.read(apiServiceProvider).fetchCurrentShift();
+      final existing = await ref.read(apiServiceProvider).fetchCurrentShift(
+            staffId: ref.read(sessionControllerProvider).staff?.id,
+          );
       if (existing != null) {
         await ref.read(sessionControllerProvider.notifier).markShiftOpen(existing);
         return true;

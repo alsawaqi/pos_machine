@@ -892,6 +892,70 @@ void main() {
       expect(buildOrderHoldEvent(draft(), orderUuid: ''), isNull);
     });
   });
+
+  // Device↔device order transfer — the send leg: order.hold's block addressed
+  // to a target device, pushed online for an inline ACK.
+  group('buildOrderTransferEvent', () {
+    OrderSessionDraft draft() => OrderSessionDraft(
+          orderReference: 'REF-2001',
+          orderType: OrderType.quickOrder,
+          selectedCategory: 'Coffee',
+          customerReferenceNumber: '',
+          items: [
+            CartItem(
+              product: const Product(
+                id: '10',
+                name: 'Latte',
+                category: 'Coffee',
+                price: 2.0,
+              ),
+              qty: 2,
+              modifiers: const [
+                CartItemModifier(
+                    id: '100', group: 'Size', label: 'Large', price: 0.5),
+              ],
+            ),
+          ],
+          discount: const DiscountConfiguration(),
+          splitCount: 1,
+          serverOrderUuid: 'transfer-uuid-1',
+        );
+
+    test('wraps the hold block with the target device id', () {
+      final event = buildOrderTransferEvent(
+        draft(),
+        orderUuid: 'transfer-uuid-1',
+        targetDeviceId: 42,
+        staffId: 7,
+        newUuid: _seqUuid(),
+      );
+
+      expect(event, isNotNull);
+      expect(event!['event_type'], 'order.transfer');
+      expect(event['payload']['target_device_id'], 42);
+
+      // The order block is exactly order.hold's shape (same money + lines).
+      final order = event['payload']['order'] as Map<String, dynamic>;
+      expect(order['uuid'], 'transfer-uuid-1');
+      expect(order['order_type'], 'quick');
+      expect(order['source'], 'main_pos');
+      expect(order['staff_id'], 7);
+      expect(order['subtotal_baisas'], 5000); // (2.0 + 0.5) × 2
+      expect(order['grand_total_baisas'], 5000);
+      final line = (order['lines'] as List).single as Map<String, dynamic>;
+      expect(line['unit_price_baisas'], 2500);
+      expect((line['addons'] as List).single,
+          {'add_on_id': 100, 'price_delta_baisas': 500});
+      expect(order.containsKey('gps'), isFalse); // held mirror, no geofence
+    });
+
+    test('an untransferable draft (no uuid / demo cart) returns null', () {
+      expect(
+        buildOrderTransferEvent(draft(), orderUuid: '', targetDeviceId: 42),
+        isNull,
+      );
+    });
+  });
 }
 
 SplitPaymentRecord _split(int index, String method, double base,

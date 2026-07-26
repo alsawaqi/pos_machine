@@ -27,6 +27,8 @@ void main() {
       expect(p['staff_id'], 7);
       expect(p['opening_cash_baisas'], 10000);
       expect(p['opened_at'], '2026-06-08T09:00:00.000Z');
+      // HH-2 — this build opts into the staff-shared shift model.
+      expect(p['shared_shift'], isTrue);
     });
 
     test('shift.open opened_at can be overridden', () {

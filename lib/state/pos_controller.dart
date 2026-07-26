@@ -2306,6 +2306,64 @@ class PosController extends ChangeNotifier {
     );
   }
 
+  // ── Device↔device order transfer ────────────────────────────────────────────
+
+  /// Send leg, step 1: binds the current cart to a stable server uuid and
+  /// returns the draft the screen pushes as an `order.transfer` sync event.
+  /// Null when there is nothing transferable. The uuid is KEPT on a failed
+  /// push so a retry converges on the same pos_orders row.
+  OrderSessionDraft? prepareTransferDraft() {
+    if (_cart.isEmpty || isProcessingPayment) return null;
+    return createDraft(serverOrderUuid: _activeServerOrderUuid ??= uuidV4());
+  }
+
+  /// Send leg, step 2 — the server ACCEPTED the transfer: the order now lives
+  /// on the target device, so clear this cart for the next customer (the
+  /// order number is NOT consumed — nothing was sold here). Returns false
+  /// when a tender raced the push ACK: the cart is left untouched so the
+  /// running payment keeps its lines and the screen surfaces the conflict.
+  Future<bool> completeTransfer() async {
+    if (isProcessingPayment) return false;
+    if (activeDiningTableId != null) {
+      // The bill left this device with the order — free the whole party
+      // (storage + sessions) and return to the floor plan; otherwise the
+      // table stays occupied with a payable ghost copy of the transferred
+      // order (its reopened draft has no server uuid → duplicate charge).
+      await clearActiveDiningTable();
+      return true;
+    }
+    _resetForNextOrder(advanceOrderNumber: false);
+    return true;
+  }
+
+  /// Receive leg: loads a CLAIMED transfer into the cart — resumeHeldOrder's
+  /// shape, but hydrated from the server snapshot instead of a local draft.
+  /// Completion then pays against the SAME uuid, upserting the server's held
+  /// row (never duplicating it). Returns false — cart untouched — when a
+  /// tender is running or split legs are recorded (real money is mid-flight);
+  /// the caller keeps the snapshot and retries once the console is idle.
+  bool receiveTransferredOrder({
+    required String orderUuid,
+    required OrderType orderType,
+    required List<CartItem> items,
+  }) {
+    if (isProcessingPayment || hasRecordedSplitPayments) return false;
+
+    // Canonical reset FIRST so nothing from the previous cart (customer,
+    // plate, loyalty redeem, comp, delivery facts, split, receipt number)
+    // leaks into the received order; then load the snapshot on top. The
+    // order number is not consumed — receiving is not a sale yet.
+    _resetForNextOrder(
+      advanceOrderNumber: false,
+      nextOrderType: orderType,
+      clearActiveDiningTable: true,
+    );
+    _cart.addAll(items);
+    _activeServerOrderUuid = orderUuid.isEmpty ? null : orderUuid;
+    _broadcast();
+    return true;
+  }
+
   Future<String?> holdCurrentOrder() async {
     if (_cart.isEmpty || isProcessingPayment) return null;
 

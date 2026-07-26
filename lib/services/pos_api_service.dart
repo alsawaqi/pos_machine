@@ -222,6 +222,36 @@ class PosApiService {
     return body.dataMap;
   }
 
+  /// GET /device/branch-devices — the OTHER active devices at this device's
+  /// branch, for the order-transfer picker. Each row:
+  /// {id, uuid, name, device_type, terminal_id, last_seen_at}.
+  Future<List<Map<String, dynamic>>> listBranchDevices() async {
+    final body = await _send(() => _dio.get('/device/branch-devices'));
+    final list = body.dataMap['devices'];
+    if (list is! List) return const [];
+    return list.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+  }
+
+  /// GET /device/transfers/incoming — orders another device sent to THIS one,
+  /// waiting to be claimed. Full order snapshots (items + addons, baisas) plus
+  /// transfer metadata (transferred_from_name / transferred_at).
+  Future<List<Map<String, dynamic>>> fetchIncomingTransfers() async {
+    final body = await _send(() => _dio.get('/device/transfers/incoming'));
+    final list = body.dataMap['transfers'];
+    if (list is! List) return const [];
+    return list.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+  }
+
+  /// POST /device/transfers/{uuid}/claim — atomically take a transferred order
+  /// into this device's cart (ownership moves server-side; a second claim
+  /// 409s `transfer_unavailable`). Returns the claimed order snapshot.
+  Future<Map<String, dynamic>> claimTransfer(String orderUuid) async {
+    final body =
+        await _send(() => _dio.post('/device/transfers/$orderUuid/claim'));
+    return (body.dataMap['order'] as Map?)?.cast<String, dynamic>() ??
+        const {};
+  }
+
   /// POST /device/customers — register a customer (find-or-create on phone) and,
   /// when given, attach a vehicle plate for drive-thru lookup. Returns the
   /// customer's server id, or null if the response had none.
@@ -343,9 +373,17 @@ class PosApiService {
 
   /// GET /device/shift/current — the device's currently-open shift on the server,
   /// or null. Lets the open-shift screen ADOPT an existing shift (recovering from
-  /// a local↔server desync) instead of failing to open a duplicate.
-  Future<OpenShiftData?> fetchCurrentShift() async {
-    final body = await _send(() => _dio.get('/device/shift/current'));
+  /// a local↔server desync) instead of failing to open a duplicate. HH-2: pass
+  /// [staffId] to find the STAFF's open shift first, whichever branch device
+  /// opened it — the same person opens one shift a day and every terminal they
+  /// log into shares it.
+  Future<OpenShiftData?> fetchCurrentShift({int? staffId}) async {
+    final body = await _send(() => _dio.get(
+          '/device/shift/current',
+          queryParameters: {
+            if (staffId != null && staffId > 0) 'staff_id': staffId,
+          },
+        ));
     final shift = body.dataMap['shift'];
     if (shift is! Map) return null;
     final m = shift.cast<String, dynamic>();

@@ -2856,6 +2856,114 @@ abstract class L10n {
   /// **'Redeem Loyalty'**
   String get posPaymentRedeemLoyalty;
 
+  /// No description provided for @posPaymentTransfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer'**
+  String get posPaymentTransfer;
+
+  /// No description provided for @posTransferDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer order'**
+  String get posTransferDialogTitle;
+
+  /// No description provided for @posTransferSendSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Send current order to'**
+  String get posTransferSendSection;
+
+  /// No description provided for @posTransferIncomingSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Incoming transfers'**
+  String get posTransferIncomingSection;
+
+  /// No description provided for @posTransferNoDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'No other devices at this branch.'**
+  String get posTransferNoDevices;
+
+  /// No description provided for @posTransferNoIncoming.
+  ///
+  /// In en, this message translates to:
+  /// **'No transfers waiting.'**
+  String get posTransferNoIncoming;
+
+  /// No description provided for @posTransferReceive.
+  ///
+  /// In en, this message translates to:
+  /// **'Receive'**
+  String get posTransferReceive;
+
+  /// No description provided for @posTransferEmptyCartTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to transfer'**
+  String get posTransferEmptyCartTitle;
+
+  /// No description provided for @posTransferEmptyCartMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Add items to the order before transferring it.'**
+  String get posTransferEmptyCartMessage;
+
+  /// No description provided for @posTransferSentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Order transferred'**
+  String get posTransferSentTitle;
+
+  /// No description provided for @posTransferReceivedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Order received'**
+  String get posTransferReceivedTitle;
+
+  /// No description provided for @posTransferFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer failed'**
+  String get posTransferFailedTitle;
+
+  /// No description provided for @posTransferReplaceCartTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace current order?'**
+  String get posTransferReplaceCartTitle;
+
+  /// No description provided for @posTransferReplaceCartMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Receiving this transfer clears the order currently in the cart.'**
+  String get posTransferReplaceCartMessage;
+
+  /// No description provided for @posTransferBlockedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Orders with discounts, comps, gifted items, bundles, split payments or delivery can\'t be transferred. Clear them or finish the sale on this device.'**
+  String get posTransferBlockedMessage;
+
+  /// No description provided for @posTransferReceiveBlockedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish the payment in progress before receiving a transfer.'**
+  String get posTransferReceiveBlockedMessage;
+
+  /// No description provided for @posTransferConflictMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'A payment was in progress while the order transferred, so this cart was left unchanged. Check the other device before charging the customer twice.'**
+  String get posTransferConflictMessage;
+
+  /// No description provided for @posTransferClaimedPendingMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Order received — it will load as soon as the current sale is finished.'**
+  String get posTransferClaimedPendingMessage;
+
   /// No description provided for @posPaymentAddDiscount.
   ///
   /// In en, this message translates to:

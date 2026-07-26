@@ -1730,6 +1730,66 @@ class L10nEn extends L10n {
   String get posPaymentRedeemLoyalty => 'Redeem Loyalty';
 
   @override
+  String get posPaymentTransfer => 'Transfer';
+
+  @override
+  String get posTransferDialogTitle => 'Transfer order';
+
+  @override
+  String get posTransferSendSection => 'Send current order to';
+
+  @override
+  String get posTransferIncomingSection => 'Incoming transfers';
+
+  @override
+  String get posTransferNoDevices => 'No other devices at this branch.';
+
+  @override
+  String get posTransferNoIncoming => 'No transfers waiting.';
+
+  @override
+  String get posTransferReceive => 'Receive';
+
+  @override
+  String get posTransferEmptyCartTitle => 'Nothing to transfer';
+
+  @override
+  String get posTransferEmptyCartMessage =>
+      'Add items to the order before transferring it.';
+
+  @override
+  String get posTransferSentTitle => 'Order transferred';
+
+  @override
+  String get posTransferReceivedTitle => 'Order received';
+
+  @override
+  String get posTransferFailedTitle => 'Transfer failed';
+
+  @override
+  String get posTransferReplaceCartTitle => 'Replace current order?';
+
+  @override
+  String get posTransferReplaceCartMessage =>
+      'Receiving this transfer clears the order currently in the cart.';
+
+  @override
+  String get posTransferBlockedMessage =>
+      'Orders with discounts, comps, gifted items, bundles, split payments or delivery can\'t be transferred. Clear them or finish the sale on this device.';
+
+  @override
+  String get posTransferReceiveBlockedMessage =>
+      'Finish the payment in progress before receiving a transfer.';
+
+  @override
+  String get posTransferConflictMessage =>
+      'A payment was in progress while the order transferred, so this cart was left unchanged. Check the other device before charging the customer twice.';
+
+  @override
+  String get posTransferClaimedPendingMessage =>
+      'Order received — it will load as soon as the current sale is finished.';
+
+  @override
   String get posPaymentAddDiscount => 'Add Discount';
 
   @override

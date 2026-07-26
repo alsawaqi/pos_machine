@@ -11,6 +11,7 @@ import '../services/audience_service.dart' show AudienceService;
 import '../services/display_strings.dart';
 import '../services/local_order_storage_service.dart';
 import '../services/manager_authorization_service.dart';
+import '../services/order_sync_payload.dart' show buildOrderTransferEvent;
 import '../services/pos_api_service.dart' show ApiException, PosApiService;
 import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
@@ -128,6 +129,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Timer? _clockTimer;
   Timer? _configPollTimer;
   Timer? _popupTimer;
+
+  /// Device↔device order transfer: the inbox of orders other terminals sent
+  /// to THIS one (server snapshots, refreshed by [_refreshTransferInbox]).
+  Timer? _transferPollTimer;
+  List<Map<String, dynamic>> _incomingTransfers = const [];
+
+  /// A transfer this device CLAIMED (owns server-side) but couldn't load
+  /// because a tender raced the claim. Parked here and loaded by the poll
+  /// tick as soon as the console is idle — never dropped silently.
+  Map<String, dynamic>? _claimedTransferPendingLoad;
   bool _showPaymentPage = false;
   String _cashTenderInput = '';
   _StaffPopupMessage? _popupMessage;
@@ -208,7 +219,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     ref.listenManual(settingsControllerProvider, (prev, next) {
       controller.printReceipts = next.printReceipts;
       controller.printKitchenTickets = next.printKitchenTickets;
-      // Phase 1A — start/stop the audience camera when the operator toggles it.
+      // Phase 1A — re-evaluate the audience camera when the operator toggles
+      // the local switch (the server consent still wins, see the gate).
       if (prev?.audienceMeasurement != next.audienceMeasurement) {
         _applyAudienceGate();
       }
@@ -257,6 +269,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               .catchError((_) {}),
         );
       });
+      // Device↔device order transfer: poll the incoming inbox so a transfer
+      // sent by another terminal shows up (badge on the Transfer card)
+      // within seconds. Silent when offline.
+      unawaited(_refreshTransferInbox());
+      _transferPollTimer = Timer.periodic(
+        const Duration(seconds: 10),
+        (_) {
+          _retryPendingClaimedTransfer();
+          unawaited(_refreshTransferInbox());
+        },
+      );
     });
 
     // Bridge: feed the branch catalog (from the Drift cache, refreshed from
@@ -442,6 +465,384 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       // The outbox persists the mirror before any network call; flush()
       // retries it on the next reconnect.
     }
+  }
+
+  // ── Device↔device order transfer ────────────────────────────────────────────
+
+  /// Refreshes the incoming-transfer inbox (badge on the Transfer card).
+  /// Silent on failure — offline just keeps the last known list.
+  Future<void> _refreshTransferInbox() async {
+    try {
+      final rows =
+          await ref.read(apiServiceProvider).fetchIncomingTransfers();
+      if (!mounted) return;
+      setState(() => _incomingTransfers = rows);
+    } catch (_) {
+      // Offline / unauthorized — leave the current list intact.
+    }
+  }
+
+  /// The Transfer card: send the current order to another device at this
+  /// branch, or receive one waiting in the inbox. Online-only by design.
+  Future<void> _openTransferDialog() async {
+    final l10n = L10n.of(context);
+
+    List<Map<String, dynamic>> devices;
+    try {
+      devices = await ref.read(apiServiceProvider).listBranchDevices();
+    } on ApiException catch (e) {
+      _showPopupMessage(
+        title: l10n.posTransferFailedTitle,
+        message: e.message,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    } catch (_) {
+      _showPopupMessage(
+        title: l10n.posTransferFailedTitle,
+        message: l10n.posTransferNoDevices,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+    unawaited(_refreshTransferInbox());
+    if (!mounted) return;
+
+    final result = await showDialog<_TransferDialogResult>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => _TransferDialog(
+        devices: devices,
+        incoming: _incomingTransfers,
+        canSend: controller.cart.isNotEmpty,
+      ),
+    );
+    if (!mounted || result == null) return;
+
+    switch (result) {
+      case _TransferSend(:final device):
+        await _sendTransferTo(device);
+      case _TransferReceive(:final transfer):
+        await _receiveTransfer(transfer);
+    }
+  }
+
+  /// Send leg: park the current cart on the server addressed to [device].
+  /// Pushed ONLINE with an inline ACK (a transfer targets a live colleague's
+  /// terminal); the cart clears only after the server confirms.
+  Future<void> _sendTransferTo(Map<String, dynamic> device) async {
+    final l10n = L10n.of(context);
+
+    // Money state that doesn't survive the hop (the receiving cart rebuilds
+    // from plain lines: no discount/comp/gift/bundle flags, and no delivery-
+    // provider identity — the provider decides payout + commission %): fail
+    // closed rather than silently repricing on the other terminal.
+    if (controller.discount.isActive ||
+        controller.appliedComp != null ||
+        controller.hasRecordedSplitPayments ||
+        controller.hasGiftedLines ||
+        controller.cart.any((item) => item.bundleKey.isNotEmpty) ||
+        controller.selectedOrderType == OrderType.delivery ||
+        controller.selectedDeliveryProviderId != null) {
+      _showPopupMessage(
+        title: l10n.posTransferFailedTitle,
+        message: l10n.posTransferBlockedMessage,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
+    final draft = controller.prepareTransferDraft();
+    if (draft == null) {
+      _showPopupMessage(
+        title: l10n.posTransferEmptyCartTitle,
+        message: l10n.posTransferEmptyCartMessage,
+        tone: FeedbackTone.info,
+      );
+      return;
+    }
+
+    final event = buildOrderTransferEvent(
+      draft,
+      orderUuid: draft.serverOrderUuid,
+      targetDeviceId: ((device['id'] as num?) ?? 0).toInt(),
+      staffId: ref.read(sessionServiceProvider).staff?.id,
+      tableId: int.tryParse(draft.diningTableId),
+      joinedTableIds: controller.joinedTableIdsFor(draft.diningTableId),
+    );
+    if (event == null) {
+      // Demo-only cart (no server products) — nothing referable to send.
+      _showPopupMessage(
+        title: l10n.posTransferEmptyCartTitle,
+        message: l10n.posTransferEmptyCartMessage,
+        tone: FeedbackTone.info,
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    // Freeze the console while the push is in flight (online-only, inline
+    // ACK): a tender started mid-push would race completeTransfer's reset —
+    // the resumed payment would then snapshot an emptied cart while the
+    // server keeps the order claimable on the target device.
+    unawaited(showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+    ));
+
+    Map<String, dynamic> data;
+    try {
+      data = await ref.read(apiServiceProvider).pushSync([event]);
+    } on ApiException catch (e) {
+      _dismissTransferBarrier();
+      _showPopupMessage(
+        title: l10n.posTransferFailedTitle,
+        message: e.message,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    } catch (_) {
+      _dismissTransferBarrier();
+      _showPopupMessage(
+        title: l10n.posTransferFailedTitle,
+        message: l10n.posTransferFailedTitle,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
+    final results = (data['results'] as List?) ?? const [];
+    final first = results.isNotEmpty
+        ? (results.first as Map).cast<String, dynamic>()
+        : null;
+    if (first?['status'] == 'processed') {
+      // Barrier stays up through the reset so no tap can interleave with it.
+      final cleared = await controller.completeTransfer();
+      _dismissTransferBarrier();
+      if (!mounted) return;
+      if (cleared) {
+        setState(() {
+          _showPaymentPage = false;
+          _cashTenderInput = '';
+          _customerNumberController.clear();
+        });
+        _showPopupMessage(
+          title: l10n.posTransferSentTitle,
+          message: (device['name'] ?? '').toString(),
+          tone: FeedbackTone.success,
+        );
+      } else {
+        // A tender raced the ACK: the server parked the order for the target,
+        // but this cart was deliberately left alone for the running payment.
+        _showPopupMessage(
+          title: l10n.posTransferSentTitle,
+          message: l10n.posTransferConflictMessage,
+          tone: FeedbackTone.warning,
+        );
+      }
+    } else {
+      _dismissTransferBarrier();
+      final error = ((first?['result'] as Map?)?['error'])?.toString() ?? '';
+      _showPopupMessage(
+        title: l10n.posTransferFailedTitle,
+        message: error.isEmpty ? l10n.posTransferFailedTitle : error,
+        tone: FeedbackTone.warning,
+      );
+    }
+  }
+
+  /// Pops the modal barrier [_sendTransferTo] raises around the online push.
+  void _dismissTransferBarrier() {
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+  }
+
+  /// Receive leg: claim [transfer] (server-atomic — a double-grab 409s) and
+  /// hydrate the cart from the returned snapshot. Payment then finalises the
+  /// SAME server order uuid.
+  Future<void> _receiveTransfer(Map<String, dynamic> transfer) async {
+    final l10n = L10n.of(context);
+
+    // Fail closed BEFORE taking server-side ownership: mid-tender (or between
+    // split legs, when recorded money waits for the final push) the cart must
+    // not be replaced — and a claimed order the cart can't load would strand,
+    // because the server never re-lists claimed transfers.
+    if (controller.isProcessingPayment || controller.hasRecordedSplitPayments) {
+      _showPopupMessage(
+        title: l10n.posTransferFailedTitle,
+        message: l10n.posTransferReceiveBlockedMessage,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
+    if (controller.cart.isNotEmpty) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(l10n.posTransferReplaceCartTitle),
+          content: Text(l10n.posTransferReplaceCartMessage),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(l10n.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(l10n.posTransferReceive),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+      // The confirm can sit open while a tender starts elsewhere — re-check.
+      if (controller.isProcessingPayment ||
+          controller.hasRecordedSplitPayments) {
+        _showPopupMessage(
+          title: l10n.posTransferFailedTitle,
+          message: l10n.posTransferReceiveBlockedMessage,
+          tone: FeedbackTone.warning,
+        );
+        return;
+      }
+    }
+
+    final uuid = (transfer['uuid'] ?? '').toString();
+    try {
+      final order = await ref.read(apiServiceProvider).claimTransfer(uuid);
+      if (!mounted) return;
+      final loaded = _hydrateFromTransfer(order);
+      setState(() {
+        _incomingTransfers = _incomingTransfers
+            .where((t) => (t['uuid'] ?? '') != uuid)
+            .toList();
+        if (loaded) {
+          // The hydrated order must not inherit the previous order's screen
+          // residue — the submit paths push these fields at pay time.
+          _cashTenderInput = '';
+          _customerNumberController.clear();
+          _vehiclePlateController.clear();
+        }
+      });
+      if (loaded) {
+        _showPopupMessage(
+          title: l10n.posTransferReceivedTitle,
+          message: (transfer['transferred_from_name'] ?? '').toString(),
+          tone: FeedbackTone.success,
+        );
+      } else {
+        // Claimed (this device owns it server-side) but a tender raced the
+        // claim: park the snapshot — the poll tick loads it once the console
+        // is idle. Never show success for a cart that didn't load.
+        _claimedTransferPendingLoad = order;
+        _showPopupMessage(
+          title: l10n.posTransferReceivedTitle,
+          message: l10n.posTransferClaimedPendingMessage,
+          tone: FeedbackTone.info,
+        );
+      }
+    } on ApiException catch (e) {
+      // Most likely claimed by another device first — refresh the truth.
+      unawaited(_refreshTransferInbox());
+      _showPopupMessage(
+        title: l10n.posTransferFailedTitle,
+        message: e.message,
+        tone: FeedbackTone.warning,
+      );
+    } catch (_) {
+      _showPopupMessage(
+        title: l10n.posTransferFailedTitle,
+        message: l10n.posTransferFailedTitle,
+        tone: FeedbackTone.warning,
+      );
+    }
+  }
+
+  /// Rebuilds CartItems from a claimed transfer's server snapshot. Catalog
+  /// products supply identity/image/add-on groups; the snapshot price seeds
+  /// each line, but a later catalog emission re-prices open lines from the
+  /// live menu (_applyDeliveryPricing) — same-branch devices share one
+  /// catalog, so this only surfaces when a price changed mid-transfer.
+  /// Returns the controller's verdict: false means the cart was NOT replaced
+  /// (tender running / split legs recorded) and the caller must not report
+  /// success.
+  bool _hydrateFromTransfer(Map<String, dynamic> order) {
+    final items = <CartItem>[];
+    for (final raw in ((order['items'] as List?) ?? const []).whereType<Map>()) {
+      final m = raw.cast<String, dynamic>();
+      final productId = (m['product_id'] as num?)?.toInt();
+
+      final modifiers = <CartItemModifier>[];
+      for (final a in ((m['addons'] as List?) ?? const []).whereType<Map>()) {
+        final am = a.cast<String, dynamic>();
+        modifiers.add(CartItemModifier(
+          id: '${(am['add_on_id'] as num?)?.toInt() ?? ''}',
+          group: '',
+          label: (am['add_on_name'] ?? '').toString(),
+          price: ((am['price_delta_baisas'] as num?)?.toInt() ?? 0) / 1000.0,
+        ));
+      }
+
+      final unitPrice =
+          ((m['unit_price_baisas'] as num?)?.toInt() ?? 0) / 1000.0;
+      final addonTotal = modifiers.fold(0.0, (sum, mo) => sum + mo.price);
+      final basePrice =
+          double.parse((unitPrice - addonTotal).toStringAsFixed(3));
+
+      final catalog =
+          productId != null ? controller.productById(productId) : null;
+      items.add(CartItem(
+        product: Product(
+          id: '${productId ?? ''}',
+          name: catalog?.name ?? (m['product_name'] ?? '').toString(),
+          nameAr: catalog?.nameAr ?? '',
+          category: catalog?.category ?? '',
+          categoryId: catalog?.categoryId,
+          price: basePrice,
+          imageAsset: catalog?.imageAsset,
+          addonGroupIds: catalog?.addonGroupIds ?? const <int>[],
+        ),
+        qty: ((m['qty'] as num?) ?? 1).round(),
+        modifiers: modifiers,
+        notes: (m['notes'] ?? '').toString(),
+      ));
+    }
+
+    return controller.receiveTransferredOrder(
+      orderUuid: (order['uuid'] ?? '').toString(),
+      orderType:
+          OrderTypeLabel.fromStorage((order['order_type'] ?? '').toString()),
+      items: items,
+    );
+  }
+
+  /// Loads a claimed-but-parked transfer (see [_receiveTransfer]) once the
+  /// console is idle again. Runs on the inbox poll tick; only fills an EMPTY
+  /// cart so it never clobbers an order the cashier started meanwhile.
+  void _retryPendingClaimedTransfer() {
+    final order = _claimedTransferPendingLoad;
+    if (order == null || !mounted) return;
+    if (controller.isProcessingPayment ||
+        controller.hasRecordedSplitPayments ||
+        controller.cart.isNotEmpty) {
+      return;
+    }
+    if (!_hydrateFromTransfer(order)) return;
+    _claimedTransferPendingLoad = null;
+    setState(() {
+      _cashTenderInput = '';
+      _customerNumberController.clear();
+      _vehiclePlateController.clear();
+    });
+    _showPopupMessage(
+      title: L10n.of(context).posTransferReceivedTitle,
+      message: (order['order_reference'] ?? '').toString(),
+      tone: FeedbackTone.success,
+    );
   }
 
   /// Mirror a full order cancellation to pos_api via the durable outbox (an
@@ -682,6 +1083,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   void dispose() {
     _clockTimer?.cancel();
     _configPollTimer?.cancel();
+    _transferPollTimer?.cancel();
     _popupTimer?.cancel();
     _clockNow.dispose();
     _currentOrderScrollController.dispose();
@@ -3885,12 +4287,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       children: [
         Row(
           children: [
+            // Device↔device order transfer (replaced the Loyalty shortcut —
+            // loyalty redemption stays reachable from the customer panel).
+            // The count is the incoming inbox waiting to be received.
             Expanded(
               child: _PaymentTopActionCard(
-                icon: Icons.workspace_premium_rounded,
-                title: l10n.posPaymentRedeemLoyalty,
+                icon: Icons.swap_horiz_rounded,
+                title: _incomingTransfers.isEmpty
+                    ? l10n.posPaymentTransfer
+                    : '${l10n.posPaymentTransfer} (${_incomingTransfers.length})',
+                accent: const Color(0xFF0FA3B1),
                 onTap: () {
-                  unawaited(_openLoyaltyRedeem());
+                  unawaited(_openTransferDialog());
                 },
               ),
             ),
@@ -5986,6 +6394,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     title: l10n.posNavLoyalty,
                     onTap: () {
                       unawaited(_openLoyaltyRedeem());
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Device↔device transfer must be reachable with an EMPTY cart
+                // too (the payment console needs items), or this terminal
+                // could never RECEIVE a handheld's order.
+                Expanded(
+                  child: _FooterActionCard(
+                    icon: Icons.swap_horiz_rounded,
+                    title: _incomingTransfers.isEmpty
+                        ? l10n.posPaymentTransfer
+                        : '${l10n.posPaymentTransfer} (${_incomingTransfers.length})',
+                    onTap: () {
+                      unawaited(_openTransferDialog());
                     },
                   ),
                 ),
@@ -12977,6 +13400,291 @@ class _DiscountChoice extends StatelessWidget {
             fontSize: 14,
             fontWeight: FontWeight.w800,
             color: selected ? const Color(0xFF1C7844) : const Color(0xFF2D4048),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What the Transfer dialog resolved to: send the cart to a device, or
+/// receive one of the incoming transfers.
+sealed class _TransferDialogResult {
+  const _TransferDialogResult();
+}
+
+class _TransferSend extends _TransferDialogResult {
+  const _TransferSend(this.device);
+  final Map<String, dynamic> device;
+}
+
+class _TransferReceive extends _TransferDialogResult {
+  const _TransferReceive(this.transfer);
+  final Map<String, dynamic> transfer;
+}
+
+/// Device↔device order transfer dialog: pick a colleague's device to SEND the
+/// current order to, and/or RECEIVE one waiting in this device's inbox.
+class _TransferDialog extends StatelessWidget {
+  const _TransferDialog({
+    required this.devices,
+    required this.incoming,
+    required this.canSend,
+  });
+
+  /// The branch's OTHER devices (GET /device/branch-devices rows).
+  final List<Map<String, dynamic>> devices;
+
+  /// Orders waiting to be claimed by THIS device (transfer inbox rows).
+  final List<Map<String, dynamic>> incoming;
+
+  /// False when the cart is empty — the send section hides.
+  final bool canSend;
+
+  IconData _iconFor(String type) => switch (type) {
+    'handheld' => Icons.point_of_sale_rounded,
+    'customer_tablet' => Icons.tablet_android_rounded,
+    _ => Icons.desktop_windows_rounded,
+  };
+
+  bool _seenRecently(Map<String, dynamic> device) {
+    final raw = device['last_seen_at']?.toString() ?? '';
+    final seen = DateTime.tryParse(raw);
+    return seen != null && DateTime.now().difference(seen).inMinutes < 5;
+  }
+
+  String _money(Map<String, dynamic> transfer) {
+    final baisas = (transfer['grand_total_baisas'] as num?)?.toInt() ?? 0;
+    return '${(baisas / 1000).toStringAsFixed(3)} OMR';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 160, vertical: 80),
+      backgroundColor: Colors.transparent,
+      child: _glassPanel(
+        padding: const EdgeInsets.all(22),
+        tint: const Color(0xEFF8FBFD),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.swap_horiz_rounded,
+                    size: 28,
+                    color: Color(0xFF0FA3B1),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      l10n.posTransferDialogTitle,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF18262F),
+                      ),
+                    ),
+                  ),
+                  _CircleGlassButton(
+                    icon: Icons.close_rounded,
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              if (canSend) ...[
+                Text(
+                  l10n.posTransferSendSection,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF4E5E6A),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                if (devices.isEmpty)
+                  Text(
+                    l10n.posTransferNoDevices,
+                    style: const TextStyle(color: Color(0xFF7A8A96)),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 220),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          for (final device in devices)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () => Navigator.of(context)
+                                    .pop(_TransferSend(device)),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.9),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        _iconFor(
+                                          (device['device_type'] ?? '')
+                                              .toString(),
+                                        ),
+                                        color: const Color(0xFF0FA3B1),
+                                        size: 26,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          (device['name'] ?? 'Device')
+                                              .toString(),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w800,
+                                            color: Color(0xFF18262F),
+                                          ),
+                                        ),
+                                      ),
+                                      // Advisory online dot (recent heartbeat).
+                                      Container(
+                                        width: 10,
+                                        height: 10,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: _seenRecently(device)
+                                              ? const Color(0xFF2B9E5F)
+                                              : const Color(0xFFD3DCE2),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Icon(
+                                        Icons.chevron_right_rounded,
+                                        color: Color(0xFF7A8A96),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 16),
+              ],
+              Text(
+                l10n.posTransferIncomingSection,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF4E5E6A),
+                ),
+              ),
+              const SizedBox(height: 10),
+              if (incoming.isEmpty)
+                Text(
+                  l10n.posTransferNoIncoming,
+                  style: const TextStyle(color: Color(0xFF7A8A96)),
+                )
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 240),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        for (final transfer in incoming)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.move_to_inbox_rounded,
+                                    color: Color(0xFF0FA3B1),
+                                    size: 26,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          (transfer['transferred_from_name'] ??
+                                                  'Device')
+                                              .toString(),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w800,
+                                            color: Color(0xFF18262F),
+                                          ),
+                                        ),
+                                        Text(
+                                          _money(transfer),
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF0FA3B1),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  FilledButton.icon(
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor:
+                                          const Color(0xFF0FA3B1),
+                                    ),
+                                    onPressed: () => Navigator.of(context)
+                                        .pop(_TransferReceive(transfer)),
+                                    icon: const Icon(
+                                      Icons.download_rounded,
+                                      size: 18,
+                                    ),
+                                    label: Text(l10n.posTransferReceive),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
