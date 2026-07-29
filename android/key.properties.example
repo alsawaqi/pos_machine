@@ -1,0 +1,10 @@
+# Release-signing secrets — copy to android/key.properties and fill in.
+# key.properties and *.jks are gitignored: NEVER commit them.
+#
+# RECOMMENDED: reuse the SAME keystore as pos_handheld (one Mithqal
+# keystore signs both apps — one file + one set of passwords to protect).
+# See docs/RELEASE_SIGNING.md.
+storeFile=../../keys/mithqal-handheld.jks
+storePassword=CHANGE_ME
+keyAlias=mithqal
+keyPassword=CHANGE_ME
