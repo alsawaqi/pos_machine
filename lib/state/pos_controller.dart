@@ -2917,8 +2917,8 @@ class PosController extends ChangeNotifier {
         paymentStatus = paymentResult.isCanceled
             ? 'Payment canceled'
             : 'Payment failed';
-        lastPaymentMessage = paymentResult.userMessage;
-        displayNote = paymentResult.userMessage;
+        lastPaymentMessage = _cardFailureMessage(paymentResult);
+        displayNote = lastPaymentMessage;
         _broadcast();
         return lastPaymentMessage;
       }
@@ -3020,8 +3020,8 @@ class PosController extends ChangeNotifier {
         paymentStatus = paymentResult.isCanceled
             ? 'Payment canceled'
             : 'Payment failed';
-        lastPaymentMessage = paymentResult.userMessage;
-        displayNote = paymentResult.userMessage;
+        lastPaymentMessage = _cardFailureMessage(paymentResult);
+        displayNote = lastPaymentMessage;
         _broadcast();
         return lastPaymentMessage;
       }
@@ -3466,10 +3466,24 @@ class PosController extends ChangeNotifier {
     unawaited(_paymentBridge.prepareSession());
   }
 
+  /// Cashier-facing text for a failed card charge. Mosambee's own messages are
+  /// English technical strings; the one failure staff can actually ACT on — no
+  /// bank terminal assigned to this device — gets a localized, actionable
+  /// message instead ("ask the administrator to assign a terminal").
+  String _cardFailureMessage(MosambeePaymentResult result) =>
+      result.isMissingTerminalId
+      ? _l10n.ctrlMsgCardNoTerminalAssigned
+      : result.userMessage;
+
   /// Launches a card charge via the payment terminal and, on an UNCERTAIN result
   /// (e.g. an NFC timeout), asks the cashier to cancel, force-record as pending
   /// reconciliation, or retry. Retry re-launches the terminal; the loop repeats
   /// until the cashier resolves it. Returns the outcome plus the last result.
+  ///
+  /// A charge that provably never reached the acquirer (no terminal assigned,
+  /// SoftPOS missing) is NEVER offered as "record as pending reconciliation":
+  /// there is no bank transaction for the settlement file to match, so
+  /// recording it would invent revenue. See [MosambeePaymentResult.isUncertain].
   Future<(_CardChargeOutcome, MosambeePaymentResult)> _runCardCharge({
     required double amount,
     required String processingNote,

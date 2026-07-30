@@ -557,6 +557,7 @@
   "ctrlMsgTapToPayRoundUp": "Thank you for rounding up for charity. Tap your card or phone on the rear NFC area to pay.",
   "ctrlMsgTapToPay": "Tap your card or phone on the rear NFC area to pay.",
   "ctrlMsgCardPendingReconRecorded": "Card recorded as pending reconciliation. The bank settlement will confirm it.",
+  "ctrlMsgCardNoTerminalAssigned": "No payment terminal is assigned to this device yet. Card payment is unavailable — ask the administrator to assign a terminal.",
   "ctrlMsgPaymentPendingBankThanks": "Payment recorded pending bank confirmation. Thank you.",
   "ctrlMsgCardApprovedRoundUpThanks": "{message} Thank you for supporting charity.",
   "@ctrlMsgCardApprovedRoundUpThanks": {

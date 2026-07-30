@@ -1603,6 +1603,12 @@ abstract class L10n {
   /// **'Card recorded as pending reconciliation. The bank settlement will confirm it.'**
   String get ctrlMsgCardPendingReconRecorded;
 
+  /// No description provided for @ctrlMsgCardNoTerminalAssigned.
+  ///
+  /// In en, this message translates to:
+  /// **'No payment terminal is assigned to this device yet. Card payment is unavailable — ask the administrator to assign a terminal.'**
+  String get ctrlMsgCardNoTerminalAssigned;
+
   /// No description provided for @ctrlMsgPaymentPendingBankThanks.
   ///
   /// In en, this message translates to:

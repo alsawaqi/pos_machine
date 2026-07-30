@@ -924,6 +924,10 @@ class L10nAr extends L10n {
       'تم تسجيل عملية البطاقة قيد التسوية، وستؤكدها تسوية البنك.';
 
   @override
+  String get ctrlMsgCardNoTerminalAssigned =>
+      'لا يوجد جهاز دفع مُعيَّن لهذا الجهاز بعد. الدفع بالبطاقة غير متاح — اطلب من المسؤول تعيين جهاز دفع.';
+
+  @override
   String get ctrlMsgPaymentPendingBankThanks =>
       'تم تسجيل الدفع بانتظار تأكيد البنك. شكرًا لك.';
 

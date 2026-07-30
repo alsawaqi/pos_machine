@@ -56,17 +56,48 @@ class MosambeePaymentResult {
       'paymentStatus',
       'payment_status',
     ]).toLowerCase();
-    final message = userMessage.toLowerCase();
+    // _reportedMessage, NOT userMessage: userMessage's last-resort fallback
+    // asks isCanceled, so using it here made the two recurse forever (a
+    // stack overflow at the till) whenever the terminal answered without
+    // any message field.
+    final message = _reportedMessage.toLowerCase();
 
     return statusRaw == 'canceled' ||
         statusRaw == 'cancelled' ||
         message.contains('cancel');
   }
 
+  /// This device has no bank terminal assigned — the one
+  /// [neverReachedTerminal] case the cashier can act on (call the admin),
+  /// so it gets its own localized message instead of the raw technical text.
+  bool get isMissingTerminalId =>
+      _lookupString(payload, const ['code']).toUpperCase() ==
+      'MISSING_TERMINAL_ID';
+
+  /// The charge PROVABLY never reached the acquirer — a configuration or
+  /// launch failure (no terminal id, SoftPOS app missing, activity not
+  /// found), not an ambiguous terminal verdict.
+  ///
+  /// This distinction is money-critical. [isUncertain] offers the cashier a
+  /// "Mark paid — pending reconciliation" button, which books a card sale on
+  /// the customer's behalf. That is right after an NFC timeout (the card may
+  /// genuinely have been charged) and WRONG here: nothing was ever sent to
+  /// the bank, so recording it would invent revenue that no settlement file
+  /// can ever match.
+  bool get neverReachedTerminal {
+    final code = _lookupString(payload, const ['code']).toUpperCase();
+    if (code == 'MISSING_TERMINAL_ID' || code == 'BAD_ARGS') return true;
+    final message = _reportedMessage.toLowerCase();
+    return message.contains('is not installed') ||
+        message.contains('was not found') ||
+        message.contains('unable to launch');
+  }
+
   /// Neither a clear success nor an explicit cancel (e.g. an NFC timeout or an
   /// ambiguous terminal verdict). The cashier may force-record these as
-  /// pending reconciliation rather than losing the sale.
-  bool get isUncertain => !isSuccess && !isCanceled;
+  /// pending reconciliation rather than losing the sale — but only when the
+  /// charge actually reached the terminal (see [neverReachedTerminal]).
+  bool get isUncertain => !isSuccess && !isCanceled && !neverReachedTerminal;
 
   /// The native bridge had no pre-warmed login session to pay with (so the caller
   /// should fall back to a full login+pay).
@@ -103,9 +134,10 @@ class MosambeePaymentResult {
     return nested.isEmpty ? null : nested;
   }
 
-  String get userMessage {
-    final receiptResponse = _nestedMap(payload['receiptResponse']);
-
+  /// The message the terminal ACTUALLY reported, with no derived fallback.
+  /// [isCanceled] and [neverReachedTerminal] read this instead of
+  /// [userMessage] so they can never recurse back into it.
+  String get _reportedMessage {
     final message = _lookupString(payload, const [
       'paymentDescription',
       'message',
@@ -115,14 +147,18 @@ class MosambeePaymentResult {
     ]);
     if (message.isNotEmpty) return message;
 
-    final receiptMessage = _lookupString(receiptResponse, const [
+    return _lookupString(_nestedMap(payload['receiptResponse']), const [
       'paymentDescription',
       'message',
       'error',
       'responseMessage',
       'responseDescription',
     ]);
-    if (receiptMessage.isNotEmpty) return receiptMessage;
+  }
+
+  String get userMessage {
+    final reported = _reportedMessage;
+    if (reported.isNotEmpty) return reported;
 
     return isSuccess
         ? 'Payment approved.'
@@ -261,6 +297,21 @@ class MosambeePaymentService {
   /// [loginAndPay] when no warm session is available (already consumed, expired,
   /// or never prepared), so a sale never fails just because the session lapsed.
   Future<MosambeePaymentResult> payWithPreparedSession(double amountOmr) async {
+    // Preflight (mirrors pos_handheld's payment screen): a device with no
+    // bank terminal assigned can never charge, so fail FAST and clearly
+    // instead of launching the SoftPOS app to watch it reject us.
+    final terminalId = (await LocalStorageService.getTerminalId())?.trim();
+    if (terminalId == null || terminalId.isEmpty) {
+      return MosambeePaymentResult.fromRaw(
+        jsonEncode({
+          'stage': 'preflight',
+          'status': 'failed',
+          'code': 'MISSING_TERMINAL_ID',
+          'message': 'Terminal ID is not set.',
+        }),
+      );
+    }
+
     // Let any in-flight pre-warm finish first, to avoid a native BUSY race.
     final inFlight = _prepareInFlight;
     if (inFlight != null) {

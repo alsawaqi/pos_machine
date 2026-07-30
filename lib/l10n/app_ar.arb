@@ -279,6 +279,7 @@
   "ctrlMsgTapToPayRoundUp": "شكرًا لتقريب المبلغ للتبرع الخيري. قرّب بطاقتك أو هاتفك من منطقة NFC الخلفية لإتمام الدفع.",
   "ctrlMsgTapToPay": "قرّب بطاقتك أو هاتفك من منطقة NFC الخلفية لإتمام الدفع.",
   "ctrlMsgCardPendingReconRecorded": "تم تسجيل عملية البطاقة قيد التسوية، وستؤكدها تسوية البنك.",
+  "ctrlMsgCardNoTerminalAssigned": "لا يوجد جهاز دفع مُعيَّن لهذا الجهاز بعد. الدفع بالبطاقة غير متاح — اطلب من المسؤول تعيين جهاز دفع.",
   "ctrlMsgPaymentPendingBankThanks": "تم تسجيل الدفع بانتظار تأكيد البنك. شكرًا لك.",
   "ctrlMsgCardApprovedRoundUpThanks": "{message} شكرًا لدعمك العمل الخيري.",
   "ctrlMsgPaymentApprovedRoundUpNote": "تمت الموافقة على الدفع. سيُوجَّه مبلغ التقريب تبرعًا للجهة الخيرية. شكرًا لك.",

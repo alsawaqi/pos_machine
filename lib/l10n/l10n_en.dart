@@ -921,6 +921,10 @@ class L10nEn extends L10n {
       'Card recorded as pending reconciliation. The bank settlement will confirm it.';
 
   @override
+  String get ctrlMsgCardNoTerminalAssigned =>
+      'No payment terminal is assigned to this device yet. Card payment is unavailable — ask the administrator to assign a terminal.';
+
+  @override
   String get ctrlMsgPaymentPendingBankThanks =>
       'Payment recorded pending bank confirmation. Thank you.';
 
