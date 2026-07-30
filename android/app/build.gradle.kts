@@ -40,8 +40,13 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.pos_machine"
+        // Final store identity (owner decision 2026-07-30) — frozen at the
+        // first real install; changing it later = uninstall/reinstall on
+        // every device. The `namespace` above deliberately stays
+        // com.example.pos_machine: it is internal code packaging only
+        // (MainActivity.kt package, R class) and changing it would churn
+        // the Kotlin tree for zero user-visible benefit.
+        applicationId = "net.mithqal.pos.machine"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
