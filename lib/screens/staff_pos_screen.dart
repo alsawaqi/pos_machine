@@ -3637,6 +3637,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
+              // Escalated (2+ min unanswered): a danger ring pulls a
+              // distracted cashier back — the prompt never self-cancels,
+              // because the customer's card may genuinely have been charged.
+              border: controller.pendingReconEscalated
+                  ? Border.all(color: const Color(0xFFC0392B), width: 3)
+                  : null,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -3647,12 +3653,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFCEBC6),
+                        color: controller.pendingReconEscalated
+                            ? const Color(0xFFFAD7D2)
+                            : const Color(0xFFFCEBC6),
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.warning_amber_rounded,
-                        color: Color(0xFFB9770E),
+                        color: controller.pendingReconEscalated
+                            ? const Color(0xFFC0392B)
+                            : const Color(0xFFB9770E),
                         size: 28,
                       ),
                     ),
@@ -3669,6 +3679,28 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     ),
                   ],
                 ),
+                if (controller.pendingReconEscalated) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFAD7D2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      l10n.posReconStillWaitingBanner,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF7B241C),
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 Text(
                   l10n.posReconCardNotConfirmedBody(

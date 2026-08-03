@@ -2688,6 +2688,12 @@ abstract class L10n {
   /// **'Card charge not confirmed'**
   String get posReconCardNotConfirmedTitle;
 
+  /// No description provided for @posReconStillWaitingBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Unresolved card charge — this needs an answer. The customer may have been charged; check the terminal before choosing.'**
+  String get posReconStillWaitingBanner;
+
   /// No description provided for @posReconCardNotConfirmedBody.
   ///
   /// In en, this message translates to:

@@ -871,4 +871,61 @@ void main() {
     },
     variant: _androidOnly,
   );
+
+  testWidgets(
+    'an unconfirmed card charge escalates after 2 minutes instead of self-cancelling',
+    (tester) async {
+      // Regression: the prompt used to .timeout(2 min) into cancel — so a
+      // charge the customer MAY have paid was silently discarded with no
+      // recorded sale and nothing in the reconciliation queue. A timer must
+      // never answer a money question: the prompt now waits for a human and
+      // only ESCALATES visually.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(paymentChannel, (call) async {
+            if (call.method == 'payWithPreparedSession') {
+              return '{"status":"failed","code":"NO_SESSION"}';
+            }
+            if (call.method == 'loginAndPay') {
+              // A genuinely AMBIGUOUS verdict (NFC timeout style).
+              return '{"status":"failed","message":"Timeout waiting for card."}';
+            }
+            return null;
+          });
+
+      final controller = PosController(orderStorage: fakeStorage);
+      addTearDown(controller.dispose);
+
+      await controller.init();
+      controller.addProduct(controller.allProducts.first);
+      controller.selectPaymentMethod('Credit Card');
+
+      final paymentFuture = controller.payAndPrint();
+      await tester.pump();
+      expect(controller.showCharityRoundUpPrompt, isTrue);
+      await _sendCustomerDecision(accepted: false);
+      await tester.pump(const Duration(milliseconds: 800));
+
+      expect(controller.showPendingReconciliationPrompt, isTrue);
+      expect(controller.pendingReconEscalated, isFalse);
+
+      // Three minutes of cashier distraction: the prompt must survive it.
+      await tester.pump(const Duration(minutes: 3));
+      expect(
+        controller.showPendingReconciliationPrompt,
+        isTrue,
+        reason: 'the prompt must never cancel itself — the card may be charged',
+      );
+      expect(controller.pendingReconEscalated, isTrue);
+
+      // A human finally answers: force-record as pending reconciliation.
+      controller.resolvePendingReconciliation(PendingReconChoice.record);
+      await tester.pump(const Duration(milliseconds: 800));
+
+      await paymentFuture;
+      expect(controller.showPendingReconciliationPrompt, isFalse);
+      expect(controller.pendingReconEscalated, isFalse);
+      expect(fakeStorage._history, hasLength(1));
+    },
+    variant: _androidOnly,
+  );
 }

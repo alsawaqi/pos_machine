@@ -33,6 +33,28 @@ object MosambeeBridge {
     // Pre-warmed login session: a separate login yields a reusable sessionId so the
     // actual card payment can skip the slow login. Single-use — consumed by one payment.
     private var preparedSessionId: String? = null
+    private var preparedSessionAtMs: Long = 0L
+
+    // A cached session older than this is treated as gone. Without a TTL, an
+    // idle till's first card tap paid with a STALE session: Mosambee rejected
+    // it as a plain failure, which Dart classified as an ambiguous charge and
+    // showed the cashier the dangerous "Mark paid — pending reconciliation"
+    // dialog for a card that was never charged. Expiring it here collapses
+    // that into the NO_SESSION path, which Dart already recovers from by a
+    // silent fresh login+pay (one slower payment, no dialog). Kept well under
+    // any acquirer session lifetime.
+    private const val SESSION_TTL_MS: Long = 5 * 60_000L
+
+    /** The cached session id if present AND fresh; drops a stale one to null. */
+    private fun freshSessionOrNull(): String? {
+        val id = preparedSessionId?.trim()
+        if (id.isNullOrEmpty()) return null
+        if (android.os.SystemClock.elapsedRealtime() - preparedSessionAtMs > SESSION_TTL_MS) {
+            preparedSessionId = null
+            return null
+        }
+        return id
+    }
     // Whether the in-flight login should chain into a payment (loginAndPay) or just
     // store the session for a later payment (prepareLogin).
     private var loginContinuesToPayment: Boolean = true
@@ -47,7 +69,7 @@ object MosambeeBridge {
                 "payWithPreparedSession" ->
                     handlePayWithPreparedSession(activity, call.arguments as? Map<*, *>, result)
                 "hasPreparedSession" ->
-                    result.success(preparedSessionId?.isNotBlank() == true)
+                    result.success(freshSessionOrNull() != null)
                 "clearPreparedSession" -> {
                     preparedSessionId = null
                     result.success(true)
@@ -104,7 +126,7 @@ object MosambeeBridge {
         arguments: Map<*, *>?,
         result: MethodChannel.Result,
     ) {
-        if (preparedSessionId?.isNotBlank() == true) {
+        if (freshSessionOrNull() != null) {
             result.success(
                 JSONObject()
                     .put("stage", "login")
@@ -132,7 +154,7 @@ object MosambeeBridge {
             return
         }
 
-        val sessionId = preparedSessionId?.trim().orEmpty()
+        val sessionId = freshSessionOrNull().orEmpty()
         if (sessionId.isEmpty()) {
             result.success(
                 JSONObject()
@@ -361,6 +383,7 @@ object MosambeeBridge {
         if (!loginContinuesToPayment) {
             // Pre-warm: store the reusable session for the next payment and stop here.
             preparedSessionId = sessionId
+            preparedSessionAtMs = android.os.SystemClock.elapsedRealtime()
             deliverAndReset(
                 JSONObject()
                     .put("stage", "login")

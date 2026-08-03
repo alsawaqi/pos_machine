@@ -500,6 +500,11 @@ class PosController extends ChangeNotifier {
   bool isLoadingStorage = false;
   bool showCharityRoundUpPrompt = false;
   bool showPendingReconciliationPrompt = false;
+
+  /// True once the unresolved-card-charge prompt has waited 2+ minutes with
+  /// no answer. The UI escalates (danger banner) instead of a timer
+  /// cancelling the money question — see [_promptForPendingReconciliation].
+  bool pendingReconEscalated = false;
   bool showPaymentLaunchOverlay = false;
   bool charityRoundUpAccepted = false;
   double charityRoundUpAmount = 0;
@@ -590,6 +595,7 @@ class PosController extends ChangeNotifier {
   bool _charityPromptCanceled = false;
   int _referenceSequence = 0;
   Completer<PendingReconChoice>? _pendingReconCompleter;
+  Timer? _pendingReconEscalationTimer;
   double _pendingReconAmount = 0;
 
   PosController({OrderStorageService? orderStorage})
@@ -3538,17 +3544,34 @@ class PosController extends ChangeNotifier {
     await _restoreRearDisplayAfterPaymentIfNeeded();
 
     showPendingReconciliationPrompt = true;
+    pendingReconEscalated = false;
     _broadcast();
 
-    try {
-      return await _pendingReconCompleter!.future.timeout(
-        const Duration(minutes: 2),
-      );
-    } on TimeoutException {
-      showPendingReconciliationPrompt = false;
+    // NO auto-cancel: a timer must never answer a money question. The card
+    // may genuinely have been captured by the bank, and silently discarding
+    // the prompt would leave that charge with no recorded sale and nothing
+    // in the reconciliation queue — unrecoverable. (The handheld's twin
+    // dialog has no timer for the same reason.) Instead, after 2 minutes
+    // the prompt ESCALATES — flag + alert sound — so the UI pulls a
+    // distracted cashier back; the dialog then waits for a human answer.
+    // Worst case is a visibly blocked till anyone can resolve in seconds.
+    _pendingReconEscalationTimer?.cancel();
+    _pendingReconEscalationTimer = Timer(const Duration(minutes: 2), () {
+      if (_pendingReconCompleter == null ||
+          _pendingReconCompleter!.isCompleted) {
+        return;
+      }
+      pendingReconEscalated = true;
+      unawaited(SystemSound.play(SystemSoundType.alert)); // best-effort
       _broadcast();
-      return PendingReconChoice.cancel;
+    });
+
+    try {
+      return await _pendingReconCompleter!.future;
     } finally {
+      _pendingReconEscalationTimer?.cancel();
+      _pendingReconEscalationTimer = null;
+      pendingReconEscalated = false;
       _pendingReconCompleter = null;
     }
   }
@@ -3875,6 +3898,12 @@ class PosController extends ChangeNotifier {
     _punchedDeliveryProviderId = null;
     _punchedDeliveryProviderName = '';
     selectedDeliveryProviderId = null;
+    // A reset that force-hides the unresolved-charge prompt is a deliberate
+    // abandon — resolve the awaiting pay flow as cancel so it can never
+    // hang forever now that the prompt itself has no timeout.
+    if (_pendingReconCompleter != null && !_pendingReconCompleter!.isCompleted) {
+      _pendingReconCompleter!.complete(PendingReconChoice.cancel);
+    }
     showPendingReconciliationPrompt = false;
     _activePaymentBaseOverride = null;
     selectedOrderType = nextOrderType;

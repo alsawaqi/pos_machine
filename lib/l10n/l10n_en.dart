@@ -1632,6 +1632,10 @@ class L10nEn extends L10n {
   String get posReconCardNotConfirmedTitle => 'Card charge not confirmed';
 
   @override
+  String get posReconStillWaitingBanner =>
+      'Unresolved card charge — this needs an answer. The customer may have been charged; check the terminal before choosing.';
+
+  @override
   String posReconCardNotConfirmedBody(String amount) {
     return 'The terminal did not confirm the $amount card charge (e.g. an NFC timeout).\n\nIf the customer was charged, record it as PENDING RECONCILIATION — it will be matched against the bank settlement file. Otherwise cancel and try the charge again.';
   }

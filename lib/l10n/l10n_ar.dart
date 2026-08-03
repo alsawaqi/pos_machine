@@ -1654,6 +1654,10 @@ class L10nAr extends L10n {
   String get posReconCardNotConfirmedTitle => 'لم يتم تأكيد خصم البطاقة';
 
   @override
+  String get posReconStillWaitingBanner =>
+      'عملية بطاقة غير محسومة — يلزم اتخاذ قرار. قد يكون العميل قد دُفع منه بالفعل؛ تحقق من جهاز الدفع قبل الاختيار.';
+
+  @override
   String posReconCardNotConfirmedBody(String amount) {
     return 'لم يؤكد جهاز الدفع عملية خصم البطاقة بمبلغ $amount (مثل انتهاء مهلة NFC).\n\nإذا تم خصم المبلغ من العميل، فسجِّل العملية كقيد التسوية — وستتم مطابقتها مع ملف التسوية البنكية. وإلا فألغِ العملية وأعد محاولة الخصم.';
   }
