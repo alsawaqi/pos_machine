@@ -85,12 +85,49 @@ class MosambeePaymentResult {
   /// the bank, so recording it would invent revenue that no settlement file
   /// can ever match.
   bool get neverReachedTerminal {
+    if (isSuccess || isCanceled) return false;
+
+    // (1) The strongest signal, and the one that does not depend on
+    // enumerating codes: the native bridge calls result.error() ONLY before
+    // startActivityForResult, so every PlatformException the Dart wrapper
+    // catches is by construction a failure to DISPATCH. The wrapper stamps
+    // this marker; anything carrying it provably never reached the acquirer.
+    if (payload['dispatch_failed'] == true) return true;
+
     final code = _lookupString(payload, const ['code']).toUpperCase();
-    if (code == 'MISSING_TERMINAL_ID' || code == 'BAD_ARGS') return true;
+    if (const {
+      'MISSING_TERMINAL_ID',
+      'BAD_ARGS',
+      'BUSY', // bridge refused: another transaction holds it, we sent nothing
+      'NO_SESSION', // emitted before any intent is dispatched
+      'NO_BRIDGE', // no native implementation in this build
+    }.contains(code)) {
+      return true;
+    }
+
+    // (2) A failure still at the LOGIN stage means no payment intent was ever
+    // dispatched to the acquirer, so there is nothing to reconcile. The
+    // bridge reports stage 'login' only when the chain STOPPED there — a
+    // login that continues into payment reports stage 'payment'.
+    final stage = _lookupString(payload, const ['stage']).toLowerCase();
+    if (stage == 'login' || stage == 'preflight') return true;
+
+    // (3) Last resort: the launch-failure wordings. Scoped to payloads
+    // carrying NO acquirer evidence — the acquirer authors
+    // paymentDescription, and real verdicts like "Card record was not found"
+    // would otherwise be misread as a failure to launch, hiding the
+    // force-record button on a card that may genuinely have been charged.
+    if (_lookupString(payload, const ['paymentResponseCode', 'responseCode'])
+            .trim()
+            .isNotEmpty ||
+        _nestedMap(payload['receiptResponse']).isNotEmpty) {
+      return false;
+    }
     final message = _reportedMessage.toLowerCase();
     return message.contains('is not installed') ||
         message.contains('was not found') ||
-        message.contains('unable to launch');
+        message.contains('unable to launch') ||
+        message.contains('unable to continue');
   }
 
   /// Neither a clear success nor an explicit cancel (e.g. an NFC timeout or an
@@ -332,25 +369,37 @@ class MosambeePaymentService {
       if (error.code == 'BUSY') {
         return loginAndPay(amountOmr);
       }
-      return MosambeePaymentResult.fromRaw(
-        jsonEncode({
-          'stage': 'flutter_platform',
-          'status': 'failed',
-          'code': error.code,
-          'message': error.message,
-          'details': error.details,
-        }),
-      );
+      return _dispatchFailure('flutter_platform', error.code, error.message,
+          details: error.details);
+    } on MissingPluginException catch (error) {
+      return _dispatchFailure('flutter_platform', 'NO_BRIDGE', error.message);
     } catch (error) {
-      return MosambeePaymentResult.fromRaw(
-        jsonEncode({
-          'stage': 'flutter',
-          'status': 'failed',
-          'error': error.toString(),
-        }),
-      );
+      return _dispatchFailure('flutter', 'DART_ERROR', error.toString());
     }
   }
+
+  /// A failure raised on the DART side of the channel, i.e. before the native
+  /// bridge dispatched anything to the SoftPOS app. The bridge only calls
+  /// `result.error()` ahead of `startActivityForResult`, so these payloads
+  /// provably represent a card that was never charged — [dispatch_failed]
+  /// says exactly that, so the classification does not depend on anyone
+  /// remembering to add each new error code to a list.
+  MosambeePaymentResult _dispatchFailure(
+    String stage,
+    String code,
+    String? message, {
+    Object? details,
+  }) =>
+      MosambeePaymentResult.fromRaw(
+        jsonEncode({
+          'stage': stage,
+          'status': 'failed',
+          'dispatch_failed': true,
+          'code': code,
+          'message': message,
+          'details': ?details,
+        }),
+      );
 
   Future<MosambeePaymentResult> loginAndPay(double amountOmr) async {
     try {
@@ -372,23 +421,12 @@ class MosambeePaymentService {
 
       return MosambeePaymentResult.fromRaw(result);
     } on PlatformException catch (error) {
-      return MosambeePaymentResult.fromRaw(
-        jsonEncode({
-          'stage': 'flutter_platform',
-          'status': 'failed',
-          'code': error.code,
-          'message': error.message,
-          'details': error.details,
-        }),
-      );
+      return _dispatchFailure('flutter_platform', error.code, error.message,
+          details: error.details);
+    } on MissingPluginException catch (error) {
+      return _dispatchFailure('flutter_platform', 'NO_BRIDGE', error.message);
     } catch (error) {
-      return MosambeePaymentResult.fromRaw(
-        jsonEncode({
-          'stage': 'flutter',
-          'status': 'failed',
-          'error': error.toString(),
-        }),
-      );
+      return _dispatchFailure('flutter', 'DART_ERROR', error.toString());
     }
   }
 
