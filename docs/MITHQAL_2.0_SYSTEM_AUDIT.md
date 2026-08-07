@@ -4,7 +4,23 @@
 **Method:** read-only multi-agent source audit — 17 mapping/flow agents (~3.2M tokens, 1054 tool operations) plus an adversarial verification pass over every P0/P1 finding and a requirement-by-requirement gap analysis against all three blueprint documents.
 **Scope audited:** `pos_admin`, `pos_merchant`, `pos_api` (Laravel 13, WSL), `pos_machine`, `pos_handheld` (Flutter, Windows), and the `charity` ecosystem boundary.
 **Evidence convention:** every claim carries `repo/relative/path:line`. Claims that could not be verified in source are marked *Cannot Verify*.
-**Raw evidence appendices:** 17 detailed agent files under `scratchpad/audit/` (3,442 lines), consolidated findings in `findings_all.md` (141 findings), consolidated requirements register in `requirements.md`.
+**Raw evidence appendices:** the 22 per-domain evidence files in `docs/audit-evidence/`, consolidated findings in `audit-evidence/findings_all.md` (141 findings), adversarial verdicts in `audit-evidence/verdicts.md`.
+
+---
+
+## ⚠ Status since publication — read before acting on any finding
+
+This report describes the system **as of 7 August 2026**. Fixes have shipped since. **Three findings are now closed** and must not be re-planned:
+
+| Finding | Status | Commit | What changed |
+|---|---|---|---|
+| **F1** (P0) — handheld outbox lost-write race | ✅ **FIXED** | `pos_handheld 28fbb3f` | Outbox is now an in-memory authoritative list mutated synchronously, prefs as a mirror; flush removes only server-settled rows from the live list. Adversarial review then caught two blockers in that first cut (an `init()` path that re-opened the same hole on every staff login, and a cached failed read that could erase the whole backlog) — both fixed in the same commit. 10 regression tests. |
+| **F16** (P1) — handheld could force-record charges that never reached the bank; **F68** — login-stage failures on **both** apps | ✅ **FIXED** | `pos_handheld 52678b2`, `pos_machine e539886` | Classification now keys on an invariant (the native bridge only errors *before* dispatch, so a Dart-caught failure provably never reached the acquirer) rather than an allowlist of codes. Also closed: the split-payment card leg had its own unguarded force-record path the audit did not record; the launch-failure substring rules were running against acquirer-authored text and could hide force-record on a card that *was* charged. 29 tests including producer-side. |
+| **F13 / F17 / F19** (P1) — shift expected-cash double-subtracted change | ✅ **FIXED** | `pos_api 32d4fff` | Both arithmetic uses removed; `change_given` retained as an audit datum. **Note the audit text was corrected during verification**: the variance direction is a phantom **OVER**, not short — merchants were chasing unexplained overages, and it was masking real shortages of equal size. §16 carries the corrected direction. |
+
+**Not yet deployed.** All commits are local on `main`; nothing is pushed. The two Flutter fixes need an APK rebuild and MDM push before they reach tills. API-003 fixes forward only — **shifts already closed keep their stored incorrect `expected_cash`**; no backfill has been run, and whether to recompute history is an open decision.
+
+**Everything else in this report stands as written.** For what to build next, see the companion **`MITHQAL_2.0_ARCHITECTURE.md`**, which supersedes §31–§34 and §39 of this report with design-level detail and carries four decisions locked with the owner since publication (catalog model, scope, discount overlap rule, and a margin cap that will change live pricing).
 
 ---
 
