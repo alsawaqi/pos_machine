@@ -48,6 +48,33 @@ class L10nEn extends L10n {
   String get settingsSectionOperations => 'Operations';
 
   @override
+  String settingsStuckSalesCount(int count) {
+    return 'Stuck sales ($count)';
+  }
+
+  @override
+  String get settingsStuckSalesSubtitle =>
+      'The server repeatedly refused these sales. Tap to inspect and retry.';
+
+  @override
+  String get settingsStuckSalesDialogBody =>
+      'These sales remain saved on this device. Retrying is safe because the server ignores duplicate event IDs.';
+
+  @override
+  String get settingsRetryAll => 'Retry all';
+
+  @override
+  String get settingsRetryStarted =>
+      'Retry started. Any sale still refused remains saved on this device.';
+
+  @override
+  String get settingsRetryFailed =>
+      'The retry could not start. The sales are still saved on this device.';
+
+  @override
+  String get settingsUnknownSyncError => 'Unknown server error';
+
+  @override
   String get settingsServerAddress => 'Server address';
 
   @override

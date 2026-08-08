@@ -175,6 +175,48 @@ abstract class L10n {
   /// **'Operations'**
   String get settingsSectionOperations;
 
+  /// No description provided for @settingsStuckSalesCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Stuck sales ({count})'**
+  String settingsStuckSalesCount(int count);
+
+  /// No description provided for @settingsStuckSalesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The server repeatedly refused these sales. Tap to inspect and retry.'**
+  String get settingsStuckSalesSubtitle;
+
+  /// No description provided for @settingsStuckSalesDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'These sales remain saved on this device. Retrying is safe because the server ignores duplicate event IDs.'**
+  String get settingsStuckSalesDialogBody;
+
+  /// No description provided for @settingsRetryAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry all'**
+  String get settingsRetryAll;
+
+  /// No description provided for @settingsRetryStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry started. Any sale still refused remains saved on this device.'**
+  String get settingsRetryStarted;
+
+  /// No description provided for @settingsRetryFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The retry could not start. The sales are still saved on this device.'**
+  String get settingsRetryFailed;
+
+  /// No description provided for @settingsUnknownSyncError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown server error'**
+  String get settingsUnknownSyncError;
+
   /// No description provided for @settingsServerAddress.
   ///
   /// In en, this message translates to:

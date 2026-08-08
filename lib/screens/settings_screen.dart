@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_config.dart';
+import '../data/db/app_database.dart';
 import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/settings_service.dart';
@@ -30,6 +31,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late final TextEditingController _urlController;
   bool _testing = false;
+  bool _retryingStuck = false;
   String? _testResult;
   bool _testOk = false;
 
@@ -80,9 +82,120 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     });
   }
 
+  Future<void> _showStuckSales(List<OrderOutboxRow> rows) async {
+    final l10n = L10n.of(context);
+    final retry = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final material = MaterialLocalizations.of(dialogContext);
+        return AlertDialog(
+          title: Text(l10n.settingsStuckSalesCount(rows.length)),
+          content: SizedBox(
+            width: 520,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 460),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final row in rows) ...[
+                    Builder(
+                      builder: (context) {
+                        final created = row.createdAt.toLocal();
+                        final orderNumber = row.orderNumber ?? 0;
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(
+                            Icons.error_rounded,
+                            color: Color(0xFFDC2626),
+                          ),
+                          title: Text(
+                            orderNumber > 0
+                                ? l10n.posStorageOrderNumber(orderNumber)
+                                : l10n.posPaymentOrderRef(row.orderUuid),
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${material.formatMediumDate(created)} · '
+                                '${TimeOfDay.fromDateTime(created).format(context)}',
+                              ),
+                              const SizedBox(height: 4),
+                              SelectableText(
+                                row.lastError?.trim().isNotEmpty == true
+                                    ? row.lastError!.trim()
+                                    : l10n.settingsUnknownSyncError,
+                                style: const TextStyle(
+                                  color: Color(0xFFB3261E),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              if (orderNumber > 0) ...[
+                                const SizedBox(height: 3),
+                                Text(
+                                  l10n.posPaymentOrderRef(row.orderUuid),
+                                  style: const TextStyle(
+                                    color: Colors.black54,
+                                    fontSize: 11,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const Divider(),
+                  ],
+                  Text(
+                    l10n.settingsStuckSalesDialogBody,
+                    style: const TextStyle(color: Colors.black54, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(l10n.commonClose),
+            ),
+            FilledButton.icon(
+              key: const ValueKey('settings-stuck-sales-retry-all'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              icon: const Icon(Icons.refresh_rounded),
+              label: Text(l10n.settingsRetryAll),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (retry != true || !mounted) return;
+    setState(() => _retryingStuck = true);
+    try {
+      await ref.read(orderSyncRepositoryProvider).retryStuck();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.settingsRetryStarted)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.settingsRetryFailed)),
+      );
+    } finally {
+      if (mounted) setState(() => _retryingStuck = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsControllerProvider);
+    final stuckRows = ref.watch(stuckOrderSyncProvider).asData?.value ??
+        const <OrderOutboxRow>[];
     final l10n = L10n.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFF102028),
@@ -100,6 +213,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               if (widget.showOperations) ...[
                 _sectionLabel(l10n.settingsSectionOperations),
                 const SizedBox(height: 4),
+                if (stuckRows.isNotEmpty) ...[
+                  _stuckSalesTile(l10n, stuckRows),
+                  const SizedBox(height: 8),
+                ],
                 _operationTile(
                   icon: Icons.point_of_sale_rounded,
                   title: l10n.posMenuCloseShift,
@@ -339,6 +456,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         subtitle: Text(subtitle, style: const TextStyle(color: Colors.white54)),
         trailing: const Icon(Icons.chevron_right, color: Colors.white38),
         onTap: () => Navigator.of(context).pop(action),
+      );
+
+  Widget _stuckSalesTile(L10n l10n, List<OrderOutboxRow> rows) => Material(
+        key: const ValueKey('settings-stuck-sales-tile'),
+        color: const Color(0xFF3A171B),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: Color(0xFFEF4444), width: 1.2),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          leading: const Icon(Icons.error_rounded, color: Color(0xFFFF6B6B)),
+          title: Text(
+            l10n.settingsStuckSalesCount(rows.length),
+            style: const TextStyle(
+              color: Color(0xFFFF8A80),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          subtitle: Text(
+            l10n.settingsStuckSalesSubtitle,
+            style: const TextStyle(color: Colors.white70),
+          ),
+          trailing: _retryingStuck
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right, color: Color(0xFFFF8A80)),
+          onTap: _retryingStuck ? null : () => _showStuckSales(rows),
+        ),
       );
 
   Widget _sectionLabel(String text) => Text(

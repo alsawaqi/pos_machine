@@ -198,6 +198,13 @@ final orderSyncRepositoryProvider = Provider<OrderSyncRepository>(
   ),
 );
 
+/// MC-001 — rejected revenue batches parked after five server refusals.
+/// This deliberately derives from the repository's existing pending-outbox
+/// stream so the operator badge updates immediately after park/retry/success.
+final stuckOrderSyncProvider = StreamProvider<List<OrderOutboxRow>>(
+  (ref) => ref.read(orderSyncRepositoryProvider).watchStuck(),
+);
+
 /// Phase 1A — anonymous on-device audience measurement (customer-facing camera
 /// → ML Kit face counts), folded into slider.display telemetry. Off unless the
 /// operator enables it in Settings. Auxiliary: never blocks the POS.

@@ -42,7 +42,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 27;
+  int get schemaVersion => 28;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -177,6 +177,13 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(marketingSliders);
             await m.createTable(marketingSliderItems);
           }
+          if (from >= 5 && from < 28) {
+            // v28 — MC-001: count deterministic server rejections separately
+            // from transport failures so rejected revenue can park after five.
+            // A pre-v5 upgrade creates the latest outbox table above, including
+            // this column, so only existing outbox installations add it here.
+            await m.addColumn(orderOutbox, orderOutbox.serverRejections);
+          }
         },
       );
 
@@ -282,6 +289,26 @@ class AppDatabase extends _$AppDatabase {
       (update(orderOutbox)..where((o) => o.orderUuid.equals(orderUuid))).write(
         OrderOutboxCompanion(attempts: Value(attempts), lastError: Value(error)),
       );
+
+  Future<void> markOutboxServerRejection(
+    String orderUuid,
+    int attempts,
+    int serverRejections,
+    String error,
+  ) =>
+      (update(orderOutbox)..where((o) => o.orderUuid.equals(orderUuid))).write(
+        OrderOutboxCompanion(
+          attempts: Value(attempts),
+          serverRejections: Value(serverRejections),
+          lastError: Value(error),
+        ),
+      );
+
+  Future<int> resetStuckOutbox(int rejectionLimit) =>
+      (update(orderOutbox)
+            ..where((o) => o.syncedAt.isNull() &
+                o.serverRejections.isBiggerOrEqualValue(rejectionLimit)))
+          .write(const OrderOutboxCompanion(serverRejections: Value(0)));
 
   /// #3 — locally decrement finite shelf stock (unit/cooked products) after a
   /// sale, clamped at 0, so the produced count survives an app restart until

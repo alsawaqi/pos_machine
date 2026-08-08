@@ -4885,6 +4885,18 @@ class $OrderOutboxTable extends OrderOutbox
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _serverRejectionsMeta = const VerificationMeta(
+    'serverRejections',
+  );
+  @override
+  late final GeneratedColumn<int> serverRejections = GeneratedColumn<int>(
+    'server_rejections',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _lastErrorMeta = const VerificationMeta(
     'lastError',
   );
@@ -4914,6 +4926,7 @@ class $OrderOutboxTable extends OrderOutbox
     orderNumber,
     createdAt,
     attempts,
+    serverRejections,
     lastError,
     syncedAt,
   ];
@@ -4968,6 +4981,15 @@ class $OrderOutboxTable extends OrderOutbox
         attempts.isAcceptableOrUnknown(data['attempts']!, _attemptsMeta),
       );
     }
+    if (data.containsKey('server_rejections')) {
+      context.handle(
+        _serverRejectionsMeta,
+        serverRejections.isAcceptableOrUnknown(
+          data['server_rejections']!,
+          _serverRejectionsMeta,
+        ),
+      );
+    }
     if (data.containsKey('last_error')) {
       context.handle(
         _lastErrorMeta,
@@ -5009,6 +5031,10 @@ class $OrderOutboxTable extends OrderOutbox
         DriftSqlType.int,
         data['${effectivePrefix}attempts'],
       )!,
+      serverRejections: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}server_rejections'],
+      )!,
       lastError: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}last_error'],
@@ -5032,6 +5058,7 @@ class OrderOutboxRow extends DataClass implements Insertable<OrderOutboxRow> {
   final int? orderNumber;
   final DateTime createdAt;
   final int attempts;
+  final int serverRejections;
   final String? lastError;
   final DateTime? syncedAt;
   const OrderOutboxRow({
@@ -5040,6 +5067,7 @@ class OrderOutboxRow extends DataClass implements Insertable<OrderOutboxRow> {
     this.orderNumber,
     required this.createdAt,
     required this.attempts,
+    required this.serverRejections,
     this.lastError,
     this.syncedAt,
   });
@@ -5053,6 +5081,7 @@ class OrderOutboxRow extends DataClass implements Insertable<OrderOutboxRow> {
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['attempts'] = Variable<int>(attempts);
+    map['server_rejections'] = Variable<int>(serverRejections);
     if (!nullToAbsent || lastError != null) {
       map['last_error'] = Variable<String>(lastError);
     }
@@ -5071,6 +5100,7 @@ class OrderOutboxRow extends DataClass implements Insertable<OrderOutboxRow> {
           : Value(orderNumber),
       createdAt: Value(createdAt),
       attempts: Value(attempts),
+      serverRejections: Value(serverRejections),
       lastError: lastError == null && nullToAbsent
           ? const Value.absent()
           : Value(lastError),
@@ -5091,6 +5121,7 @@ class OrderOutboxRow extends DataClass implements Insertable<OrderOutboxRow> {
       orderNumber: serializer.fromJson<int?>(json['orderNumber']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       attempts: serializer.fromJson<int>(json['attempts']),
+      serverRejections: serializer.fromJson<int>(json['serverRejections']),
       lastError: serializer.fromJson<String?>(json['lastError']),
       syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
     );
@@ -5104,6 +5135,7 @@ class OrderOutboxRow extends DataClass implements Insertable<OrderOutboxRow> {
       'orderNumber': serializer.toJson<int?>(orderNumber),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'attempts': serializer.toJson<int>(attempts),
+      'serverRejections': serializer.toJson<int>(serverRejections),
       'lastError': serializer.toJson<String?>(lastError),
       'syncedAt': serializer.toJson<DateTime?>(syncedAt),
     };
@@ -5115,6 +5147,7 @@ class OrderOutboxRow extends DataClass implements Insertable<OrderOutboxRow> {
     Value<int?> orderNumber = const Value.absent(),
     DateTime? createdAt,
     int? attempts,
+    int? serverRejections,
     Value<String?> lastError = const Value.absent(),
     Value<DateTime?> syncedAt = const Value.absent(),
   }) => OrderOutboxRow(
@@ -5123,6 +5156,7 @@ class OrderOutboxRow extends DataClass implements Insertable<OrderOutboxRow> {
     orderNumber: orderNumber.present ? orderNumber.value : this.orderNumber,
     createdAt: createdAt ?? this.createdAt,
     attempts: attempts ?? this.attempts,
+    serverRejections: serverRejections ?? this.serverRejections,
     lastError: lastError.present ? lastError.value : this.lastError,
     syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
   );
@@ -5137,6 +5171,9 @@ class OrderOutboxRow extends DataClass implements Insertable<OrderOutboxRow> {
           : this.orderNumber,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       attempts: data.attempts.present ? data.attempts.value : this.attempts,
+      serverRejections: data.serverRejections.present
+          ? data.serverRejections.value
+          : this.serverRejections,
       lastError: data.lastError.present ? data.lastError.value : this.lastError,
       syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
     );
@@ -5150,6 +5187,7 @@ class OrderOutboxRow extends DataClass implements Insertable<OrderOutboxRow> {
           ..write('orderNumber: $orderNumber, ')
           ..write('createdAt: $createdAt, ')
           ..write('attempts: $attempts, ')
+          ..write('serverRejections: $serverRejections, ')
           ..write('lastError: $lastError, ')
           ..write('syncedAt: $syncedAt')
           ..write(')'))
@@ -5163,6 +5201,7 @@ class OrderOutboxRow extends DataClass implements Insertable<OrderOutboxRow> {
     orderNumber,
     createdAt,
     attempts,
+    serverRejections,
     lastError,
     syncedAt,
   );
@@ -5175,6 +5214,7 @@ class OrderOutboxRow extends DataClass implements Insertable<OrderOutboxRow> {
           other.orderNumber == this.orderNumber &&
           other.createdAt == this.createdAt &&
           other.attempts == this.attempts &&
+          other.serverRejections == this.serverRejections &&
           other.lastError == this.lastError &&
           other.syncedAt == this.syncedAt);
 }
@@ -5185,6 +5225,7 @@ class OrderOutboxCompanion extends UpdateCompanion<OrderOutboxRow> {
   final Value<int?> orderNumber;
   final Value<DateTime> createdAt;
   final Value<int> attempts;
+  final Value<int> serverRejections;
   final Value<String?> lastError;
   final Value<DateTime?> syncedAt;
   final Value<int> rowid;
@@ -5194,6 +5235,7 @@ class OrderOutboxCompanion extends UpdateCompanion<OrderOutboxRow> {
     this.orderNumber = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.attempts = const Value.absent(),
+    this.serverRejections = const Value.absent(),
     this.lastError = const Value.absent(),
     this.syncedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -5204,6 +5246,7 @@ class OrderOutboxCompanion extends UpdateCompanion<OrderOutboxRow> {
     this.orderNumber = const Value.absent(),
     required DateTime createdAt,
     this.attempts = const Value.absent(),
+    this.serverRejections = const Value.absent(),
     this.lastError = const Value.absent(),
     this.syncedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -5216,6 +5259,7 @@ class OrderOutboxCompanion extends UpdateCompanion<OrderOutboxRow> {
     Expression<int>? orderNumber,
     Expression<DateTime>? createdAt,
     Expression<int>? attempts,
+    Expression<int>? serverRejections,
     Expression<String>? lastError,
     Expression<DateTime>? syncedAt,
     Expression<int>? rowid,
@@ -5226,6 +5270,7 @@ class OrderOutboxCompanion extends UpdateCompanion<OrderOutboxRow> {
       if (orderNumber != null) 'order_number': orderNumber,
       if (createdAt != null) 'created_at': createdAt,
       if (attempts != null) 'attempts': attempts,
+      if (serverRejections != null) 'server_rejections': serverRejections,
       if (lastError != null) 'last_error': lastError,
       if (syncedAt != null) 'synced_at': syncedAt,
       if (rowid != null) 'rowid': rowid,
@@ -5238,6 +5283,7 @@ class OrderOutboxCompanion extends UpdateCompanion<OrderOutboxRow> {
     Value<int?>? orderNumber,
     Value<DateTime>? createdAt,
     Value<int>? attempts,
+    Value<int>? serverRejections,
     Value<String?>? lastError,
     Value<DateTime?>? syncedAt,
     Value<int>? rowid,
@@ -5248,6 +5294,7 @@ class OrderOutboxCompanion extends UpdateCompanion<OrderOutboxRow> {
       orderNumber: orderNumber ?? this.orderNumber,
       createdAt: createdAt ?? this.createdAt,
       attempts: attempts ?? this.attempts,
+      serverRejections: serverRejections ?? this.serverRejections,
       lastError: lastError ?? this.lastError,
       syncedAt: syncedAt ?? this.syncedAt,
       rowid: rowid ?? this.rowid,
@@ -5272,6 +5319,9 @@ class OrderOutboxCompanion extends UpdateCompanion<OrderOutboxRow> {
     if (attempts.present) {
       map['attempts'] = Variable<int>(attempts.value);
     }
+    if (serverRejections.present) {
+      map['server_rejections'] = Variable<int>(serverRejections.value);
+    }
     if (lastError.present) {
       map['last_error'] = Variable<String>(lastError.value);
     }
@@ -5292,6 +5342,7 @@ class OrderOutboxCompanion extends UpdateCompanion<OrderOutboxRow> {
           ..write('orderNumber: $orderNumber, ')
           ..write('createdAt: $createdAt, ')
           ..write('attempts: $attempts, ')
+          ..write('serverRejections: $serverRejections, ')
           ..write('lastError: $lastError, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('rowid: $rowid')
@@ -14042,6 +14093,7 @@ typedef $$OrderOutboxTableCreateCompanionBuilder =
       Value<int?> orderNumber,
       required DateTime createdAt,
       Value<int> attempts,
+      Value<int> serverRejections,
       Value<String?> lastError,
       Value<DateTime?> syncedAt,
       Value<int> rowid,
@@ -14053,6 +14105,7 @@ typedef $$OrderOutboxTableUpdateCompanionBuilder =
       Value<int?> orderNumber,
       Value<DateTime> createdAt,
       Value<int> attempts,
+      Value<int> serverRejections,
       Value<String?> lastError,
       Value<DateTime?> syncedAt,
       Value<int> rowid,
@@ -14089,6 +14142,11 @@ class $$OrderOutboxTableFilterComposer
 
   ColumnFilters<int> get attempts => $composableBuilder(
     column: $table.attempts,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get serverRejections => $composableBuilder(
+    column: $table.serverRejections,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -14137,6 +14195,11 @@ class $$OrderOutboxTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get serverRejections => $composableBuilder(
+    column: $table.serverRejections,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get lastError => $composableBuilder(
     column: $table.lastError,
     builder: (column) => ColumnOrderings(column),
@@ -14175,6 +14238,11 @@ class $$OrderOutboxTableAnnotationComposer
 
   GeneratedColumn<int> get attempts =>
       $composableBuilder(column: $table.attempts, builder: (column) => column);
+
+  GeneratedColumn<int> get serverRejections => $composableBuilder(
+    column: $table.serverRejections,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get lastError =>
       $composableBuilder(column: $table.lastError, builder: (column) => column);
@@ -14219,6 +14287,7 @@ class $$OrderOutboxTableTableManager
                 Value<int?> orderNumber = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> attempts = const Value.absent(),
+                Value<int> serverRejections = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
                 Value<DateTime?> syncedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -14228,6 +14297,7 @@ class $$OrderOutboxTableTableManager
                 orderNumber: orderNumber,
                 createdAt: createdAt,
                 attempts: attempts,
+                serverRejections: serverRejections,
                 lastError: lastError,
                 syncedAt: syncedAt,
                 rowid: rowid,
@@ -14239,6 +14309,7 @@ class $$OrderOutboxTableTableManager
                 Value<int?> orderNumber = const Value.absent(),
                 required DateTime createdAt,
                 Value<int> attempts = const Value.absent(),
+                Value<int> serverRejections = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
                 Value<DateTime?> syncedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -14248,6 +14319,7 @@ class $$OrderOutboxTableTableManager
                 orderNumber: orderNumber,
                 createdAt: createdAt,
                 attempts: attempts,
+                serverRejections: serverRejections,
                 lastError: lastError,
                 syncedAt: syncedAt,
                 rowid: rowid,

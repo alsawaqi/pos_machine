@@ -16,8 +16,13 @@ import 'db/app_database.dart';
 class OrderSyncRepository {
   OrderSyncRepository(this._api, this._db);
 
+  /// Only explicit, deterministic server refusals count toward parking.
+  /// Offline / transport failures remain retry-forever.
+  static const int maxServerRejections = 5;
+
   final PosApiService _api;
   final AppDatabase _db;
+  Future<void> _flushTail = Future<void>.value();
 
   /// Build the push events for [snapshot], persist them to the outbox, then try
   /// to flush immediately. The DB write happens BEFORE any network I/O, so the
@@ -136,6 +141,7 @@ class OrderSyncRepository {
       orderNumber: Value(draft.orderNumber ?? 0),
       createdAt: Value(DateTime.now()),
       attempts: const Value(0),
+      serverRejections: const Value(0),
       lastError: const Value(null),
       syncedAt: const Value(null),
     ));
@@ -147,11 +153,27 @@ class OrderSyncRepository {
   /// network failure leaves the row queued for the next attempt; a server-side
   /// rejection of an event is recorded (lastError) for visibility. Returns the
   /// number of orders confirmed synced this run.
-  Future<int> flush() async {
+  Future<int> flush() {
+    // Multiple triggers can overlap (startup, reconnect, and a newly-enqueued
+    // sale). Queue each pass so rejection counters cannot race or page twice.
+    // A pass requested mid-flush still runs afterwards and sees any new rows.
+    final run = _flushTail.then((_) => _flushOnce());
+    _flushTail = run.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return run;
+  }
+
+  Future<int> _flushOnce() async {
     final pending = await _db.pendingOutbox();
     var synced = 0;
 
     for (final row in pending) {
+      // Parked revenue is retained forever but no longer hammers a deterministic
+      // refusal. Manual retry resets only the rejection counter.
+      if (isStuck(row)) continue;
+
       final List<Map<String, dynamic>> events;
       try {
         events = (jsonDecode(row.eventsJson) as List)
@@ -180,28 +202,26 @@ class OrderSyncRepository {
           synced++;
         } else {
           final error = _firstError(results);
-          await _db.markOutboxAttempt(row.orderUuid, row.attempts + 1, error);
-          // Phase C5 — a server-side REJECTION is otherwise invisible (it
-          // only lands in a Drift column). Capture the FIRST failure per row
-          // only, so a retrying fleet can't flood the quota.
-          if (row.attempts == 0) {
-            sentryCaptureMessage(
-              'sync push rejected (${row.orderUuid}): $error',
-              level: SentryLevel.warning,
-            );
-          } else {
-            sentryBreadcrumb(
-              'sync',
-              'push retry rejected',
-              data: {'order': row.orderUuid, 'attempts': row.attempts + 1},
-              level: SentryLevel.warning,
-            );
-          }
+          await _recordServerRejection(row, error);
+        }
+      } on ApiException catch (e) {
+        if (_isDeterministicServerRejection(e)) {
+          await _recordServerRejection(row, e.message);
+        } else {
+          await _db.markOutboxAttempt(
+            row.orderUuid,
+            row.attempts + 1,
+            e.toString(),
+          );
         }
       } catch (e) {
         // Network / transport failure — no ACK at all. The same batch (same
         // client_event_ids) re-pushes cleanly next time.
-        await _db.markOutboxAttempt(row.orderUuid, row.attempts + 1, e.toString());
+        await _db.markOutboxAttempt(
+          row.orderUuid,
+          row.attempts + 1,
+          e.toString(),
+        );
       }
     }
 
@@ -222,6 +242,70 @@ class OrderSyncRepository {
   }
 
   Stream<List<OrderOutboxRow>> watchPending() => _db.watchPendingOutbox();
+
+  Stream<List<OrderOutboxRow>> watchStuck() => watchPending().map(
+        (rows) => rows.where(isStuck).toList(growable: false),
+      );
+
+  Future<List<OrderOutboxRow>> stuckBatches() async =>
+      (await _db.pendingOutbox()).where(isStuck).toList(growable: false);
+
+  /// Un-park every rejected batch and immediately make one serialized retry.
+  /// Stable client_event_ids make this safe when the server processed a prior
+  /// request but its response was lost.
+  Future<int> retryStuck() async {
+    await _db.resetStuckOutbox(maxServerRejections);
+    return flush();
+  }
+
+  static bool isStuck(OrderOutboxRow row) =>
+      row.serverRejections >= maxServerRejections;
+
+  Future<void> _recordServerRejection(
+    OrderOutboxRow row,
+    String error,
+  ) async {
+    final rejections = row.serverRejections + 1;
+    await _db.markOutboxServerRejection(
+      row.orderUuid,
+      row.attempts + 1,
+      rejections,
+      error,
+    );
+
+    sentryBreadcrumb(
+      'sync',
+      'push rejected',
+      data: {
+        'order': row.orderUuid,
+        'server_rejections': rejections,
+      },
+      level: SentryLevel.warning,
+    );
+
+    if (rejections == maxServerRejections) {
+      // Raw server text stays local: validation/SQL errors can include customer
+      // data. The UUID and existing device/company/branch tags are enough for
+      // support to locate the durable row with the operator.
+      sentryCaptureMessage(
+        'outbox batch parked after repeated server rejections '
+        '(order ${row.orderUuid})',
+        level: SentryLevel.error,
+      );
+    }
+  }
+
+  bool _isDeterministicServerRejection(ApiException error) {
+    final status = error.statusCode;
+    if (error.isNetwork || error.isUnauthorized || status == null) return false;
+    // Timeouts and throttling are answered HTTP requests but are transient,
+    // unlike validation/conflict/not-found responses that will not self-heal.
+    return status >= 400 &&
+        status < 500 &&
+        status != 408 &&
+        status != 425 &&
+        status != 429;
+  }
 
   String _firstError(List<Map<String, dynamic>> results) {
     for (final r in results) {

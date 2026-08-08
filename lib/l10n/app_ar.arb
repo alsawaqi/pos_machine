@@ -13,6 +13,20 @@
   "settingsTitle": "الإعدادات",
   "settingsSectionServer": "الخادم",
   "settingsSectionOperations": "العمليات",
+  "settingsStuckSalesCount": "مبيعات عالقة ({count})",
+  "@settingsStuckSalesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsStuckSalesSubtitle": "رفض الخادم هذه المبيعات مرارًا. اضغط لعرض التفاصيل وإعادة المحاولة.",
+  "settingsStuckSalesDialogBody": "تبقى هذه المبيعات محفوظة على الجهاز. إعادة المحاولة آمنة لأن الخادم يتجاهل معرّفات الأحداث المكررة.",
+  "settingsRetryAll": "إعادة محاولة الكل",
+  "settingsRetryStarted": "بدأت إعادة المحاولة. ستبقى أي مبيعات مرفوضة محفوظة على هذا الجهاز.",
+  "settingsRetryFailed": "تعذر بدء إعادة المحاولة. ما زالت المبيعات محفوظة على هذا الجهاز.",
+  "settingsUnknownSyncError": "خطأ غير معروف من الخادم",
   "settingsServerAddress": "عنوان الخادم",
   "settingsServerHint": "مثال: 192.168.1.50:8088",
   "settingsUsingDefault": "الافتراضي المدمج قيد الاستخدام: {url}",

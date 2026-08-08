@@ -257,6 +257,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       // delta config every 60s so admin slider/menu edits reach the screen
       // within a minute even without a live event.
       _configPollTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+        // MC-001 — a deterministic refusal needs another bounded attempt even
+        // when no new sale or connectivity transition occurs. Transport errors
+        // remain retry-forever; the repository parks only server refusals.
+        unawaited(
+          ref.read(orderSyncRepositoryProvider).flush().catchError((_) => 0),
+        );
         unawaited(
           ref
               .read(configRepositoryProvider)
@@ -4898,6 +4904,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildTopBar() {
+    final stuckSalesCount =
+        ref.watch(stuckOrderSyncProvider).asData?.value.length ?? 0;
     return _glassPanel(
       height: 104,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -4925,6 +4933,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           // actions that used to crowd the logout sheet).
           _CircleGlassButton(
             icon: Icons.settings_outlined,
+            badgeCount: stuckSalesCount,
             onTap: () => unawaited(_openSettings()),
           ),
           const SizedBox(width: 8),
@@ -6694,12 +6703,17 @@ class _HeaderNavChip extends StatelessWidget {
 class _CircleGlassButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
+  final int badgeCount;
 
-  const _CircleGlassButton({required this.icon, required this.onTap});
+  const _CircleGlassButton({
+    required this.icon,
+    required this.onTap,
+    this.badgeCount = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final button = InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(22),
       child: Container(
@@ -6708,6 +6722,39 @@ class _CircleGlassButton extends StatelessWidget {
         decoration: _chipDecoration(selected: false),
         child: Icon(icon, color: const Color(0xFF2A3136)),
       ),
+    );
+    if (badgeCount <= 0) return button;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        button,
+        PositionedDirectional(
+          top: -5,
+          end: -5,
+          child: IgnorePointer(
+            child: Container(
+              key: const ValueKey('settings-stuck-sales-badge'),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              constraints: const BoxConstraints(minWidth: 18),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE53935),
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+              child: Text(
+                badgeCount > 99 ? '99+' : '$badgeCount',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  height: 1.2,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

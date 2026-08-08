@@ -48,6 +48,33 @@ class L10nAr extends L10n {
   String get settingsSectionOperations => 'العمليات';
 
   @override
+  String settingsStuckSalesCount(int count) {
+    return 'مبيعات عالقة ($count)';
+  }
+
+  @override
+  String get settingsStuckSalesSubtitle =>
+      'رفض الخادم هذه المبيعات مرارًا. اضغط لعرض التفاصيل وإعادة المحاولة.';
+
+  @override
+  String get settingsStuckSalesDialogBody =>
+      'تبقى هذه المبيعات محفوظة على الجهاز. إعادة المحاولة آمنة لأن الخادم يتجاهل معرّفات الأحداث المكررة.';
+
+  @override
+  String get settingsRetryAll => 'إعادة محاولة الكل';
+
+  @override
+  String get settingsRetryStarted =>
+      'بدأت إعادة المحاولة. ستبقى أي مبيعات مرفوضة محفوظة على هذا الجهاز.';
+
+  @override
+  String get settingsRetryFailed =>
+      'تعذر بدء إعادة المحاولة. ما زالت المبيعات محفوظة على هذا الجهاز.';
+
+  @override
+  String get settingsUnknownSyncError => 'خطأ غير معروف من الخادم';
+
+  @override
   String get settingsServerAddress => 'عنوان الخادم';
 
   @override

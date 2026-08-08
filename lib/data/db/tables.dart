@@ -233,7 +233,8 @@ class TaxCache extends Table {
 // it. NOT part of the catalog cache — replaceConfig never touches it. One row
 // per order; [eventsJson] holds the full event batch (order.create / order.pay
 // / donation.record) with STABLE client_event_ids so a re-push settles exactly
-// once. [syncedAt] null = still pending.
+// once. [syncedAt] null = still pending. [serverRejections] counts only
+// answered-and-refused pushes; transport/offline attempts never advance it.
 @DataClassName('OrderOutboxRow')
 class OrderOutbox extends Table {
   TextColumn get orderUuid => text()();
@@ -241,6 +242,7 @@ class OrderOutbox extends Table {
   IntColumn get orderNumber => integer().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   IntColumn get attempts => integer().withDefault(const Constant(0))();
+  IntColumn get serverRejections => integer().withDefault(const Constant(0))();
   TextColumn get lastError => text().nullable()();
   DateTimeColumn get syncedAt => dateTime().nullable()();
 
