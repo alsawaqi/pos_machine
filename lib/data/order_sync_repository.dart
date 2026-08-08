@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart' show Value;
+import 'package:geolocator/geolocator.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show SentryLevel;
 
 import '../core/sentry.dart';
@@ -167,6 +168,10 @@ class OrderSyncRepository {
 
   Future<int> _flushOnce() async {
     final pending = await _db.pendingOutbox();
+    final branch = await _db.getBranch();
+    final branchIsFenced =
+        branch?.latitude != null && branch?.longitude != null;
+    Future<({double lat, double lng})?>? freshFix;
     var synced = 0;
 
     for (final row in pending) {
@@ -183,6 +188,25 @@ class OrderSyncRepository {
       } catch (e) {
         await _db.markOutboxAttempt(row.orderUuid, row.attempts + 1, 'corrupt outbox payload: $e');
         continue;
+      }
+
+      // A fenced branch fails closed when create/pay reaches the server without
+      // GPS. Re-enrich the decoded durable batch at flush time, retaining every
+      // stable event id/timestamp. One fresh fix is shared by this flush pass.
+      if (branchIsFenced) {
+        final missingGps = _missingGpsContainers(events);
+        if (missingGps.isNotEmpty) {
+          freshFix ??= _acquireFreshFix();
+          final fix = await freshFix;
+          if (fix == null) {
+            // Keep the sale queued without manufacturing a deterministic server
+            // rejection. Other eligible rows in this pass can still settle.
+            continue;
+          }
+          for (final container in missingGps) {
+            container['gps'] = {'lat': fix.lat, 'lng': fix.lng};
+          }
+        }
       }
 
       try {
@@ -226,6 +250,50 @@ class OrderSyncRepository {
     }
 
     return synced;
+  }
+
+  Future<({double lat, double lng})?> _acquireFreshFix() async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
+      ).timeout(const Duration(seconds: 5));
+      return (lat: position.latitude, lng: position.longitude);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List<Map<String, dynamic>> _missingGpsContainers(
+    List<Map<String, dynamic>> events,
+  ) {
+    final missing = <Map<String, dynamic>>[];
+    for (final event in events) {
+      final container = _gpsContainer(event);
+      if (container == null) continue;
+
+      final gps = container['gps'];
+      final hasCompleteGps =
+          gps is Map && gps['lat'] is num && gps['lng'] is num;
+      if (!hasCompleteGps) missing.add(container);
+    }
+    return missing;
+  }
+
+  Map<String, dynamic>? _gpsContainer(Map<String, dynamic> event) {
+    final rawPayload = event['payload'];
+    if (rawPayload is! Map) return null;
+    final payload = rawPayload.cast<String, dynamic>();
+
+    switch (event['event_type']) {
+      case 'order.create':
+        final rawOrder = payload['order'];
+        return rawOrder is Map ? rawOrder.cast<String, dynamic>() : null;
+      case 'order.pay':
+        return payload;
+      default:
+        return null;
+    }
   }
 
   /// Phase 3C — best-effort online push of a single advertising-display

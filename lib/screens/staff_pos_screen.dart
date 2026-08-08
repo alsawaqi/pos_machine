@@ -399,8 +399,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         lat = last?.latitude;
         lng = last?.longitude;
       } catch (_) {
-        // No fix available — enqueue without GPS; a fenced branch will reject
-        // it server-side and it stays queued until a fix is obtained.
+        // No immediate fix available. The durable outbox flush holds fenced
+        // create/pay events locally until it can add a fresh GPS fix.
       }
     }
 
