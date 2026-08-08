@@ -226,6 +226,19 @@ class L10nAr extends L10n {
   String get shiftClosePrintSummary => 'طباعة الملخص';
 
   @override
+  String shiftHandoverWarning(int staffId) {
+    return 'هذا الدرج يخص الموظف رقم $staffId. إغلاقه ينهي وردية ذلك الموظف. بدّل الموظف إذا كان المالك سيواصل العمل.';
+  }
+
+  @override
+  String get shiftHandoverSwitchStaff => 'تبديل الموظف';
+
+  @override
+  String shiftHandoverOwner(int staffId) {
+    return 'مالك الوردية رقم $staffId';
+  }
+
+  @override
   String get deviceSetupTitle => 'إعداد هذا الجهاز';
 
   @override
@@ -2603,10 +2616,11 @@ class L10nAr extends L10n {
       'عُدّ الدرج، اطبع ملخص الوردية، ثم سجّل الخروج.';
 
   @override
-  String get posMenuLogoutOnly => 'تسجيل الخروج فقط';
+  String get posMenuLogoutOnly => 'تبديل الموظف';
 
   @override
-  String get posMenuLogoutOnlySub => 'تبقى الوردية مفتوحة — تبديل الموظف فقط.';
+  String get posMenuLogoutOnlySub =>
+      'يبقى الدرج مفتوحًا. يجب على الموظف التالي تسجيل الدخول بصفة مالكه أو تسويته قبل البيع.';
 
   @override
   String get posCancelPageOrderItems => 'أصناف الطلب';

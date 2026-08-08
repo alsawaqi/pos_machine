@@ -376,12 +376,18 @@ class PosApiService {
   /// a local↔server desync) instead of failing to open a duplicate. HH-2: pass
   /// [staffId] to find the STAFF's open shift first, whichever branch device
   /// opened it — the same person opens one shift a day and every terminal they
-  /// log into shares it.
-  Future<OpenShiftData?> fetchCurrentShift({int? staffId}) async {
+  /// log into shares it. New builds set [sharedStaffOnly] while reconciling a
+  /// login so the server will not fall back to another cashier's shared shift;
+  /// the optional flag keeps deployed clients' existing lookup semantics.
+  Future<OpenShiftData?> fetchCurrentShift({
+    int? staffId,
+    bool sharedStaffOnly = false,
+  }) async {
     final body = await _send(() => _dio.get(
           '/device/shift/current',
           queryParameters: {
             if (staffId != null && staffId > 0) 'staff_id': staffId,
+            if (sharedStaffOnly) 'shared_staff_only': true,
           },
         ));
     final shift = body.dataMap['shift'];

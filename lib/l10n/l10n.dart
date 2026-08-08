@@ -487,6 +487,24 @@ abstract class L10n {
   /// **'Print summary'**
   String get shiftClosePrintSummary;
 
+  /// No description provided for @shiftHandoverWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This drawer belongs to staff #{staffId}. Closing it ends that staff member\'s shift. Switch staff if the owner should continue.'**
+  String shiftHandoverWarning(int staffId);
+
+  /// No description provided for @shiftHandoverSwitchStaff.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch staff'**
+  String get shiftHandoverSwitchStaff;
+
+  /// No description provided for @shiftHandoverOwner.
+  ///
+  /// In en, this message translates to:
+  /// **'Shift owner #{staffId}'**
+  String shiftHandoverOwner(int staffId);
+
   /// No description provided for @deviceSetupTitle.
   ///
   /// In en, this message translates to:
@@ -4323,13 +4341,13 @@ abstract class L10n {
   /// No description provided for @posMenuLogoutOnly.
   ///
   /// In en, this message translates to:
-  /// **'Just Log Out'**
+  /// **'Switch Staff'**
   String get posMenuLogoutOnly;
 
   /// No description provided for @posMenuLogoutOnlySub.
   ///
   /// In en, this message translates to:
-  /// **'The shift stays open — switching staff only.'**
+  /// **'The drawer stays open. The next cashier must resume its owner or settle it before selling.'**
   String get posMenuLogoutOnlySub;
 
   /// No description provided for @posCancelPageOrderItems.

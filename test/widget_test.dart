@@ -10,11 +10,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:pos_machine/main.dart';
+import 'package:pos_machine/models/kitchen_production.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/providers/providers.dart';
 import 'package:pos_machine/services/geofence_service.dart';
 import 'package:pos_machine/services/local_order_storage_service.dart';
+import 'package:pos_machine/services/pos_api_service.dart';
 import 'package:pos_machine/services/session_service.dart';
+import 'package:pos_machine/services/shift_payload.dart';
+import 'package:pos_machine/services/shift_service.dart';
 
 import 'support/fake_order_storage.dart';
 
@@ -79,7 +83,7 @@ void main() {
   // in, shift open — the boot gate walks straight through to the POS. The
   // startup flow gained these gates after the tests were written; each POS
   // test seeds this instead of the old bare terminal_id.
-  void seedSignedInSession() {
+  void seedSignedInSession({int staffId = 7, int shiftStaffId = 7}) {
     mockDeviceToken = 'test-device-token';
     SharedPreferences.setMockInitialValues({
       'terminal_id': 'TERM-1001',
@@ -87,7 +91,7 @@ void main() {
       'company_id': 9,
       'branch_id': 6,
       'staff_session_json': jsonEncode({
-        'id': 7,
+        'id': staffId,
         'name': 'Test Cashier',
         'position': 'cashier',
         'branch_id': 6,
@@ -96,7 +100,7 @@ void main() {
         'uuid': 'shift-0001',
         'opening_cash_baisas': 0,
         'opened_at': DateTime(2026, 1, 1, 8).toIso8601String(),
-        'staff_id': 7,
+        'staff_id': shiftStaffId,
       }),
     });
   }
@@ -106,7 +110,11 @@ void main() {
   // built from the (mocked) prefs + secure storage. The geofence stream is
   // pinned to "disabled" (no fence configured) so the location plugin —
   // absent in tests — never locks the POS.
-  Future<Widget> testApp() async {
+  Future<Widget> testApp({
+    PosApiService? apiService,
+    ShiftService? shiftService,
+    bool stubShiftReconciliation = true,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final session = SessionService(const FlutterSecureStorage(), prefs);
     await session.load();
@@ -117,6 +125,17 @@ void main() {
         geofenceProvider.overrideWith(
           (ref) => Stream.value(const GeofenceStatus(FenceState.disabled)),
         ),
+        if (apiService != null)
+          apiServiceProvider.overrideWithValue(apiService),
+        if (shiftService != null)
+          shiftServiceProvider.overrideWithValue(shiftService),
+        // Most widget cases exercise screens below the startup gate. Keep the
+        // network-owned MC-003 reconciliation deterministic; focused tests
+        // cover its API behavior separately.
+        if (stubShiftReconciliation)
+          shiftReconciliationProvider.overrideWith(
+            (ref, staffId) async => null,
+          ),
       ],
       child: const StaffApp(),
     );
@@ -144,6 +163,99 @@ void main() {
     expect(find.text('Flat White'), findsOneWidget);
     expect(find.text('Favourites'), findsOneWidget);
     expect(find.text('Order History'), findsOneWidget);
+  });
+
+  testWidgets('a foreign cached shift blocks POS until its drawer is closed', (
+    WidgetTester tester,
+  ) async {
+    seedSignedInSession(staffId: 8, shiftStaffId: 7);
+    final api = _WidgetShiftApi(const [_ShiftProbeFailure()]);
+
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      await testApp(apiService: api, stubShiftReconciliation: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Close shift'), findsWidgets);
+    expect(find.text('Counted drawer cash (OMR)'), findsOneWidget);
+    expect(find.text('Current Order'), findsNothing);
+  });
+
+  testWidgets('startup probes and adopts the signed-in staff shared shift', (
+    WidgetTester tester,
+  ) async {
+    seedSignedInSession(staffId: 8, shiftStaffId: 7);
+    final api = _WidgetShiftApi([
+      OpenShiftData(
+        uuid: 'shift-b',
+        openingCashBaisas: 5000,
+        openedAt: DateTime.utc(2026, 8, 8, 8),
+        staffId: 8,
+      ),
+    ]);
+
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      await testApp(apiService: api, stubShiftReconciliation: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(api.shiftCalls, [(staffId: 8, sharedStaffOnly: true)]);
+    expect(find.text('Current Order'), findsOneWidget);
+    expect(find.text('Close shift'), findsNothing);
+  });
+
+  testWidgets('forced handover can switch staff without clearing the drawer', (
+    WidgetTester tester,
+  ) async {
+    seedSignedInSession(staffId: 8, shiftStaffId: 7);
+
+    await tester.pumpWidget(await testApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Switch staff'));
+    await tester.pumpAndSettle();
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(find.text('Staff login'), findsOneWidget);
+    expect(prefs.getString('staff_session_json'), isNull);
+    expect(prefs.getString('open_shift_json'), isNotNull);
+  });
+
+  testWidgets('forced close saves the drawer owner on the Z ticket', (
+    WidgetTester tester,
+  ) async {
+    seedSignedInSession(staffId: 8, shiftStaffId: 7);
+    final api = _WidgetShiftApi(const []);
+
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      await testApp(apiService: api, shiftService: _SettledShiftService(api)),
+    );
+    await tester.pumpAndSettle();
+    final closeButton = find.widgetWithText(FilledButton, 'Close shift');
+    await tester.ensureVisible(closeButton);
+    await tester.tap(closeButton);
+    await tester.pumpAndSettle();
+
+    final prefs = await SharedPreferences.getInstance();
+    final saved =
+        jsonDecode(prefs.getString('last_shift_summary_json')!)
+            as Map<String, dynamic>;
+    expect(saved['staff_name'], 'Shift owner #7');
+    expect(saved['staff_name'], isNot('Test Cashier'));
   });
 
   testWidgets('staff POS defaults to low-cost rendering effects', (
@@ -500,4 +612,48 @@ void main() {
     expect(find.text('Set up this device'), findsOneWidget);
     expect(find.text('Current Order'), findsNothing);
   });
+}
+
+class _WidgetShiftApi extends PosApiService {
+  _WidgetShiftApi(List<Object?> responses)
+    : _responses = List.of(responses),
+      super(tokenGetter: () => 'device-token');
+
+  final List<Object?> _responses;
+  final List<({int? staffId, bool sharedStaffOnly})> shiftCalls = [];
+
+  @override
+  Future<OpenShiftData?> fetchCurrentShift({
+    int? staffId,
+    bool sharedStaffOnly = false,
+  }) async {
+    shiftCalls.add((staffId: staffId, sharedStaffOnly: sharedStaffOnly));
+    if (_responses.isEmpty) {
+      throw StateError('Unexpected shift probe');
+    }
+    final response = _responses.removeAt(0);
+    if (response is _ShiftProbeFailure) throw StateError('offline');
+    return response as OpenShiftData?;
+  }
+
+  @override
+  Future<List<DispositionItem>> fetchDisposition() async => const [];
+}
+
+class _ShiftProbeFailure {
+  const _ShiftProbeFailure();
+}
+
+class _SettledShiftService extends ShiftService {
+  _SettledShiftService(super.api);
+
+  @override
+  Future<ShiftCloseResult> close({
+    required String shiftUuid,
+    required int closingCashBaisas,
+  }) async => const ShiftCloseResult(
+    expectedCashBaisas: 0,
+    varianceBaisas: 0,
+    summaryJson: {},
+  );
 }

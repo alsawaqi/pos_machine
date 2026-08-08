@@ -5,9 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_models.dart';
 
-/// The device's currently-open cash-drawer shift (null = no open shift). Scoped
-/// to the DEVICE, not the staff — the server enforces one open shift per device,
-/// so it survives a staff logout (the next cashier inherits the open drawer).
+/// The cached open cash-drawer shift (null = no open shift). Shared shifts are
+/// staff-owned; a foreign shift may survive logout only long enough for the next
+/// cashier to reconcile and close that drawer, never to inherit it for sales.
 class OpenShiftData {
   const OpenShiftData({
     required this.uuid,
@@ -241,8 +241,9 @@ class SessionService {
     await _prefs.setString(_kLastShiftSummary, jsonEncode(snapshot));
   }
 
-  /// Staff logout (layer 2 only — keeps the device activated AND the open shift,
-  /// which is a per-device drawer the next cashier inherits).
+  /// Staff logout (layer 2 only — keeps the device activated and retains the
+  /// shift record so the next login can adopt its own shift or close a foreign
+  /// drawer before selling).
   Future<void> clearStaff() async {
     await _prefs.remove(_kStaff);
   }

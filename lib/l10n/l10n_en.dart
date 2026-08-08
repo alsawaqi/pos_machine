@@ -228,6 +228,19 @@ class L10nEn extends L10n {
   String get shiftClosePrintSummary => 'Print summary';
 
   @override
+  String shiftHandoverWarning(int staffId) {
+    return 'This drawer belongs to staff #$staffId. Closing it ends that staff member\'s shift. Switch staff if the owner should continue.';
+  }
+
+  @override
+  String get shiftHandoverSwitchStaff => 'Switch staff';
+
+  @override
+  String shiftHandoverOwner(int staffId) {
+    return 'Shift owner #$staffId';
+  }
+
+  @override
   String get deviceSetupTitle => 'Set up this device';
 
   @override
@@ -2580,11 +2593,11 @@ class L10nEn extends L10n {
       'Count the drawer, print the shift summary, then sign out.';
 
   @override
-  String get posMenuLogoutOnly => 'Just Log Out';
+  String get posMenuLogoutOnly => 'Switch Staff';
 
   @override
   String get posMenuLogoutOnlySub =>
-      'The shift stays open — switching staff only.';
+      'The drawer stays open. The next cashier must resume its owner or settle it before selling.';
 
   @override
   String get posCancelPageOrderItems => 'Order Items';

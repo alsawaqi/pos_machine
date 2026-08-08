@@ -25,6 +25,7 @@ import 'restock_request_screen.dart';
 import 'stock_count_screen.dart';
 import 'waste_product_screen.dart';
 import 'settings_screen.dart';
+import 'shift_close_preflight.dart';
 import 'shift_close_screen.dart';
 import '../services/config_mapper.dart';
 
@@ -5188,8 +5189,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// Staff chip menu. With a shift OPEN the sheet asks THE question — are
   /// you closing the shift, or just logging out? Closing counts the drawer,
   /// prints the Z-report, then FORCES the sign-out so the next staff member
-  /// logs in with their own PIN and opens their own shift. "Just log out"
-  /// leaves the shift open (a quick staff switch).
+  /// logs in with their own PIN. "Just log out" leaves the drawer record open,
+  /// but the next cashier cannot inherit it: they must resume as its owner,
+  /// settle it, or open their own float after settlement.
   Future<void> _openStaffMenu() async {
     final hasOpenShift =
         ref.read(sessionControllerProvider).openShift != null;
@@ -5244,27 +5246,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// float. Backing out of the close screen leaves the shift open and stays
   /// logged in.
   Future<void> _closeShiftThenLogout() async {
-    // P-G1.5 — day-end disposition first: if any cooked pieces expired,
-    // the closer decides waste / give-away / carry-over before the count.
-    // ONLINE-ONLY by design; offline (or no expired stock) just proceeds —
-    // the expired pieces simply wait for the next online close.
-    try {
-      final expired = await ref.read(apiServiceProvider).fetchDisposition();
-      if (!mounted) return;
-      if (expired.isNotEmpty) {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => DayEndDispositionScreen(
-              items: expired,
-              staffId: ref.read(sessionServiceProvider).staff?.id,
-            ),
-          ),
-        );
-        if (!mounted) return;
-      }
-    } catch (_) {
-      // Offline / server hiccup: never block closing the shift on it.
-    }
+    await runShiftClosePreflight(context, ref);
+    if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const ShiftCloseScreen()),
     );

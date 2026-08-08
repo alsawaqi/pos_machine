@@ -10,13 +10,19 @@ import '../services/shift_payload.dart';
 import '../services/shift_service.dart';
 import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
+import 'shift_close_preflight.dart';
 
 /// Close the device's open cash-drawer shift: the cashier counts the drawer,
 /// the server computes expected cash (opening + cash sales on this device) and
 /// the variance, then the result is shown and the shift cleared. Pushed over
 /// the POS; on Done the gate returns to the open-shift screen.
 class ShiftCloseScreen extends ConsumerStatefulWidget {
-  const ShiftCloseScreen({super.key});
+  const ShiftCloseScreen({super.key, this.forcedHandover = false});
+
+  /// A newly logged-in cashier found another staff member's drawer cached on
+  /// this device. They must settle it before the startup gate offers a new
+  /// opening float; there is no cancel path into sales.
+  final bool forcedHandover;
 
   @override
   ConsumerState<ShiftCloseScreen> createState() => _ShiftCloseScreenState();
@@ -27,6 +33,7 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
   bool _busy = false;
   String? _error;
   ShiftCloseResult? _result;
+  bool _forcedPreflightComplete = false;
 
   static String _money(int baisas) {
     final omr = baisas / 1000;
@@ -65,6 +72,11 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
       _error = null;
     });
     try {
+      if (widget.forcedHandover && !_forcedPreflightComplete) {
+        await runShiftClosePreflight(context, ref);
+        if (!mounted) return;
+        _forcedPreflightComplete = true;
+      }
       final result = await ref.read(shiftServiceProvider).close(
             shiftUuid: shift.uuid,
             closingCashBaisas: _closingBaisas,
@@ -83,9 +95,12 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
         );
       }
       final session = ref.read(sessionServiceProvider);
+      final ticketStaffName = session.staff?.id == shift.staffId
+          ? session.staff?.name ?? ''
+          : l10n.shiftHandoverOwner(shift.staffId);
       final ticket = ShiftSummaryTicket(
         deviceCode: session.kioskId ?? '',
-        staffName: session.staff?.name ?? '',
+        staffName: ticketStaffName,
         openedAt: shift.openedAt,
         closedAt: closedAt,
         openingBaisas: shift.openingCashBaisas,
@@ -120,7 +135,7 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
       // can never resolve ("shift already closed" forever).
       if (e.message.toLowerCase().contains('already closed')) {
         await ref.read(sessionControllerProvider.notifier).markShiftClosed();
-        if (mounted) Navigator.of(context).pop();
+        if (mounted && !widget.forcedHandover) Navigator.of(context).pop();
         return;
       }
       if (mounted) setState(() => _error = e.message);
@@ -135,7 +150,12 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
 
   Future<void> _done() async {
     await ref.read(sessionControllerProvider.notifier).markShiftClosed();
-    if (mounted) Navigator.of(context).pop();
+    if (mounted && !widget.forcedHandover) Navigator.of(context).pop();
+  }
+
+  Future<void> _switchStaff() async {
+    if (_busy) return;
+    await ref.read(sessionControllerProvider.notifier).logoutStaff();
   }
 
   @override
@@ -148,7 +168,7 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
         backgroundColor: const Color(0xFF102028),
         foregroundColor: Colors.white,
         title: Text(l10n.shiftCloseTitle),
-        leading: _result == null
+        leading: _result == null && !widget.forcedHandover
             ? IconButton(
                 icon: const Icon(Icons.close),
                 onPressed: _busy ? null : () => Navigator.of(context).pop(),
@@ -172,9 +192,35 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
 
   Widget _buildCountStep(int openingBaisas) {
     final l10n = L10n.of(context);
+    final shift = ref.read(sessionControllerProvider).openShift;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (widget.forcedHandover && shift != null) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0x33E0A93B),
+              border: Border.all(color: const Color(0xFFE0A93B)),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              l10n.shiftHandoverWarning(shift.staffId),
+              style: const TextStyle(color: Colors.white, height: 1.35),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _busy ? null : _switchStaff,
+              icon: const Icon(Icons.switch_account_rounded),
+              label: Text(l10n.shiftHandoverSwitchStaff),
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
         _amountCard(l10n.shiftCloseOpeningFloatLabel, _money(openingBaisas),
             muted: true),
         const SizedBox(height: 12),

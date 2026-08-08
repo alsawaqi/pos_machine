@@ -7,8 +7,8 @@ import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
 
 /// Staff PIN login. On success it fetches + caches the branch config (first
-/// login needs network) and then completes the session, which flips the gate
-/// into the POS.
+/// login needs network) and then completes the session. The startup gate
+/// reconciles this cashier's shift before it permits entry to the POS.
 class StaffPinLoginScreen extends ConsumerStatefulWidget {
   const StaffPinLoginScreen({super.key});
 

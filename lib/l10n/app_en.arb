@@ -117,6 +117,23 @@
   "shiftCloseCountedCash": "Counted cash",
   "shiftCloseVariance": "Variance",
   "shiftClosePrintSummary": "Print summary",
+  "shiftHandoverWarning": "This drawer belongs to staff #{staffId}. Closing it ends that staff member's shift. Switch staff if the owner should continue.",
+  "@shiftHandoverWarning": {
+    "placeholders": {
+      "staffId": {
+        "type": "int"
+      }
+    }
+  },
+  "shiftHandoverSwitchStaff": "Switch staff",
+  "shiftHandoverOwner": "Shift owner #{staffId}",
+  "@shiftHandoverOwner": {
+    "placeholders": {
+      "staffId": {
+        "type": "int"
+      }
+    }
+  },
   "deviceSetupTitle": "Set up this device",
   "deviceSetupSubtitle": "Scan or enter the activation code generated for this device in the admin portal. You only do this once.",
   "deviceSetupScanQrButton": "Scan QR code",
@@ -1602,8 +1619,8 @@
   "reportsChooserXReportSub": "Print the current shift's sales so far.",
   "posMenuCloseShiftAndLogout": "Close Shift & Log Out",
   "posMenuCloseShiftAndLogoutSub": "Count the drawer, print the shift summary, then sign out.",
-  "posMenuLogoutOnly": "Just Log Out",
-  "posMenuLogoutOnlySub": "The shift stays open — switching staff only.",
+  "posMenuLogoutOnly": "Switch Staff",
+  "posMenuLogoutOnlySub": "The drawer stays open. The next cashier must resume its owner or settle it before selling.",
   "posCancelPageOrderItems": "Order Items",
   "posCancelPageCancellableCount": "{count} cancellable",
   "@posCancelPageCancellableCount": {

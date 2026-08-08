@@ -102,6 +102,8 @@ final sessionControllerProvider =
 class SessionController extends Notifier<SessionState> {
   SessionService get _svc => ref.read(sessionServiceProvider);
 
+  int _staffSessionGeneration = 0;
+
   @override
   SessionState build() => _svc.snapshot();
 
@@ -111,6 +113,8 @@ class SessionController extends Notifier<SessionState> {
   }
 
   Future<void> saveStaff(StaffSessionData staff) async {
+    _staffSessionGeneration++;
+    ref.invalidate(shiftReconciliationProvider);
     await _svc.saveStaff(staff);
     state = _svc.snapshot();
     // Phase C5 — crashes attribute to the signed-in cashier (no-op w/o DSN).
@@ -123,6 +127,8 @@ class SessionController extends Notifier<SessionState> {
   }
 
   Future<void> logoutStaff() async {
+    _staffSessionGeneration++;
+    ref.invalidate(shiftReconciliationProvider);
     await _svc.clearStaff();
     state = _svc.snapshot();
     await setSentryStaff(id: null);
@@ -142,7 +148,46 @@ class SessionController extends Notifier<SessionState> {
     state = _svc.snapshot();
   }
 
+  /// MC-003 — reconcile the cached drawer against the newly-active cashier.
+  /// Staff-owned shared shifts win across devices. If that cashier has none,
+  /// a second device-only probe preserves a foreign drawer as a handover
+  /// conflict so it can be closed instead of silently inherited or discarded.
+  Future<OpenShiftData?> reconcileShiftForStaff(
+    int staffId, {
+    bool Function()? isActive,
+  }) async {
+    final sessionGeneration = _staffSessionGeneration;
+    bool isCurrentSession() =>
+        (isActive?.call() ?? true) &&
+        _staffSessionGeneration == sessionGeneration &&
+        state.staff?.id == staffId;
+
+    if (!isCurrentSession()) return null;
+    final api = ref.read(apiServiceProvider);
+    final staffCandidate = await api.fetchCurrentShift(
+      staffId: staffId,
+      sharedStaffOnly: true,
+    );
+    if (!isCurrentSession()) return null;
+    if (staffCandidate != null) {
+      await markShiftOpen(staffCandidate);
+      return staffCandidate;
+    }
+
+    final deviceCandidate = await api.fetchCurrentShift();
+    if (!isCurrentSession()) return null;
+    if (deviceCandidate != null) {
+      await markShiftOpen(deviceCandidate);
+      return deviceCandidate;
+    }
+
+    await markShiftClosed();
+    return null;
+  }
+
   Future<void> clearForRePair() async {
+    _staffSessionGeneration++;
+    ref.invalidate(shiftReconciliationProvider);
     await _svc.clearForRePair();
     state = _svc.snapshot();
     await setSentryStaff(id: null);
@@ -153,6 +198,17 @@ class SessionController extends Notifier<SessionState> {
     );
   }
 }
+
+/// Runs once for each signed-in staff session. Auto-dispose matters: logging
+/// out and back in as the same staff member must perform a fresh server probe.
+final shiftReconciliationProvider =
+    FutureProvider.autoDispose.family<OpenShiftData?, int>(
+  (ref, staffId) =>
+      ref.read(sessionControllerProvider.notifier).reconcileShiftForStaff(
+            staffId,
+            isActive: () => ref.mounted,
+          ),
+);
 
 // --- API + config ----------------------------------------------------------
 final apiServiceProvider = Provider<PosApiService>((ref) {
