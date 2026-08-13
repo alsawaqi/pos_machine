@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "SKELETON — scenario drivers land in the T2 scenario-runner iteration; running the gate against this manifest fails loudly",
+  "status": "INTEGRATED — scenario runners landed: exit03/04/09/10 (lane A) + exit06/11/12/15/16 (lane B, incl. Dart drivers for 06/16); full gate 9/9 GREEN on disposable run 'shakeb' 2026-08-13; FAIL-EXIT-11 interleaving REFUTED on PG. Layer 1 regression pack remains mandatory before any exit claim.",
   "runLayout": "build/phase0_exit/<run-id>/ per MITHQAL_2.0_FULL_TESTING_AI_HANDOFF.md §13",
   "authoritativeEffects": [
     "device_outbox_rows", "api_events_received", "api_events_failed", "api_events_processed",

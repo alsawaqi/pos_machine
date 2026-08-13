@@ -38,6 +38,7 @@ services:
     working_dir: /var/www/html
     volumes:
       - ${POS_API_ROOT:-/home/abdallah644/projects/my-projects/pos/pos_api}/src:/var/www/html
+      - ${PHASE0_PHP_DIR:-/mnt/c/src/projects/pos_machine/tool/phase0_exit/php}:/phase0tool:ro
     environment: &laravel_phase0_env
       APP_ENV: testing
       APP_DEBUG: "true"
@@ -69,12 +70,22 @@ services:
     container_name: phase0-exit-api
     profiles: ["server"]
     working_dir: /var/www/html
-    command: php artisan serve --host=0.0.0.0 --port=8000
+    # --no-reload is LOAD-BEARING twice over: without it artisan serve strips
+    # the container environment from its child PHP workers so the mounted dev
+    # src/.env (live hosts) would win inside requests, and PHP_CLI_SERVER_WORKERS
+    # is only honored with it (T2 shakedown finding).
+    command: php artisan serve --host=0.0.0.0 --port=8000 --no-reload
     ports:
       - "127.0.0.1:58000:8000"
     volumes:
       - ${POS_API_ROOT:-/home/abdallah644/projects/my-projects/pos/pos_api}/src:/var/www/html
-    environment: *laravel_phase0_env
+      - ${PHASE0_PHP_DIR:-/mnt/c/src/projects/pos_machine/tool/phase0_exit/php}:/phase0tool:ro
+    environment:
+      <<: *laravel_phase0_env
+      # Real request concurrency for the race scenarios (EXIT-03/04/16):
+      # PHP's built-in server forks this many workers, so two barrier-released
+      # POSTs genuinely overlap inside the app instead of serializing.
+      PHP_CLI_SERVER_WORKERS: "8"
     depends_on: [pg, redis]
     labels:
       mithqal.phase0exit: "disposable"
@@ -85,11 +96,67 @@ services:
     working_dir: /var/www/html
     volumes:
       - ${POS_ADMIN_ROOT:-/home/abdallah644/projects/my-projects/pos/pos_admin}/src:/var/www/html
+      - ${PHASE0_PHP_DIR:-/mnt/c/src/projects/pos_machine/tool/phase0_exit/php}:/phase0tool:ro
     environment: *laravel_phase0_env
     depends_on: [pg, redis]
     labels:
       mithqal.phase0exit: "disposable"
 
-  # charity receiver runner/server for the full EXIT-12 loop is wired in the
-  # scenario-runner iteration (image name resolved at that point); until then
-  # PHASE0_CHARITY_URL stays empty and admin-side tests use Http::fake.
+  # ---- charity receiver (EXIT-12 full loop) --------------------------------
+  # The charity compose normally inherits src/.env, which points at the LIVE
+  # charity_db. The env block below fully SHADOWS it: real container env wins
+  # over .env in Laravel (phpdotenv createImmutable never overwrites process
+  # env), and DB_CONNECTION must be explicit because charity's config defaults
+  # to sqlite. The disposable DB name is phase0_exit_<runid>_charity — the
+  # live charity_db is unreachable by construction (preflight denylists it).
+
+  charity_runner:
+    image: charity-laravel-api-charity-api-app:latest
+    profiles: ["runner"]
+    working_dir: /var/www/html
+    volumes:
+      - ${CHARITY_ROOT:-/home/abdallah644/projects/my-projects/charity/charity-laravel-api}/src:/var/www/html
+      - ${PHASE0_PHP_DIR:-/mnt/c/src/projects/pos_machine/tool/phase0_exit/php}:/phase0tool:ro
+    environment: &charity_phase0_env
+      APP_ENV: testing
+      APP_DEBUG: "true"
+      APP_KEY: ${PHASE0_APP_KEY}
+      DB_CONNECTION: pgsql
+      DB_HOST: phase0-exit-pg
+      DB_PORT: "5432"
+      DB_DATABASE: ${PHASE0_CHARITY_DB:-phase0_exit_default_charity}
+      DB_USERNAME: phase0
+      DB_PASSWORD: phase0localtest
+      BROADCAST_CONNECTION: log
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      MAIL_MAILER: array
+      SENTRY_LARAVEL_DSN: ""
+    depends_on: [pg]
+    labels:
+      mithqal.phase0exit: "disposable"
+
+  charity_server:
+    image: charity-laravel-api-charity-api-app:latest
+    container_name: phase0-exit-charity
+    profiles: ["server"]
+    working_dir: /var/www/html
+    # --no-reload for the same reason as api_server: keep the disposable
+    # container env authoritative over the mounted (live-pointing) src/.env.
+    command: php artisan serve --host 0.0.0.0 --port 8000 --no-reload
+    ports:
+      - "127.0.0.1:58001:8000"
+    volumes:
+      - ${CHARITY_ROOT:-/home/abdallah644/projects/my-projects/charity/charity-laravel-api}/src:/var/www/html
+      - ${PHASE0_PHP_DIR:-/mnt/c/src/projects/pos_machine/tool/phase0_exit/php}:/phase0tool:ro
+    environment:
+      <<: *charity_phase0_env
+      # Multiple workers make concurrent receiver requests genuinely overlap so
+      # the 23505 unique-violation race path (exit12c) is reachable over HTTP —
+      # a single built-in-server worker serializes requests structurally
+      # (lane B shakedown finding).
+      PHP_CLI_SERVER_WORKERS: "8"
+    depends_on: [pg]
+    labels:
+      mithqal.phase0exit: "disposable"

@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "note": "Phase 0 exit gate — DETERMINISTIC fixture contract. Seeded idempotently by php/seed_fixtures.php (pos disposable DB, via api_runner) and php/seed_charity.php (charity disposable DB, via charity_runner). Every scenario relies on these EXACT ids/values; never change without updating every lane.",
+  "pos": {
+    "companies": [
+      { "id": 900100, "name": "P0 Company A", "status": "active" },
+      { "id": 900200, "name": "P0 Company B", "status": "active" }
+    ],
+    "branches": [
+      { "id": 900110, "company_id": 900100, "name": "P0 Main", "latitude": null, "longitude": null, "geofence_radius_m": 500, "fenced": false },
+      { "id": 900115, "company_id": 900100, "name": "P0 Fenced", "latitude": 23.5880, "longitude": 58.3829, "geofence_radius_m": 500, "fenced": true },
+      { "id": 900210, "company_id": 900200, "name": "P0 B Main", "latitude": null, "longitude": null, "geofence_radius_m": 500, "fenced": false }
+    ],
+    "devices": [
+      { "id": 900111, "company_id": 900100, "branch_id": 900110, "device_type": "fixed_pos", "status": "active", "device_token": "phase0-mdev-machine-a1", "assigned_at": "now-30d" },
+      { "id": 900112, "company_id": 900100, "branch_id": 900110, "device_type": "handheld", "status": "active", "device_token": "phase0-mdev-handheld-a1", "assigned_at": "now-30d" },
+      { "id": 900113, "company_id": 900100, "branch_id": 900110, "device_type": "fixed_pos", "status": "active", "device_token": "phase0-mdev-spare-a1", "assigned_at": "now-30d" },
+      { "id": 900116, "company_id": 900100, "branch_id": 900115, "device_type": "fixed_pos", "status": "active", "device_token": "phase0-mdev-machine-fenced", "assigned_at": "now-30d" },
+      { "id": 900211, "company_id": 900200, "branch_id": 900210, "device_type": "fixed_pos", "status": "active", "device_token": "phase0-mdev-machine-b1", "assigned_at": "now-30d" }
+    ],
+    "deviceNotes": "device_token is PLAINTEXT (pos_device guard matches the column directly). assigned_at is seeded 30 days in the past so the stranded-event sweeper's device-reassignment safety check (assigned_at < server_received_at) passes for backdated seeded events. All devices carry commission_profile_id=1 (the charity split profile, mirrored as a stub row id=1 in the pos DB commission_profiles stub table so the FK holds).",
+    "staff": [
+      { "id": 900120, "company_id": 900100, "branch_id": 900110, "name": "P0 Cashier", "position": "cashier", "pin": "123456" },
+      { "id": 900121, "company_id": 900100, "branch_id": 900110, "name": "P0 Manager", "position": "manager", "pin": "654321" }
+    ],
+    "customers": [
+      { "id": 900130, "company_id": 900100, "name": "P0 Customer", "phone": "+968 90000130" }
+    ],
+    "products": [
+      { "id": 900140, "company_id": 900100, "name": "P0 Untracked", "base_price_omr": "2.500", "stock_mode": "untracked" },
+      { "id": 900141, "company_id": 900100, "name": "P0 Tracked", "base_price_omr": "2.500", "stock_mode": "unit" }
+    ],
+    "stock": {
+      "central_pool": { "table": "pos_product_stock", "company_id": 900100, "product_id": 900141, "quantity": "100.000" },
+      "branch_shelf": { "table": "pos_branch_product", "branch_id": 900110, "product_id": 900141, "stock_qty": "100.000" }
+    },
+    "loyalty": {
+      "rule": { "id": 900150, "company_id": 900100, "name": "P0 Points", "type": "spend_based", "status": "active" },
+      "account": { "customer_id": 900130, "loyalty_rule_id": 900150, "company_id": 900100, "point_balance": 30, "stamp_count": 0, "note": "re-seeding FORCE-RESETS the balance to 30/0" }
+    },
+    "commission": {
+      "profile": { "id": 900160, "table": "pos_commission_profiles", "company_id": 900100, "is_active": true, "merchant_percent": "95.00" },
+      "shares": [
+        { "id": 900161, "party_type": "platform", "label": "Platform", "percent": "2.00", "applies_to": "all" },
+        { "id": 900162, "party_type": "bank", "label": "Bank", "percent": "3.00", "applies_to": "card" }
+      ],
+      "note": "bank slice is charged on the card-paid portion only; a cash-only paid order records 3 rows (platform cash_bank, bank card @0, merchant residual)"
+    }
+  },
+  "charity": {
+    "commission_profile": { "id": 1, "table": "commission_profiles", "name": "P0 Split", "is_active": true },
+    "shares": [
+      { "id": 1, "commission_profile_id": 1, "label": "Org A", "percentage": "70.000", "organization_id": null },
+      { "id": 2, "commission_profile_id": 1, "label": "Org B", "percentage": "30.000", "organization_id": null }
+    ]
+  }
+}
