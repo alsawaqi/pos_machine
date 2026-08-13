@@ -53,6 +53,15 @@ Some audit findings describe defects that have since been fixed. Treat their sta
 
 The next work is mostly verification infrastructure and testing, but it is not “only running tests.” The next engineer must assemble a deterministic cross-repository runner, add missing integration scenarios, run it twice, fix any defects it exposes, rerun all repository suites, and then perform the two physical-device smoke tests.
 
+### Independent testing delegation
+
+A separate AI model may own the full testing program under [MITHQAL_2.0_FULL_TESTING_AI_HANDOFF.md](MITHQAL_2.0_FULL_TESTING_AI_HANDOFF.md). Under that split:
+
+- The testing AI owns test planning, test-only fixtures/drivers/runner code, all automated execution, evidence, failure reproduction, full-suite validation and physical-smoke coordination.
+- The testing AI must not edit production behavior. It returns product failures to the implementation AI and independently revalidates the supplied fix.
+- A human operates the physical devices and owns final Phase 0 acceptance.
+- `CORE-001` remains blocked until the independent report and physical evidence are accepted.
+
 ---
 
 ## 3. System topology and repository ownership
@@ -329,15 +338,15 @@ Do not silently replace the PHP 8.4 container runs with the current WSL host PHP
 
 ## 9. Local Git state at handoff
 
-| Repository | Phase 0 implementation HEAD | Relation to `origin/main` after the documentation-only handoff commit | Expected worktree after that commit |
+| Repository | Phase 0 implementation HEAD | Relation to `origin/main` after the independent-testing handoff commit | Expected worktree after that commit |
 |---|---|---:|---|
-| `pos_machine` | `2b480d6` | ahead 8 | Handoff committed; unrelated modified submodule `.codex_inspect/SunmiFingerprintDemo` and untracked `.agents/`, `skills-lock.json` remain |
+| `pos_machine` | `2b480d6` | ahead 9 | Both handoffs committed; unrelated modified submodule `.codex_inspect/SunmiFingerprintDemo` and untracked `.agents/`, `skills-lock.json` remain |
 | `pos_handheld` | `52678b2` | ahead 2 | Clean |
 | `pos_api` | `07f92c4` | ahead 9 | Clean |
 | `pos_admin` | `972a1a1` | ahead 5 | Clean |
 | `pos_merchant` | `c3b0cdf` | ahead 3 | Clean |
 
-The documentation-only commit immediately after `2b480d6` contains this file. Its SHA is deliberately not embedded in its own contents because amending the file changes that SHA; resolve it with `git log -1 -- docs/MITHQAL_2.0_PHASE_0_HANDOFF.md`.
+The original Phase 0 handoff was introduced by `4b81272`. A later documentation-only commit adds the independent testing handoff and links it from this file. Resolve the current documentation SHA with `git log -1 -- docs/MITHQAL_2.0_FULL_TESTING_AI_HANDOFF.md`.
 
 No Phase 0 commit was pushed, deployed or applied to the live database.
 
@@ -372,6 +381,8 @@ Important: the Phase 0 exit criterion is **no lost submitted sale and no invisib
 ---
 
 ## 11. Immediate next task — Phase 0 scripted exit gate
+
+When delegating this work to another AI model, use [MITHQAL_2.0_FULL_TESTING_AI_HANDOFF.md](MITHQAL_2.0_FULL_TESTING_AI_HANDOFF.md) as its complete assignment and authority boundary. The scenario definitions below remain the technical exit contract.
 
 ### 11.1 Authoritative exit condition
 
