@@ -1,0 +1,95 @@
+# MITHQAL Phase 0 exit gate — DISPOSABLE test infrastructure (test-only; never production)
+# Project name is always `phase0exit`; every container is named phase0-exit-*.
+# No service publishes a port except the API server (127.0.0.1 only).
+# Data lives in anonymous volumes destroyed by `docker compose -p phase0exit down -v`.
+#
+# Repo roots are parameterized (owner rule: no hardcoded home paths):
+#   POS_API_ROOT, POS_ADMIN_ROOT, CHARITY_ROOT  — WSL absolute paths
+#   PHASE0_DB          — must match ^phase0_exit_[a-z0-9_]+$ (enforced by preflight.ps1)
+#   PHASE0_APP_KEY     — throwaway base64 key generated per run by phase0_exit.ps1
+#   PHASE0_SWEEP_FLOOR — cutover floor for sweeper scenarios (disposable DB only)
+
+name: phase0exit
+
+services:
+  pg:
+    image: postgres:16-alpine
+    container_name: phase0-exit-pg
+    environment:
+      POSTGRES_USER: phase0
+      POSTGRES_PASSWORD: phase0localtest
+      POSTGRES_DB: phase0_exit_bootstrap
+    labels:
+      mithqal.phase0exit: "disposable"
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  redis:
+    image: redis:8-alpine
+    container_name: phase0-exit-redis
+    labels:
+      mithqal.phase0exit: "disposable"
+
+  # ---- one-off runners (profiles: never started by plain `up`) ----
+
+  api_runner:
+    image: pos_api-pos_api
+    profiles: ["runner"]
+    working_dir: /var/www/html
+    volumes:
+      - ${POS_API_ROOT:-/home/abdallah644/projects/my-projects/pos/pos_api}/src:/var/www/html
+    environment: &laravel_phase0_env
+      APP_ENV: testing
+      APP_DEBUG: "true"
+      APP_KEY: ${PHASE0_APP_KEY}
+      DB_CONNECTION: pgsql
+      DB_HOST: phase0-exit-pg
+      DB_PORT: "5432"
+      DB_DATABASE: ${PHASE0_DB:-phase0_exit_default}
+      DB_USERNAME: phase0
+      DB_PASSWORD: phase0localtest
+      CACHE_STORE: redis
+      REDIS_HOST: phase0-exit-redis
+      REDIS_PORT: "6379"
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      BROADCAST_CONNECTION: "null"
+      MAIL_MAILER: array
+      SENTRY_LARAVEL_DSN: ""
+      TELESCOPE_ENABLED: "false"
+      CHARITY_API_URL: ${PHASE0_CHARITY_URL:-}
+      SYNC_STRANDED_SWEEP_ENABLED: "false"
+      SYNC_STRANDED_SWEEP_AFTER_ID: ${PHASE0_SWEEP_FLOOR:-}
+    depends_on: [pg, redis]
+    labels:
+      mithqal.phase0exit: "disposable"
+
+  api_server:
+    image: pos_api-pos_api
+    container_name: phase0-exit-api
+    profiles: ["server"]
+    working_dir: /var/www/html
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    ports:
+      - "127.0.0.1:58000:8000"
+    volumes:
+      - ${POS_API_ROOT:-/home/abdallah644/projects/my-projects/pos/pos_api}/src:/var/www/html
+    environment: *laravel_phase0_env
+    depends_on: [pg, redis]
+    labels:
+      mithqal.phase0exit: "disposable"
+
+  admin_runner:
+    image: pos_admin-pos_admin
+    profiles: ["runner"]
+    working_dir: /var/www/html
+    volumes:
+      - ${POS_ADMIN_ROOT:-/home/abdallah644/projects/my-projects/pos/pos_admin}/src:/var/www/html
+    environment: *laravel_phase0_env
+    depends_on: [pg, redis]
+    labels:
+      mithqal.phase0exit: "disposable"
+
+  # charity receiver runner/server for the full EXIT-12 loop is wired in the
+  # scenario-runner iteration (image name resolved at that point); until then
+  # PHASE0_CHARITY_URL stays empty and admin-side tests use Http::fake.

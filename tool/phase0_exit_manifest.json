@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "status": "SKELETON — scenario drivers land in the T2 scenario-runner iteration; running the gate against this manifest fails loudly",
+  "runLayout": "build/phase0_exit/<run-id>/ per MITHQAL_2.0_FULL_TESTING_AI_HANDOFF.md §13",
+  "authoritativeEffects": [
+    "device_outbox_rows", "api_events_received", "api_events_failed", "api_events_processed",
+    "orders", "payments", "stock_movements", "loyalty_ledger_rows", "loyalty_review_rows",
+    "commission_rows", "local_donations", "receiver_transactions", "receiver_shares"
+  ],
+  "regressionPack": {
+    "note": "Layer 1 — mandatory before the integrated gate; a green integrated run never excuses skipping this.",
+    "machine": ["test/phase0_exit/", "test/card_charge_classification_test.dart", "test/order_sync_parking_regression_test.dart", "test/stuck_sales_surface_test.dart", "test/order_sync_geofence_reenrichment_test.dart", "test/shift_reconciliation_test.dart", "test/widget_test.dart", "test/pos_controller_charity_flow_test.dart"],
+    "handheld": ["test/phase0_exit/", "test/outbox_race_test.dart", "test/outbox_stuck_test.dart", "test/mosambee_classification_test.dart"],
+    "api": ["tests/Feature/Phase0Exit/", "tests/Feature/DeviceSyncShiftTest.php", "tests/Feature/DeviceCurrentShiftTest.php", "tests/Feature/DeviceSyncLoyaltyTest.php", "tests/Feature/DeviceSyncStrandedEventTest.php", "tests/Feature/DeviceSyncDonationTest.php", "tests/Feature/DeviceSyncExpenseRestockTest.php", "tests/Feature/DeviceSyncSliderTest.php", "tests/Feature/DeviceSyncSliderBillingIntegrityTest.php"],
+    "admin": ["tests/Feature/Admin/Phase0Exit/", "tests/Feature/Admin/PendingReconciliationTest.php", "tests/Feature/Admin/ForwardCharityDonationActionTest.php", "tests/Feature/Admin/RetryRoundupForwardingTest.php", "tests/Feature/Admin/SchedulerTest.php", "tests/Feature/Admin/RoundupDonationTableTest.php", "tests/Feature/Admin/LoyaltyShortfallReviewSchemaTest.php", "tests/Feature/Admin/ScanExpiringCompanyDocumentsJobTest.php"],
+    "merchant": ["tests/Feature/Pos/LoyaltyShortfallReviewTest.php", "tests/Feature/Pos/RoundupDonationSchemaTest.php"],
+    "charity": ["tests/Feature/CharityPosRoundupTest.php"]
+  },
+  "scenarios": [
+    { "id": "EXIT-01", "layer": "unit", "driver": "pos_machine test/phase0_exit (W-M1)", "integrated": false },
+    { "id": "EXIT-02", "layer": "unit", "driver": "pos_handheld test/outbox_race_test.dart (existing)", "integrated": false },
+    { "id": "EXIT-03", "layer": "unit+integrated", "driver": "W-M2/W-H2 + PG dual-connection replay race", "integrated": true },
+    { "id": "EXIT-04", "layer": "unit+integrated", "driver": "W-M3/W-H3/W-A1 + PG concurrent same-account redeem", "integrated": true },
+    { "id": "EXIT-05", "layer": "unit", "driver": "W-M4/W-H4/W-A2", "integrated": false },
+    { "id": "EXIT-06", "layer": "unit+integrated", "driver": "existing machine re-enrichment + enriched replay accepted once by harness API", "integrated": true },
+    { "id": "EXIT-07", "layer": "unit", "driver": "W-M5/W-H5", "integrated": false },
+    { "id": "EXIT-08", "layer": "unit", "driver": "W-M6/W-H6/W-A3", "integrated": false },
+    { "id": "EXIT-09", "layer": "integrated", "driver": "seeded received rows on real PG + two concurrent sweepers under real Redis lock", "integrated": true },
+    { "id": "EXIT-10", "layer": "unit+integrated", "driver": "W-A4 + real-env floor honored on PG", "integrated": true },
+    { "id": "EXIT-11", "layer": "unit+integrated", "driver": "W-D1/W-D2 + admin approve racing device void on shared PG", "integrated": true },
+    { "id": "EXIT-12", "layer": "unit+integrated", "driver": "W-D3/W-C1 + full pos_admin→receiver loop when charity runner is wired", "integrated": true },
+    { "id": "EXIT-13", "layer": "unit", "driver": "existing machine + W-H7", "integrated": false },
+    { "id": "EXIT-14", "layer": "unit", "driver": "existing machine + W-H8", "integrated": false },
+    { "id": "EXIT-15", "layer": "unit+integrated", "driver": "W-A5 + PG two-device same-second collision", "integrated": true },
+    { "id": "EXIT-16", "layer": "integrated", "driver": "both payload builders, parallel streams, barrier, shared PG state", "integrated": true }
+  ]
+}

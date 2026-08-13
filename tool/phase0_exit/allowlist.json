@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "approvedBy": "Owner approval in chat, 2026-08-13 (Asia/Muscat): 'approved go ahead with step 3'",
+  "notes": "Preflight refuses to run unless every resolved identity matches this file. A denylist match ALWAYS wins over an allowlist match.",
+  "postgres": {
+    "containers": ["phase0-exit-pg"],
+    "host": "phase0-exit-pg",
+    "user": "phase0",
+    "databasePattern": "^phase0_exit_[a-z0-9_]+$"
+  },
+  "redis": {
+    "containers": ["phase0-exit-redis"],
+    "host": "phase0-exit-redis"
+  },
+  "composeProject": "phase0exit",
+  "containerLabel": "mithqal.phase0exit=disposable",
+  "endpoints": {
+    "allowed": [
+      "http://127.0.0.1:58000",
+      "http://localhost:58000",
+      "http://phase0-exit-api:8000",
+      "http://phase0-exit-charity:8000"
+    ]
+  },
+  "denylist": {
+    "databases": ["charity_db"],
+    "hostsGlob": ["*.mithqal.net"],
+    "redisHosts": ["pos_api_redis", "pos_admin_redis", "pos_merchant_redis"],
+    "dbHosts": ["chariyt-db", "rahby-db", "musandam_postgres"],
+    "rule": "Any match here aborts the run regardless of allowlist matches. Non-localhost endpoints are always denied."
+  }
+}
