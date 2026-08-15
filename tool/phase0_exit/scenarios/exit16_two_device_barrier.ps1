@@ -96,8 +96,12 @@ function Invoke-Scenario {
       $procs += @{ Name = $d.Name; P = $p; Out = $out }
     }
 
-    # Barrier: both drivers must write their ready files within 30s.
-    $deadline = (Get-Date).AddSeconds(30)
+    # Barrier: both drivers must write their ready files. 180s bound — the
+    # first flutter test after a reboot/SDK change rebuilds cold caches and
+    # can take >30s just to reach main() (run1b 2026-08-15 FLAKY finding);
+    # the go-file release below is what synchronizes the actual race, so a
+    # generous arming window costs nothing.
+    $deadline = (Get-Date).AddSeconds(180)
     while (-not ((Test-Path $readyM) -and (Test-Path $readyH))) {
       if ((Get-Date) -gt $deadline) {
         $state = "machineReady=$(Test-Path $readyM) handheldReady=$(Test-Path $readyH)"
