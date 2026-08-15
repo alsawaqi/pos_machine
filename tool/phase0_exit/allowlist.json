@@ -19,8 +19,10 @@
       "http://127.0.0.1:58000",
       "http://localhost:58000",
       "http://phase0-exit-api:8000",
-      "http://phase0-exit-charity:8000"
-    ]
+      "http://phase0-exit-charity:8000",
+      "http://192.168.100.136:58000"
+    ],
+    "lanNote": "192.168.100.136:58000 approved by the owner in chat 2026-08-13 SOLELY for the supervised T7 physical-smoke session via docker-compose.phase0.smoke.yml; revert the binding after the session."
   },
   "denylist": {
     "databases": ["charity_db"],

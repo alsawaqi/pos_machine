@@ -1,0 +1,14 @@
+# T7 physical-smoke override — TEST-ONLY, applied ONLY for the supervised
+# physical-device session (owner approved the LAN exposure in chat 2026-08-13).
+#
+#   docker compose -p phase0exit -f docker-compose.phase0.yml -f docker-compose.phase0.smoke.yml up -d api_server
+#
+# Rebinds the harness API from 127.0.0.1 to the LAN so the physical Sunmi T3
+# and handheld on the same WiFi can reach http://192.168.100.136:58000.
+# Everything behind it stays the disposable phase0exit stack; the denylist
+# (charity_db, *.mithqal.net, prod Redis) is untouched. Revert by re-upping
+# api_server WITHOUT this file after the session.
+services:
+  api_server:
+    ports: !override
+      - "58000:8000"

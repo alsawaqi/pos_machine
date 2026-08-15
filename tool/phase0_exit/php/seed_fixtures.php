@@ -108,6 +108,53 @@ foreach ($devices as [$id, $companyId, $branchId, $type, $token, $name]) {
     ]);
 }
 
+// ---- catalog category (the device POS grid renders by category; uncategorized
+// products with zero categories appear nowhere — T7 session finding) ----------
+upsert('pos_product_categories', ['id' => 900145], [
+    'uuid' => p0uuid(900145), 'company_id' => 900100, 'name' => 'P0 Menu',
+    'display_order' => 0, 'status' => 'active',
+    'created_at' => $now, 'updated_at' => $now, 'deleted_at' => null,
+]);
+DB::table('pos_products')->whereIn('id', [900140, 900141])->update(['category_id' => 900145]);
+
+// ---- physical smoke devices (T7) -------------------------------------------
+// Unpaired rows + one-time activation codes for the REAL Sunmi T3 and handheld.
+// The operator enters the plaintext code on the device; ActivateDeviceAction
+// then mints the real device_token. Re-seeding RE-ARMS the codes (used_at
+// cleared, expiry pushed out) so a smoke session can be repeated. terminal_id
+// is a placeholder — update to the bank TEST terminal id at session time.
+$physical = [
+    [900117, 'fixed_pos', 'P0 Sunmi T3 physical', 'PHASE0-ACT-SUNMI-2026'],
+    [900118, 'handheld', 'P0 Handheld physical', 'PHASE0-ACT-HH-2026'],
+];
+foreach ($physical as [$id, $type, $name, $code]) {
+    upsert('pos_devices', ['id' => $id], [
+        'uuid' => p0uuid($id),
+        'serial_number' => 'P0-SN-'.$id,
+        'kiosk_id' => 'P0-KIOSK-'.$id,
+        'terminal_id' => 'PHASE0-TEST-TERM-'.$id,
+        'terminal_pin' => '1321',
+        'commission_profile_id' => 1,
+        'bank_id' => null,
+        'name' => $name,
+        'device_type' => $type,
+        'company_id' => 900100,
+        'branch_id' => 900110,
+        'status' => 'active',
+        'assigned_at' => $past,
+        'device_token' => null,
+        'created_at' => $now, 'updated_at' => $now, 'deleted_at' => null,
+    ]);
+    upsert('pos_device_activation_tokens', ['device_id' => $id], [
+        'token_hash' => hash('sha256', $code),
+        'created_by_user_id' => null,
+        'expires_at' => now()->addDays(7),
+        'used_at' => null,
+        'revoked_at' => null,
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
+}
+
 // ---- staff -----------------------------------------------------------------
 upsert('pos_staff', ['id' => 900120], [
     'uuid' => p0uuid(900120), 'company_id' => 900100, 'branch_id' => 900110,
