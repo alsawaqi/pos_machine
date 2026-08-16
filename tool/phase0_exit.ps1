@@ -36,7 +36,15 @@ function Invoke-Wsl([string]$cmd) {
 # Environment for compose interpolation (repo roots parameterized, throwaway key per run).
 $bytes = New-Object byte[] 32; (New-Object Random).NextBytes($bytes)
 $appKey = 'base64:' + [Convert]::ToBase64String($bytes)
-$phpDirWsl = (wsl -e wslpath -a ($here + '\phase0_exit\php').Replace('\', '/')).Trim()
+# Stage the php helpers into a NATIVE WSL directory. Mounting them from
+# /mnt/c routes through Docker Desktop's file-sharing bind cache, which can
+# serve stale/empty content after a Docker crash recovery (run8c-run10c
+# finding: admin_runner saw an empty /phase0tool while the raw path worked).
+# WSL-native paths mount into containers directly, bypassing that layer.
+$phpSrcWsl = (wsl -e wslpath -a ($here + '\phase0_exit\php').Replace('\', '/')).Trim()
+$phpDirWsl = '/home/abdallah644/.phase0_php'
+wsl -e bash -lc "mkdir -p $phpDirWsl && cp -f $phpSrcWsl/*.php $phpDirWsl/ && ls $phpDirWsl" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'failed to stage php helpers into WSL-native dir' }
 $sweepFloor = if ($env:PHASE0_SWEEP_FLOOR) { $env:PHASE0_SWEEP_FLOOR } else { '0' }
 # BASE url only — verified read-only in both repos: pos_api ForwardCharityDonationAction
 # and pos_admin Actions\Admin\Reconciliation\ForwardCharityDonationAction both read
