@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -101,6 +102,10 @@ class MosambeePaymentResult {
       'BUSY', // bridge refused: another transaction holds it, we sent nothing
       'NO_SESSION', // emitted before any intent is dispatched
       'NO_BRIDGE', // no native implementation in this build
+      // The activity launched but never produced a result. The Phase 0 owner
+      // classifies this watchdog outcome as never reached so it can never
+      // expose the force-record action.
+      'SOFTPOS_NOT_RESPONDING',
     }.contains(code)) {
       return true;
     }
@@ -253,6 +258,10 @@ class MosambeePaymentResult {
   }
 }
 
+class _SoftPosNotRespondingException implements Exception {
+  const _SoftPosNotRespondingException();
+}
+
 class MosambeePaymentService {
   static const MethodChannel _platform = MethodChannel('com.example.mosambee');
   static bool _handlerInstalled = false;
@@ -261,6 +270,7 @@ class MosambeePaymentService {
   static const String appPackageName = 'com.mosambee.dhofar.softpos';
   static const String defaultTerminalPin = '1321';
   static const String partnerId = '';
+  static const Duration defaultLaunchWatchdogTimeout = Duration(seconds: 95);
 
   /// The Mosambee login PIN to use: the bank-issued per-device PIN cached
   /// under prefs 'terminal_pin' when set, else the [defaultTerminalPin].
@@ -269,9 +279,13 @@ class MosambeePaymentService {
           ? defaultTerminalPin
           : cached.trim();
 
-  MosambeePaymentService() {
+  MosambeePaymentService({
+    this.launchWatchdogTimeout = defaultLaunchWatchdogTimeout,
+  }) {
     _ensureHandlerInstalled();
   }
+
+  final Duration launchWatchdogTimeout;
 
   void setLaunchStateListener(
     void Function(Map<String, dynamic> event)? listener,
@@ -324,6 +338,10 @@ class MosambeePaymentService {
     final pin = MosambeePaymentService.effectivePin(
       await LocalStorageService.getTerminalPin(),
     );
+    // Native owns the background pre-warm watchdog. Starting a 95-second Dart
+    // timer here would outlive screens/tests that intentionally fire-and-forget
+    // this best-effort warm-up. The payment path applies its own bounded wait
+    // before it ever depends on this future.
     return _platform.invokeMethod<String>(
       'prepareLogin',
       _loginArgs(terminalId, pin),
@@ -352,11 +370,11 @@ class MosambeePaymentService {
     // Let any in-flight pre-warm finish first, to avoid a native BUSY race.
     final inFlight = _prepareInFlight;
     if (inFlight != null) {
-      await inFlight.catchError((_) => null);
+      await _awaitInFlightPreparation(inFlight);
     }
 
     try {
-      final raw = await _platform.invokeMethod<String>(
+      final raw = await _invokeWithLaunchWatchdog<String>(
         'payWithPreparedSession',
         _paymentArgs(amountOmr),
       );
@@ -365,6 +383,8 @@ class MosambeePaymentService {
         return await loginAndPay(amountOmr);
       }
       return result;
+    } on _SoftPosNotRespondingException {
+      return _notRespondingFailure();
     } on PlatformException catch (error) {
       if (error.code == 'BUSY') {
         return loginAndPay(amountOmr);
@@ -375,6 +395,19 @@ class MosambeePaymentService {
       return _dispatchFailure('flutter_platform', 'NO_BRIDGE', error.message);
     } catch (error) {
       return _dispatchFailure('flutter', 'DART_ERROR', error.toString());
+    }
+  }
+
+  Future<void> _awaitInFlightPreparation(Future<String?> inFlight) async {
+    try {
+      await inFlight.timeout(launchWatchdogTimeout);
+    } on TimeoutException {
+      await _clearNativePendingPayment();
+      if (identical(_prepareInFlight, inFlight)) {
+        _prepareInFlight = null;
+      }
+    } catch (_) {
+      // Best-effort pre-warm failures fall through to the normal payment path.
     }
   }
 
@@ -401,6 +434,43 @@ class MosambeePaymentService {
         }),
       );
 
+  /// Waits for exactly one native activity result. If the SoftPOS activity
+  /// never returns, the cashier flow resolves once and asks native to release
+  /// its pending MethodChannel result so later attempts are not stuck BUSY.
+  Future<T?> _invokeWithLaunchWatchdog<T>(
+    String method,
+    Object? arguments,
+  ) async {
+    try {
+      return await _platform
+          .invokeMethod<T>(method, arguments)
+          .timeout(launchWatchdogTimeout);
+    } on TimeoutException {
+      await _clearNativePendingPayment();
+      throw const _SoftPosNotRespondingException();
+    }
+  }
+
+  /// Best-effort and independently bounded: a stuck native bridge must not
+  /// turn the watchdog itself into another indefinite wait.
+  Future<void> _clearNativePendingPayment() async {
+    try {
+      await _platform
+          .invokeMethod<bool>('cancelPendingPayment')
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {}
+  }
+
+  MosambeePaymentResult _notRespondingFailure() =>
+      MosambeePaymentResult.fromRaw(
+        jsonEncode({
+          'stage': 'watchdog',
+          'status': 'failed',
+          'code': 'SOFTPOS_NOT_RESPONDING',
+          'message': 'Payment app not responding.',
+        }),
+      );
+
   Future<MosambeePaymentResult> loginAndPay(double amountOmr) async {
     try {
       final terminalId = (await LocalStorageService.getTerminalId())?.trim();
@@ -414,12 +484,14 @@ class MosambeePaymentService {
       final pin = MosambeePaymentService.effectivePin(
         await LocalStorageService.getTerminalPin(),
       );
-      final result = await _platform.invokeMethod<String>('loginAndPay', {
+      final result = await _invokeWithLaunchWatchdog<String>('loginAndPay', {
         ..._loginArgs(terminalId, pin),
         ..._paymentArgs(amountOmr),
       });
 
       return MosambeePaymentResult.fromRaw(result);
+    } on _SoftPosNotRespondingException {
+      return _notRespondingFailure();
     } on PlatformException catch (error) {
       return _dispatchFailure('flutter_platform', error.code, error.message,
           details: error.details);

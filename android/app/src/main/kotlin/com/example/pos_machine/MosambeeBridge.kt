@@ -3,6 +3,8 @@ package com.example.pos_machine
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
@@ -18,8 +20,11 @@ object MosambeeBridge {
     private const val TAG = "MosambeeBridge"
     private const val ACTION_LOGIN = "com.mosambee.softpos.login"
     private const val ACTION_PAYMENT = "com.mosambee.softpos.payment"
-    private const val LOGIN_REQUEST_CODE = 5101
-    private const val PAYMENT_REQUEST_CODE = 5102
+    private const val REQUEST_CODE_MIN = 20_000
+    // Reserved by this app for Mosambee Activity callbacks. Existing app-owned
+    // request codes are below 10,000; callbacks are matched by exact token.
+    private const val REQUEST_CODE_MAX = 20_999
+    private const val ACTIVITY_RESULT_WATCHDOG_MS: Long = 90_000L
 
     // Same AES key used by the working charity app integration.
     private const val PASSWORD_TOKEN_AES_KEY_HEX =
@@ -29,6 +34,13 @@ object MosambeeBridge {
     private var paymentRequestData: Map<String, Any?>? = null
     private var launchSurface: String = "front"
     private var flutterChannel: MethodChannel? = null
+    private val watchdogHandler = Handler(Looper.getMainLooper())
+    private var watchdogRunnable: Runnable? = null
+    private var pendingActivity: Activity? = null
+    private var pendingRequestCode: Int? = null
+    private var pendingStage: String? = null
+    private var nextRequestCode: Int = REQUEST_CODE_MIN
+    private val retiredRequestCodes = mutableSetOf<Int>()
 
     // Pre-warmed login session: a separate login yields a reusable sessionId so the
     // actual card payment can skip the slow login. Single-use — consumed by one payment.
@@ -74,6 +86,8 @@ object MosambeeBridge {
                     preparedSessionId = null
                     result.success(true)
                 }
+                "cancelPendingPayment" ->
+                    result.success(completePendingAsNotResponding())
                 else -> result.notImplemented()
             }
         }
@@ -85,18 +99,35 @@ object MosambeeBridge {
         resultCode: Int,
         data: Intent?,
     ): Boolean {
-        return when (requestCode) {
-            LOGIN_REQUEST_CODE -> {
+        val activeRequestCode = pendingRequestCode
+        if (requestCode != activeRequestCode) {
+            if (retiredRequestCodes.remove(requestCode)) {
+                Log.w(TAG, "Ignoring retired Mosambee activity result requestCode=$requestCode")
+                return true
+            }
+            return false
+        }
+        if (pendingResult == null) {
+            return true
+        }
+
+        cancelLaunchWatchdog()
+        return when (pendingStage) {
+            "login" -> {
                 handleLoginResult(activity, resultCode, data)
                 true
             }
 
-            PAYMENT_REQUEST_CODE -> {
+            "payment" -> {
                 handlePaymentResult(resultCode, data)
                 true
             }
 
-            else -> false
+            else -> {
+                Log.e(TAG, "Missing Mosambee stage for requestCode=$requestCode")
+                completePendingAsNotResponding()
+                true
+            }
         }
     }
 
@@ -167,12 +198,21 @@ object MosambeeBridge {
             return
         }
 
+        val requestCode = allocateRequestCode() ?: run {
+            result.error(
+                "REQUEST_CODE_EXHAUSTED",
+                "No Mosambee activity request code is available",
+                null,
+            )
+            return
+        }
+
         preparedSessionId = null // single-use; consume it
         pendingResult = result
         paymentRequestData = args
         loginContinuesToPayment = true
 
-        startPaymentWithSession(activity, sessionId, args)
+        startPaymentWithSession(activity, sessionId, args, requestCode)
     }
 
     private fun startLogin(
@@ -210,6 +250,15 @@ object MosambeeBridge {
             }
         }
 
+        val requestCode = allocateRequestCode() ?: run {
+            result.error(
+                "REQUEST_CODE_EXHAUSTED",
+                "No Mosambee activity request code is available",
+                null,
+            )
+            return
+        }
+
         pendingResult = result
         paymentRequestData = args
         loginContinuesToPayment = continuesToPayment
@@ -233,15 +282,16 @@ object MosambeeBridge {
                 startPaymentFlowOnPreferredDisplay(
                     activity = activity,
                     intent = loginIntent,
-                    requestCode = LOGIN_REQUEST_CODE,
+                    requestCode = requestCode,
                     passwordToken = passwordToken,
                 )
             } else {
                 // Pre-warm login stays on the staff (front) display and never chains
                 // into a payment — we only want the reusable session.
-                activity.startActivityForResult(loginIntent, LOGIN_REQUEST_CODE)
+                activity.startActivityForResult(loginIntent, requestCode)
                 "front"
             }
+            armLaunchWatchdog(activity, requestCode, stage = "login")
             notifyLaunchState(stage = "login_started", surface = launchSurface)
             Log.i(TAG, "Started Mosambee login on $launchSurface display")
         } catch (error: ActivityNotFoundException) {
@@ -271,6 +321,7 @@ object MosambeeBridge {
         activity: Activity,
         sessionId: String,
         args: Map<String, Any?>,
+        requestCode: Int,
     ) {
         val packageName = args["packageName"]?.toString()?.trim().orEmpty()
         val amount = args["amount"]?.toString()?.trim().orEmpty()
@@ -294,8 +345,9 @@ object MosambeeBridge {
             // "Connecting to payment" + NFC tap overlay with the ad blurred
             // behind, instead of the raw Mosambee SoftPOS UI taking over the
             // customer screen.
-            activity.startActivityForResult(paymentIntent, PAYMENT_REQUEST_CODE)
+            activity.startActivityForResult(paymentIntent, requestCode)
             launchSurface = "front"
+            armLaunchWatchdog(activity, requestCode, stage = "payment")
             notifyLaunchState(stage = "payment_started", surface = launchSurface)
             Log.i(TAG, "Started Mosambee payment on $launchSurface display")
         } catch (error: ActivityNotFoundException) {
@@ -407,6 +459,20 @@ object MosambeeBridge {
             return
         }
 
+        val requestCode = allocateRequestCode() ?: run {
+            deliverAndReset(
+                JSONObject()
+                    .put("stage", "payment")
+                    .put("status", "failed")
+                    .put("dispatch_failed", true)
+                    .put("code", "REQUEST_CODE_EXHAUSTED")
+                    .put("message", "No Mosambee activity request code is available")
+                    .put("launchSurface", launchSurface)
+                    .toString(),
+            )
+            return
+        }
+
         val packageName = args["packageName"]?.toString()?.trim().orEmpty()
         val amount = args["amount"]?.toString()?.trim().orEmpty()
         val mobNo = args["mobNo"]?.toString()?.trim().orEmpty()
@@ -433,9 +499,10 @@ object MosambeeBridge {
             launchSurface = startPaymentFlowOnPreferredDisplay(
                 activity = activity,
                 intent = paymentIntent,
-                requestCode = PAYMENT_REQUEST_CODE,
+                requestCode = requestCode,
                 passwordToken = "",
             )
+            armLaunchWatchdog(activity, requestCode, stage = "payment")
             notifyLaunchState(stage = "payment_started", surface = launchSurface)
             Log.i(TAG, "Started Mosambee payment on $launchSurface display")
         } catch (error: ActivityNotFoundException) {
@@ -562,11 +629,87 @@ object MosambeeBridge {
     }
 
     private fun deliverAndReset(payload: String) {
-        pendingResult?.success(payload)
+        val result = pendingResult
+        cancelLaunchWatchdog()
         pendingResult = null
         paymentRequestData = null
         launchSurface = "front"
         loginContinuesToPayment = true
+        pendingActivity = null
+        pendingRequestCode = null
+        pendingStage = null
+        result?.success(payload)
+    }
+
+    private fun allocateRequestCode(): Int? {
+        val capacity = REQUEST_CODE_MAX - REQUEST_CODE_MIN + 1
+        repeat(capacity) {
+            val candidate = nextRequestCode
+            nextRequestCode =
+                if (candidate == REQUEST_CODE_MAX) REQUEST_CODE_MIN else candidate + 1
+            if (candidate != pendingRequestCode && candidate !in retiredRequestCodes) {
+                return candidate
+            }
+        }
+        return null
+    }
+
+    private fun armLaunchWatchdog(
+        activity: Activity,
+        requestCode: Int,
+        stage: String,
+    ) {
+        cancelLaunchWatchdog()
+        pendingActivity = activity
+        pendingRequestCode = requestCode
+        pendingStage = stage
+
+        val runnable = Runnable {
+            if (pendingResult == null || pendingRequestCode != requestCode) return@Runnable
+            Log.e(TAG, "Mosambee $stage activity returned no result before the watchdog")
+            completePendingAsNotResponding()
+        }
+        watchdogRunnable = runnable
+        watchdogHandler.postDelayed(runnable, ACTIVITY_RESULT_WATCHDOG_MS)
+    }
+
+    private fun cancelLaunchWatchdog() {
+        watchdogRunnable?.let(watchdogHandler::removeCallbacks)
+        watchdogRunnable = null
+    }
+
+    /**
+     * Completes the pending Flutter call exactly once and releases BUSY state.
+     * The activity is then finished best-effort; any resulting late callback
+     * is ignored by [handleActivityResult].
+     */
+    private fun completePendingAsNotResponding(): Boolean {
+        if (pendingResult == null) return false
+
+        val activity = pendingActivity
+        val requestCode = pendingRequestCode
+        val stage = pendingStage ?: "payment"
+        if (requestCode != null) {
+            retiredRequestCodes.add(requestCode)
+        }
+        deliverAndReset(
+            JSONObject()
+                .put("stage", stage)
+                .put("status", "failed")
+                .put("code", "SOFTPOS_NOT_RESPONDING")
+                .put("message", "Payment app not responding.")
+                .put("launchSurface", launchSurface)
+                .toString(),
+        )
+
+        if (activity != null && requestCode != null) {
+            try {
+                activity.finishActivity(requestCode)
+            } catch (error: Exception) {
+                Log.w(TAG, "Unable to finish unresponsive Mosambee activity", error)
+            }
+        }
+        return true
     }
 
     private fun generatePasswordToken(userName: String, pin: String): String {
