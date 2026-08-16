@@ -362,7 +362,7 @@ class MosambeePaymentService {
       );
       final result = MosambeePaymentResult.fromRaw(raw);
       if (result.isNoSession) {
-        return loginAndPay(amountOmr);
+        return await loginAndPay(amountOmr);
       }
       return result;
     } on PlatformException catch (error) {
