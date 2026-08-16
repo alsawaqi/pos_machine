@@ -95,13 +95,13 @@ was blocked by a corrupted Mosambee install (crash-loop; device-state, operator 
 **Open FAIL-PRODUCT findings for the implementation owner** (docs/phase0_failures/; the owner
 confirmed in-session they implement, the testing agent re-verifies):
 
-| # | Finding | Doc |
-|---|---|---|
-| IMP-1 | Machine: GPS-held fenced sale durable but operator-INVISIBLE (stuck surface keys on rejections only) | FAIL-EXIT-07-machine-gps-held-invisible.md |
-| IMP-2 | pos_api: order.pay with loyalty EARN context settles anonymously after customer hard-delete (earn silently dropped) | FAIL-EXIT-05-api-anonymous-earn-settlement.md |
-| IMP-3 | pos_admin: charity 2xx + `success:false` stamped forwarded → silent donation loss; pos_api twin suspect | FAIL-EXIT-12-admin-2xx-success-false-stamped.md |
-| IMP-4 | Handheld card flow: (a) no watchdog on unresponsive SoftPOS — indefinite spinner (owner: "no continuous loop"); (b) `<queries>` parity gap vs machine (latent) | FAIL-HH-mosambee-package-visibility.md (revised) |
-| IMP-5 | Minor: `unawaited_return_in_try_block` at mosambee_payment_service.dart:365 (new 3.47 lint; escaping-Future-from-try in the payment path) | this report |
+| # | Finding | Status | Doc |
+|---|---|---|---|
+| IMP-1 | Machine: GPS-held fenced sale durable but operator-INVISIBLE (stuck surface keys on rejections only) | OPEN | FAIL-EXIT-07-machine-gps-held-invisible.md |
+| IMP-2 | pos_api: order.pay with loyalty EARN context settles anonymously after customer hard-delete (earn silently dropped) | OPEN | FAIL-EXIT-05-api-anonymous-earn-settlement.md |
+| IMP-3 | Charity 2xx + `success:false` stamped forwarded → silent donation loss (BOTH senders — pos_api twin confirmed and fixed too) | **CLOSED — VERIFIED FIXED 2026-08-16** (admin `49d901e` + api `72c596e`; independent verification `build/phase0_exit/imp3-verification/`; admin suite now fully green 507/507; accepted gate pair advanced to run5c/run6c, 9/9 twice) | FAIL-EXIT-12-admin-2xx-success-false-stamped.md |
+| IMP-4 | Handheld card flow: (a) no watchdog on unresponsive SoftPOS — indefinite spinner (owner: "no continuous loop"); (b) `<queries>` parity gap vs machine (latent) | OPEN | FAIL-HH-mosambee-package-visibility.md (revised) |
+| IMP-5 | Minor: `unawaited_return_in_try_block` at mosambee_payment_service.dart:365 (new 3.47 lint; escaping-Future-from-try in the payment path) | OPEN | this report |
 
 **Adjudicated/closed:** FAIL-EXIT-11 (approval-vs-void race) REFUTED on real PG — deterministic
 legs + 10-order barrages across three gate runs; SQLite test repaired with documented history.
@@ -142,8 +142,12 @@ Notes:
 CORE-001 authorization: YES | NO
 ```
 
-Recommended path: RETURN-FOR-REMEDIATION on IMP-1…IMP-4 (small, well-scoped fixes with exact
-failing regressions waiting); the testing agent then re-verifies each fix independently
-(failing regression → owning suite → full suite → fresh gate pair) and re-issues this report —
-at which point, with the bank's approval-capable test card for the single card re-test, the
-expected outcome is READY-FOR-OWNER-SIGNOFF.
+Recommended path: RETURN-FOR-REMEDIATION on the remaining open findings (small, well-scoped
+fixes with exact failing regressions waiting); the testing agent then re-verifies each fix
+independently (failing regression → owning suite → full suite → fresh gate pair) and re-issues
+this report — at which point, with the bank's approval-capable test card for the single card
+re-test, the expected outcome is READY-FOR-OWNER-SIGNOFF.
+
+**Remediation progress:** IMP-3 closed (verified fixed) 2026-08-16 — first finding through the
+full fix→independent-verification cycle; the accepted gate evidence pair is now run5c/run6c.
+Remaining: IMP-1, IMP-2, IMP-4, IMP-5.
