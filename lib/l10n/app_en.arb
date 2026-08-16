@@ -23,8 +23,30 @@
   },
   "settingsStuckSalesSubtitle": "The server repeatedly refused these sales. Tap to inspect and retry.",
   "settingsStuckSalesDialogBody": "These sales remain saved on this device. Retrying is safe because the server ignores duplicate event IDs.",
+  "settingsGpsHeldSalesCount": "Sales awaiting GPS ({count})",
+  "@settingsGpsHeldSalesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsAttentionSalesCount": "Sales needing attention ({count})",
+  "@settingsAttentionSalesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsGpsHeldSalesSubtitle": "These sales are saved but cannot sync until this device gets a valid GPS location. Tap to inspect and retry.",
+  "settingsAttentionSalesSubtitle": "Some sales await GPS; others were refused by the server. Tap to inspect and retry.",
+  "settingsGpsHeldStatus": "Waiting for a valid GPS fix",
+  "settingsGpsHeldSalesDialogBody": "These sales remain saved on this device and retry automatically when a valid GPS fix becomes available.",
+  "settingsAttentionSalesDialogBody": "These sales remain saved on this device. GPS-held sales need a valid location; server-rejected sales can be retried safely.",
   "settingsRetryAll": "Retry all",
   "settingsRetryStarted": "Retry started. Any sale still refused remains saved on this device.",
+  "settingsAttentionRetryStarted": "Retry started. Any sale still waiting for GPS or server acceptance remains saved on this device.",
   "settingsRetryFailed": "The retry could not start. The sales are still saved on this device.",
   "settingsUnknownSyncError": "Unknown server error",
   "settingsServerAddress": "Server address",

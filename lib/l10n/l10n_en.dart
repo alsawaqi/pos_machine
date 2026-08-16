@@ -61,11 +61,44 @@ class L10nEn extends L10n {
       'These sales remain saved on this device. Retrying is safe because the server ignores duplicate event IDs.';
 
   @override
+  String settingsGpsHeldSalesCount(int count) {
+    return 'Sales awaiting GPS ($count)';
+  }
+
+  @override
+  String settingsAttentionSalesCount(int count) {
+    return 'Sales needing attention ($count)';
+  }
+
+  @override
+  String get settingsGpsHeldSalesSubtitle =>
+      'These sales are saved but cannot sync until this device gets a valid GPS location. Tap to inspect and retry.';
+
+  @override
+  String get settingsAttentionSalesSubtitle =>
+      'Some sales await GPS; others were refused by the server. Tap to inspect and retry.';
+
+  @override
+  String get settingsGpsHeldStatus => 'Waiting for a valid GPS fix';
+
+  @override
+  String get settingsGpsHeldSalesDialogBody =>
+      'These sales remain saved on this device and retry automatically when a valid GPS fix becomes available.';
+
+  @override
+  String get settingsAttentionSalesDialogBody =>
+      'These sales remain saved on this device. GPS-held sales need a valid location; server-rejected sales can be retried safely.';
+
+  @override
   String get settingsRetryAll => 'Retry all';
 
   @override
   String get settingsRetryStarted =>
       'Retry started. Any sale still refused remains saved on this device.';
+
+  @override
+  String get settingsAttentionRetryStarted =>
+      'Retry started. Any sale still waiting for GPS or server acceptance remains saved on this device.';
 
   @override
   String get settingsRetryFailed =>

@@ -23,8 +23,30 @@
   },
   "settingsStuckSalesSubtitle": "رفض الخادم هذه المبيعات مرارًا. اضغط لعرض التفاصيل وإعادة المحاولة.",
   "settingsStuckSalesDialogBody": "تبقى هذه المبيعات محفوظة على الجهاز. إعادة المحاولة آمنة لأن الخادم يتجاهل معرّفات الأحداث المكررة.",
+  "settingsGpsHeldSalesCount": "مبيعات تنتظر GPS ({count})",
+  "@settingsGpsHeldSalesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsAttentionSalesCount": "مبيعات تحتاج إلى متابعة ({count})",
+  "@settingsAttentionSalesCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsGpsHeldSalesSubtitle": "هذه المبيعات محفوظة ولكن لا يمكن مزامنتها حتى يحصل الجهاز على موقع GPS صالح. اضغط لعرض التفاصيل وإعادة المحاولة.",
+  "settingsAttentionSalesSubtitle": "بعض المبيعات تنتظر GPS، وأخرى رفضها الخادم. اضغط لعرض التفاصيل وإعادة المحاولة.",
+  "settingsGpsHeldStatus": "في انتظار موقع GPS صالح",
+  "settingsGpsHeldSalesDialogBody": "تبقى هذه المبيعات محفوظة على الجهاز وتُعاد محاولتها تلقائيًا عند توفر موقع GPS صالح.",
+  "settingsAttentionSalesDialogBody": "تبقى هذه المبيعات محفوظة على الجهاز. تحتاج المبيعات المعلقة بسبب GPS إلى موقع صالح، ويمكن إعادة محاولة المبيعات المرفوضة من الخادم بأمان.",
   "settingsRetryAll": "إعادة محاولة الكل",
   "settingsRetryStarted": "بدأت إعادة المحاولة. ستبقى أي مبيعات مرفوضة محفوظة على هذا الجهاز.",
+  "settingsAttentionRetryStarted": "بدأت إعادة المحاولة. ستبقى أي مبيعات تنتظر GPS أو قبول الخادم محفوظة على هذا الجهاز.",
   "settingsRetryFailed": "تعذر بدء إعادة المحاولة. ما زالت المبيعات محفوظة على هذا الجهاز.",
   "settingsUnknownSyncError": "خطأ غير معروف من الخادم",
   "settingsServerAddress": "عنوان الخادم",

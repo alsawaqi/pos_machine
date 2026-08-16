@@ -281,6 +281,32 @@ class AppDatabase extends _$AppDatabase {
         ..orderBy([(o) => OrderingTerm(expression: o.createdAt)]))
       .watch();
 
+  /// Pending revenue together with the cached branch fence that governs it.
+  ///
+  /// The left join deliberately makes this stream depend on both tables. That
+  /// keeps operator-attention surfaces accurate when a branch fence changes,
+  /// even if no outbox row is inserted or updated at the same time.
+  Stream<({List<OrderOutboxRow> rows, BranchRow? branch})>
+      watchPendingOutboxWithBranch() {
+    final query = select(orderOutbox).join([
+      leftOuterJoin(branchCache, const Constant(true)),
+    ])
+      ..where(orderOutbox.syncedAt.isNull())
+      ..orderBy([OrderingTerm(expression: orderOutbox.createdAt)]);
+
+    return query.watch().map((joinedRows) {
+      if (joinedRows.isEmpty) {
+        return (rows: const <OrderOutboxRow>[], branch: null);
+      }
+      return (
+        rows: joinedRows
+            .map((joined) => joined.readTable(orderOutbox))
+            .toList(growable: false),
+        branch: joinedRows.first.readTableOrNull(branchCache),
+      );
+    });
+  }
+
   Future<void> markOutboxSynced(String orderUuid, DateTime at) =>
       (update(orderOutbox)..where((o) => o.orderUuid.equals(orderUuid)))
           .write(OrderOutboxCompanion(syncedAt: Value(at)));

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_config.dart';
-import '../data/db/app_database.dart';
+import '../data/order_sync_repository.dart';
 import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/settings_service.dart';
@@ -31,7 +31,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late final TextEditingController _urlController;
   bool _testing = false;
-  bool _retryingStuck = false;
+  bool _retryingAttention = false;
   String? _testResult;
   bool _testOk = false;
 
@@ -82,14 +82,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     });
   }
 
-  Future<void> _showStuckSales(List<OrderOutboxRow> rows) async {
+  Future<void> _showSyncAttention(List<OrderSyncAttention> items) async {
     final l10n = L10n.of(context);
     final retry = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         final material = MaterialLocalizations.of(dialogContext);
         return AlertDialog(
-          title: Text(l10n.settingsStuckSalesCount(rows.length)),
+          title: Text(_attentionTitle(l10n, items)),
           content: SizedBox(
             width: 520,
             child: ConstrainedBox(
@@ -97,16 +97,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               child: ListView(
                 shrinkWrap: true,
                 children: [
-                  for (final row in rows) ...[
+                  for (final item in items) ...[
                     Builder(
                       builder: (context) {
+                        final row = item.row;
+                        final awaitingGps = item.reason ==
+                            OrderSyncAttentionReason.awaitingGps;
                         final created = row.createdAt.toLocal();
                         final orderNumber = row.orderNumber ?? 0;
                         return ListTile(
                           contentPadding: EdgeInsets.zero,
-                          leading: const Icon(
-                            Icons.error_rounded,
-                            color: Color(0xFFDC2626),
+                          leading: Icon(
+                            awaitingGps
+                                ? Icons.location_off_rounded
+                                : Icons.error_rounded,
+                            color: awaitingGps
+                                ? const Color(0xFFD97706)
+                                : const Color(0xFFDC2626),
                           ),
                           title: Text(
                             orderNumber > 0
@@ -123,11 +130,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               ),
                               const SizedBox(height: 4),
                               SelectableText(
-                                row.lastError?.trim().isNotEmpty == true
-                                    ? row.lastError!.trim()
-                                    : l10n.settingsUnknownSyncError,
-                                style: const TextStyle(
-                                  color: Color(0xFFB3261E),
+                                awaitingGps
+                                    ? l10n.settingsGpsHeldStatus
+                                    : row.lastError?.trim().isNotEmpty == true
+                                        ? row.lastError!.trim()
+                                        : l10n.settingsUnknownSyncError,
+                                style: TextStyle(
+                                  color: awaitingGps
+                                      ? const Color(0xFF9A6700)
+                                      : const Color(0xFFB3261E),
                                   fontSize: 12,
                                 ),
                               ),
@@ -150,7 +161,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     const Divider(),
                   ],
                   Text(
-                    l10n.settingsStuckSalesDialogBody,
+                    _attentionDialogBody(l10n, items),
                     style: const TextStyle(color: Colors.black54, fontSize: 12),
                   ),
                 ],
@@ -174,12 +185,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
 
     if (retry != true || !mounted) return;
-    setState(() => _retryingStuck = true);
+    setState(() => _retryingAttention = true);
     try {
-      await ref.read(orderSyncRepositoryProvider).retryStuck();
+      await ref.read(orderSyncRepositoryProvider).retryAttention();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.settingsRetryStarted)),
+        SnackBar(
+          content: Text(
+            _gpsHoldCount(items) > 0
+                ? l10n.settingsAttentionRetryStarted
+                : l10n.settingsRetryStarted,
+          ),
+        ),
       );
     } catch (_) {
       if (!mounted) return;
@@ -187,15 +204,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         SnackBar(content: Text(l10n.settingsRetryFailed)),
       );
     } finally {
-      if (mounted) setState(() => _retryingStuck = false);
+      if (mounted) setState(() => _retryingAttention = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsControllerProvider);
-    final stuckRows = ref.watch(stuckOrderSyncProvider).asData?.value ??
-        const <OrderOutboxRow>[];
+    final attentionItems =
+        ref.watch(orderSyncAttentionProvider).asData?.value ??
+            const <OrderSyncAttention>[];
     final l10n = L10n.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFF102028),
@@ -213,8 +231,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               if (widget.showOperations) ...[
                 _sectionLabel(l10n.settingsSectionOperations),
                 const SizedBox(height: 4),
-                if (stuckRows.isNotEmpty) ...[
-                  _stuckSalesTile(l10n, stuckRows),
+                if (attentionItems.isNotEmpty) ...[
+                  _syncAttentionTile(l10n, attentionItems),
                   const SizedBox(height: 8),
                 ],
                 _operationTile(
@@ -458,38 +476,79 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         onTap: () => Navigator.of(context).pop(action),
       );
 
-  Widget _stuckSalesTile(L10n l10n, List<OrderOutboxRow> rows) => Material(
+  int _gpsHoldCount(List<OrderSyncAttention> items) => items
+      .where((item) => item.reason == OrderSyncAttentionReason.awaitingGps)
+      .length;
+
+  String _attentionTitle(L10n l10n, List<OrderSyncAttention> items) {
+    final gpsCount = _gpsHoldCount(items);
+    if (gpsCount == items.length) {
+      return l10n.settingsGpsHeldSalesCount(items.length);
+    }
+    if (gpsCount == 0) return l10n.settingsStuckSalesCount(items.length);
+    return l10n.settingsAttentionSalesCount(items.length);
+  }
+
+  String _attentionSubtitle(L10n l10n, List<OrderSyncAttention> items) {
+    final gpsCount = _gpsHoldCount(items);
+    if (gpsCount == items.length) return l10n.settingsGpsHeldSalesSubtitle;
+    if (gpsCount == 0) return l10n.settingsStuckSalesSubtitle;
+    return l10n.settingsAttentionSalesSubtitle;
+  }
+
+  String _attentionDialogBody(L10n l10n, List<OrderSyncAttention> items) {
+    final gpsCount = _gpsHoldCount(items);
+    if (gpsCount == items.length) return l10n.settingsGpsHeldSalesDialogBody;
+    if (gpsCount == 0) return l10n.settingsStuckSalesDialogBody;
+    return l10n.settingsAttentionSalesDialogBody;
+  }
+
+  Widget _syncAttentionTile(
+    L10n l10n,
+    List<OrderSyncAttention> items,
+  ) {
+    final gpsOnly = _gpsHoldCount(items) == items.length;
+    final accent = gpsOnly ? const Color(0xFFFBBF24) : const Color(0xFFFF6B6B);
+    return Material(
         key: const ValueKey('settings-stuck-sales-tile'),
-        color: const Color(0xFF3A171B),
+        color: gpsOnly ? const Color(0xFF3A2B0A) : const Color(0xFF3A171B),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
-          side: const BorderSide(color: Color(0xFFEF4444), width: 1.2),
+          side: BorderSide(
+            color: gpsOnly ? const Color(0xFFF59E0B) : const Color(0xFFEF4444),
+            width: 1.2,
+          ),
         ),
         clipBehavior: Clip.antiAlias,
         child: ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-          leading: const Icon(Icons.error_rounded, color: Color(0xFFFF6B6B)),
+          leading: Icon(
+            gpsOnly ? Icons.location_off_rounded : Icons.error_rounded,
+            color: accent,
+          ),
           title: Text(
-            l10n.settingsStuckSalesCount(rows.length),
-            style: const TextStyle(
-              color: Color(0xFFFF8A80),
+            _attentionTitle(l10n, items),
+            style: TextStyle(
+              color: accent,
               fontWeight: FontWeight.w800,
             ),
           ),
           subtitle: Text(
-            l10n.settingsStuckSalesSubtitle,
+            _attentionSubtitle(l10n, items),
             style: const TextStyle(color: Colors.white70),
           ),
-          trailing: _retryingStuck
+          trailing: _retryingAttention
               ? const SizedBox(
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.chevron_right, color: Color(0xFFFF8A80)),
-          onTap: _retryingStuck ? null : () => _showStuckSales(rows),
+              : Icon(Icons.chevron_right, color: accent),
+          onTap:
+              _retryingAttention ? null : () => _showSyncAttention(items),
         ),
       );
+  }
 
   Widget _sectionLabel(String text) => Text(
         text.toUpperCase(),

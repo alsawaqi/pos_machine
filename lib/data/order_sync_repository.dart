@@ -10,6 +10,18 @@ import '../services/order_sync_payload.dart';
 import '../services/pos_api_service.dart';
 import 'db/app_database.dart';
 
+enum OrderSyncAttentionReason {
+  serverRejected,
+  awaitingGps,
+}
+
+class OrderSyncAttention {
+  const OrderSyncAttention({required this.row, required this.reason});
+
+  final OrderOutboxRow row;
+  final OrderSyncAttentionReason reason;
+}
+
 /// Offline-first order sync: a completed order is persisted to a durable Drift
 /// outbox the moment it finishes, then pushed to pos_api (/device/sync/push)
 /// and re-pushed until the server ACKs it. Idempotent on client_event_id, so a
@@ -315,19 +327,66 @@ class OrderSyncRepository {
         (rows) => rows.where(isStuck).toList(growable: false),
       );
 
+  /// Revenue that requires an operator's attention: either a deterministically
+  /// rejected batch parked at the cap, or a fenced sale that cannot leave the
+  /// durable outbox until this device obtains a complete GPS fix.
+  Stream<List<OrderSyncAttention>> watchAttention() =>
+      _db.watchPendingOutboxWithBranch().map((snapshot) {
+        final branch = snapshot.branch;
+        final branchIsFenced =
+            branch?.latitude != null && branch?.longitude != null;
+
+        return <OrderSyncAttention>[
+          for (final row in snapshot.rows)
+            if (isStuck(row))
+              OrderSyncAttention(
+                row: row,
+                reason: OrderSyncAttentionReason.serverRejected,
+              )
+            else if (branchIsFenced && _hasMissingGps(row))
+              OrderSyncAttention(
+                row: row,
+                reason: OrderSyncAttentionReason.awaitingGps,
+              ),
+        ];
+      });
+
   Future<List<OrderOutboxRow>> stuckBatches() async =>
       (await _db.pendingOutbox()).where(isStuck).toList(growable: false);
+
+  /// Retry every attention-worthy batch. Parked rows are first un-parked;
+  /// GPS-held rows remain pending and [flush] retries them without changing
+  /// their rejection counters when no valid fix is available.
+  Future<int> retryAttention() async {
+    await _db.resetStuckOutbox(maxServerRejections);
+    return flush();
+  }
 
   /// Un-park every rejected batch and immediately make one serialized retry.
   /// Stable client_event_ids make this safe when the server processed a prior
   /// request but its response was lost.
   Future<int> retryStuck() async {
-    await _db.resetStuckOutbox(maxServerRejections);
-    return flush();
+    return retryAttention();
   }
 
   static bool isStuck(OrderOutboxRow row) =>
       row.serverRejections >= maxServerRejections;
+
+  bool _hasMissingGps(OrderOutboxRow row) {
+    try {
+      final decoded = jsonDecode(row.eventsJson);
+      if (decoded is! List) return false;
+      final events = decoded
+          .whereType<Map>()
+          .map((event) => event.cast<String, dynamic>())
+          .toList(growable: false);
+      return _missingGpsContainers(events).isNotEmpty;
+    } catch (_) {
+      // Corrupt payloads follow the existing attempt/error path in flush();
+      // they are not mislabeled as location holds.
+      return false;
+    }
+  }
 
   Future<void> _recordServerRejection(
     OrderOutboxRow row,

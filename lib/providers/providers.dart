@@ -261,6 +261,12 @@ final stuckOrderSyncProvider = StreamProvider<List<OrderOutboxRow>>(
   (ref) => ref.read(orderSyncRepositoryProvider).watchStuck(),
 );
 
+/// Unsynced revenue that needs operator attention. This keeps GPS-held sales
+/// visible without misclassifying them as server rejections.
+final orderSyncAttentionProvider = StreamProvider<List<OrderSyncAttention>>(
+  (ref) => ref.read(orderSyncRepositoryProvider).watchAttention(),
+);
+
 /// Phase 1A — anonymous on-device audience measurement (customer-facing camera
 /// → ML Kit face counts), folded into slider.display telemetry. Off unless the
 /// operator enables it in Settings. Auxiliary: never blocks the POS.

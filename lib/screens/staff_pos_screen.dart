@@ -4905,8 +4905,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildTopBar() {
-    final stuckSalesCount =
-        ref.watch(stuckOrderSyncProvider).asData?.value.length ?? 0;
+    final attentionSalesCount =
+        ref.watch(orderSyncAttentionProvider).asData?.value.length ?? 0;
     return _glassPanel(
       height: 104,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -4934,7 +4934,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           // actions that used to crowd the logout sheet).
           _CircleGlassButton(
             icon: Icons.settings_outlined,
-            badgeCount: stuckSalesCount,
+            badgeCount: attentionSalesCount,
             onTap: () => unawaited(_openSettings()),
           ),
           const SizedBox(width: 8),

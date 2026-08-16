@@ -61,11 +61,44 @@ class L10nAr extends L10n {
       'تبقى هذه المبيعات محفوظة على الجهاز. إعادة المحاولة آمنة لأن الخادم يتجاهل معرّفات الأحداث المكررة.';
 
   @override
+  String settingsGpsHeldSalesCount(int count) {
+    return 'مبيعات تنتظر GPS ($count)';
+  }
+
+  @override
+  String settingsAttentionSalesCount(int count) {
+    return 'مبيعات تحتاج إلى متابعة ($count)';
+  }
+
+  @override
+  String get settingsGpsHeldSalesSubtitle =>
+      'هذه المبيعات محفوظة ولكن لا يمكن مزامنتها حتى يحصل الجهاز على موقع GPS صالح. اضغط لعرض التفاصيل وإعادة المحاولة.';
+
+  @override
+  String get settingsAttentionSalesSubtitle =>
+      'بعض المبيعات تنتظر GPS، وأخرى رفضها الخادم. اضغط لعرض التفاصيل وإعادة المحاولة.';
+
+  @override
+  String get settingsGpsHeldStatus => 'في انتظار موقع GPS صالح';
+
+  @override
+  String get settingsGpsHeldSalesDialogBody =>
+      'تبقى هذه المبيعات محفوظة على الجهاز وتُعاد محاولتها تلقائيًا عند توفر موقع GPS صالح.';
+
+  @override
+  String get settingsAttentionSalesDialogBody =>
+      'تبقى هذه المبيعات محفوظة على الجهاز. تحتاج المبيعات المعلقة بسبب GPS إلى موقع صالح، ويمكن إعادة محاولة المبيعات المرفوضة من الخادم بأمان.';
+
+  @override
   String get settingsRetryAll => 'إعادة محاولة الكل';
 
   @override
   String get settingsRetryStarted =>
       'بدأت إعادة المحاولة. ستبقى أي مبيعات مرفوضة محفوظة على هذا الجهاز.';
+
+  @override
+  String get settingsAttentionRetryStarted =>
+      'بدأت إعادة المحاولة. ستبقى أي مبيعات تنتظر GPS أو قبول الخادم محفوظة على هذا الجهاز.';
 
   @override
   String get settingsRetryFailed =>

@@ -193,6 +193,48 @@ abstract class L10n {
   /// **'These sales remain saved on this device. Retrying is safe because the server ignores duplicate event IDs.'**
   String get settingsStuckSalesDialogBody;
 
+  /// No description provided for @settingsGpsHeldSalesCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Sales awaiting GPS ({count})'**
+  String settingsGpsHeldSalesCount(int count);
+
+  /// No description provided for @settingsAttentionSalesCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Sales needing attention ({count})'**
+  String settingsAttentionSalesCount(int count);
+
+  /// No description provided for @settingsGpsHeldSalesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'These sales are saved but cannot sync until this device gets a valid GPS location. Tap to inspect and retry.'**
+  String get settingsGpsHeldSalesSubtitle;
+
+  /// No description provided for @settingsAttentionSalesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Some sales await GPS; others were refused by the server. Tap to inspect and retry.'**
+  String get settingsAttentionSalesSubtitle;
+
+  /// No description provided for @settingsGpsHeldStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for a valid GPS fix'**
+  String get settingsGpsHeldStatus;
+
+  /// No description provided for @settingsGpsHeldSalesDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'These sales remain saved on this device and retry automatically when a valid GPS fix becomes available.'**
+  String get settingsGpsHeldSalesDialogBody;
+
+  /// No description provided for @settingsAttentionSalesDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'These sales remain saved on this device. GPS-held sales need a valid location; server-rejected sales can be retried safely.'**
+  String get settingsAttentionSalesDialogBody;
+
   /// No description provided for @settingsRetryAll.
   ///
   /// In en, this message translates to:
@@ -204,6 +246,12 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Retry started. Any sale still refused remains saved on this device.'**
   String get settingsRetryStarted;
+
+  /// No description provided for @settingsAttentionRetryStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry started. Any sale still waiting for GPS or server acceptance remains saved on this device.'**
+  String get settingsAttentionRetryStarted;
 
   /// No description provided for @settingsRetryFailed.
   ///
