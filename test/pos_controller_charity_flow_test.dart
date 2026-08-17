@@ -727,15 +727,17 @@ void main() {
       expect(completedSnapshot.paymentMethod, 'Split Payment');
       expect(completedSnapshot.splitCount, 2);
       expect(splitPayments, hasLength(2));
-      // 1.575 total → equal shares 0.787 + 0.788 (the LAST leg absorbs the
-      // baisa drift); no charity money on either cash leg.
+      // 1.575 total → deterministic half-away equal share 0.788, then the
+      // exact-remainder last leg 0.787; no charity money on either cash leg.
       expect(
         splitPayments.first,
         containsPair('charityRoundUpAccepted', false),
       );
-      expect(splitPayments.first, containsPair('paidAmount', 0.787));
+      // CORE-001 Divergence #2: exact half-baisa equal share rounds up.
+      expect(splitPayments.first, containsPair('paidAmount', 0.788));
       expect(splitPayments.last, containsPair('charityRoundUpAccepted', false));
-      expect(splitPayments.last, containsPair('paidAmount', 0.788));
+      // CORE-001 Divergence #2: final leg is the exact post-rounding remainder.
+      expect(splitPayments.last, containsPair('paidAmount', 0.787));
       expect(
         splitPayments
             .map((payment) => (payment as Map)['baseAmount'] as double)
@@ -799,7 +801,8 @@ void main() {
 
       final secondMessage = await secondPayment;
       expect(secondMessage, contains('Split payment completed'));
-      expect(sentAmounts, <String>['1000', '788']);
+      // CORE-001 Divergence #2: final leg follows the rounded first share.
+      expect(sentAmounts, <String>['1000', '787']);
 
       final completedSnapshot = fakeStorage._history.single.snapshot;
       final splitPayments = completedSnapshot.toMap()['splitPayments'] as List;
@@ -807,8 +810,10 @@ void main() {
       expect(splitPayments.first, containsPair('charityRoundUpAccepted', true));
       expect(splitPayments.first, containsPair('paidAmount', 1.000));
       expect(splitPayments.last, containsPair('charityRoundUpAccepted', false));
-      expect(splitPayments.last, containsPair('paidAmount', 0.788));
-      expect(completedSnapshot.payableTotal, closeTo(1.788, 0.001));
+      // CORE-001 Divergence #2: final leg is the exact post-rounding remainder.
+      expect(splitPayments.last, containsPair('paidAmount', 0.787));
+      // CORE-001 Divergence #2: completed payableTotal retains that final leg.
+      expect(completedSnapshot.payableTotal, closeTo(1.787, 0.001));
     },
     variant: _androidOnly,
   );

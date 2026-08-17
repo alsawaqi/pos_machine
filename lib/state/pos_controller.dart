@@ -3,6 +3,7 @@ import 'dart:ui' show Locale;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 
 import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
@@ -10,8 +11,8 @@ import '../services/display_strings.dart';
 import '../services/kitchen_ticket.dart';
 import '../services/local_order_storage_service.dart';
 import '../services/mosambee_payment_service.dart';
-import '../services/offer_engine.dart';
 import '../services/order_sync_payload.dart' show uuidV4;
+import '../services/pricing_adapter.dart' as machine_pricing;
 import '../services/presentation_service.dart';
 import '../services/sunmi_receipt_service.dart';
 
@@ -23,7 +24,8 @@ enum PendingReconChoice { cancel, record, retry }
 /// Outcome of a (possibly retried) card charge attempt.
 enum _CardChargeOutcome { success, recordPending, aborted }
 
-class PosController extends ChangeNotifier {
+class PosController extends ChangeNotifier
+    implements machine_pricing.MachinePricingState {
   static const Duration _rearDisplaySyncDebounceDuration = Duration(
     milliseconds: 250,
   );
@@ -34,6 +36,7 @@ class PosController extends ChangeNotifier {
   final PresentationService _presentation = PresentationService.instance;
   final MosambeePaymentService _paymentBridge = MosambeePaymentService();
   final OrderStorageService _orderStorage;
+  final pricing.PriceResult Function(pricing.PricingInput) _priceOrder;
 
   /// Gap sweep G1 — injectable wall clock for the daily availability windows
   /// (tests pin it; production keeps the default).
@@ -295,6 +298,7 @@ class PosController extends ChangeNotifier {
 
   /// Phase B — the manager comp applied to the current order (one at a time;
   /// the amount is DERIVED live — see [compAmount]). Null = no comp.
+  @override
   AppliedComp? appliedComp;
 
   /// Whether a staff member with [position] may cancel an order under the
@@ -304,7 +308,9 @@ class PosController extends ChangeNotifier {
     final p = (position ?? '').trim().toLowerCase();
     if (p.isEmpty) return false;
 
-    return cancelOrderPositions.any((allowed) => allowed.trim().toLowerCase() == p);
+    return cancelOrderPositions.any(
+      (allowed) => allowed.trim().toLowerCase() == p,
+    );
   }
 
   /// P-F6 — whether [position] may open the branch Reports screen.
@@ -326,6 +332,7 @@ class PosController extends ChangeNotifier {
   List<Product> _baseProducts = const <Product>[];
 
   final List<CartItem> _cart = [];
+  @override
   List<CartItem> get cart => List.unmodifiable(_cart);
 
   List<OrderHistoryRecord> orderHistory = const [];
@@ -341,20 +348,37 @@ class PosController extends ChangeNotifier {
   String diningTableSearchQuery = '';
   String selectedDiningFloorId = 'main_hall';
   ProductViewMode productViewMode = ProductViewMode.grid;
-  OrderType selectedOrderType = OrderType.quickOrder;
+  OrderType _selectedOrderType = OrderType.quickOrder;
+  @override
+  OrderType get selectedOrderType => _selectedOrderType;
+  set selectedOrderType(OrderType value) {
+    if (_selectedOrderType == value) return;
+    _selectedOrderType = value;
+    _invalidatePriceCache();
+  }
+
+  @override
   DiscountConfiguration discount = const DiscountConfiguration();
 
   // Session branch id, for auto-applying product/category-scope discounts to
   // cart lines (set by applyCatalog). Null = no branch context → no auto-apply.
   int? _discountBranchId;
+  @override
+  int? get pricingBranchId => _discountBranchId;
+
   /// Merchant discount rules from the cached catalog (from the API). The picker
   /// offers the currently-applicable order-scope ones.
+  @override
   List<MerchantDiscount> availableDiscounts = const [];
+
   /// P-F9 — merchant offers (promotions) from the cached catalog. Auto types
   /// self-apply via the offer engine; bundles are cashier-picked.
+  @override
   List<Offer> availableOffers = const [];
+
   /// Merchant loyalty rules from the cached catalog (stamp card / points).
   List<LoyaltyRule> loyaltyRules = const [];
+
   /// Cached customer slice (offline lookup / order attach).
   List<CustomerRef> cachedCustomers = const [];
 
@@ -385,10 +409,12 @@ class PosController extends ChangeNotifier {
   int unreadMessageCountFor(int staffId) {
     final local = _localMessageReads[staffId] ?? const <int>{};
     return staffMessages
-        .where((m) =>
-            m.visibleTo(staffId) &&
-            !m.isReadBy(staffId) &&
-            !local.contains(m.id))
+        .where(
+          (m) =>
+              m.visibleTo(staffId) &&
+              !m.isReadBy(staffId) &&
+              !local.contains(m.id),
+        )
         .length;
   }
 
@@ -451,17 +477,21 @@ class PosController extends ChangeNotifier {
     selectedEarnRuleIds = List<int>.from(ruleIds);
     _broadcast();
   }
+
   int splitCount = 1;
   final List<SplitPaymentRecord> _splitPayments = [];
+
   /// Custom per-guest base amounts (3dp OMR), length == [splitCount], set by
   /// the split dialog's customize mode. Null ⇒ equal shares. Transient: never
   /// persisted into drafts — a held order resumed mid-plan falls back to
   /// equal shares (the remainder rule still closes the legs to the total).
   List<double>? _splitPlanAmounts;
+
   /// [orderUpdateNonce] at the moment the plan was applied. Any cart addition
   /// afterwards bumps the nonce and inerts the plan — a swapped cart whose
   /// new total COINCIDES with the planned one must not resurrect old amounts.
   int _splitPlanNonce = 0;
+
   /// Soft POS evidence for the most recent single (non-split) card payment.
   /// Captured at completion and read synchronously by the order-push bridge
   /// before the next-order reset clears it. Split tenders carry their own
@@ -491,6 +521,7 @@ class PosController extends ChangeNotifier {
   String paymentOverlayTitle = '';
   String customerReferenceNumber = '';
   String vehiclePlateNumber = '';
+
   /// A customer chosen from live search (with loyalty balances). When set, the
   /// order attaches by this customer's id (not the phone field) and loyalty
   /// earn/redeem use this customer.
@@ -565,7 +596,8 @@ class PosController extends ChangeNotifier {
     int? orderNumber,
     String? reason,
     int? voidReasonId,
-  })? onOrderVoided;
+  })?
+  onOrderVoided;
 
   /// Phase C4 — resolves controller-authored user-facing messages in the
   /// device language without a BuildContext. Stored messages (lastPaymentMessage,
@@ -598,11 +630,14 @@ class PosController extends ChangeNotifier {
   Timer? _pendingReconEscalationTimer;
   double _pendingReconAmount = 0;
 
-  PosController({OrderStorageService? orderStorage})
-    : _orderStorage =
-          orderStorage ??
-          debugOrderStorageOverride ??
-          LocalOrderStorageService.instance {
+  PosController({
+    OrderStorageService? orderStorage,
+    pricing.PriceResult Function(pricing.PricingInput)? priceOrderOverride,
+  }) : _orderStorage =
+           orderStorage ??
+           debugOrderStorageOverride ??
+           LocalOrderStorageService.instance,
+       _priceOrder = priceOrderOverride ?? pricing.priceOrder {
     _paymentBridge.setLaunchStateListener(_handlePaymentLaunchState);
   }
 
@@ -643,7 +678,8 @@ class PosController extends ChangeNotifier {
               'payload': <String, dynamic>{
                 'slider_id': (event['slider_id'] as num?)?.toInt(),
                 'slider_item_id': (event['slider_item_id'] as num?)?.toInt(),
-                'content_asset_id': (event['content_asset_id'] as num?)?.toInt(),
+                'content_asset_id': (event['content_asset_id'] as num?)
+                    ?.toInt(),
                 'advertiser_id': (event['advertiser_id'] as num?)?.toInt(),
                 'duration_ms': (event['duration_ms'] as num?)?.toInt(),
                 'played_at': nowIso,
@@ -708,12 +744,15 @@ class PosController extends ChangeNotifier {
     _discountBranchId = branchId;
     this.loyaltyRules = loyaltyRules;
     cachedCustomers = customers;
-    this.cancelOrderPositions =
-        cancelOrderPositions.isEmpty ? const <String>['manager'] : cancelOrderPositions;
-    this.reportsPositions =
-        reportsPositions.isEmpty ? const <String>['manager'] : reportsPositions;
-    this.kitchenPositions =
-        kitchenPositions.isEmpty ? const <String>['manager'] : kitchenPositions;
+    this.cancelOrderPositions = cancelOrderPositions.isEmpty
+        ? const <String>['manager']
+        : cancelOrderPositions;
+    this.reportsPositions = reportsPositions.isEmpty
+        ? const <String>['manager']
+        : reportsPositions;
+    this.kitchenPositions = kitchenPositions.isEmpty
+        ? const <String>['manager']
+        : kitchenPositions;
     this.orderNumbering = orderNumbering;
     this.receiptTemplate = receiptTemplate;
     this.voidReasons = voidReasons;
@@ -752,9 +791,11 @@ class PosController extends ChangeNotifier {
     if (categories.isNotEmpty && !categories.contains(selectedCategory)) {
       selectedCategory = categories.first;
     }
-    if (floors.isNotEmpty && !floors.any((f) => f.id == selectedDiningFloorId)) {
+    if (floors.isNotEmpty &&
+        !floors.any((f) => f.id == selectedDiningFloorId)) {
       selectedDiningFloorId = floors.first.id;
     }
+    _invalidatePriceCache();
     _notifySafely();
   }
 
@@ -779,6 +820,7 @@ class PosController extends ChangeNotifier {
   /// order context: delivery + a chosen provider ⇒ each product's resolved
   /// delivery price; otherwise the base price.
   void _applyDeliveryPricing() {
+    _invalidatePriceCache();
     final base = _baseProducts.isEmpty ? allProducts : _baseProducts;
     final pid = selectedDeliveryProviderId;
     final isDelivery = selectedOrderType == OrderType.delivery && pid != null;
@@ -817,8 +859,9 @@ class PosController extends ChangeNotifier {
       (p) => p.id == product.id,
       orElse: () => product,
     );
-    final ownIds =
-        live.addonGroupIds.isNotEmpty ? live.addonGroupIds : product.addonGroupIds;
+    final ownIds = live.addonGroupIds.isNotEmpty
+        ? live.addonGroupIds
+        : product.addonGroupIds;
     // Phase B — union the product's own groups with any bound to its
     // category ("attach a group to a category; the more specific binding
     // wins" — a duplicate id simply dedupes here).
@@ -908,7 +951,8 @@ class PosController extends ChangeNotifier {
           // mirroring the ingredient check above. Recipe/untracked
           // products fall back to the one-unit isOutOfStock check.
           final shelf = p.branchStockQty;
-          if ((p.stockMode == 'unit' || p.stockMode == 'cooked') && shelf != null) {
+          if ((p.stockMode == 'unit' || p.stockMode == 'cooked') &&
+              shelf != null) {
             if (shelf < line.qty) return true;
           } else if (isOutOfStock(p)) {
             return true;
@@ -994,8 +1038,9 @@ class PosController extends ChangeNotifier {
       for (final p in _baseProducts)
         (soldByProductId.containsKey(p.id) && p.branchStockQty != null)
             ? p.copyWith(
-                setBranchStockQty:
-                    _clampStock(p.branchStockQty! - soldByProductId[p.id]!),
+                setBranchStockQty: _clampStock(
+                  p.branchStockQty! - soldByProductId[p.id]!,
+                ),
               )
             : p,
     ];
@@ -1067,96 +1112,75 @@ class PosController extends ChangeNotifier {
       ..sort((left, right) => left.sortOrder.compareTo(right.sortOrder));
   }
 
-  double get rawSubtotal => _cart.fold(0, (sum, item) => sum + item.lineTotal);
+  pricing.PriceResult? _priceCache;
+  int _priceCacheNonce = -1;
+  DateTime? _priceCacheAt;
 
-  double get discountAmount {
-    final orderLevel = discount.isActive
-        ? switch (discount.kind) {
-            DiscountKind.fixedAmount => discount.value,
-            DiscountKind.percentage => rawSubtotal * (discount.value / 100),
-            DiscountKind.none => 0.0,
-          }
-        : 0.0;
-    // Auto-applied product/category line discounts + applied OFFERS (P-F9)
-    // stack on top of any order-level discount; the combined total is
-    // clamped so the order can never go negative.
-    final combined = orderLevel + lineDiscountTotal + offerDiscountTotal;
-    return _roundMoney(combined.clamp(0.0, rawSubtotal).toDouble());
+  pricing.PriceResult get _price {
+    final now = clock();
+    final stale =
+        _priceCache == null ||
+        _priceCacheNonce != orderUpdateNonce ||
+        _priceCacheAt == null ||
+        now.difference(_priceCacheAt!).inSeconds >= 60;
+    if (stale) {
+      _priceCache = _priceOrder(machine_pricing.buildPricingInput(this, now));
+      _priceCacheNonce = orderUpdateNonce;
+      _priceCacheAt = now;
+    }
+    return _priceCache!;
   }
+
+  void _invalidatePriceCache() {
+    _priceCache = null;
+    _priceCacheNonce = -1;
+    _priceCacheAt = null;
+  }
+
+  double get rawSubtotal => pricing.baisasToOmr(_price.rawSubtotalBaisas);
+
+  double get discountAmount => pricing.baisasToOmr(_price.discountTotalBaisas);
 
   /// The best applicable product/category-scope discount for [item] right now —
   /// auto-applied, since targeted promotions need no picker. Zero if none.
   ({double amount, int? id, String? amountType, String label}) lineDiscountFor(
     CartItem item,
   ) {
-    final branchId = _discountBranchId;
-    // P-G7 — no discounts on delivery-provider orders.
-    if (branchId == null || selectedOrderType == OrderType.delivery) {
-      return (amount: 0.0, id: null, amountType: null, label: '');
-    }
-    final productId = int.tryParse(item.product.id);
-    final categoryId = item.product.categoryId;
-    final now = DateTime.now();
-
-    MerchantDiscount? best;
-    double bestAmount = 0;
-    for (final d in availableDiscounts) {
-      if (d.isOrderScope) continue;
-      if (!d.appliesAt(now, branchId: branchId)) continue;
-      if (!d.appliesToProduct(productId, categoryId)) continue;
-      final amount = d.amountFor(item.lineTotal);
-      if (amount > bestAmount) {
-        bestAmount = amount;
-        best = d;
+    var lineIndex = -1;
+    for (var i = 0; i < _cart.length; i++) {
+      if (identical(_cart[i], item)) {
+        lineIndex = i;
+        break;
       }
     }
-    if (best == null || bestAmount <= 0) {
-      return (amount: 0.0, id: null, amountType: null, label: '');
+    if (lineIndex >= 0) {
+      for (final result in _price.lineDiscounts) {
+        if (result.lineIndex == lineIndex) {
+          return (
+            amount: pricing.baisasToOmr(result.amountBaisas),
+            id: result.ruleId,
+            amountType: result.amountType,
+            label: result.label,
+          );
+        }
+      }
     }
-    return (
-      amount: bestAmount,
-      id: best.id,
-      amountType: best.amountType,
-      label: best.name,
-    );
+    return (amount: 0.0, id: null, amountType: null, label: '');
   }
 
   /// Total of auto-applied product/category line discounts across the cart (OMR).
   double get lineDiscountTotal =>
-      _cart.fold(0.0, (sum, item) => sum + lineDiscountFor(item).amount);
+      pricing.baisasToOmr(_price.lineDiscountTotalBaisas);
 
   /// P-F9 — the offer engine's verdict for the current cart: auto offers
   /// (bogo / multi-buy / cheapest-free / spend-get) plus any intact
   /// cashier-picked bundle instances. Pure recompute on every read.
-  List<AppliedOffer> get appliedOffers {
-    // P-G7 — delivery-provider orders carry no promotions: the provider's
-    // listed price is final (same policy as the tax exemption).
-    if (selectedOrderType == OrderType.delivery) return const [];
-    final branchId = _discountBranchId;
-    if (branchId == null || availableOffers.isEmpty || _cart.isEmpty) {
-      return const [];
-    }
-    final lineNet = [
-      for (final item in _cart)
-        (item.lineTotal - lineDiscountFor(item).amount)
-            .clamp(0.0, double.infinity)
-            .toDouble(),
-    ];
-    return evaluateOffers(
-      cart: _cart,
-      lineNet: lineNet,
-      offers: [
-        for (final o in availableOffers)
-          if (o.autoApply || o.isBundle) o,
-      ],
-      now: clock(),
-      branchId: branchId,
-    );
-  }
+  List<machine_pricing.AppliedOffer> get appliedOffers =>
+      machine_pricing.appliedOffersFromResult(_price);
 
   /// Total taken off by offers (OMR).
   double get offerDiscountTotal =>
-      _roundMoney(appliedOffers.fold(0.0, (s, o) => s + o.total));
+      pricing.baisasToOmr(_price.offerDiscountTotalBaisas);
 
   int _bundleSeq = 0;
 
@@ -1207,52 +1231,68 @@ class PosController extends ChangeNotifier {
   /// require manager approval never auto-apply — nobody approved them.
   void maybeAutoApplyOrderDiscount() {
     if (_autoOrderDiscountSuppressed) return;
-    // P-G7 — no discounts on delivery-provider orders.
-    if (selectedOrderType == OrderType.delivery) return;
     if (discount.isActive || _cart.isEmpty) return;
-    final branchId = _discountBranchId;
-    if (branchId == null) return;
     final now = clock();
-
-    MerchantDiscount? best;
-    var bestAmount = 0.0;
-    for (final d in availableDiscounts) {
-      if (!d.isOrderScope || !d.autoApply || d.requiresManagerApproval) {
-        continue;
-      }
-      if (!d.appliesAt(now, branchId: branchId)) continue;
-      final amount = d.amountFor(rawSubtotal);
-      if (amount > bestAmount) {
-        bestAmount = amount;
-        best = d;
-      }
-    }
-    if (best == null || bestAmount <= 0) return;
-    discount = best.toConfiguration();
+    final input = machine_pricing.buildPricingInput(this, now);
+    final best = pricing.selectAutoOrderDiscount(
+      lines: input.lines,
+      rules: input.discountRules,
+      now: input.now,
+      branchId: input.branchId,
+      isDeliveryProvider: input.isDeliveryProvider,
+    );
+    if (best == null) return;
+    discount = machine_pricing.discountConfigurationFromSelection(
+      pricing.ruleAsOrderSelection(best),
+    );
     _broadcast();
   }
 
   /// A cart item's snapshot map + its auto-applied line discount, so the order
   /// push can emit a per-line discounts[] entry with line_index.
-  Map<String, dynamic> _snapshotItem(CartItem item) {
+  Map<String, dynamic> _snapshotItem(
+    CartItem item, {
+    pricing.PriceResult? priced,
+  }) {
     final map = item.toMap();
-    final ld = lineDiscountFor(item);
-    if (ld.amount > 0) {
-      map['lineDiscount'] = ld.amount;
-      map['lineDiscountLabel'] = ld.label;
-      if (ld.id != null) map['lineDiscountId'] = ld.id;
-      if (ld.amountType != null) map['lineDiscountAmountType'] = ld.amountType;
+    var lineIndex = -1;
+    for (var i = 0; i < _cart.length; i++) {
+      if (identical(_cart[i], item)) {
+        lineIndex = i;
+        break;
+      }
+    }
+    pricing.LineDiscountResult? lineDiscount;
+    if (lineIndex >= 0) {
+      for (final result in (priced ?? _price).lineDiscounts) {
+        if (result.lineIndex == lineIndex) {
+          lineDiscount = result;
+          break;
+        }
+      }
+    }
+    if (lineDiscount != null && lineDiscount.amountBaisas > 0) {
+      map['lineDiscount'] = pricing.baisasToOmr(lineDiscount.amountBaisas);
+      map['lineDiscountLabel'] = lineDiscount.label;
+      if (lineDiscount.ruleId != null) {
+        map['lineDiscountId'] = lineDiscount.ruleId;
+      }
+      if (lineDiscount.amountType != null) {
+        map['lineDiscountAmountType'] = lineDiscount.amountType;
+      }
     }
     // P-F5 — the gifted line's write-off value, frozen at snapshot time so
     // the push can emit an is_gift comp row per line.
-    final gift = giftAmountFor(item);
-    if (gift > 0) map['giftAmount'] = gift;
+    final giftBaisas = lineIndex < 0
+        ? 0
+        : ((priced ?? _price).giftAmountsBaisas[lineIndex] ?? 0);
+    if (giftBaisas > 0) {
+      map['giftAmount'] = pricing.baisasToOmr(giftBaisas);
+    }
     return map;
   }
 
-  double get subtotal => _roundMoney(
-    (rawSubtotal - discountAmount).clamp(0.0, double.infinity).toDouble(),
-  );
+  double get subtotal => pricing.baisasToOmr(_price.subtotalBaisas);
 
   /// Phase B — the comp write-off (OMR), derived LIVE from the cart so edits
   /// can never leave a stale figure: a line comp = that line's discounted
@@ -1260,47 +1300,27 @@ class PosController extends ChangeNotifier {
   /// that was removed clears the comp (returns 0).
   /// P-F5 — a gifted line's write-off value: its discounted total.
   double giftAmountFor(CartItem item) {
-    if (!item.gifted) return 0;
-    final net = item.lineTotal - lineDiscountFor(item).amount;
-    return _roundMoney(net.clamp(0.0, double.infinity).toDouble());
+    for (var i = 0; i < _cart.length; i++) {
+      if (identical(_cart[i], item)) {
+        return pricing.baisasToOmr(_price.giftAmountsBaisas[i] ?? 0);
+      }
+    }
+    return 0;
   }
 
   /// P-F5 — total written off by per-item gifts (OMR).
-  double get giftedLinesTotal =>
-      _roundMoney(_cart.fold(0.0, (sum, item) => sum + giftAmountFor(item)));
+  double get giftedLinesTotal => pricing.baisasToOmr(_price.giftedTotalBaisas);
 
   bool get hasGiftedLines => _cart.any((item) => item.gifted);
 
   /// The total write-off: the manager comp + the gifted lines. A FULL-ORDER
   /// comp covers only what isn't already gifted (no double write-off); a
   /// line comp on a gifted line counts once (the gift wins).
-  double get compAmount {
-    final gifts = giftedLinesTotal;
-    final comp = appliedComp;
-    if (comp == null) {
-      return _roundMoney(gifts.clamp(0.0, subtotal).toDouble());
-    }
-    final lineIndex = comp.lineIndex;
-    double managerPart;
-    if (lineIndex == null) {
-      managerPart = (subtotal - gifts).clamp(0.0, double.infinity).toDouble();
-    } else if (lineIndex < 0 || lineIndex >= _cart.length) {
-      managerPart = 0;
-    } else {
-      final item = _cart[lineIndex];
-      managerPart = item.gifted
-          ? 0 // the gift already writes this line off
-          : (item.lineTotal - lineDiscountFor(item).amount)
-              .clamp(0.0, double.infinity)
-              .toDouble();
-    }
-    return _roundMoney((managerPart + gifts).clamp(0.0, subtotal).toDouble());
-  }
+  double get compAmount => pricing.baisasToOmr(_price.compTotalBaisas);
 
   /// P-F5 — the manager-comp slice of [compAmount] (what the reasoned comp
   /// row carries on the wire; the gifted lines ride their own is_gift rows).
-  double get managerCompAmount =>
-      _roundMoney((compAmount - giftedLinesTotal).clamp(0.0, subtotal).toDouble());
+  double get managerCompAmount => pricing.baisasToOmr(_price.managerCompBaisas);
 
   /// P-F5 — toggle a line gift (the screen owns the manager gate). Refused
   /// while a FULL-ORDER comp is applied — the order is already written off.
@@ -1322,22 +1342,20 @@ class PosController extends ChangeNotifier {
 
   /// The taxed base after the comp — comped food is given away, not sold, so
   /// no tax is charged on it (a fully comped order totals 0.000).
-  double get _taxedBase => _roundMoney(
-    (subtotal - compAmount).clamp(0.0, double.infinity).toDouble(),
-  );
-
-  /// P-F1 — delivery-provider orders carry NO tax at all (merchant policy:
-  /// the provider's listed price is final). The server never recomputes tax —
-  /// it only checks the additive invariant — so zeroing here is authoritative.
-  bool get _isTaxExempt => selectedOrderType == OrderType.delivery;
+  double get _taxedBase => pricing.baisasToOmr(_price.taxedBaseBaisas);
 
   /// Per-tax breakdown (one line per active company tax) for the cart + receipt.
-  List<TaxLineAmount> get taxLines =>
-      _isTaxExempt ? const <TaxLineAmount>[] : taxLinesFor(_taxedBase);
+  List<TaxLineAmount> get taxLines {
+    assert(pricing.omrToBaisas(_taxedBase) == _price.taxedBaseBaisas);
+    return [
+      for (final result in _price.taxLines)
+        machine_pricing.taxLineFromResult(result),
+    ];
+  }
 
-  double get tax => _isTaxExempt ? 0 : taxTotalFor(_taxedBase);
+  double get tax => pricing.baisasToOmr(_price.taxTotalBaisas);
 
-  double get total => _roundMoney(_taxedBase + tax);
+  double get total => pricing.baisasToOmr(_price.grandTotalBaisas);
 
   /// Phase B — apply a manager comp (one per order; replaces any prior one).
   /// The CALLER is responsible for manager authorization + cap validation
@@ -1402,14 +1420,19 @@ class PosController extends ChangeNotifier {
     if (splitCount <= 1) return total;
     if (isSplitPaymentComplete) {
       return _splitPayments.isEmpty
-          ? _roundMoney(total / splitCount)
+          ? pricing.baisasToOmr(
+              pricing.equalShareBaisas(_price.grandTotalBaisas, splitCount),
+            )
           : _splitPayments.last.baseAmount;
     }
 
     final remainingShares = splitCount - paidSplitCount;
     if (remainingShares <= 1) {
-      return _roundMoney(
-        (total - _splitBasePaidTotal).clamp(0.0, double.infinity).toDouble(),
+      return pricing.baisasToOmr(
+        pricing.remainderShareBaisas(
+          _price.grandTotalBaisas,
+          pricing.omrToBaisas(_splitBasePaidTotal),
+        ),
       );
     }
 
@@ -1422,15 +1445,17 @@ class PosController extends ChangeNotifier {
     if (plan != null &&
         plan.length == splitCount &&
         _splitPlanNonce == orderUpdateNonce) {
-      final planTotal = _roundMoney(
-        plan.fold<double>(0, (sum, amount) => sum + amount),
-      );
-      if ((planTotal - total).abs() <= 0.0005) {
-        return _roundMoney(plan[paidSplitCount]);
+      final planBaisas = [
+        for (final amount in plan) pricing.omrToBaisas(amount),
+      ];
+      if (pricing.splitPlanMatchesTotal(planBaisas, _price.grandTotalBaisas)) {
+        return pricing.baisasToOmr(planBaisas[paidSplitCount]);
       }
     }
 
-    return _roundMoney(total / splitCount);
+    return pricing.baisasToOmr(
+      pricing.equalShareBaisas(_price.grandTotalBaisas, splitCount),
+    );
   }
 
   double get payableTotal {
@@ -1472,19 +1497,24 @@ class PosController extends ChangeNotifier {
     final floor = activeTable == null
         ? null
         : _findDiningFloorById(activeTable.floorId);
+    final priced = _price;
 
     // P-F9 — freeze the applied offers (flattened allocations).
     final frozenOffers = <Map<String, dynamic>>[
-      for (final o in appliedOffers) ...[
-        for (final e in o.lineAmounts.entries)
+      for (final o in priced.appliedOffers) ...[
+        for (final e in o.lineAmountsBaisas.entries)
           {
             'offer_id': o.offerId,
             'name': o.name,
-            'amount': e.value,
+            'amount': pricing.baisasToOmr(e.value),
             'line_index': e.key,
           },
-        if (o.orderAmount > 0)
-          {'offer_id': o.offerId, 'name': o.name, 'amount': o.orderAmount},
+        if (o.orderAmountBaisas > 0)
+          {
+            'offer_id': o.offerId,
+            'name': o.name,
+            'amount': pricing.baisasToOmr(o.orderAmountBaisas),
+          },
       ],
     ];
 
@@ -1493,9 +1523,9 @@ class PosController extends ChangeNotifier {
       receiptNumber: receiptNumber, // P-F8 — '' until allocated
       offers: frozenOffers, // P-F9
       orderType: selectedOrderType.storageValue,
-      items: _cart.map(_snapshotItem).toList(),
-      rawSubtotal: rawSubtotal,
-      discountAmount: discountAmount,
+      items: [for (final item in _cart) _snapshotItem(item, priced: priced)],
+      rawSubtotal: pricing.baisasToOmr(priced.rawSubtotalBaisas),
+      discountAmount: pricing.baisasToOmr(priced.discountTotalBaisas),
       discountLabel: discount.label,
       discountId: discount.discountId,
       discountAmountType: discount.amountType,
@@ -1503,13 +1533,13 @@ class PosController extends ChangeNotifier {
       loyaltyRedeemRuleId: loyaltyRedeemRuleId,
       loyaltyRedeemPoints: loyaltyRedeemPoints,
       loyaltyRedeemStamps: loyaltyRedeemStamps,
-      compAmount: compAmount,
+      compAmount: pricing.baisasToOmr(priced.compTotalBaisas),
       compReasonId: appliedComp?.reasonId,
       compReasonName: appliedComp?.reasonName ?? '',
       compLineIndex: appliedComp?.lineIndex,
-      subtotal: subtotal,
-      tax: tax,
-      total: total,
+      subtotal: pricing.baisasToOmr(priced.subtotalBaisas),
+      tax: pricing.baisasToOmr(priced.taxTotalBaisas),
+      total: pricing.baisasToOmr(priced.grandTotalBaisas),
       activePaymentBaseTotal: activePaymentBaseTotal,
       splitCount: splitCount,
       payableTotal: payableTotal,
@@ -1539,15 +1569,16 @@ class PosController extends ChangeNotifier {
       // ever non-empty after completeDeliveryOrder's Proceed popup). The
       // punched values win: they survive a mid-completion config refresh
       // that drops the live selection.
-      deliveryProviderId: _punchedDeliveryProviderId ??
+      deliveryProviderId:
+          _punchedDeliveryProviderId ??
           (selectedOrderType == OrderType.delivery
               ? selectedDeliveryProviderId
               : null),
       deliveryProviderName: _punchedDeliveryProviderName.isNotEmpty
           ? _punchedDeliveryProviderName
           : (selectedOrderType == OrderType.delivery
-              ? (selectedDeliveryProvider?.name ?? '')
-              : ''),
+                ? (selectedDeliveryProvider?.name ?? '')
+                : ''),
       deliveryReference: deliveryReference,
       deliveryDriverPhone: deliveryDriverPhone,
     );
@@ -1710,8 +1741,9 @@ class PosController extends ChangeNotifier {
       selectedEarnRuleIds = null;
     }
     selectedCustomer = customer;
-    customerReferenceNumber =
-        customer.phone.replaceAll(RegExp(r'\D'), '').trim();
+    customerReferenceNumber = customer.phone
+        .replaceAll(RegExp(r'\D'), '')
+        .trim();
     _broadcast();
   }
 
@@ -1729,11 +1761,13 @@ class PosController extends ChangeNotifier {
     final q = query.trim().toLowerCase();
     if (q.isEmpty) return const [];
     return cachedCustomers
-        .where((c) =>
-            c.name.toLowerCase().contains(q) ||
-            c.phone.toLowerCase().contains(q) ||
-            // P-F2 — offline plate lookup (plates cache uppercased).
-            c.plates.any((p) => p.toLowerCase().contains(q)))
+        .where(
+          (c) =>
+              c.name.toLowerCase().contains(q) ||
+              c.phone.toLowerCase().contains(q) ||
+              // P-F2 — offline plate lookup (plates cache uppercased).
+              c.plates.any((p) => p.toLowerCase().contains(q)),
+        )
         .take(20)
         .map((c) => c.toSearchResult())
         .toList();
@@ -1742,10 +1776,13 @@ class PosController extends ChangeNotifier {
   /// Pending loyalty redemption for this order (the points SPENT). Its monetary
   /// value rides as the order discount; this is sent as loyalty_redeem on pay so
   /// the server decrements the balance. Null = no redemption.
+  @override
   int? loyaltyRedeemRuleId;
+  @override
   int loyaltyRedeemPoints = 0;
   // Stamps spent on a visit_based (stamp-card) redemption (sent as
   // loyalty_redeem.stamps on pay). 0 = a points redemption (or none).
+  @override
   int loyaltyRedeemStamps = 0;
 
   void applyDiscount(DiscountConfiguration configuration) {
@@ -1823,19 +1860,15 @@ class PosController extends ChangeNotifier {
   /// present the split as active in that case.
   bool setSplitPlan(List<double> amounts) {
     if (hasRecordedSplitPayments) return false;
-    if (amounts.length < 2) return false;
-    final shares = amounts.map(_roundMoney).toList();
-    final head = shares.sublist(0, shares.length - 1);
-    if (head.any((amount) => amount < 0.001)) return false;
-    final headTotal = _roundMoney(
-      head.fold<double>(0, (sum, amount) => sum + amount),
-    );
-    final remainder = _roundMoney(total - headTotal);
-    if (remainder < 0.001) return false;
-    shares[shares.length - 1] = remainder;
+    final shares = pricing.validateSplitPlan([
+      for (final amount in amounts) pricing.omrToBaisas(amount),
+    ], _price.grandTotalBaisas);
+    if (shares == null) return false;
     splitCount = shares.length;
     _splitPayments.clear();
-    _splitPlanAmounts = shares;
+    _splitPlanAmounts = [
+      for (final amount in shares) pricing.baisasToOmr(amount),
+    ];
     _splitPlanNonce = orderUpdateNonce;
     _resetCharityRoundUp();
     _broadcast();
@@ -2088,7 +2121,10 @@ class PosController extends ChangeNotifier {
   /// message, or null when the preconditions fail (caller guards UI-side
   /// too). Floor-plan context only (no active table) — that sidesteps the
   /// debounced-persist race by construction.
-  Future<String?> transferDiningTable(String fromTableId, String toTableId) async {
+  Future<String?> transferDiningTable(
+    String fromTableId,
+    String toTableId,
+  ) async {
     if (activeDiningTableId != null || fromTableId == toTableId) return null;
     final source = diningSessionFor(fromTableId);
     final targetDef = _findDiningTableDefinitionById(toTableId);
@@ -2125,7 +2161,9 @@ class PosController extends ChangeNotifier {
     await _orderStorage.saveDiningTableSession(moved);
     await _orderStorage.clearDiningTable(fromTableId);
     diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
-      ..removeWhere((s) => s.tableId == fromTableId || s.tableId == targetDef.id)
+      ..removeWhere(
+        (s) => s.tableId == fromTableId || s.tableId == targetDef.id,
+      )
       ..insert(0, moved);
     _notifySafely();
 
@@ -2168,8 +2206,10 @@ class PosController extends ChangeNotifier {
     final headDef = _findDiningTableDefinitionById(head);
 
     final now = DateTime.now();
-    final linkedIds =
-        <String>{...headSession.linkedTableIds, freeTableId}.toList();
+    final linkedIds = <String>{
+      ...headSession.linkedTableIds,
+      freeTableId,
+    }.toList();
     final updatedHead = headSession.copyWith(
       linkedTableIds: linkedIds,
       updatedAt: now,
@@ -2209,10 +2249,7 @@ class PosController extends ChangeNotifier {
     if (session == null || session.linkedTableIds.isEmpty) {
       return const <int>[];
     }
-    return session.linkedTableIds
-        .map(int.tryParse)
-        .whereType<int>()
-        .toList();
+    return session.linkedTableIds.map(int.tryParse).whereType<int>().toList();
   }
 
   Future<void> openRearDisplay() async {
@@ -2254,13 +2291,19 @@ class PosController extends ChangeNotifier {
   /// right feedback instead of a false success.
   Future<bool> printOnly() async {
     if (_cart.isEmpty) return false;
-    final ok = await SunmiReceiptService.printReceipt(snapshot(), template: receiptTemplate);
+    final ok = await SunmiReceiptService.printReceipt(
+      snapshot(),
+      template: receiptTemplate,
+    );
     if (!ok) _reportPrintFailure('receipt');
     return ok;
   }
 
   Future<bool> printHistoricalReceipt(OrderHistoryRecord record) async {
-    final ok = await SunmiReceiptService.printReceipt(record.snapshot, template: receiptTemplate);
+    final ok = await SunmiReceiptService.printReceipt(
+      record.snapshot,
+      template: receiptTemplate,
+    );
     if (!ok) _reportPrintFailure('receipt');
     return ok;
   }
@@ -2304,8 +2347,8 @@ class PosController extends ChangeNotifier {
       // orders never stored the provider, so reprints omit it.
       deliveryProvider:
           !isReprint && s.orderType == OrderType.delivery.storageValue
-              ? (selectedDeliveryProvider?.name ?? '')
-              : '',
+          ? (selectedDeliveryProvider?.name ?? '')
+          : '',
       time: time,
       isReprint: isReprint,
       items: s.items,
@@ -2377,8 +2420,9 @@ class PosController extends ChangeNotifier {
       // Phase C2 — mint the server uuid at hold time (or keep the resumed
       // one) so the mirror, re-holds, the final order.create and a discard's
       // order.void all converge on one pos_orders row.
-      final draft =
-          createDraft(serverOrderUuid: _activeServerOrderUuid ??= uuidV4());
+      final draft = createDraft(
+        serverOrderUuid: _activeServerOrderUuid ??= uuidV4(),
+      );
       await _orderStorage.saveHeldOrder(draft);
       await refreshHeldOrders();
       // Mirror server-side via the durable outbox (fire-and-forget).
@@ -2713,8 +2757,9 @@ class PosController extends ChangeNotifier {
         receiptNumber.isEmpty &&
         allocateReceiptNumber != null) {
       try {
-        final allocated = await allocateReceiptNumber!()
-            .timeout(const Duration(seconds: 3));
+        final allocated = await allocateReceiptNumber!().timeout(
+          const Duration(seconds: 3),
+        );
         if (allocated != null) receiptNumber = allocated.formatted;
       } catch (_) {
         // Offline / timeout / refused — the local number stands.
@@ -2765,8 +2810,9 @@ class PosController extends ChangeNotifier {
         receiptNumber.isEmpty &&
         allocateReceiptNumber != null) {
       try {
-        final allocated = await allocateReceiptNumber!()
-            .timeout(const Duration(seconds: 3));
+        final allocated = await allocateReceiptNumber!().timeout(
+          const Duration(seconds: 3),
+        );
         if (allocated != null) receiptNumber = allocated.formatted;
       } catch (_) {
         // Offline / timeout / refused — the local number stands.
@@ -3206,13 +3252,17 @@ class PosController extends ChangeNotifier {
     // push share it — a later full-cancel can then emit a matching order.void.
     // A cart resumed from hold keeps its mirror's uuid (Phase C2), so the
     // server upserts the held row open instead of duplicating it.
-    final completedSnapshot =
-        snapshot().copyWith(serverOrderUuid: _activeServerOrderUuid ?? uuidV4());
+    final completedSnapshot = snapshot().copyWith(
+      serverOrderUuid: _activeServerOrderUuid ?? uuidV4(),
+    );
     _activeServerOrderUuid = null;
     if (printReceipts) {
       // Fail-safe: a printer error must never abort the local save or the
       // pos_api push below — it only surfaces a staff alert (Phase G4).
-      final ok = await SunmiReceiptService.printReceipt(completedSnapshot, template: receiptTemplate);
+      final ok = await SunmiReceiptService.printReceipt(
+        completedSnapshot,
+        template: receiptTemplate,
+      );
       if (!ok) _reportPrintFailure('receipt');
     }
     if (printKitchenTickets) {
@@ -3288,6 +3338,7 @@ class PosController extends ChangeNotifier {
   }
 
   void _broadcast() {
+    _invalidatePriceCache();
     _syncActiveDiningTableInMemory();
     _scheduleActiveDiningTablePersistence();
     _notifySafely();
@@ -3527,7 +3578,8 @@ class PosController extends ChangeNotifier {
   Future<PendingReconChoice> _promptForPendingReconciliation({
     required double amount,
   }) async {
-    if (_pendingReconCompleter != null && !_pendingReconCompleter!.isCompleted) {
+    if (_pendingReconCompleter != null &&
+        !_pendingReconCompleter!.isCompleted) {
       _pendingReconCompleter!.complete(PendingReconChoice.cancel);
     }
     _pendingReconCompleter = Completer<PendingReconChoice>();
@@ -3824,7 +3876,7 @@ class PosController extends ChangeNotifier {
     final headId = activeDiningTableId;
     final linkedIds =
         (headId != null ? diningSessionFor(headId)?.linkedTableIds : null) ??
-            const <String>[];
+        const <String>[];
 
     final paidSession = _buildActiveDiningTableSession(
       paidSnapshot: completedSnapshot,
@@ -3901,7 +3953,8 @@ class PosController extends ChangeNotifier {
     // A reset that force-hides the unresolved-charge prompt is a deliberate
     // abandon — resolve the awaiting pay flow as cancel so it can never
     // hang forever now that the prompt itself has no timeout.
-    if (_pendingReconCompleter != null && !_pendingReconCompleter!.isCompleted) {
+    if (_pendingReconCompleter != null &&
+        !_pendingReconCompleter!.isCompleted) {
       _pendingReconCompleter!.complete(PendingReconChoice.cancel);
     }
     showPendingReconciliationPrompt = false;

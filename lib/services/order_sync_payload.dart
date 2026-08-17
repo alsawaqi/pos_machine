@@ -1,6 +1,9 @@
 import 'dart:math';
 
+import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
+
 import '../models/pos_models.dart';
+import 'pricing_adapter.dart';
 
 /// Builds the pos_api `/device/sync/push` event batch for a completed order.
 ///
@@ -102,10 +105,12 @@ OrderSyncPayload buildOrderSyncPayload(
 }) {
   final gen = newUuid ?? uuidV4;
   final ts = (now ?? DateTime.now()).toUtc().toIso8601String();
+  final priced = frozenPriceResultFromSnapshot(snapshot);
   // Reuse the uuid stamped on the snapshot at completion (so a later full-cancel
   // can emit a matching order.void); otherwise mint a fresh one.
-  final orderUuid =
-      snapshot.serverOrderUuid.isNotEmpty ? snapshot.serverOrderUuid : gen();
+  final orderUuid = snapshot.serverOrderUuid.isNotEmpty
+      ? snapshot.serverOrderUuid
+      : gen();
 
   Map<String, double>? gps;
   if (lat != null && lng != null) {
@@ -131,8 +136,13 @@ OrderSyncPayload buildOrderSyncPayload(
   // line_index pointing at the line's position in [lines] (the server maps
   // line_index -> order_item).
   final lineDiscounts = <Map<String, dynamic>>[];
-  var lineDiscountSum = 0.0;
-  for (final raw in snapshot.items) {
+  final wireLineIndexBySnapshotIndex = <int, int>{};
+  for (
+    var snapshotIndex = 0;
+    snapshotIndex < snapshot.items.length;
+    snapshotIndex++
+  ) {
+    final raw = snapshot.items[snapshotIndex];
     final productId = int.tryParse('${raw['id']}');
     if (productId == null) continue; // non-catalog (demo) product — cannot ref
     final qty = (raw['qty'] as num?)?.toInt() ?? 1;
@@ -146,12 +156,15 @@ OrderSyncPayload buildOrderSyncPayload(
       if (addOnId == null) continue; // sample/demo modifier — not a real add-on
       addons.add({
         'add_on_id': addOnId,
-        'price_delta_baisas': omrToBaisas((m['price'] as num?)?.toDouble() ?? 0),
+        'price_delta_baisas': omrToBaisas(
+          (m['price'] as num?)?.toDouble() ?? 0,
+        ),
       });
     }
 
     final notes = (raw['notes'] as String?)?.trim();
     final lineIndex = lines.length;
+    wireLineIndexBySnapshotIndex[snapshotIndex] = lineIndex;
     lines.add({
       'product_id': productId,
       'qty': qty,
@@ -160,20 +173,17 @@ OrderSyncPayload buildOrderSyncPayload(
       if (notes != null && notes.isNotEmpty) 'notes': notes,
       if (addons.isNotEmpty) 'addons': addons,
     });
-
-    final lineDiscount = (raw['lineDiscount'] as num?)?.toDouble() ?? 0;
-    if (lineDiscount > 0) {
-      lineDiscountSum += lineDiscount;
-      final label = (raw['lineDiscountLabel'] as String?) ?? '';
-      lineDiscounts.add({
-        'name': label.isEmpty ? 'Discount' : label,
-        'amount_baisas': omrToBaisas(lineDiscount),
-        if (raw['lineDiscountId'] != null) 'discount_id': raw['lineDiscountId'],
-        if (raw['lineDiscountAmountType'] != null)
-          'amount_type': raw['lineDiscountAmountType'],
-        'line_index': lineIndex,
-      });
-    }
+  }
+  for (final result in priced.lineDiscounts) {
+    final lineIndex = wireLineIndexBySnapshotIndex[result.lineIndex];
+    if (lineIndex == null || result.amountBaisas <= 0) continue;
+    lineDiscounts.add({
+      'name': result.label.isEmpty ? 'Discount' : result.label,
+      'amount_baisas': result.amountBaisas,
+      if (result.ruleId != null) 'discount_id': result.ruleId,
+      if (result.amountType != null) 'amount_type': result.amountType,
+      'line_index': lineIndex,
+    });
   }
 
   // ---- discounts (snapshot-authoritative) ----
@@ -184,26 +194,30 @@ OrderSyncPayload buildOrderSyncPayload(
   // report).
   final discounts = <Map<String, dynamic>>[];
   final offerEntries = <Map<String, dynamic>>[];
-  var offerSum = 0.0;
-  for (final o in snapshot.offers) {
-    final amount = (o['amount'] as num?)?.toDouble() ?? 0;
-    if (amount <= 0) continue;
-    offerSum += amount;
-    offerEntries.add({
-      'name': o['name']?.toString() ?? 'Offer',
-      'amount_baisas': omrToBaisas(amount),
-      if (o['offer_id'] != null) 'offer_id': o['offer_id'],
-      if (o['line_index'] != null) 'line_index': o['line_index'],
-    });
+  for (final offer in priced.appliedOffers) {
+    for (final entry in offer.lineAmountsBaisas.entries) {
+      if (entry.value <= 0) continue;
+      offerEntries.add({
+        'name': offer.name,
+        'amount_baisas': entry.value,
+        'offer_id': offer.offerId,
+        'line_index': entry.key,
+      });
+    }
+    if (offer.orderAmountBaisas > 0) {
+      offerEntries.add({
+        'name': offer.name,
+        'amount_baisas': offer.orderAmountBaisas,
+        'offer_id': offer.offerId,
+      });
+    }
   }
-  final orderLevelDiscount =
-      (snapshot.discountAmount - lineDiscountSum - offerSum)
-          .clamp(0.0, double.infinity)
-          .toDouble();
-  if (orderLevelDiscount > 0) {
+  if (priced.orderDiscountRowBaisas > 0) {
     discounts.add({
-      'name': snapshot.discountLabel.isEmpty ? 'Discount' : snapshot.discountLabel,
-      'amount_baisas': omrToBaisas(orderLevelDiscount),
+      'name': snapshot.discountLabel.isEmpty
+          ? 'Discount'
+          : snapshot.discountLabel,
+      'amount_baisas': priced.orderDiscountRowBaisas,
       // A merchant rule carries its id + amount_type so the server snapshots it
       // (by-rule report); a manual discount omits them.
       if (snapshot.discountId != null) 'discount_id': snapshot.discountId,
@@ -222,35 +236,33 @@ OrderSyncPayload buildOrderSyncPayload(
   // capped against the remaining budget (an order-level discount can shrink
   // the total write-off below the gifted lines' face value) and the reasoned
   // comp takes whatever the gifts left. ----
-  final compBaisas = omrToBaisas(snapshot.compAmount);
+  final compBaisas = priced.compTotalBaisas;
   final comps = <Map<String, dynamic>>[];
   if (compBaisas > 0) {
-    var remaining = compBaisas;
-    final giftRows = <Map<String, dynamic>>[];
-    for (var i = 0; i < snapshot.items.length; i++) {
-      final giftAmount =
-          (snapshot.items[i]['giftAmount'] as num?)?.toDouble() ?? 0;
-      if (giftAmount <= 0) continue;
-      final amount = omrToBaisas(giftAmount).clamp(0, remaining);
-      if (amount <= 0) continue;
-      remaining -= amount;
-      giftRows.add({
-        'is_gift': true,
-        'amount_baisas': amount,
-        'line_index': i,
-        'staff_id': ?staffId,
-      });
-    }
-    if (remaining > 0 && snapshot.compReasonId != null) {
+    final rows = pricing.compWireRowsFor(
+      giftAmountsBaisas: priced.giftAmountsBaisas,
+      compTotalBaisas: priced.compTotalBaisas,
+      comp: frozenCompSelectionFromSnapshot(snapshot),
+    );
+    // The helper returns budget order (gifts first). The established wire is
+    // reasoned row first, then gifts, so emit in that compatibility order.
+    for (final row in rows.where((row) => !row.isGift)) {
+      if (row.reasonId == null) continue;
       comps.add({
-        'comp_reason_id': snapshot.compReasonId,
-        'amount_baisas': remaining,
-        if (snapshot.compLineIndex != null)
-          'line_index': snapshot.compLineIndex,
+        'comp_reason_id': row.reasonId,
+        'amount_baisas': row.amountBaisas,
+        if (row.lineIndex != null) 'line_index': row.lineIndex,
         'staff_id': ?staffId,
       });
     }
-    comps.addAll(giftRows);
+    for (final row in rows.where((row) => row.isGift)) {
+      comps.add({
+        'is_gift': true,
+        'amount_baisas': row.amountBaisas,
+        'line_index': row.lineIndex,
+        'staff_id': ?staffId,
+      });
+    }
   }
 
   final order = <String, dynamic>{
@@ -261,11 +273,11 @@ OrderSyncPayload buildOrderSyncPayload(
     // allocated (offline orders go up without one).
     if (snapshot.receiptNumber.isNotEmpty)
       'receipt_number': snapshot.receiptNumber,
-    'subtotal_baisas': omrToBaisas(snapshot.rawSubtotal),
-    'discount_total_baisas': omrToBaisas(snapshot.discountAmount),
+    'subtotal_baisas': priced.rawSubtotalBaisas,
+    'discount_total_baisas': priced.discountTotalBaisas,
     if (comps.isNotEmpty) 'comp_total_baisas': compBaisas,
-    'tax_total_baisas': omrToBaisas(snapshot.tax),
-    'grand_total_baisas': omrToBaisas(snapshot.total),
+    'tax_total_baisas': priced.taxTotalBaisas,
+    'grand_total_baisas': priced.grandTotalBaisas,
     'opened_at': ts,
     'lines': lines,
     if (discounts.isNotEmpty) 'discounts': discounts,
@@ -283,7 +295,7 @@ OrderSyncPayload buildOrderSyncPayload(
   // to equal grand_total exactly (the server tolerates ±1 baisa). A CARD tender
   // carries its Soft POS evidence (reference / auth code / raw bank response)
   // and its status (success, or pending_reconciliation when force-recorded). ----
-  final grandBaisas = omrToBaisas(snapshot.total);
+  final grandBaisas = priced.grandTotalBaisas;
   final payments = <Map<String, dynamic>>[];
   if (snapshot.splitPayments.isNotEmpty) {
     var acc = 0;
@@ -341,8 +353,8 @@ OrderSyncPayload buildOrderSyncPayload(
   // provider id: a reference-bearing order with a somehow-missing provider
   // must FAIL server-side (provider_id required) rather than silently
   // become a phantom paid-cash sale via the pay branch.
-  final isPendingDelivery = snapshot.orderType == 'delivery' &&
-      snapshot.deliveryReference.isNotEmpty;
+  final isPendingDelivery =
+      snapshot.orderType == 'delivery' && snapshot.deliveryReference.isNotEmpty;
 
   final deliverEvent = <String, dynamic>{
     'order_uuid': orderUuid,
@@ -482,14 +494,15 @@ Map<String, dynamic>? buildOrderHoldEvent(
     if (discountBaisas > 0)
       'discounts': [
         {
-          'name':
-              draft.discount.label.isEmpty ? 'Discount' : draft.discount.label,
+          'name': draft.discount.label.isEmpty
+              ? 'Discount'
+              : draft.discount.label,
           'amount_baisas': discountBaisas,
           if (draft.discount.discountId != null)
             'discount_id': draft.discount.discountId,
           if (draft.discount.amountType != null)
             'amount_type': draft.discount.amountType,
-        }
+        },
       ],
     'staff_id': ?staffId,
     'table_id': ?tableId,

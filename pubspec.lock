@@ -781,6 +781,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.0"
+  mithqal_pricing:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: v0.1.0
+      resolved-ref: 48cd6ffe9ea5e253491cab646b4303a1aff23333
+      url: "https://github.com/alsawaqi/mithqal_pricing.git"
+    source: git
+    version: "0.1.0"
   mobile_scanner:
     dependency: "direct main"
     description:
