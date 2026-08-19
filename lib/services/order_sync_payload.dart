@@ -252,6 +252,8 @@ OrderSyncPayload buildOrderSyncPayload(
         'comp_reason_id': row.reasonId,
         'amount_baisas': row.amountBaisas,
         if (row.lineIndex != null) 'line_index': row.lineIndex,
+        if (row.lineIndex != null && snapshot.compQty != null)
+          'qty': snapshot.compQty,
         'staff_id': ?staffId,
         if (snapshot.compReasonName.isNotEmpty) 'note': snapshot.compReasonName,
       });

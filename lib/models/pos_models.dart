@@ -295,26 +295,33 @@ class AppliedComp {
     required this.reasonId,
     required this.reasonName,
     this.lineIndex,
+    int? qty,
     this.note,
-  });
+  }) : qty = lineIndex == null ? null : qty;
   final int reasonId;
   final String reasonName;
   final int? lineIndex;
+  final int? qty;
   final String? note;
 
   Map<String, dynamic> toMap() => {
         'reasonId': reasonId,
         'reasonName': reasonName,
         'lineIndex': lineIndex,
+        'qty': qty,
         'note': note,
       };
 
-  factory AppliedComp.fromMap(Map<String, dynamic> map) => AppliedComp(
-        reasonId: (map['reasonId'] as num?)?.toInt() ?? 0,
-        reasonName: map['reasonName']?.toString() ?? '',
-        lineIndex: (map['lineIndex'] as num?)?.toInt(),
-        note: map['note']?.toString(),
-      );
+  factory AppliedComp.fromMap(Map<String, dynamic> map) {
+    final lineIndex = (map['lineIndex'] as num?)?.toInt();
+    return AppliedComp(
+      reasonId: (map['reasonId'] as num?)?.toInt() ?? 0,
+      reasonName: map['reasonName']?.toString() ?? '',
+      lineIndex: lineIndex,
+      qty: lineIndex == null ? null : (map['qty'] as num?)?.toInt(),
+      note: map['note']?.toString(),
+    );
+  }
 }
 
 /// A company delivery provider (Talabat, Otlob, …) the cashier picks on a
@@ -1635,6 +1642,7 @@ class OrderSnapshot {
   final int? compReasonId;
   final String compReasonName;
   final int? compLineIndex;
+  final int? compQty;
   final double subtotal;
   final double tax;
   final double total;
@@ -1716,6 +1724,7 @@ class OrderSnapshot {
     this.compReasonId,
     this.compReasonName = '',
     this.compLineIndex,
+    this.compQty,
     required this.charityRoundUpPromptId,
     required this.recentProductId,
     required this.orderUpdateNonce,
@@ -1902,6 +1911,7 @@ class OrderSnapshot {
     int? compReasonId,
     String? compReasonName,
     int? compLineIndex,
+    int? compQty,
     double? subtotal,
     double? tax,
     double? total,
@@ -1952,6 +1962,7 @@ class OrderSnapshot {
       compReasonId: compReasonId ?? this.compReasonId,
       compReasonName: compReasonName ?? this.compReasonName,
       compLineIndex: compLineIndex ?? this.compLineIndex,
+      compQty: compQty ?? this.compQty,
       subtotal: subtotal ?? this.subtotal,
       tax: tax ?? this.tax,
       total: total ?? this.total,

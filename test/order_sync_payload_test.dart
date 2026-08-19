@@ -689,6 +689,7 @@ void main() {
       expect(comps[0]['line_index'], 1);
       expect(comps[0]['staff_id'], 9);
       expect(comps[0]['note'], 'Staff Meal');
+      expect(comps[0].containsKey('qty'), isFalse);
       // Invariant: subtotal − discount − comp + tax == grand.
       expect(
         order['subtotal_baisas'] -
@@ -727,6 +728,66 @@ void main() {
       expect(comps, hasLength(1));
       expect(comps.single['comp_reason_id'], 5);
       expect(comps.single.containsKey('note'), isFalse);
+    });
+
+    test('a partial line comp emits qty beside line_index', () {
+      final snap = _snapshot(
+        items: [
+          {
+            'id': '10',
+            'name': 'Latte',
+            'qty': 3,
+            'unitPrice': 1.0,
+            'lineTotal': 3.0,
+          },
+        ],
+        rawSubtotal: 3.0,
+        total: 2.0,
+      ).copyWith(
+        compAmount: 1.0,
+        compReasonId: 5,
+        compReasonName: 'Staff Meal',
+        compLineIndex: 0,
+        compQty: 1,
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final order =
+          payload.events[0]['payload']['order'] as Map<String, dynamic>;
+      final comp = (order['comps'] as List).single as Map<String, dynamic>;
+
+      expect(comp['line_index'], 0);
+      expect(comp['qty'], 1);
+      expect(comp['amount_baisas'], 1000);
+    });
+
+    test('qty is omitted when the reasoned row has no line_index', () {
+      final snap = _snapshot(
+        items: [
+          {
+            'id': '10',
+            'name': 'Latte',
+            'qty': 3,
+            'unitPrice': 1.0,
+            'lineTotal': 3.0,
+          },
+        ],
+        rawSubtotal: 3.0,
+        total: 0,
+      ).copyWith(
+        compAmount: 3.0,
+        compReasonId: 5,
+        compReasonName: 'Staff Meal',
+        compQty: 1,
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final order =
+          payload.events[0]['payload']['order'] as Map<String, dynamic>;
+      final comp = (order['comps'] as List).single as Map<String, dynamic>;
+
+      expect(comp.containsKey('line_index'), isFalse);
+      expect(comp.containsKey('qty'), isFalse);
     });
 
     test('no comp → no comps key and no comp_total_baisas', () {

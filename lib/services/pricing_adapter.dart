@@ -169,6 +169,7 @@ pricing.CompSelection? pricingCompFromAppliedComp(AppliedComp? comp) =>
     ? null
     : pricing.CompSelection(
         lineIndex: comp.lineIndex,
+        qty: comp.qty,
         reasonId: comp.reasonId,
         reason: comp.reasonName,
       );
@@ -356,6 +357,7 @@ pricing.CompSelection? frozenCompSelectionFromSnapshot(
     ? null
     : pricing.CompSelection(
         lineIndex: snapshot.compLineIndex,
+        qty: snapshot.compQty,
         reasonId: snapshot.compReasonId,
         reason: snapshot.compReasonName,
       );

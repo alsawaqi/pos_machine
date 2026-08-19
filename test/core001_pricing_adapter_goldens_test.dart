@@ -9,24 +9,24 @@ import 'package:mithqal_pricing/mithqal_pricing.dart' as core;
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/services/pricing_adapter.dart';
 
-const _v010GoldenCorpusSha256 =
-    '570c28e955e021b1cbc3fbc284538301d8ee74e91188ef1d984b5c5f9ba34dee';
+const _v020GoldenCorpusSha256 =
+    'edb376603b876f69a1ca00770c2f47409f4a558ba2bc41a7c662ed6aa2dea320';
 
 void main() {
   final packageRoot = _mithqalPackageRoot;
 
   test(
-    'CORE-001 v0.1.0 dependency contains the pinned 26-vector corpus',
+    'CORE-001 v0.2.0 dependency contains the pinned 33-vector corpus',
     () async {
       final root = await packageRoot();
       final files = _goldenFiles(root);
 
-      expect(files, hasLength(26));
+      expect(files, hasLength(33));
       expect(
         File(
           '${root.path}${Platform.pathSeparator}pubspec.yaml',
         ).readAsStringSync(),
-        contains(RegExp(r'^version:\s*0\.1\.0\s*$', multiLine: true)),
+        contains(RegExp(r'^version:\s*0\.2\.0\s*$', multiLine: true)),
       );
 
       final manifestFile = File(
@@ -38,8 +38,8 @@ void main() {
           .convert(existing)
           .where((line) => line.isNotEmpty)
           .toList(growable: false);
-      expect(manifestLines, hasLength(27));
-      expect(manifestLines.last, 'TOTAL $_v010GoldenCorpusSha256');
+      expect(manifestLines, hasLength(34));
+      expect(manifestLines.last, 'TOTAL $_v020GoldenCorpusSha256');
 
       final calculatedLines = <String>[];
       for (final file in files) {
@@ -57,7 +57,7 @@ void main() {
   );
 
   test(
-    'all 25 price vectors cross machine models and the production adapter',
+    'all 32 price vectors cross machine models and the production adapter',
     () async {
       final root = await packageRoot();
       final vectors = <({File file, Map<String, dynamic> json})>[];
@@ -65,7 +65,7 @@ void main() {
         final json = _map(jsonDecode(file.readAsStringSync()));
         if (json['kind'] != 'split') vectors.add((file: file, json: json));
       }
-      expect(vectors, hasLength(25));
+      expect(vectors, hasLength(32));
 
       final percentageSelection = pricingOrderDiscountFromMachine(
         discount: const DiscountConfiguration(
@@ -466,6 +466,11 @@ void _expectAdaptedInput(
       reason: '$vector/comp.lineIndex',
     );
     expect(
+      actual.comp!.qty,
+      _nullableInt(want['qty']),
+      reason: '$vector/comp.qty',
+    );
+    expect(
       actual.comp!.reason,
       want['reason']?.toString() ?? '',
       reason: '$vector/comp.reason',
@@ -725,6 +730,7 @@ final class _GoldenMachineState implements MachinePricingState {
               reasonId: _int(comp['reasonId']),
               reasonName: comp['reason']?.toString() ?? '',
               lineIndex: _nullableInt(comp['lineIndex']),
+              qty: _nullableInt(comp['qty']),
             ),
       loyaltyRedeemRuleId: _nullableInt(orderDiscount['loyaltyRuleId']),
       loyaltyRedeemPoints: _int(orderDiscount['loyaltyPoints']),

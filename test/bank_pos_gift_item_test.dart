@@ -81,6 +81,27 @@ void main() {
       expect(latteLine.gifted, isFalse);
     });
 
+    test('partial comp of 1 of 2 leaves one unit taxable', () {
+      final c = build();
+      addTearDown(c.dispose);
+      c.addProduct(latte);
+      c.addProduct(latte);
+
+      c.applyComp(const AppliedComp(
+        reasonId: 49,
+        reasonName: 'Long Wait',
+        lineIndex: 0,
+        qty: 1,
+      ));
+
+      expect(c.appliedComp!.qty, 1);
+      expect(c.managerCompAmount, closeTo(2.0, 1e-9));
+      expect(c.compAmount, closeTo(2.0, 1e-9));
+      expect(c.tax, closeTo(0.100, 1e-9));
+      expect(c.total, closeTo(2.100, 1e-9));
+      expect(c.snapshot().compQty, 1);
+    });
+
     test('gifted flag survives the cart-item map round-trip and splits the '
         'merge signature', () {
       final item = CartItem(product: latte, gifted: true);
@@ -124,6 +145,8 @@ void main() {
       expect(comps.single['line_index'], 1);
       expect(comps.single['amount_baisas'], 3000);
       expect(comps.single.containsKey('comp_reason_id'), isFalse);
+      expect(comps.single.containsKey('note'), isFalse);
+      expect(comps.single.containsKey('qty'), isFalse);
       expect(order['comp_total_baisas'], 3000);
 
       final pay = payload.events[1]['payload'] as Map;

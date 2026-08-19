@@ -155,6 +155,8 @@ _LegacyPayload _legacyBuildOrderSyncPayload(
         'comp_reason_id': snapshot.compReasonId,
         'amount_baisas': remaining,
         'line_index': ?snapshot.compLineIndex,
+        if (snapshot.compLineIndex != null && snapshot.compQty != null)
+          'qty': snapshot.compQty,
         'staff_id': ?staffId,
         if (snapshot.compReasonName.isNotEmpty) 'note': snapshot.compReasonName,
       });
@@ -315,8 +317,8 @@ OrderSnapshot _giftCompSplitCart() => OrderSnapshot.initial().copyWith(
     {
       'id': '31',
       'name': 'Main course',
-      'qty': 1,
-      'unitPrice': 7.000,
+      'qty': 2,
+      'unitPrice': 3.500,
       'lineTotal': 7.000,
     },
   ],
@@ -325,6 +327,8 @@ OrderSnapshot _giftCompSplitCart() => OrderSnapshot.initial().copyWith(
   compAmount: 5.000,
   compReasonId: 42,
   compReasonName: 'Service recovery',
+  compLineIndex: 1,
+  compQty: 1,
   tax: 0.250,
   total: 5.250,
   activePaymentBaseTotal: 2.625,
@@ -404,6 +408,7 @@ void main() {
       expect(comps.first['comp_reason_id'], 42);
       expect(comps.first.containsKey('is_gift'), isFalse);
       expect(comps.first['note'], 'Service recovery');
+      expect(comps.first['qty'], 1);
       expect(comps.last['is_gift'], isTrue);
       expect(comps.map((row) => row['amount_baisas']), <int>[2000, 3000]);
     });

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
 import '../services/audience_service.dart' show AudienceService;
@@ -83,6 +84,63 @@ const _customizationGroups = <_ModifierGroupDefinition>[
 /// (stored values and payloads always keep the English name).
 String _reasonDisplayName(String name, String? nameAr, bool arabic) =>
     arabic && nameAr != null && nameAr.trim().isNotEmpty ? nameAr : name;
+
+/// Mutable source state for the comp dialog's line/quantity selection.
+/// Selecting a line always starts at its full quantity; returning to the whole
+/// order clears quantity. [normalizedQty] omits that full-line default.
+class MachineCompSelectionDraft {
+  int? lineIndex;
+  int? qty;
+
+  void selectTarget(int? nextLineIndex, List<CartItem> cart) {
+    if (nextLineIndex == null ||
+        nextLineIndex < 0 ||
+        nextLineIndex >= cart.length ||
+        cart[nextLineIndex].qty <= 0) {
+      lineIndex = null;
+      qty = null;
+      return;
+    }
+    lineIndex = nextLineIndex;
+    qty = cart[nextLineIndex].qty;
+  }
+
+  void changeQty(int delta, List<CartItem> cart) {
+    final index = lineIndex;
+    if (index == null || index < 0 || index >= cart.length) return;
+    final lineQty = cart[index].qty;
+    if (lineQty <= 0) return;
+    qty = ((qty ?? lineQty) + delta).clamp(1, lineQty).toInt();
+  }
+
+  int? normalizedQty(List<CartItem> cart) {
+    final index = lineIndex;
+    if (index == null || index < 0 || index >= cart.length) return null;
+    final lineQty = cart[index].qty;
+    if (lineQty <= 0) return null;
+    final selectedQty = (qty ?? lineQty).clamp(1, lineQty).toInt();
+    return selectedQty == lineQty ? null : selectedQty;
+  }
+}
+
+/// D-B1 preview law in integer baisas. The net floor and N guard deliberately
+/// precede the clamp, matching mithqal_pricing v0.2.0 exactly.
+int machineLineCompPreviewBaisas({
+  required int lineTotalBaisas,
+  required int lineDiscountBaisas,
+  required int lineQty,
+  int? compQty,
+}) {
+  final rawNet = lineTotalBaisas - lineDiscountBaisas;
+  final net = rawNet < 0 ? 0 : rawNet;
+  if (net == 0 || lineQty <= 0) return 0;
+  final selectedQty = compQty == null
+      ? lineQty
+      : compQty.clamp(1, lineQty).toInt();
+  return selectedQty == lineQty
+      ? net
+      : ((2 * net * selectedQty) + lineQty) ~/ (2 * lineQty);
+}
 
 const bool _staffVisualEffectsEnabled = bool.fromEnvironment(
   'POS_ENABLE_VISUAL_EFFECTS',
@@ -201,6 +259,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         unawaited(ref.read(appDatabaseProvider).consumeProductShelfStock(sold));
     controller.onOrderHeld = _handleOrderHeld;
     controller.onOrderVoided = _handleOrderVoided;
+    controller.onCompClearedAfterCartEdit = _handleCompClearedAfterCartEdit;
     // P-F8 — merchant order numbering: the controller asks for the next
     // sequential number at payment time through this bridge.
     controller.allocateReceiptNumber =
@@ -944,22 +1003,32 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
-    int? lineIndex; // null = whole order
+    final selection = MachineCompSelectionDraft();
     CompReasonRef? reason;
     final applied = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
           final cart = controller.cart;
-          double amountFor(int? index) {
+          double amountFor(int? index, int? qty) {
             if (index == null) return controller.subtotal;
             final item = cart[index];
-            final net =
-                item.lineTotal - controller.lineDiscountFor(item).amount;
-            return net.clamp(0.0, controller.subtotal).toDouble();
+            final amountBaisas = machineLineCompPreviewBaisas(
+              lineTotalBaisas: (item.unitPrice * 1000).round() * item.qty,
+              lineDiscountBaisas:
+                  (controller.lineDiscountFor(item).amount * 1000).round(),
+              lineQty: item.qty,
+              compQty: qty,
+            );
+            return pricing.baisasToOmr(
+              amountBaisas.clamp(
+                0,
+                pricing.omrToBaisas(controller.subtotal),
+              ),
+            );
           }
 
-          final amount = amountFor(lineIndex);
+          final amount = amountFor(selection.lineIndex, selection.qty);
           final cap = reason?.maxAmount;
           final overCap = cap != null && amount > cap + 0.0005;
 
@@ -974,7 +1043,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   Text(l10n.posCompWhatLabel),
                   const SizedBox(height: 8),
                   DropdownButton<int>(
-                    value: lineIndex ?? -1,
+                    key: const ValueKey('comp-target-dropdown'),
+                    value: selection.lineIndex ?? -1,
                     isExpanded: true,
                     items: [
                       DropdownMenuItem(
@@ -990,10 +1060,46 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           ),
                         ),
                     ],
-                    onChanged: (v) => setDialogState(
-                      () => lineIndex = (v == null || v == -1) ? null : v,
-                    ),
+                    onChanged: (v) => setDialogState(() {
+                      selection.selectTarget(
+                        (v == null || v == -1) ? null : v,
+                        cart,
+                      );
+                    }),
                   ),
+                  if (selection.lineIndex != null) ...[
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Text(l10n.restockQtyHint),
+                        const SizedBox(width: 12),
+                        IconButton(
+                          key: const ValueKey('comp-qty-decrement'),
+                          onPressed: selection.qty == 1
+                              ? null
+                              : () => setDialogState(
+                                  () => selection.changeQty(-1, cart),
+                                ),
+                          icon: const Icon(Icons.remove_circle_outline),
+                        ),
+                        Text(
+                          '${selection.qty} / ${cart[selection.lineIndex!].qty}',
+                          key: const ValueKey('comp-qty-value'),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        IconButton(
+                          key: const ValueKey('comp-qty-increment'),
+                          onPressed: selection.qty ==
+                                  cart[selection.lineIndex!].qty
+                              ? null
+                              : () => setDialogState(
+                                  () => selection.changeQty(1, cart),
+                                ),
+                          icon: const Icon(Icons.add_circle_outline),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   Text(l10n.posCompReasonLabel),
                   const SizedBox(height: 8),
@@ -1051,7 +1157,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.applyComp(AppliedComp(
       reasonId: reason!.id,
       reasonName: reason!.name,
-      lineIndex: lineIndex,
+      lineIndex: selection.lineIndex,
+      qty: selection.normalizedQty(controller.cart),
     ));
     _showPopupMessage(
       title: l10n.posCompAppliedTitle,
@@ -1061,6 +1168,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       ),
       tone: FeedbackTone.success,
     );
+  }
+
+  void _handleCompClearedAfterCartEdit() {
+    // Defer so an edit's own immediate success popup (notably Add Bundle)
+    // cannot overwrite the safety notice before the operator sees it.
+    scheduleMicrotask(() {
+      if (!mounted) return;
+      final l10n = L10n.of(context);
+      _showPopupMessage(
+        title: l10n.posCompRemovedTitle,
+        message: l10n.posCompRemovedMessage,
+        tone: FeedbackTone.info,
+      );
+    });
   }
 
   /// Captured for [dispose] — Riverpod forbids `ref.read` once the element

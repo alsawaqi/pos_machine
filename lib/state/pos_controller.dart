@@ -582,6 +582,11 @@ class PosController extends ChangeNotifier
   /// network.
   void Function(OrderSessionDraft draft)? onOrderHeld;
 
+  /// Called after a successful cart edit invalidates and clears a manager comp.
+  /// The screen surfaces the required operator notice; tests can observe the
+  /// event without coupling controller state to a BuildContext.
+  void Function()? onCompClearedAfterCartEdit;
+
   /// Phase C2 — the server order uuid for the CURRENT cart, minted at hold
   /// time (and restored on resume) so hold → re-hold → completion → void all
   /// share one uuid. Null = this cart was never held.
@@ -1212,6 +1217,7 @@ class PosController extends ChangeNotifier
       if (cartQuantityForProduct(p.id) + entry.count > shelf) return;
     }
 
+    _dropCompForCartMutation();
     _ensureOrderReference();
     final key = '${offer.id}:${++_bundleSeq}';
     for (final product in picks) {
@@ -1364,7 +1370,22 @@ class PosController extends ChangeNotifier
     // P-G7 — delivery-provider orders are exempt from EVERYTHING: a comp
     // would shrink the punched total the provider settles against.
     if (selectedOrderType == OrderType.delivery) return;
-    appliedComp = comp;
+    final lineIndex = comp.lineIndex;
+    int? normalizedQty;
+    if (lineIndex != null && lineIndex >= 0 && lineIndex < _cart.length) {
+      final lineQty = _cart[lineIndex].qty;
+      final requestedQty = comp.qty;
+      if (requestedQty != null && lineQty > 1 && requestedQty < lineQty) {
+        normalizedQty = requestedQty.clamp(1, lineQty - 1).toInt();
+      }
+    }
+    appliedComp = AppliedComp(
+      reasonId: comp.reasonId,
+      reasonName: comp.reasonName,
+      lineIndex: lineIndex,
+      qty: normalizedQty,
+      note: comp.note,
+    );
     _resetCharityRoundUp();
     _broadcast();
   }
@@ -1374,6 +1395,13 @@ class PosController extends ChangeNotifier
     appliedComp = null;
     _resetCharityRoundUp();
     _broadcast();
+  }
+
+  void _dropCompForCartMutation() {
+    if (appliedComp == null) return;
+    appliedComp = null;
+    _resetCharityRoundUp();
+    onCompClearedAfterCartEdit?.call();
   }
 
   List<SplitPaymentRecord> get splitPayments =>
@@ -1537,6 +1565,7 @@ class PosController extends ChangeNotifier
       compReasonId: appliedComp?.reasonId,
       compReasonName: appliedComp?.reasonName ?? '',
       compLineIndex: appliedComp?.lineIndex,
+      compQty: appliedComp?.qty,
       subtotal: pricing.baisasToOmr(priced.subtotalBaisas),
       tax: pricing.baisasToOmr(priced.taxTotalBaisas),
       total: pricing.baisasToOmr(priced.grandTotalBaisas),
@@ -1894,6 +1923,7 @@ class PosController extends ChangeNotifier
     final index = _cart.indexWhere(
       (item) => item.product.id == product.id && !item.hasCustomization,
     );
+    _dropCompForCartMutation();
     _ensureOrderReference();
     if (index == -1) {
       _cart.insert(0, CartItem(product: product));
@@ -1916,6 +1946,7 @@ class PosController extends ChangeNotifier
       _broadcast();
       return;
     }
+    _dropCompForCartMutation();
     _cart[index].qty++;
     _markOrderUpdated(_cart[index].product.id);
     _broadcast();
@@ -1924,6 +1955,7 @@ class PosController extends ChangeNotifier
   void removeCartItem(CartItem item) {
     final removed = _cart.remove(item);
     if (!removed) return;
+    _dropCompForCartMutation();
     _broadcast();
   }
 
@@ -1931,6 +1963,7 @@ class PosController extends ChangeNotifier
     final index = _cart.indexOf(item);
     if (index == -1) return;
 
+    _dropCompForCartMutation();
     if (_cart[index].qty <= 1) {
       _cart.removeAt(index);
     } else {
