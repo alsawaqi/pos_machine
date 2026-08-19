@@ -253,6 +253,7 @@ OrderSyncPayload buildOrderSyncPayload(
         'amount_baisas': row.amountBaisas,
         if (row.lineIndex != null) 'line_index': row.lineIndex,
         'staff_id': ?staffId,
+        if (snapshot.compReasonName.isNotEmpty) 'note': snapshot.compReasonName,
       });
     }
     for (final row in rows.where((row) => row.isGift)) {

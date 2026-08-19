@@ -156,6 +156,7 @@ _LegacyPayload _legacyBuildOrderSyncPayload(
         'amount_baisas': remaining,
         'line_index': ?snapshot.compLineIndex,
         'staff_id': ?staffId,
+        if (snapshot.compReasonName.isNotEmpty) 'note': snapshot.compReasonName,
       });
     }
     // Historical wire order is the reasoned row first, then gift rows.
@@ -402,6 +403,7 @@ void main() {
       expect(comps, hasLength(2));
       expect(comps.first['comp_reason_id'], 42);
       expect(comps.first.containsKey('is_gift'), isFalse);
+      expect(comps.first['note'], 'Service recovery');
       expect(comps.last['is_gift'], isTrue);
       expect(comps.map((row) => row['amount_baisas']), <int>[2000, 3000]);
     });

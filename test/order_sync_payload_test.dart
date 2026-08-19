@@ -688,6 +688,7 @@ void main() {
       expect(comps[0]['amount_baisas'], 3000);
       expect(comps[0]['line_index'], 1);
       expect(comps[0]['staff_id'], 9);
+      expect(comps[0]['note'], 'Staff Meal');
       // Invariant: subtotal − discount − comp + tax == grand.
       expect(
         order['subtotal_baisas'] -
@@ -696,6 +697,36 @@ void main() {
             order['tax_total_baisas'],
         order['grand_total_baisas'],
       );
+    });
+
+    test('an empty comp reason name omits note from the reasoned row', () {
+      final snap = _snapshot(
+        items: [
+          {
+            'id': '10',
+            'name': 'Latte',
+            'qty': 1,
+            'unitPrice': 2.0,
+            'lineTotal': 2.0,
+          },
+        ],
+        rawSubtotal: 2.0,
+        total: 1.0,
+      ).copyWith(
+        compAmount: 1.0,
+        compReasonId: 5,
+        compReasonName: '',
+        compLineIndex: 0,
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final order =
+          payload.events[0]['payload']['order'] as Map<String, dynamic>;
+      final comps = (order['comps'] as List).cast<Map<String, dynamic>>();
+
+      expect(comps, hasLength(1));
+      expect(comps.single['comp_reason_id'], 5);
+      expect(comps.single.containsKey('note'), isFalse);
     });
 
     test('no comp → no comps key and no comp_total_baisas', () {
