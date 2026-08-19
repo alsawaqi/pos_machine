@@ -272,6 +272,7 @@ OrderSyncPayload buildOrderSyncPayload(
     'uuid': orderUuid,
     'order_type': mapOrderType(snapshot.orderType),
     'source': 'main_pos',
+    'pricing_engine': 1,
     // P-F8 — the merchant's sequential receipt number, when one was
     // allocated (offline orders go up without one).
     if (snapshot.receiptNumber.isNotEmpty)

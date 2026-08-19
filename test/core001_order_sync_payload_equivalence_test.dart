@@ -169,6 +169,8 @@ _LegacyPayload _legacyBuildOrderSyncPayload(
     'uuid': orderUuid,
     'order_type': _legacyOrderType(snapshot.orderType),
     'source': 'main_pos',
+    // CORE-001 Step 4: licensed additive marker for core-priced payloads.
+    'pricing_engine': 1,
     if (snapshot.receiptNumber.isNotEmpty)
       'receipt_number': snapshot.receiptNumber,
     'subtotal_baisas': _legacyOmrToBaisas(snapshot.rawSubtotal),

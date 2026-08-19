@@ -92,6 +92,7 @@ void main() {
       expect(order['uuid'], 'uuid-0');
       expect(order['order_type'], 'quick');
       expect(order['source'], 'main_pos');
+      expect(order['pricing_engine'], 1);
       expect(order['subtotal_baisas'], 5000);
       expect(order['tax_total_baisas'], 250);
       expect(order['discount_total_baisas'], 0);
@@ -621,6 +622,7 @@ void main() {
 
       final payload = event['payload'] as Map<String, dynamic>;
       expect(payload['order_uuid'], 'order-123');
+      expect(payload.containsKey('pricing_engine'), isFalse);
       expect(payload['voided_at'], '2026-06-09T10:30:00.000Z');
       expect(payload['reason'], 'Canceled by manager'); // trimmed
       expect(payload['staff_id'], 7);
@@ -898,6 +900,7 @@ void main() {
       expect(order['source'], 'main_pos');
       expect(order['staff_id'], 7);
       expect(order['table_id'], 4);
+      expect(order.containsKey('pricing_engine'), isFalse);
       // No GPS on holds — the server deliberately skips the geofence.
       expect(order.containsKey('gps'), isFalse);
 
@@ -1032,6 +1035,7 @@ void main() {
       expect(order['order_type'], 'quick');
       expect(order['source'], 'main_pos');
       expect(order['staff_id'], 7);
+      expect(order.containsKey('pricing_engine'), isFalse);
       expect(order['subtotal_baisas'], 5000); // (2.0 + 0.5) × 2
       expect(order['grand_total_baisas'], 5000);
       final line = (order['lines'] as List).single as Map<String, dynamic>;
