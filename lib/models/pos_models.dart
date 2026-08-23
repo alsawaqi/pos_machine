@@ -1785,6 +1785,18 @@ class OrderSnapshot {
       discountAmount: (map['discountAmount'] as num?)?.toDouble() ?? 0,
       discountLabel: map['discountLabel']?.toString() ?? '',
       discountReason: map['discountReason']?.toString() ?? '',
+      discountId: (map['discountId'] as num?)?.toInt(),
+      discountAmountType: map['discountAmountType']?.toString(),
+      loyaltyRedeemRuleId: (map['loyaltyRedeemRuleId'] as num?)?.toInt(),
+      loyaltyRedeemPoints:
+          (map['loyaltyRedeemPoints'] as num?)?.toInt() ?? 0,
+      loyaltyRedeemStamps:
+          (map['loyaltyRedeemStamps'] as num?)?.toInt() ?? 0,
+      compAmount: (map['compAmount'] as num?)?.toDouble() ?? 0,
+      compReasonId: (map['compReasonId'] as num?)?.toInt(),
+      compReasonName: map['compReasonName']?.toString() ?? '',
+      compLineIndex: (map['compLineIndex'] as num?)?.toInt(),
+      compQty: (map['compQty'] as num?)?.toInt(),
       receiptNumber: map['receiptNumber']?.toString() ?? '',
       offers: ((map['offers'] as List?) ?? const [])
           .whereType<Map>()
@@ -1853,6 +1865,20 @@ class OrderSnapshot {
       'discountAmount': discountAmount,
       'discountLabel': discountLabel,
       if (discountReason.isNotEmpty) 'discountReason': discountReason,
+      if (discountId != null) 'discountId': discountId,
+      if (discountAmountType != null)
+        'discountAmountType': discountAmountType,
+      if (loyaltyRedeemRuleId != null)
+        'loyaltyRedeemRuleId': loyaltyRedeemRuleId,
+      if (loyaltyRedeemPoints > 0)
+        'loyaltyRedeemPoints': loyaltyRedeemPoints,
+      if (loyaltyRedeemStamps > 0)
+        'loyaltyRedeemStamps': loyaltyRedeemStamps,
+      if (compAmount > 0) 'compAmount': compAmount,
+      if (compReasonId != null) 'compReasonId': compReasonId,
+      if (compReasonName.isNotEmpty) 'compReasonName': compReasonName,
+      if (compLineIndex != null) 'compLineIndex': compLineIndex,
+      if (compQty != null) 'compQty': compQty,
       if (receiptNumber.isNotEmpty) 'receiptNumber': receiptNumber,
       if (offers.isNotEmpty) 'offers': offers,
       'subtotal': subtotal,
