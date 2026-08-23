@@ -2189,6 +2189,27 @@ class OrderHistoryRecord {
     final orderTypeStr = json['order_type']?.toString() ?? 'quick_order';
     final serverId = (json['id'] as num?)?.toInt() ?? 0;
     final total = omr('grand_total_baisas');
+    final rawSubtotal = omr('subtotal_baisas');
+    final discountAmount = omr('discount_total_baisas');
+    final subtotal =
+        (rawSubtotal - discountAmount).clamp(0.0, double.infinity).toDouble();
+
+    final compFields = <String, dynamic>{};
+    final rawComps = json['comps'];
+    if (rawComps is List) {
+      for (final raw in rawComps.whereType<Map>()) {
+        if (raw['is_gift'] == true || raw['comp_reason_id'] == null) continue;
+        compFields.addAll(<String, dynamic>{
+          'compReasonId': (raw['comp_reason_id'] as num?)?.toInt(),
+          'compReasonName': raw['reason_name']?.toString() ??
+              raw['note']?.toString() ??
+              '',
+          'compLineIndex': (raw['line_index'] as num?)?.toInt(),
+          'compQty': (raw['qty'] as num?)?.toInt(),
+        });
+        break;
+      }
+    }
 
     final items = ((json['items'] as List?) ?? const [])
         .whereType<Map>()
@@ -2220,9 +2241,11 @@ class OrderHistoryRecord {
       'orderNumber': serverId,
       'orderType': orderTypeStr,
       'items': items,
-      'rawSubtotal': omr('subtotal_baisas'),
-      'subtotal': omr('subtotal_baisas'),
-      'discountAmount': omr('discount_total_baisas'),
+      'rawSubtotal': rawSubtotal,
+      'subtotal': subtotal,
+      'discountAmount': discountAmount,
+      'compAmount': omr('comp_total_baisas'),
+      ...compFields,
       'tax': omr('tax_total_baisas'),
       'total': total,
       'payableTotal': total,
