@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pos_machine/models/pos_models.dart';
@@ -805,6 +807,232 @@ void main() {
           payload.events[0]['payload']['order'] as Map<String, dynamic>;
       expect(order.containsKey('comps'), isFalse);
       expect(order.containsKey('comp_total_baisas'), isFalse);
+    });
+
+    test('mixed-cart line comp uses the remapped wire index', () {
+      final snap = _snapshot(
+        items: [
+          {'id': 'demo-espresso', 'qty': 1, 'unitPrice': 1.0, 'lineTotal': 1.0},
+          {'id': '42', 'qty': 1, 'unitPrice': 2.0, 'lineTotal': 2.0},
+          {'id': '43', 'qty': 2, 'unitPrice': 3.0, 'lineTotal': 6.0},
+        ],
+        rawSubtotal: 9.0,
+        total: 6.0,
+      ).copyWith(
+        compAmount: 3.0,
+        compReasonId: 5,
+        compReasonName: 'Staff Meal',
+        compLineIndex: 2,
+        compQty: 1,
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final order =
+          payload.events[0]['payload']['order'] as Map<String, dynamic>;
+      final comp = (order['comps'] as List).single as Map<String, dynamic>;
+
+      expect(comp['line_index'], 1);
+      expect(comp['qty'], 1);
+    });
+
+    test('mixed-cart gift row uses the remapped wire index', () {
+      final snap = _snapshot(
+        items: [
+          {'id': 'demo-espresso', 'qty': 1, 'unitPrice': 1.0, 'lineTotal': 1.0},
+          {'id': '42', 'qty': 1, 'unitPrice': 2.0, 'lineTotal': 2.0},
+          {
+            'id': '43',
+            'qty': 1,
+            'unitPrice': 3.0,
+            'lineTotal': 3.0,
+            'gifted': true,
+            'giftAmount': 3.0,
+          },
+        ],
+        rawSubtotal: 6.0,
+        total: 3.0,
+      ).copyWith(compAmount: 3.0);
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final order =
+          payload.events[0]['payload']['order'] as Map<String, dynamic>;
+      final gift = (order['comps'] as List).single as Map<String, dynamic>;
+
+      expect(gift['is_gift'], isTrue);
+      expect(gift['line_index'], 1);
+    });
+
+    test('mixed-cart offer row uses the remapped wire index', () {
+      final snap = _snapshot(
+        items: [
+          {'id': 'demo-espresso', 'qty': 1, 'unitPrice': 1.0, 'lineTotal': 1.0},
+          {'id': '42', 'qty': 1, 'unitPrice': 2.0, 'lineTotal': 2.0},
+          {'id': '43', 'qty': 1, 'unitPrice': 3.0, 'lineTotal': 3.0},
+        ],
+        rawSubtotal: 6.0,
+        discountAmount: 0.4,
+        total: 5.6,
+      ).copyWith(
+        offers: const [
+          {
+            'offer_id': 9,
+            'name': 'Lunch pair',
+            'amount': 0.4,
+            'line_index': 2,
+          },
+        ],
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final order =
+          payload.events[0]['payload']['order'] as Map<String, dynamic>;
+      final offer = (order['discounts'] as List).single as Map<String, dynamic>;
+
+      expect(offer['offer_id'], 9);
+      expect(offer['line_index'], 1);
+    });
+
+    test('comp on a dropped line keeps money but omits index and qty', () {
+      final snap = _snapshot(
+        items: [
+          {'id': 'demo-espresso', 'qty': 1, 'unitPrice': 1.0, 'lineTotal': 1.0},
+          {'id': '42', 'qty': 1, 'unitPrice': 2.0, 'lineTotal': 2.0},
+          {'id': '43', 'qty': 1, 'unitPrice': 3.0, 'lineTotal': 3.0},
+        ],
+        rawSubtotal: 6.0,
+        total: 5.0,
+      ).copyWith(
+        compAmount: 1.0,
+        compReasonId: 5,
+        compReasonName: 'Staff Meal',
+        compLineIndex: 0,
+        compQty: 1,
+      );
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final order =
+          payload.events[0]['payload']['order'] as Map<String, dynamic>;
+      final comps = (order['comps'] as List).cast<Map<String, dynamic>>();
+      final comp = comps.single;
+
+      expect(comp['amount_baisas'], 1000);
+      expect(comp.containsKey('line_index'), isFalse);
+      expect(comp.containsKey('qty'), isFalse);
+      expect(
+        comps.fold<int>(0, (sum, row) => sum + row['amount_baisas'] as int),
+        order['comp_total_baisas'],
+      );
+    });
+
+    test('gift on a dropped line keeps money but omits the index', () {
+      final snap = _snapshot(
+        items: [
+          {
+            'id': 'demo-espresso',
+            'qty': 1,
+            'unitPrice': 1.0,
+            'lineTotal': 1.0,
+            'gifted': true,
+            'giftAmount': 1.0,
+          },
+          {'id': '42', 'qty': 1, 'unitPrice': 2.0, 'lineTotal': 2.0},
+          {'id': '43', 'qty': 1, 'unitPrice': 3.0, 'lineTotal': 3.0},
+        ],
+        rawSubtotal: 6.0,
+        total: 5.0,
+      ).copyWith(compAmount: 1.0);
+
+      final payload = buildOrderSyncPayload(snap, newUuid: _seqUuid());
+      final order =
+          payload.events[0]['payload']['order'] as Map<String, dynamic>;
+      final comps = (order['comps'] as List).cast<Map<String, dynamic>>();
+      final gift = comps.single;
+
+      expect(gift['is_gift'], isTrue);
+      expect(gift['amount_baisas'], 1000);
+      expect(gift.containsKey('line_index'), isFalse);
+      expect(
+        comps.fold<int>(0, (sum, row) => sum + row['amount_baisas'] as int),
+        order['comp_total_baisas'],
+      );
+    });
+
+    test('all-catalog comp gift and offer payload stays byte-identical', () {
+      final snap = OrderSnapshot.initial().copyWith(
+        orderType: 'quick_order',
+        items: <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': '10',
+            'name': 'Catalog A',
+            'qty': 1,
+            'unitPrice': 1.0,
+            'lineTotal': 1.0,
+          },
+          <String, dynamic>{
+            'id': '11',
+            'name': 'Catalog Gift',
+            'qty': 1,
+            'unitPrice': 2.0,
+            'lineTotal': 2.0,
+            'gifted': true,
+            'giftAmount': 2.0,
+          },
+          <String, dynamic>{
+            'id': '12',
+            'name': 'Catalog Offer',
+            'qty': 1,
+            'unitPrice': 3.0,
+            'lineTotal': 3.0,
+          },
+        ],
+        rawSubtotal: 6.0,
+        discountAmount: 0.4,
+        offers: const <Map<String, dynamic>>[
+          <String, dynamic>{
+            'offer_id': 9,
+            'name': 'Lunch pair',
+            'amount': 0.4,
+            'line_index': 2,
+          },
+        ],
+        compAmount: 3.0,
+        compReasonId: 5,
+        compReasonName: 'Staff Meal',
+        compLineIndex: 0,
+        compQty: 1,
+        tax: 0,
+        total: 2.6,
+        paymentMethod: 'Cash',
+      );
+      final payload = buildOrderSyncPayload(
+        snap,
+        staffId: 7,
+        now: DateTime.utc(2026, 8, 24, 12),
+        newUuid: _seqUuid(),
+      );
+      const expected =
+          '[{"client_event_id":"uuid-1","event_type":"order.create",'
+          '"client_timestamp":"2026-08-24T12:00:00.000Z","payload":{"order":'
+          '{"uuid":"uuid-0","order_type":"quick","source":"main_pos",'
+          '"pricing_engine":1,"subtotal_baisas":6000,"discount_total_baisas":400,'
+          '"comp_total_baisas":3000,"tax_total_baisas":0,"grand_total_baisas":2600,'
+          '"opened_at":"2026-08-24T12:00:00.000Z","lines":'
+          '[{"product_id":10,"qty":1,"unit_price_baisas":1000,'
+          '"line_total_baisas":1000},{"product_id":11,"qty":1,'
+          '"unit_price_baisas":2000,"line_total_baisas":2000},'
+          '{"product_id":12,"qty":1,"unit_price_baisas":3000,'
+          '"line_total_baisas":3000}],"discounts":[{"name":"Lunch pair",'
+          '"amount_baisas":400,"offer_id":9,"line_index":2}],"comps":'
+          '[{"comp_reason_id":5,"amount_baisas":1000,"line_index":0,"qty":1,'
+          '"staff_id":7,"note":"Staff Meal"},{"is_gift":true,'
+          '"amount_baisas":2000,"line_index":1,"staff_id":7}],"staff_id":7}}},'
+          '{"client_event_id":"uuid-2","event_type":"order.pay",'
+          '"client_timestamp":"2026-08-24T12:00:00.000Z","payload":'
+          '{"order_uuid":"uuid-0","paid_at":"2026-08-24T12:00:00.000Z",'
+          '"payments":[{"method":"cash","amount_baisas":2600,'
+          '"status":"success"}]}}]';
+
+      expect(jsonEncode(payload.events), expected);
     });
   });
 

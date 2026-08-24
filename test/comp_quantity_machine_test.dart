@@ -1,22 +1,84 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/screens/staff_pos_screen.dart';
+import 'package:pos_machine/services/local_order_storage_service.dart';
 import 'package:pos_machine/state/pos_controller.dart';
 
 const _latte = Product(id: '1', name: 'Latte', category: 'X', price: 2.0);
 const _cake = Product(id: '2', name: 'Cake', category: 'X', price: 3.0);
 const _bundle = Offer(id: 9, name: 'Pair', type: 'bundle');
+const _floor = DiningFloor(id: 'f1', label: 'Main Hall');
+const _table = DiningTableDefinition(
+  id: 't1',
+  floorId: 'f1',
+  name: 'T1',
+  sizeLabel: 'square',
+  seats: 4,
+  sortOrder: 1,
+);
 
-PosController _buildController({List<Product> products = const [_latte, _cake]}) {
-  final controller = PosController();
+class _FakeStorage implements OrderStorageService {
+  @override
+  Future<int> fetchNextOrderNumber() async => 1;
+  @override
+  Future<void> saveCompletedOrder(OrderSnapshot snapshot) async {}
+  @override
+  Future<void> updateCompletedOrder(OrderHistoryRecord record) async {}
+  @override
+  Future<List<OrderHistoryRecord>> loadOrderHistory() async => const [];
+  @override
+  Future<void> saveHeldOrder(OrderSessionDraft draft) async {}
+  @override
+  Future<List<HeldOrderRecord>> loadHeldOrders() async => const [];
+  @override
+  Future<void> saveDiningTableSession(DiningTableSession session) async {}
+  @override
+  Future<List<DiningTableSession>> loadDiningTableSessions() async => const [];
+  @override
+  Future<void> clearDiningTable(String tableId) async {}
+  @override
+  Future<void> deleteHeldOrder(String id) async {}
+  @override
+  Future<void> clearHeldOrders() async {}
+  @override
+  Future<void> clearAllData() async {}
+}
+
+PosController _buildController({
+  List<Product> products = const [_latte, _cake],
+  List<DiningFloor> floors = const <DiningFloor>[],
+  List<DiningTableDefinition> tables = const <DiningTableDefinition>[],
+}) {
+  final controller = PosController(orderStorage: _FakeStorage());
   controller.applyCatalog(
     categories: const ['X'],
     products: products,
-    floors: const <DiningFloor>[],
-    tables: const <DiningTableDefinition>[],
+    floors: floors,
+    tables: tables,
     taxes: const <CompanyTax>[],
   );
   return controller;
+}
+
+OrderSessionDraft _draft({
+  required List<CartItem> items,
+  OrderType orderType = OrderType.quickOrder,
+  String reference = 'DRAFT-1',
+  String tableId = '',
+}) {
+  return OrderSessionDraft(
+    orderReference: reference,
+    orderType: orderType,
+    selectedCategory: 'X',
+    customerReferenceNumber: '',
+    diningFloorId: tableId.isEmpty ? '' : 'f1',
+    diningFloorLabel: tableId.isEmpty ? '' : 'Main Hall',
+    diningTableId: tableId,
+    diningTableName: tableId.isEmpty ? '' : 'T1',
+    items: items,
+    discount: const DiscountConfiguration(),
+    splitCount: 1,
+  );
 }
 
 void main() {
@@ -217,6 +279,154 @@ void main() {
 
       expect(controller.appliedComp, isNotNull);
       expect(notices, 0);
+    });
+
+    test('line comp does not survive into a loaded dining-table draft', () async {
+      final controller = _buildController(
+        floors: const [_floor],
+        tables: const [_table],
+      );
+      addTearDown(controller.dispose);
+      controller.addProduct(_latte);
+      controller.applyComp(const AppliedComp(
+        reasonId: 7,
+        reasonName: 'Service recovery',
+        lineIndex: 0,
+      ));
+      var notices = 0;
+      controller.onCompClearedAfterCartEdit = () => notices++;
+      final draft = _draft(
+        items: [CartItem(product: _cake, qty: 2)],
+        orderType: OrderType.dineIn,
+        tableId: 't1',
+      );
+      controller.diningTableSessions = [
+        DiningTableSession(
+          tableId: 't1',
+          floorId: 'f1',
+          status: DiningTableStatus.occupied,
+          updatedAt: DateTime(2026, 8, 24, 12),
+          orderReference: draft.orderReference,
+          occupiedAt: DateTime(2026, 8, 24, 12),
+          draft: draft,
+        ),
+      ];
+
+      await controller.openDiningTable('t1');
+
+      expect(controller.appliedComp, isNull);
+      expect(notices, 1);
+      expect(controller.cart.map((item) => item.product.id), ['2']);
+      expect(controller.cart.single.qty, 2);
+    });
+
+    test('whole-order comp does not survive onto a fresh table cart', () async {
+      final controller = _buildController(
+        floors: const [_floor],
+        tables: const [_table],
+      );
+      addTearDown(controller.dispose);
+      controller.addProduct(_latte);
+      controller.applyComp(const AppliedComp(
+        reasonId: 7,
+        reasonName: 'Service recovery',
+      ));
+      var notices = 0;
+      controller.onCompClearedAfterCartEdit = () => notices++;
+
+      await controller.openDiningTable('t1');
+
+      expect(controller.appliedComp, isNull);
+      expect(notices, 1);
+      expect(controller.cart, isEmpty);
+    });
+
+    test('resumeHeldOrder drops the outgoing carts comp', () async {
+      final controller = _buildController();
+      addTearDown(controller.dispose);
+      controller.addProduct(_latte);
+      controller.applyComp(const AppliedComp(
+        reasonId: 7,
+        reasonName: 'Service recovery',
+        lineIndex: 0,
+      ));
+      var notices = 0;
+      controller.onCompClearedAfterCartEdit = () => notices++;
+      final draft = _draft(
+        items: [CartItem(product: _cake, qty: 2)],
+        reference: 'HELD-1',
+      );
+      final held = HeldOrderRecord(
+        id: 'held-1',
+        orderReference: 'HELD-1',
+        orderType: OrderType.quickOrder,
+        heldAt: DateTime(2026, 8, 24, 12),
+        draft: draft,
+      );
+
+      await controller.resumeHeldOrder(held);
+
+      expect(controller.appliedComp, isNull);
+      expect(notices, 1);
+      expect(controller.cart.map((item) => item.product.id), ['2']);
+      expect(controller.cart.single.qty, 2);
+    });
+
+    test('the free-table reuse branch preserves the cart and comp', () async {
+      final controller = _buildController(
+        floors: const [_floor],
+        tables: const [_table],
+      );
+      addTearDown(controller.dispose);
+      controller.addProduct(_latte);
+      controller.applyComp(const AppliedComp(
+        reasonId: 7,
+        reasonName: 'Service recovery',
+        lineIndex: 0,
+      ));
+      var notices = 0;
+      controller.onCompClearedAfterCartEdit = () => notices++;
+      await controller.selectOrderType(OrderType.dineIn);
+      final originalLine = controller.cart.single;
+      final originalComp = controller.appliedComp;
+
+      await controller.openDiningTable('t1');
+
+      expect(controller.appliedComp, same(originalComp));
+      expect(notices, 0);
+      expect(controller.cart, hasLength(1));
+      expect(controller.cart.single, same(originalLine));
+    });
+
+    test('modifier customization drops the line comp after changing the cart', () {
+      final controller = _buildController();
+      addTearDown(controller.dispose);
+      controller.addProduct(_latte);
+      controller.applyComp(const AppliedComp(
+        reasonId: 7,
+        reasonName: 'Service recovery',
+        lineIndex: 0,
+      ));
+      var notices = 0;
+      controller.onCompClearedAfterCartEdit = () => notices++;
+
+      controller.updateCartItemCustomization(
+        controller.cart.single,
+        modifiers: const [
+          CartItemModifier(
+            id: '9',
+            group: 'Milk',
+            label: 'Oat',
+            price: 0.5,
+          ),
+        ],
+        notes: ' extra hot ',
+      );
+
+      expect(controller.appliedComp, isNull);
+      expect(notices, 1);
+      expect(controller.cart.single.modifiers.single.label, 'Oat');
+      expect(controller.cart.single.notes, 'extra hot');
     });
 
     test('gift toggle retains the comp as the deliberate exception', () {

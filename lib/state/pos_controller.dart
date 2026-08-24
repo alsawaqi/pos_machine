@@ -1980,6 +1980,7 @@ class PosController extends ChangeNotifier
     final index = _cart.indexOf(item);
     if (index == -1) return;
 
+    _dropCompForCartMutation();
     _cart[index].modifiers = List<CartItemModifier>.from(modifiers);
     _cart[index].notes = notes.trim();
     _broadcast();
@@ -2048,6 +2049,7 @@ class PosController extends ChangeNotifier
     if (session != null &&
         session.status == DiningTableStatus.occupied &&
         session.draft != null) {
+      _dropCompForCartMutation();
       _cart
         ..clear()
         ..addAll(
@@ -2070,6 +2072,7 @@ class PosController extends ChangeNotifier
             );
     } else {
       if (!canReuseCurrentCart) {
+        _dropCompForCartMutation();
         _cart.clear();
         selectedCategory = categories.first;
         customerReferenceNumber = '';
@@ -2504,6 +2507,7 @@ class PosController extends ChangeNotifier
   Future<String?> resumeHeldOrder(HeldOrderRecord record) async {
     if (isProcessingPayment) return null;
 
+    _dropCompForCartMutation();
     _cart
       ..clear()
       ..addAll(

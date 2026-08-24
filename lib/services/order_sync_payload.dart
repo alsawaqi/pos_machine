@@ -197,11 +197,13 @@ OrderSyncPayload buildOrderSyncPayload(
   for (final offer in priced.appliedOffers) {
     for (final entry in offer.lineAmountsBaisas.entries) {
       if (entry.value <= 0) continue;
+      final lineIndex = wireLineIndexBySnapshotIndex[entry.key];
+      if (lineIndex == null) continue;
       offerEntries.add({
         'name': offer.name,
         'amount_baisas': entry.value,
         'offer_id': offer.offerId,
-        'line_index': entry.key,
+        'line_index': lineIndex,
       });
     }
     if (offer.orderAmountBaisas > 0) {
@@ -248,21 +250,27 @@ OrderSyncPayload buildOrderSyncPayload(
     // reasoned row first, then gifts, so emit in that compatibility order.
     for (final row in rows.where((row) => !row.isGift)) {
       if (row.reasonId == null) continue;
+      final lineIndex = row.lineIndex == null
+          ? null
+          : wireLineIndexBySnapshotIndex[row.lineIndex];
       comps.add({
         'comp_reason_id': row.reasonId,
         'amount_baisas': row.amountBaisas,
-        if (row.lineIndex != null) 'line_index': row.lineIndex,
-        if (row.lineIndex != null && snapshot.compQty != null)
+        'line_index': ?lineIndex,
+        if (lineIndex != null && snapshot.compQty != null)
           'qty': snapshot.compQty,
         'staff_id': ?staffId,
         if (snapshot.compReasonName.isNotEmpty) 'note': snapshot.compReasonName,
       });
     }
     for (final row in rows.where((row) => row.isGift)) {
+      final lineIndex = row.lineIndex == null
+          ? null
+          : wireLineIndexBySnapshotIndex[row.lineIndex];
       comps.add({
         'is_gift': true,
         'amount_baisas': row.amountBaisas,
-        'line_index': row.lineIndex,
+        'line_index': ?lineIndex,
         'staff_id': ?staffId,
       });
     }
