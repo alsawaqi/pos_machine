@@ -83,6 +83,9 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
   DateTime? _lastActiveFetchAt;
   bool _backingOff = false;
 
+  bool get _qrSettlementBlocked =>
+      _acting || _heldClaim != null || _managerRecoveryRequired;
+
   DateTime _now() => widget.clock?.call() ?? DateTime.now();
 
   @override
@@ -90,7 +93,25 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _floorId = widget.floors.firstOrNull?.id;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _restorePendingManagerRecovery();
+      if (mounted) await _refresh();
+    });
+  }
+
+  Future<void> _restorePendingManagerRecovery() async {
+    if (!mounted) return;
+    final pending = ref
+        .read(qrSettlementCoordinatorProvider)
+        .pendingManagerRecoveries
+        .firstOrNull;
+    if (pending == null) return;
+
+    setState(() {
+      _heldClaim = pending.claim;
+      _managerRecoveryRequired = true;
+    });
+    await _handleSettlementResult(pending);
   }
 
   @override
@@ -316,7 +337,7 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
   }, 'Payment was reopened. The QR order is active again.');
 
   Future<void> _fallbackAndSettle(QrBoardOrder order) async {
-    if (_acting) return;
+    if (_qrSettlementBlocked) return;
     setState(() => _acting = true);
     try {
       final recovered = await ref
@@ -647,7 +668,7 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
               ? Icons.payments_rounded
               : Icons.move_to_inbox_rounded,
           primary: true,
-          enabled: !_acting,
+          enabled: !_qrSettlementBlocked,
           onPressed: () => recovered
               ? _claimAndSettle(order.uuid)
               : _fallbackAndSettle(order),
@@ -661,7 +682,7 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
           label: 'Settle',
           icon: Icons.payments_rounded,
           primary: true,
-          enabled: !_acting,
+          enabled: !_qrSettlementBlocked,
           onPressed: () => _claimAndSettle(active!.uuid),
         ),
       );
@@ -717,7 +738,7 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
   }
 
   Future<void> _claimAndSettle(String orderUuid) async {
-    if (_acting) return;
+    if (_qrSettlementBlocked) return;
     setState(() {
       _acting = true;
       _claimInFlight = true;
@@ -822,10 +843,9 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
           : QrTender.card;
       setState(() => _settlementInFlight = true);
       final result = await flow.settleClaim(claim, tender);
-      if (!mounted) return;
       final recoveryMustRemain =
-          result.kind == QrSettlementResultKind.awaitingServerAcknowledgement ||
-          result.releaseError != null;
+          result.managerRequired || result.releaseError != null;
+      if (!mounted) return;
       setState(() {
         _heldClaim = recoveryMustRemain ? result.claim : null;
         _managerRecoveryRequired = recoveryMustRemain;
@@ -1097,11 +1117,17 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
         ),
       );
       if (takenOver == true && mounted) {
+        final navigator = Navigator.of(context);
+        ref
+            .read(qrSettlementCoordinatorProvider)
+            .acknowledgeManagerRecovery(claim.orderUuid);
         setState(() {
           _managerRecoveryRequired = false;
           _heldClaim = null;
         });
-        await Navigator.maybePop(context);
+        // Programmatic manager takeover has already satisfied the PopScope
+        // guard. Avoid maybePop re-entering the stale pre-rebuild guard.
+        if (navigator.canPop()) navigator.pop();
       }
       return;
     }

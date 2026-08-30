@@ -34,6 +34,7 @@ void main() {
 
       expect(r.isSuccess, isFalse);
       expect(r.neverReachedTerminal, isTrue);
+      expect(r.failurePhase, MosambeeFailurePhase.preDispatch);
       expect(r.isMissingTerminalId, isTrue);
       // The money-critical assertion: no force-record prompt.
       expect(r.isUncertain, isFalse);
@@ -46,6 +47,7 @@ void main() {
       });
 
       expect(r.neverReachedTerminal, isTrue);
+      expect(r.failurePhase, MosambeeFailurePhase.preDispatch);
       expect(r.isUncertain, isFalse);
       expect(r.isMissingTerminalId, isFalse); // different remedy
     });
@@ -57,6 +59,7 @@ void main() {
       });
 
       expect(r.neverReachedTerminal, isTrue);
+      expect(r.failurePhase, MosambeeFailurePhase.preDispatch);
       expect(r.isUncertain, isFalse);
     });
   });
@@ -69,6 +72,7 @@ void main() {
       });
 
       expect(r.neverReachedTerminal, isFalse);
+      expect(r.failurePhase, MosambeeFailurePhase.postDispatchUnknown);
       expect(r.isUncertain, isTrue, reason: 'the card may have been charged');
     });
 
@@ -76,6 +80,7 @@ void main() {
       final r = MosambeePaymentResult.fromRaw('');
 
       expect(r.neverReachedTerminal, isFalse);
+      expect(r.failurePhase, MosambeeFailurePhase.postDispatchUnknown);
       expect(r.isUncertain, isTrue);
     });
   });

@@ -465,6 +465,125 @@ void main() {
     await _disposeBoard(tester);
   });
 
+  testWidgets(
+    'post-capture recovery survives disposal and surfaces on next entry',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final service = _FakeTillGateway(
+        board: [
+          _row(id: 3, sessionStatus: 'active', orderStatus: 'open'),
+          _row(id: 4, sessionStatus: 'active', orderStatus: 'open'),
+        ],
+        active: [_activeOrder(), _activeOrder(id: 4)],
+      );
+      final settle = Completer<QrSettlementResult>();
+      final flow = _FakeSettlementFlow(delayedSettlement: settle);
+      final showBoard = ValueNotifier<bool>(true);
+      addTearDown(showBoard.dispose);
+      tester.view.physicalSize = const Size(1500, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            qrTillServiceProvider.overrideWithValue(service),
+            qrSettlementCoordinatorProvider.overrideWithValue(flow),
+            sessionServiceProvider.overrideWithValue(
+              SessionService(const FlutterSecureStorage(), preferences),
+            ),
+          ],
+          child: ValueListenableBuilder<bool>(
+            valueListenable: showBoard,
+            builder: (_, visible, _) => MaterialApp(
+              home: visible
+                  ? const QrTablesScreen(
+                      key: ValueKey('recovery-board'),
+                      floors: _floors,
+                      tables: _tables,
+                    )
+                  : const SizedBox.shrink(key: ValueKey('board-disposed')),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await _selectTable(tester, '3');
+      await tester.tap(find.byKey(const ValueKey('qr-action-settle')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('qr-tender-card')));
+      await tester.pump();
+
+      showBoard.value = false;
+      await tester.pump();
+
+      // A replacement route can appear before the first terminal call returns.
+      // The app-scoped flow must stop that screen before a second tender.
+      showBoard.value = true;
+      await tester.pump();
+      await tester.pump();
+      await _selectTable(tester, '4');
+      await tester.tap(find.byKey(const ValueKey('qr-action-settle')));
+      await tester.pump();
+      expect(flow.calls.where((call) => call == 'settle:card'), hasLength(1));
+      showBoard.value = false;
+      await tester.pump();
+
+      settle.complete(
+        QrSettlementResult(
+          kind: QrSettlementResultKind.cardUncertain,
+          claim: _claim('order-3'),
+          serverError: 'Payment app not responding.',
+        ),
+      );
+      await tester.pump();
+      expect(flow.pendingManagerRecoveries, hasLength(1));
+
+      showBoard.value = true;
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text('Unknown card outcome — manager required'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Do not retry or take a second payment'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('I understand'));
+      await tester.pump();
+      await _selectTable(tester, '4');
+      final claimsBeforeDisabledTap = flow.calls
+          .where((call) => call == 'claim:order-4')
+          .length;
+      await tester.tap(find.byKey(const ValueKey('qr-action-settle')));
+      await tester.pump();
+      expect(
+        flow.calls.where((call) => call == 'claim:order-4'),
+        hasLength(claimsBeforeDisabledTap),
+      );
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('qr-manager-takeover-warning')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Stay'));
+      await tester.pump();
+      expect(flow.pendingManagerRecoveries, hasLength(1));
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('qr-manager-took-over')));
+      await tester.pump();
+      expect(flow.pendingManagerRecoveries, isEmpty);
+      showBoard.value = false;
+      await tester.pump();
+    },
+  );
+
   for (final scenario in ['awaiting acknowledgement', 'release failure']) {
     testWidgets('$scenario keeps route locked for manager takeover', (
       tester,
@@ -761,11 +880,26 @@ class _FakeSettlementFlow implements QrSettlementFlow {
   final VoidCallback? onVoid;
   final QrSettlementResult Function(QrSettlementClaim, QrTender)? settleResult;
   final List<String> calls = [];
+  final Map<String, QrSettlementResult> _pendingManagerRecoveries = {};
+  bool _settlementInFlight = false;
+
+  @override
+  List<QrSettlementResult> get pendingManagerRecoveries =>
+      List.unmodifiable(_pendingManagerRecoveries.values);
+
+  @override
+  void acknowledgeManagerRecovery(String orderUuid) {
+    calls.add('acknowledge:$orderUuid');
+    _pendingManagerRecoveries.remove(orderUuid);
+  }
 
   @override
   Future<QrSettlementClaim> claim(String orderUuid) async {
     calls.add('claim:$orderUuid');
     timeline?.add('claim:$orderUuid');
+    if (_settlementInFlight || _pendingManagerRecoveries.isNotEmpty) {
+      throw QrPaymentAttemptUnresolved(orderUuid);
+    }
     if (claimError != null) throw claimError!;
     if (delayedClaim != null) return delayedClaim!.future;
     return claimValue ?? _claim(orderUuid);
@@ -778,9 +912,18 @@ class _FakeSettlementFlow implements QrSettlementFlow {
   ) async {
     calls.add('settle:${tender.name}');
     timeline?.add('settle:${tender.name}');
-    if (delayedSettlement != null) return delayedSettlement!.future;
-    if (settleResult != null) return settleResult!(claim, tender);
-    return _paid(claim);
+    _settlementInFlight = true;
+    try {
+      final result = delayedSettlement != null
+          ? await delayedSettlement!.future
+          : settleResult?.call(claim, tender) ?? _paid(claim);
+      if (result.managerRequired || result.releaseError != null) {
+        _pendingManagerRecoveries[claim.orderUuid] = result;
+      }
+      return result;
+    } finally {
+      _settlementInFlight = false;
+    }
   }
 
   @override

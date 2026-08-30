@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -203,6 +204,121 @@ void main() {
     expect(outbox.amounts, isEmpty);
   });
 
+  test(
+    'post-dispatch watchdog cannot reach a second tender before manager recovery',
+    () async {
+      final outbox = _Outbox();
+      final watchdog = Completer<MosambeePaymentResult>();
+      final terminal = _Terminal.delayed(watchdog);
+      final secondClaim = QrSettlementClaim(
+        orderUuid: '33333333-3333-4333-8333-333333333333',
+        frozenAmountBaisas: 2750,
+        status: 'awaiting_payment',
+        deadlineAt: now.add(const Duration(minutes: 5)),
+      );
+      final verifiedFirst = QrSettlementClaim(
+        orderUuid: claim().orderUuid,
+        frozenAmountBaisas: claim().frozenAmountBaisas,
+        status: 'awaiting_payment',
+        deadlineAt: claim().deadlineAt,
+        alreadyClaimedByThisDevice: true,
+      );
+      final verifiedSecond = QrSettlementClaim(
+        orderUuid: secondClaim.orderUuid,
+        frozenAmountBaisas: secondClaim.frozenAmountBaisas,
+        status: secondClaim.status,
+        deadlineAt: secondClaim.deadlineAt,
+        alreadyClaimedByThisDevice: true,
+      );
+      final scriptedTill = _Till(
+        claim(),
+        scriptedClaims: [claim(), secondClaim, verifiedFirst, verifiedSecond],
+      );
+      final flow = coordinator(
+        till: scriptedTill,
+        outbox: outbox,
+        terminal: terminal,
+      );
+
+      final held = await flow.claim(claim().orderUuid);
+      final heldSecond = await flow.claim(secondClaim.orderUuid);
+      final settlement = flow.settleClaim(held, QrTender.card);
+      await Future<void>.delayed(Duration.zero);
+
+      await expectLater(
+        flow.settleClaim(heldSecond, QrTender.card),
+        throwsA(isA<QrPaymentAttemptUnresolved>()),
+      );
+      expect(terminal.amounts, [4750]);
+      expect(
+        scriptedTill.claimCalls,
+        3,
+        reason: 'the pre-held second claim cannot start a terminal capture',
+      );
+
+      watchdog.complete(_watchdogUnknown());
+      final result = await settlement;
+
+      expect(result.kind, QrSettlementResultKind.cardUncertain);
+      expect(result.managerRequired, isTrue);
+      expect(result.mustNotRetryTender, isTrue);
+      expect(scriptedTill.releases.single.outcome, QrReleaseOutcome.uncertain);
+      expect(
+        scriptedTill.releases.single.bankResponse?['code'],
+        'SOFTPOS_NOT_RESPONDING',
+      );
+      expect(outbox.amounts, isEmpty);
+      expect(flow.pendingManagerRecoveries, [same(result)]);
+
+      await expectLater(
+        flow.claim(held.orderUuid),
+        throwsA(isA<QrPaymentAttemptUnresolved>()),
+      );
+      await expectLater(
+        flow.settleClaim(heldSecond, QrTender.card),
+        throwsA(isA<QrPaymentAttemptUnresolved>()),
+      );
+      expect(terminal.amounts, [4750]);
+      expect(
+        scriptedTill.claimCalls,
+        3,
+        reason: 'pending manager recovery still blocks the pre-held claim',
+      );
+
+      flow.acknowledgeManagerRecovery(held.orderUuid);
+      expect(flow.pendingManagerRecoveries, isEmpty);
+      final secondResult = await flow.settleClaim(heldSecond, QrTender.card);
+      expect(secondResult.kind, QrSettlementResultKind.cardUncertain);
+      expect(
+        scriptedTill.claimCalls,
+        4,
+        reason: 'only a manager can clear the second-tender gate',
+      );
+      expect(terminal.amounts, [4750, 2750]);
+    },
+  );
+
+  for (final code in ['NO_SESSION', 'BUSY']) {
+    test('$code stays a pre-dispatch cancelled failure', () async {
+      final till = _Till(claim());
+      final outbox = _Outbox();
+      final terminalResult = _preDispatchFailure(code);
+      final terminal = _Terminal(terminalResult);
+      final flow = coordinator(till: till, outbox: outbox, terminal: terminal);
+
+      final held = await flow.claim(claim().orderUuid);
+      final result = await flow.settleClaim(held, QrTender.card);
+
+      expect(result.kind, QrSettlementResultKind.cardFailedBeforeCapture);
+      expect(terminalResult.failurePhase, MosambeeFailurePhase.preDispatch);
+      expect(result.managerRequired, isFalse);
+      expect(result.mustNotRetryTender, isFalse);
+      expect(till.releases.single.outcome, QrReleaseOutcome.cancelled);
+      expect(outbox.amounts, isEmpty);
+      expect(flow.pendingManagerRecoveries, isEmpty);
+    });
+  }
+
   test('a thrown terminal call is uncertain and never escapes raw', () async {
     final till = _Till(claim());
     final outbox = _Outbox();
@@ -274,6 +390,14 @@ void main() {
       expect(result.managerRequired, isTrue);
       expect(till.releases, isEmpty);
       expect(outbox.retired, isEmpty);
+      expect(flow.pendingManagerRecoveries, [same(result)]);
+
+      flow.acknowledgeManagerRecovery(held.orderUuid);
+      expect(flow.pendingManagerRecoveries, isEmpty);
+      await expectLater(
+        flow.settleClaim(held, QrTender.card),
+        throwsA(isA<QrSettlementClaimNotHeld>()),
+      );
       await expectLater(
         flow.claim(held.orderUuid),
         throwsA(isA<QrPaymentAttemptUnresolved>()),
@@ -301,12 +425,19 @@ void main() {
 }
 
 class _Till implements QrTillGateway {
-  _Till(this.initialClaim, {this.replayClaim, this.replayError, this.log});
+  _Till(
+    this.initialClaim, {
+    this.replayClaim,
+    this.replayError,
+    this.log,
+    this.scriptedClaims,
+  });
 
   final QrSettlementClaim initialClaim;
   final QrSettlementClaim? replayClaim;
   final Object? replayError;
   final List<String>? log;
+  final List<QrSettlementClaim>? scriptedClaims;
   int claimCalls = 0;
   final List<QrGeoFix?> claimGps = [];
   final List<({QrReleaseOutcome outcome, Map<String, dynamic>? bankResponse})>
@@ -321,6 +452,7 @@ class _Till implements QrTillGateway {
     log?.add('claim');
     claimCalls++;
     claimGps.add(lat == null || lng == null ? null : (lat: lat, lng: lng));
+    if (scriptedClaims != null) return scriptedClaims![claimCalls - 1];
     if (claimCalls == 1) return initialClaim;
     if (replayError != null) throw replayError!;
     return replayClaim ??
@@ -424,12 +556,21 @@ class _Outbox implements QrSettlementOutbox {
 }
 
 class _Terminal implements QrCardTerminalGateway {
-  _Terminal(this.result, {this.log}) : error = null;
+  _Terminal(this.result, {this.log}) : error = null, delayedResult = null;
 
-  _Terminal.throwing(this.error) : result = null, log = null;
+  _Terminal.throwing(this.error)
+    : result = null,
+      log = null,
+      delayedResult = null;
+
+  _Terminal.delayed(this.delayedResult)
+    : result = null,
+      error = null,
+      log = null;
 
   final MosambeePaymentResult? result;
   final Object? error;
+  final Completer<MosambeePaymentResult>? delayedResult;
   final List<String>? log;
   final List<int> amounts = [];
 
@@ -438,6 +579,7 @@ class _Terminal implements QrCardTerminalGateway {
     log?.add('terminal');
     amounts.add(amountBaisas);
     if (error != null) throw error!;
+    if (delayedResult != null) return delayedResult!.future;
     return result!;
   }
 }
@@ -464,3 +606,23 @@ MosambeePaymentResult _uncertain() => MosambeePaymentResult.fromRaw(
     'message': 'NFC timeout',
   }),
 );
+
+MosambeePaymentResult _watchdogUnknown() => MosambeePaymentResult.fromRaw(
+  jsonEncode({
+    'status': 'failed',
+    'stage': 'watchdog',
+    'code': 'SOFTPOS_NOT_RESPONDING',
+    'message': 'Payment app not responding.',
+  }),
+);
+
+MosambeePaymentResult _preDispatchFailure(String code) =>
+    MosambeePaymentResult.fromRaw(
+      jsonEncode({
+        'status': 'failed',
+        'stage': code == 'NO_SESSION' ? 'payment' : 'flutter_platform',
+        if (code == 'BUSY') 'dispatch_failed': true,
+        'code': code,
+        'message': 'Payment was not dispatched.',
+      }),
+    );

@@ -34,6 +34,10 @@ void main() {
       expect(result.userMessage, 'Payment app not responding.');
       expect(result.neverReachedTerminal, isTrue);
       expect(result.isUncertain, isFalse);
+      expect(
+        result.failurePhase,
+        MosambeeFailurePhase.postDispatchUnknown,
+      );
     });
 
     test(
@@ -60,6 +64,10 @@ void main() {
         expect(result.userMessage, 'Payment app not responding.');
         expect(result.neverReachedTerminal, isTrue);
         expect(result.isUncertain, isFalse);
+        expect(
+          result.failurePhase,
+          MosambeeFailurePhase.postDispatchUnknown,
+        );
       },
     );
 

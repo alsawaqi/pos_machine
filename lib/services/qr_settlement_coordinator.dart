@@ -201,6 +201,8 @@ class OrderSyncQrSettlementOutbox implements QrSettlementOutbox {
 }
 
 abstract interface class QrSettlementFlow {
+  List<QrSettlementResult> get pendingManagerRecoveries;
+  void acknowledgeManagerRecovery(String orderUuid);
   Future<QrSettlementClaim> claim(String orderUuid);
   Future<QrSettlementResult> settleClaim(
     QrSettlementClaim claim,
@@ -244,9 +246,31 @@ class QrSettlementCoordinator implements QrSettlementFlow {
       <String, QrSettlementClaim>{};
   final Map<String, QrGeoFix?> _heldClaimFixes = <String, QrGeoFix?>{};
   final Set<String> _settling = <String>{};
+  final Map<String, QrSettlementResult> _pendingManagerRecoveries =
+      <String, QrSettlementResult>{};
+
+  @override
+  List<QrSettlementResult> get pendingManagerRecoveries =>
+      List<QrSettlementResult>.unmodifiable(_pendingManagerRecoveries.values);
+
+  @override
+  void acknowledgeManagerRecovery(String orderUuid) {
+    _pendingManagerRecoveries.remove(orderUuid);
+    // Manager takeover ends this local flow; it is not a server release. Drop
+    // every stale handle so a caller cannot bypass claim()/outbox/server gates
+    // by reusing a claim that preceded an unresolved ACK or failed release.
+    _heldClaims.remove(orderUuid);
+    _heldClaimFixes.remove(orderUuid);
+  }
 
   @override
   Future<QrSettlementClaim> claim(String orderUuid) async {
+    // An unresolved terminal outcome is an operator-level stop, not merely an
+    // order-level mutex. Until a manager takes over, this attended till must
+    // not start a second tender for this or any other QR order.
+    if (_settling.isNotEmpty || _pendingManagerRecoveries.isNotEmpty) {
+      throw QrPaymentAttemptUnresolved(orderUuid);
+    }
     if (await _outbox.hasUnresolvedPayment(orderUuid)) {
       throw QrPaymentAttemptUnresolved(orderUuid);
     }
@@ -266,13 +290,22 @@ class QrSettlementCoordinator implements QrSettlementFlow {
     QrSettlementClaim claim,
     QrTender tender,
   ) async {
-    if (!identical(_heldClaims[claim.orderUuid], claim) ||
-        !_settling.add(claim.orderUuid)) {
+    if (!identical(_heldClaims[claim.orderUuid], claim)) {
+      throw QrSettlementClaimNotHeld(claim.orderUuid);
+    }
+    if (_settling.isNotEmpty || _pendingManagerRecoveries.isNotEmpty) {
+      throw QrPaymentAttemptUnresolved(claim.orderUuid);
+    }
+    if (!_settling.add(claim.orderUuid)) {
       throw QrSettlementClaimNotHeld(claim.orderUuid);
     }
 
     try {
-      return await _settleHeldClaim(claim, tender);
+      final result = await _settleHeldClaim(claim, tender);
+      if (result.managerRequired || result.releaseError != null) {
+        _pendingManagerRecoveries[claim.orderUuid] = result;
+      }
+      return result;
     } finally {
       _settling.remove(claim.orderUuid);
     }
@@ -381,7 +414,7 @@ class QrSettlementCoordinator implements QrSettlementFlow {
           releaseError: releaseError,
         );
       }
-      if (terminalResult.neverReachedTerminal) {
+      if (terminalResult.failurePhase == MosambeeFailurePhase.preDispatch) {
         final releaseError = await _releaseCapturingError(
           claim,
           QrReleaseOutcome.cancelled,
@@ -394,7 +427,8 @@ class QrSettlementCoordinator implements QrSettlementFlow {
           releaseError: releaseError,
         );
       }
-      if (terminalResult.isUncertain) {
+      if (terminalResult.failurePhase ==
+          MosambeeFailurePhase.postDispatchUnknown) {
         final releaseError = await _releaseCapturingError(
           claim,
           QrReleaseOutcome.uncertain,

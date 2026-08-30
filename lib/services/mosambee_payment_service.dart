@@ -6,6 +6,11 @@ import 'package:flutter/services.dart';
 
 import 'local_storage_service.dart';
 
+/// Physical-dispatch truth used by flows where taking a second payment is the
+/// dominant risk. This is deliberately separate from the legacy Phase 0
+/// [MosambeePaymentResult.neverReachedTerminal] presentation policy.
+enum MosambeeFailurePhase { none, preDispatch, postDispatchUnknown }
+
 class MosambeePaymentResult {
   final String rawPayload;
   final Map<String, dynamic> payload;
@@ -133,6 +138,27 @@ class MosambeePaymentResult {
         message.contains('was not found') ||
         message.contains('unable to launch') ||
         message.contains('unable to continue');
+  }
+
+  /// Whether a failed result is proven to precede the payment intent, or may
+  /// have happened after SoftPOS was dispatched.
+  ///
+  /// The 95-second watchdog is post-dispatch: best-effort native cancellation
+  /// cannot undo a card tap that may already have completed, and the late
+  /// activity result is discarded. QR settlement must therefore treat it as
+  /// unknown even though the older Phase 0 UI deliberately suppresses its
+  /// force-record action through [neverReachedTerminal].
+  MosambeeFailurePhase get failurePhase {
+    if (isSuccess || isCanceled) return MosambeeFailurePhase.none;
+
+    final code = _lookupString(payload, const ['code']).toUpperCase();
+    if (code == 'SOFTPOS_NOT_RESPONDING') {
+      return MosambeeFailurePhase.postDispatchUnknown;
+    }
+
+    return neverReachedTerminal
+        ? MosambeeFailurePhase.preDispatch
+        : MosambeeFailurePhase.postDispatchUnknown;
   }
 
   /// Neither a clear success nor an explicit cancel (e.g. an NFC timeout or an
