@@ -270,6 +270,21 @@ class AppDatabase extends _$AppDatabase {
   Future<void> enqueueOutbox(OrderOutboxCompanion row) =>
       into(orderOutbox).insertOnConflictUpdate(row);
 
+  Future<OrderOutboxRow?> getOutbox(String key) =>
+      (select(orderOutbox)..where((row) => row.orderUuid.equals(key)))
+          .getSingleOrNull();
+
+  /// Retire a payment attempt that the server affirmatively refused and whose
+  /// physical tender has been resolved by staff. Keeping the row preserves the
+  /// evidence while removing it from automatic outbox replay.
+  Future<void> retireOutbox(String key, String reason, DateTime at) =>
+      (update(orderOutbox)..where((row) => row.orderUuid.equals(key))).write(
+        OrderOutboxCompanion(
+          lastError: Value(reason),
+          syncedAt: Value(at),
+        ),
+      );
+
   /// Orders not yet ACKed by the server, oldest first.
   Future<List<OrderOutboxRow>> pendingOutbox() => (select(orderOutbox)
         ..where((o) => o.syncedAt.isNull())
@@ -333,7 +348,8 @@ class AppDatabase extends _$AppDatabase {
   Future<int> resetStuckOutbox(int rejectionLimit) =>
       (update(orderOutbox)
             ..where((o) => o.syncedAt.isNull() &
-                o.serverRejections.isBiggerOrEqualValue(rejectionLimit)))
+                o.serverRejections.isBiggerOrEqualValue(rejectionLimit) &
+                o.orderUuid.like('%:pay').not()))
           .write(const OrderOutboxCompanion(serverRejections: Value(0)));
 
   /// #3 — locally decrement finite shelf stock (unit/cooked products) after a

@@ -19,7 +19,10 @@ import '../services/config_mapper.dart';
 import '../services/expense_restock_service.dart';
 import '../services/geofence_service.dart';
 import '../services/live_sync.dart';
+import '../services/mosambee_payment_service.dart';
 import '../services/pos_api_service.dart';
+import '../services/qr_settlement_coordinator.dart';
+import '../services/qr_till_service.dart';
 import '../services/session_service.dart';
 import '../services/settings_service.dart';
 import '../services/shift_service.dart';
@@ -252,6 +255,37 @@ final orderSyncRepositoryProvider = Provider<OrderSyncRepository>(
     ref.read(apiServiceProvider),
     ref.read(appDatabaseProvider),
   ),
+);
+
+final qrTillServiceProvider = Provider<QrTillGateway>(
+  (ref) => QrTillService(ref.read(apiServiceProvider)),
+);
+
+final qrCardTerminalProvider = Provider<QrCardTerminalGateway>(
+  (ref) => MosambeeQrCardTerminal(MosambeePaymentService()),
+);
+
+final qrLocationProvider = Provider<QrLocationGateway>(
+  (ref) => const GeolocatorQrLocation(),
+);
+
+final qrSettlementOutboxProvider = Provider<QrSettlementOutbox>(
+  (ref) => OrderSyncQrSettlementOutbox(
+    ref.read(orderSyncRepositoryProvider),
+  ),
+);
+
+final qrSettlementCoordinatorProvider = Provider<QrSettlementFlow>(
+  (ref) => QrSettlementCoordinator(
+    till: ref.read(qrTillServiceProvider),
+    outbox: ref.read(qrSettlementOutboxProvider),
+    terminal: ref.read(qrCardTerminalProvider),
+    location: ref.read(qrLocationProvider),
+  ),
+);
+
+final qrPollingPolicyProvider = Provider<QrPollingPolicy>(
+  (ref) => const QrPollingPolicy(),
 );
 
 /// MC-001 — rejected revenue batches parked after five server refusals.

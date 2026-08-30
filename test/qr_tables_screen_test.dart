@@ -1,0 +1,808 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:pos_machine/models/pos_models.dart';
+import 'package:pos_machine/models/qr_till_models.dart';
+import 'package:pos_machine/providers/providers.dart';
+import 'package:pos_machine/screens/qr_tables_screen.dart';
+import 'package:pos_machine/services/pos_api_service.dart';
+import 'package:pos_machine/services/qr_settlement_coordinator.dart';
+import 'package:pos_machine/services/qr_till_service.dart';
+import 'package:pos_machine/services/session_service.dart';
+
+const _floors = [DiningFloor(id: '1', label: 'Main floor')];
+const _tables = [
+  DiningTableDefinition(
+    id: '1',
+    floorId: '1',
+    name: 'Table 1',
+    sizeLabel: '2 seats',
+    seats: 2,
+    sortOrder: 1,
+  ),
+  DiningTableDefinition(
+    id: '2',
+    floorId: '1',
+    name: 'Table 2',
+    sizeLabel: '2 seats',
+    seats: 2,
+    sortOrder: 2,
+  ),
+  DiningTableDefinition(
+    id: '3',
+    floorId: '1',
+    name: 'Table 3',
+    sizeLabel: '4 seats',
+    seats: 4,
+    sortOrder: 3,
+  ),
+  DiningTableDefinition(
+    id: '4',
+    floorId: '1',
+    name: 'Table 4',
+    sizeLabel: '4 seats',
+    seats: 4,
+    sortOrder: 4,
+  ),
+  DiningTableDefinition(
+    id: '5',
+    floorId: '1',
+    name: 'Table 5',
+    sizeLabel: '6 seats',
+    seats: 6,
+    sortOrder: 5,
+  ),
+  DiningTableDefinition(
+    id: '6',
+    floorId: '1',
+    name: 'Table 6',
+    sizeLabel: '6 seats',
+    seats: 6,
+    sortOrder: 6,
+  ),
+];
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+    'classifier does not mistake an archived active table for an orphan',
+    () {
+      final archivedActive = _row(
+        id: 8,
+        sessionStatus: 'active',
+        tableDeleted: true,
+        orderStatus: 'open',
+      );
+
+      expect(
+        qrTableDisplayStateFor(archivedActive),
+        QrTableDisplayState.active,
+      );
+    },
+  );
+
+  testWidgets('merges configured free tables and renders all six states', (
+    tester,
+  ) async {
+    final service = _FakeTillGateway(
+      board: [
+        _row(id: 2, sessionStatus: 'pending'),
+        _row(id: 3, sessionStatus: 'active', orderStatus: 'open'),
+        _row(id: 4, sessionStatus: 'ordered', orderStatus: 'awaiting_payment'),
+        _row(
+          id: 5,
+          sessionStatus: 'expired',
+          orderStatus: 'open',
+          orphaned: true,
+        ),
+        _row(
+          id: 6,
+          sessionStatus: null,
+          sessionUuid: null,
+          orderStatus: 'open',
+          orphaned: true,
+          tableDeleted: true,
+        ),
+      ],
+    );
+    await _pumpBoard(tester, service: service);
+
+    expect(find.byKey(const ValueKey('qr-state-free')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('qr-state-awaitingFirstScan')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('qr-state-active')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('qr-state-paymentRequested')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('qr-state-orphanedExpired')),
+      findsOneWidget,
+    );
+
+    // The soft-deleted opener remains visible on the explicit archive floor.
+    await tester.tap(
+      find.byKey(const ValueKey('qr-floor-__archived_qr_tables__')),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('qr-state-orphanedMissingSession')),
+      findsOneWidget,
+    );
+    expect(find.text('Archived table'), findsOneWidget);
+    await _disposeBoard(tester);
+  });
+
+  testWidgets('detail is read-only and claim precedes the frozen bare tender', (
+    tester,
+  ) async {
+    final service = _FakeTillGateway(
+      board: [_row(id: 3, sessionStatus: 'active', orderStatus: 'open')],
+      active: [_activeOrder()],
+    );
+    final flow = _FakeSettlementFlow();
+    await _pumpBoard(tester, service: service, flow: flow);
+    await _selectTable(tester, '3');
+
+    expect(find.text('Long server-priced product name'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(const ValueKey('qr-action-settle')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('qr-action-settle')));
+    await tester.pump();
+    expect(flow.calls, ['claim:order-3']);
+    expect(find.byKey(const ValueKey('qr-settlement-sheet')), findsOneWidget);
+    expect(find.text('OMR 4.750'), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('qr-tender-card')));
+    await tester.pump();
+    expect(flow.calls, ['claim:order-3', 'settle:card']);
+    expect(find.textContaining('Payment accepted'), findsOneWidget);
+    await _disposeBoard(tester);
+  });
+
+  testWidgets('expired claim disables cash and card and never starts tender', (
+    tester,
+  ) async {
+    final service = _FakeTillGateway(
+      board: [_row(id: 3, sessionStatus: 'active', orderStatus: 'open')],
+      active: [_activeOrder()],
+    );
+    final flow = _FakeSettlementFlow(
+      claimValue: QrSettlementClaim(
+        orderUuid: 'order-3',
+        frozenAmountBaisas: 4750,
+        status: 'claimed',
+        deadlineAt: DateTime.now().subtract(const Duration(seconds: 1)),
+      ),
+    );
+    await _pumpBoard(tester, service: service, flow: flow);
+    await _selectTable(tester, '3');
+    await tester.tap(find.byKey(const ValueKey('qr-action-settle')));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('qr-claim-expired')), findsOneWidget);
+    final cash = tester.widget<OutlinedButton>(
+      find.byKey(const ValueKey('qr-tender-cash')),
+    );
+    final card = tester.widget<FilledButton>(
+      find.byKey(const ValueKey('qr-tender-card')),
+    );
+    expect(cash.onPressed, isNull);
+    expect(card.onPressed, isNull);
+    expect(flow.calls, ['claim:order-3']);
+
+    await tester.tap(find.byKey(const ValueKey('qr-abandon-claim')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('qr-confirm-abandon')));
+    await tester.pump();
+    expect(flow.calls, ['claim:order-3', 'release:cancelled']);
+    await _disposeBoard(tester);
+  });
+
+  testWidgets('a refused competing claim exposes no tender', (tester) async {
+    final service = _FakeTillGateway(
+      board: [_row(id: 3, sessionStatus: 'active', orderStatus: 'open')],
+      active: [_activeOrder()],
+    );
+    final flow = _FakeSettlementFlow(
+      claimError: ApiException(
+        message: 'claimed',
+        statusCode: 409,
+        code: 'charge_already_claimed',
+      ),
+    );
+    await _pumpBoard(tester, service: service, flow: flow);
+    await _selectTable(tester, '3');
+    await tester.tap(find.byKey(const ValueKey('qr-action-settle')));
+    await tester.pump();
+
+    expect(flow.calls, ['claim:order-3']);
+    expect(find.byKey(const ValueKey('qr-settlement-sheet')), findsNothing);
+    expect(find.byKey(const ValueKey('qr-tender-card')), findsNothing);
+    await _disposeBoard(tester);
+  });
+
+  for (final missingSession in [false, true]) {
+    testWidgets(
+      '${missingSession ? 'missing-session' : 'expired'} orphan falls back before claim and tender',
+      (tester) async {
+        final service = _FakeTillGateway(
+          board: [
+            _row(
+              id: 5,
+              sessionStatus: missingSession ? null : 'expired',
+              sessionUuid: missingSession ? null : 'session-5',
+              orderStatus: 'awaiting_payment',
+              orphaned: true,
+            ),
+          ],
+        );
+        final timeline = <String>[];
+        service.timeline = timeline;
+        final flow = _FakeSettlementFlow(timeline: timeline);
+        await _pumpBoard(tester, service: service, flow: flow);
+        await _selectTable(tester, '5');
+
+        expect(find.byKey(const ValueKey('qr-action-settle')), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('qr-action-fallback')));
+        await tester.pump();
+        expect(timeline, ['fallback:order-5', 'claim:order-5']);
+        expect(
+          find.byKey(const ValueKey('qr-settlement-sheet')),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.byKey(const ValueKey('qr-tender-cash')));
+        await tester.pump();
+        expect(timeline, ['fallback:order-5', 'claim:order-5', 'settle:cash']);
+        await _disposeBoard(tester);
+      },
+    );
+  }
+
+  testWidgets('held orphan after restart claims without repeating fallback', (
+    tester,
+  ) async {
+    final timeline = <String>[];
+    final service = _FakeTillGateway(
+      board: [
+        _row(
+          id: 5,
+          sessionStatus: 'expired',
+          orderStatus: 'held',
+          orphaned: true,
+        ),
+      ],
+    )..timeline = timeline;
+    final flow = _FakeSettlementFlow(timeline: timeline);
+    await _pumpBoard(tester, service: service, flow: flow);
+    await _selectTable(tester, '5');
+
+    expect(
+      find.byKey(const ValueKey('qr-action-settle-recovered')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('qr-action-settle-recovered')));
+    await tester.pump();
+    expect(timeline, ['claim:order-5']);
+    await tester.tap(find.byKey(const ValueKey('qr-tender-card')));
+    await tester.pump();
+    expect(timeline, ['claim:order-5', 'settle:card']);
+    await _disposeBoard(tester);
+  });
+
+  testWidgets('fresh awaiting board status wins over stale active detail', (
+    tester,
+  ) async {
+    var now = DateTime.utc(2026, 8, 30, 12);
+    final service = _FakeTillGateway(
+      board: [_row(id: 3, sessionStatus: 'active', orderStatus: 'open')],
+      active: [_activeOrder()],
+    );
+    await _pumpBoard(tester, service: service, clock: () => now);
+    await _selectTable(tester, '3');
+    expect(find.text('Long server-priced product name'), findsOneWidget);
+
+    service.board = [
+      _row(id: 3, sessionStatus: 'ordered', orderStatus: 'awaiting_payment'),
+    ];
+    now = now.add(const Duration(seconds: 10));
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('qr-action-settle')), findsNothing);
+    expect(find.byKey(const ValueKey('qr-action-void')), findsNothing);
+    expect(find.byKey(const ValueKey('qr-action-reopen')), findsOneWidget);
+    expect(find.text('Long server-priced product name'), findsNothing);
+    expect(find.textContaining('Customer ID'), findsNothing);
+    expect(find.text('QR-0003'), findsWidgets);
+    expect(find.text('OMR 4.750'), findsWidgets);
+    await _disposeBoard(tester);
+  });
+
+  testWidgets('void is standalone, terminal board then exposes clear', (
+    tester,
+  ) async {
+    var now = DateTime.utc(2026, 8, 30, 12);
+    final timeline = <String>[];
+    final service = _FakeTillGateway(
+      board: [_row(id: 3, sessionStatus: 'active', orderStatus: 'open')],
+      active: [_activeOrder()],
+    )..timeline = timeline;
+    final flow = _FakeSettlementFlow(
+      timeline: timeline,
+      onVoid: () {
+        service.board = [
+          _row(id: 3, sessionStatus: 'ordered', orderStatus: 'voided'),
+        ];
+      },
+    );
+    await _pumpBoard(tester, service: service, flow: flow, clock: () => now);
+    await _selectTable(tester, '3');
+    await tester.tap(find.byKey(const ValueKey('qr-action-void')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('qr-confirm-void')));
+    await tester.pump();
+    expect(timeline, ['void:order-3']);
+
+    now = now.add(const Duration(seconds: 10));
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('qr-action-clear')), findsOneWidget);
+    // The void-success snackbar intentionally overlays the action rail for a
+    // moment; wait for that operator feedback before pressing Clear.
+    await tester.pump(const Duration(seconds: 5));
+    final clearButton = find.descendant(
+      of: find.byKey(const ValueKey('qr-action-clear')),
+      matching: find.byType(FilledButton),
+    );
+    expect(clearButton, findsOneWidget);
+    final renderedClear = tester.widget<FilledButton>(clearButton);
+    expect(renderedClear.onPressed, isNotNull);
+    renderedClear.onPressed!();
+    await tester.pump();
+    expect(timeline, ['void:order-3', 'clear:3']);
+    await _disposeBoard(tester);
+  });
+
+  testWidgets('live awaiting order invokes only the reopen seam', (
+    tester,
+  ) async {
+    final timeline = <String>[];
+    final service = _FakeTillGateway(
+      board: [
+        _row(id: 4, sessionStatus: 'ordered', orderStatus: 'awaiting_payment'),
+      ],
+    )..timeline = timeline;
+    await _pumpBoard(tester, service: service);
+    await _selectTable(tester, '4');
+    await tester.tap(find.byKey(const ValueKey('qr-action-reopen')));
+    await tester.pump();
+    expect(timeline, ['reopen:order-4']);
+    await _disposeBoard(tester);
+  });
+
+  testWidgets('staff action refusal uses mapped actionable copy', (
+    tester,
+  ) async {
+    final service = _FakeTillGateway(
+      board: [
+        _row(id: 4, sessionStatus: 'ordered', orderStatus: 'awaiting_payment'),
+      ],
+      reopenError: ApiException(
+        message: 'raw server text',
+        statusCode: 409,
+        code: 'qr_order_not_reopenable',
+      ),
+    );
+    await _pumpBoard(tester, service: service);
+    await _selectTable(tester, '4');
+    await tester.tap(find.byKey(const ValueKey('qr-action-reopen')));
+    await tester.pump();
+
+    expect(
+      find.text('This order cannot be reopened for more rounds.'),
+      findsOneWidget,
+    );
+    expect(find.text('raw server text'), findsNothing);
+    await _disposeBoard(tester);
+  });
+
+  testWidgets('disposal after a delayed claim best-effort releases it', (
+    tester,
+  ) async {
+    final service = _FakeTillGateway(
+      board: [_row(id: 3, sessionStatus: 'active', orderStatus: 'open')],
+      active: [_activeOrder()],
+    );
+    final completer = Completer<QrSettlementClaim>();
+    final flow = _FakeSettlementFlow(delayedClaim: completer);
+    await _pumpBoard(tester, service: service, flow: flow);
+    await _selectTable(tester, '3');
+    await tester.tap(find.byKey(const ValueKey('qr-action-settle')));
+    await tester.pump();
+
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    completer.complete(_claim('order-3'));
+    await tester.pump();
+    expect(flow.calls, ['claim:order-3', 'release:cancelled']);
+  });
+
+  testWidgets('back during delayed settlement never releases the claim', (
+    tester,
+  ) async {
+    final service = _FakeTillGateway(
+      board: [_row(id: 3, sessionStatus: 'active', orderStatus: 'open')],
+      active: [_activeOrder()],
+    );
+    final settle = Completer<QrSettlementResult>();
+    final flow = _FakeSettlementFlow(delayedSettlement: settle);
+    await _pumpBoard(tester, service: service, flow: flow);
+    await _selectTable(tester, '3');
+    await tester.tap(find.byKey(const ValueKey('qr-action-settle')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('qr-tender-card')));
+    await tester.pump();
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(flow.calls, ['claim:order-3', 'settle:card']);
+    expect(find.byKey(const ValueKey('qr-tables-screen')), findsOneWidget);
+    expect(find.textContaining('Payment is in progress'), findsOneWidget);
+
+    settle.complete(_paid(_claim('order-3')));
+    await tester.pump();
+    expect(flow.calls.where((call) => call.startsWith('release:')), isEmpty);
+    await _disposeBoard(tester);
+  });
+
+  for (final scenario in ['awaiting acknowledgement', 'release failure']) {
+    testWidgets('$scenario keeps route locked for manager takeover', (
+      tester,
+    ) async {
+      final service = _FakeTillGateway(
+        board: [_row(id: 3, sessionStatus: 'active', orderStatus: 'open')],
+        active: [_activeOrder()],
+      );
+      final flow = _FakeSettlementFlow(
+        settleResult: (claim, _) => QrSettlementResult(
+          kind: scenario == 'awaiting acknowledgement'
+              ? QrSettlementResultKind.awaitingServerAcknowledgement
+              : QrSettlementResultKind.cardCancelledBeforeCapture,
+          claim: claim,
+          clientEventId: 'durable-event',
+          releaseError: scenario == 'release failure'
+              ? StateError('release refused')
+              : null,
+        ),
+      );
+      await _pumpBoard(tester, service: service, flow: flow);
+      await _selectTable(tester, '3');
+      await tester.tap(find.byKey(const ValueKey('qr-action-settle')));
+      await tester.pump();
+      await tester.tap(
+        find.byKey(
+          ValueKey(
+            scenario == 'release failure' ? 'qr-tender-card' : 'qr-tender-cash',
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('qr-settlement-procedure')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('I understand'));
+      await tester.pump();
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('qr-manager-takeover-warning')),
+        findsOneWidget,
+      );
+      expect(flow.calls.where((call) => call.startsWith('release:')), isEmpty);
+      await _disposeBoard(tester);
+    });
+  }
+
+  testWidgets('polls only in foreground and honors Retry-After', (
+    tester,
+  ) async {
+    var now = DateTime.utc(2026, 8, 30, 12);
+    final service = _FakeTillGateway(board: const []);
+    service.boardErrors.add(
+      ApiException(
+        message: 'slow down',
+        statusCode: 429,
+        code: 'rate_limited',
+        retryAfter: const Duration(seconds: 30),
+      ),
+    );
+    await _pumpBoard(tester, service: service, clock: () => now);
+    expect(service.boardCalls, 1);
+
+    now = now.add(const Duration(seconds: 11));
+    await tester.pump(const Duration(seconds: 11));
+    await tester.tap(find.byKey(const ValueKey('qr-board-refresh')));
+    await tester.pump();
+    expect(service.boardCalls, 1);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    now = now.add(const Duration(seconds: 5));
+    await tester.pump(const Duration(seconds: 5));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(service.boardCalls, 1);
+
+    now = now.add(const Duration(seconds: 13));
+    await tester.pump(const Duration(seconds: 13));
+    expect(service.boardCalls, 1);
+    now = now.add(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    expect(service.boardCalls, 2);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    now = now.add(const Duration(seconds: 20));
+    await tester.pump(const Duration(seconds: 20));
+    expect(service.boardCalls, 2);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(service.boardCalls, 3);
+    await _disposeBoard(tester);
+  });
+}
+
+Future<void> _pumpBoard(
+  WidgetTester tester, {
+  required _FakeTillGateway service,
+  _FakeSettlementFlow? flow,
+  DateTime Function()? clock,
+}) async {
+  SharedPreferences.setMockInitialValues(const {});
+  final preferences = await SharedPreferences.getInstance();
+  tester.view.physicalSize = const Size(1500, 900);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        qrTillServiceProvider.overrideWithValue(service),
+        qrSettlementCoordinatorProvider.overrideWithValue(
+          flow ?? _FakeSettlementFlow(),
+        ),
+        sessionServiceProvider.overrideWithValue(
+          SessionService(const FlutterSecureStorage(), preferences),
+        ),
+      ],
+      child: MaterialApp(
+        home: QrTablesScreen(floors: _floors, tables: _tables, clock: clock),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.pump();
+}
+
+Future<void> _selectTable(WidgetTester tester, String id) async {
+  await tester.tap(find.byKey(ValueKey('qr-table-$id')));
+  await tester.pump();
+  await tester.pump();
+}
+
+Future<void> _disposeBoard(WidgetTester tester) async {
+  await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+  await tester.pump();
+}
+
+QrTableBoardRow _row({
+  required int id,
+  String? sessionStatus,
+  String? sessionUuid = 'session',
+  String? orderStatus,
+  bool orphaned = false,
+  bool tableDeleted = false,
+}) => QrTableBoardRow(
+  tableId: id,
+  tableLabel: 'Table $id',
+  tableStatus: 'available',
+  tableDeleted: tableDeleted,
+  orphaned: orphaned,
+  pendingRounds: const [],
+  sessionUuid: sessionUuid,
+  sessionStatus: sessionStatus,
+  expiresAt: sessionStatus == 'expired'
+      ? DateTime.now().subtract(const Duration(minutes: 1))
+      : DateTime.now().add(const Duration(hours: 1)),
+  order: orderStatus == null
+      ? null
+      : QrBoardOrder(
+          uuid: 'order-$id',
+          status: orderStatus,
+          receiptNumber: 'QR-${id.toString().padLeft(4, '0')}',
+          acceptedTotalBaisas: 4750,
+        ),
+);
+
+QrActiveOrder _activeOrder({int id = 3}) => QrActiveOrder(
+  uuid: 'order-$id',
+  status: 'open',
+  source: 'qr_web',
+  tableId: id,
+  customerId: 42,
+  plateNumber: 'OM 1234',
+  receiptNumber: 'QR-${id.toString().padLeft(4, '0')}',
+  subtotalBaisas: 4500,
+  discountTotalBaisas: 0,
+  compTotalBaisas: 0,
+  taxTotalBaisas: 250,
+  grandTotalBaisas: 4750,
+  items: const [
+    QrOrderItem(
+      id: 1,
+      productId: 11,
+      name: 'Long server-priced product name',
+      quantity: 1,
+      unitPriceBaisas: 4750,
+      lineDiscountBaisas: 0,
+      lineTotalBaisas: 4750,
+      status: 'accepted',
+      addons: [],
+    ),
+  ],
+);
+
+QrSettlementClaim _claim(String orderUuid) => QrSettlementClaim(
+  orderUuid: orderUuid,
+  frozenAmountBaisas: 4750,
+  status: 'claimed',
+  deadlineAt: DateTime.now().add(const Duration(minutes: 2)),
+);
+
+QrSettlementResult _paid(QrSettlementClaim claim) => QrSettlementResult(
+  kind: QrSettlementResultKind.paid,
+  claim: claim,
+  clientEventId: 'event-1',
+);
+
+class _FakeTillGateway implements QrTillGateway {
+  _FakeTillGateway({
+    this.board = const [],
+    this.active = const [],
+    this.reopenError,
+  });
+
+  List<QrTableBoardRow> board;
+  List<QrActiveOrder> active;
+  int boardCalls = 0;
+  final List<Object> boardErrors = [];
+  final Object? reopenError;
+  List<String>? timeline;
+
+  @override
+  Future<List<QrTableBoardRow>> fetchTableBoard() async {
+    boardCalls += 1;
+    if (boardErrors.isNotEmpty) throw boardErrors.removeAt(0);
+    return board;
+  }
+
+  @override
+  Future<List<QrActiveOrder>> fetchActiveQrOrders() async => active;
+
+  @override
+  Future<QrActiveOrder?> activeQrOrder(String orderUuid) async {
+    for (final order in active) {
+      if (order.uuid == orderUuid) return order;
+    }
+    return null;
+  }
+
+  @override
+  Future<QrSettlementClaim> claimSettlement(
+    String orderUuid, {
+    double? lat,
+    double? lng,
+  }) async => _claim(orderUuid);
+
+  @override
+  Future<void> releaseSettlement(
+    String orderUuid,
+    QrReleaseOutcome outcome, {
+    String? softposReference,
+    String? softposAuthCode,
+    Map<String, dynamic>? bankResponse,
+  }) async {}
+
+  @override
+  Future<QrOrderActionResult> reopenPayment(String orderUuid) async {
+    timeline?.add('reopen:$orderUuid');
+    if (reopenError != null) throw reopenError!;
+    return QrOrderActionResult(orderUuid: orderUuid, status: 'open');
+  }
+
+  @override
+  Future<QrOrderActionResult> fallbackToCounter(String orderUuid) async {
+    timeline?.add('fallback:$orderUuid');
+    return QrOrderActionResult(orderUuid: orderUuid, status: 'held');
+  }
+
+  @override
+  Future<void> clearTable(int tableId) async {
+    timeline?.add('clear:$tableId');
+  }
+}
+
+class _FakeSettlementFlow implements QrSettlementFlow {
+  _FakeSettlementFlow({
+    this.claimValue,
+    this.claimError,
+    this.delayedClaim,
+    this.delayedSettlement,
+    this.timeline,
+    this.onVoid,
+    this.settleResult,
+  });
+
+  final QrSettlementClaim? claimValue;
+  final Object? claimError;
+  final Completer<QrSettlementClaim>? delayedClaim;
+  final Completer<QrSettlementResult>? delayedSettlement;
+  final List<String>? timeline;
+  final VoidCallback? onVoid;
+  final QrSettlementResult Function(QrSettlementClaim, QrTender)? settleResult;
+  final List<String> calls = [];
+
+  @override
+  Future<QrSettlementClaim> claim(String orderUuid) async {
+    calls.add('claim:$orderUuid');
+    timeline?.add('claim:$orderUuid');
+    if (claimError != null) throw claimError!;
+    if (delayedClaim != null) return delayedClaim!.future;
+    return claimValue ?? _claim(orderUuid);
+  }
+
+  @override
+  Future<QrSettlementResult> settleClaim(
+    QrSettlementClaim claim,
+    QrTender tender,
+  ) async {
+    calls.add('settle:${tender.name}');
+    timeline?.add('settle:${tender.name}');
+    if (delayedSettlement != null) return delayedSettlement!.future;
+    if (settleResult != null) return settleResult!(claim, tender);
+    return _paid(claim);
+  }
+
+  @override
+  Future<void> releaseClaim(
+    QrSettlementClaim claim,
+    QrReleaseOutcome outcome, {
+    Object? terminalResult,
+  }) async {
+    calls.add('release:${outcome.name}');
+    timeline?.add('release:${outcome.name}');
+  }
+
+  @override
+  Future<void> voidOrder(
+    String orderUuid, {
+    String? reason,
+    int? voidReasonId,
+    int? staffId,
+    String? authorizedBy,
+  }) async {
+    calls.add('void:$orderUuid');
+    timeline?.add('void:$orderUuid');
+    onVoid?.call();
+  }
+}

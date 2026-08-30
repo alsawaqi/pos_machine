@@ -301,9 +301,9 @@ class MosambeePaymentService {
     'packageName': appPackageName,
   };
 
-  Map<String, String> _paymentArgs(double amountOmr) => {
+  Map<String, String> _paymentArgsBaisas(int amountBaisas) => {
     'packageName': appPackageName,
-    'amount': (amountOmr * 1000).round().toString(),
+    'amount': amountBaisas.toString(),
     'mobNo': '',
     'description': 'Mithqal POS Order',
   };
@@ -352,6 +352,15 @@ class MosambeePaymentService {
   /// [loginAndPay] when no warm session is available (already consumed, expired,
   /// or never prepared), so a sale never fails just because the session lapsed.
   Future<MosambeePaymentResult> payWithPreparedSession(double amountOmr) async {
+    return payWithPreparedSessionBaisas((amountOmr * 1000).round());
+  }
+
+  /// Integer-baisas entrypoint for server-priced QR settlements. Keeping the
+  /// amount in its wire unit avoids an unnecessary baisas→double OMR→baisas
+  /// round-trip before the native bridge.
+  Future<MosambeePaymentResult> payWithPreparedSessionBaisas(
+    int amountBaisas,
+  ) async {
     // Preflight (mirrors pos_handheld's payment screen): a device with no
     // bank terminal assigned can never charge, so fail FAST and clearly
     // instead of launching the SoftPOS app to watch it reject us.
@@ -376,18 +385,18 @@ class MosambeePaymentService {
     try {
       final raw = await _invokeWithLaunchWatchdog<String>(
         'payWithPreparedSession',
-        _paymentArgs(amountOmr),
+        _paymentArgsBaisas(amountBaisas),
       );
       final result = MosambeePaymentResult.fromRaw(raw);
       if (result.isNoSession) {
-        return await loginAndPay(amountOmr);
+        return await loginAndPayBaisas(amountBaisas);
       }
       return result;
     } on _SoftPosNotRespondingException {
       return _notRespondingFailure();
     } on PlatformException catch (error) {
       if (error.code == 'BUSY') {
-        return loginAndPay(amountOmr);
+        return loginAndPayBaisas(amountBaisas);
       }
       return _dispatchFailure('flutter_platform', error.code, error.message,
           details: error.details);
@@ -472,6 +481,10 @@ class MosambeePaymentService {
       );
 
   Future<MosambeePaymentResult> loginAndPay(double amountOmr) async {
+    return loginAndPayBaisas((amountOmr * 1000).round());
+  }
+
+  Future<MosambeePaymentResult> loginAndPayBaisas(int amountBaisas) async {
     try {
       final terminalId = (await LocalStorageService.getTerminalId())?.trim();
       if (terminalId == null || terminalId.isEmpty) {
@@ -486,7 +499,7 @@ class MosambeePaymentService {
       );
       final result = await _invokeWithLaunchWatchdog<String>('loginAndPay', {
         ..._loginArgs(terminalId, pin),
-        ..._paymentArgs(amountOmr),
+        ..._paymentArgsBaisas(amountBaisas),
       });
 
       return MosambeePaymentResult.fromRaw(result);

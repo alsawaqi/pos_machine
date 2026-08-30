@@ -23,6 +23,7 @@ import 'branch_reports_screen.dart';
 import 'kitchen_production_screen.dart';
 import 'log_expense_screen.dart';
 import 'restock_request_screen.dart';
+import 'qr_tables_screen.dart';
 import 'stock_count_screen.dart';
 import 'waste_product_screen.dart';
 import 'settings_screen.dart';
@@ -226,6 +227,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   // on the bottom action bar — both removed here to declutter the cramped top
   // bar (the order-history dialog stays reachable from the footer card).
   static const _secondaryNavItems = <_NavItemData>[
+    _NavItemData('QR Tables', Icons.qr_code_2_rounded),
     _NavItemData('Offers', Icons.local_offer_outlined), // P-F9
     _NavItemData('Kitchen', Icons.soup_kitchen_outlined), // P-G1
     _NavItemData('Messages', Icons.mail_outline), // P-G6
@@ -5140,6 +5142,26 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                         : 0,
                     onTap: () {
                       switch (entry.value.title) {
+                        case 'QR Tables':
+                          // QR orders remain server-owned. This route passes
+                          // configuration labels only; it never imports QR
+                          // occupancy into DiningTableSession or PosController.
+                          unawaited(
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => QrTablesScreen(
+                                  floors: List<DiningFloor>.unmodifiable(
+                                    controller.diningFloors,
+                                  ),
+                                  tables:
+                                      List<DiningTableDefinition>.unmodifiable(
+                                    controller.diningTableDefinitions,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                          break;
                         case 'Messages':
                           // P-G6 — staff announcements from the portal.
                           unawaited(_openMessagesSheet());

@@ -15,6 +15,22 @@ enum OrderSyncAttentionReason {
   awaitingGps,
 }
 
+enum StandaloneQrPayState { processed, refused, pending }
+
+class StandaloneQrPayResult {
+  const StandaloneQrPayResult({
+    required this.state,
+    required this.outboxKey,
+    required this.clientEventId,
+    this.error,
+  });
+
+  final StandaloneQrPayState state;
+  final String outboxKey;
+  final String clientEventId;
+  final String? error;
+}
+
 class OrderSyncAttention {
   const OrderSyncAttention({required this.row, required this.reason});
 
@@ -32,6 +48,7 @@ class OrderSyncRepository {
   /// Only explicit, deterministic server refusals count toward parking.
   /// Offline / transport failures remain retry-forever.
   static const int maxServerRejections = 5;
+  static const String _retiredQrPayMarker = 'qr-attempt-retired:';
 
   final PosApiService _api;
   final AppDatabase _db;
@@ -123,6 +140,100 @@ class OrderSyncRepository {
     ));
 
     await flush();
+  }
+
+  /// QR-002 S2 — queue exactly one standalone `order.pay` for a server-owned
+  /// QR order. `[orderUuid]:pay` is an internal row key only; the wire event id
+  /// is a freshly-minted UUID persisted inside [eventsJson] and replayed
+  /// unchanged after response loss.
+  Future<StandaloneQrPayResult> enqueueStandaloneQrPay({
+    required String orderUuid,
+    required int frozenAmountBaisas,
+    required String method,
+    CardCharge? cardCharge,
+    double? lat,
+    double? lng,
+    DateTime? paidAt,
+    String Function()? newUuid,
+  }) async {
+    final key = '$orderUuid:pay';
+    final existing = await _db.getOutbox(key);
+    if (existing != null) {
+      final explicitlyRetired = existing.syncedAt != null &&
+          (existing.lastError ?? '').startsWith(_retiredQrPayMarker);
+      if (!explicitlyRetired) return _standaloneQrResult(existing);
+    }
+
+    final event = buildStandaloneQrPayEvent(
+      orderUuid: orderUuid,
+      frozenAmountBaisas: frozenAmountBaisas,
+      method: method,
+      cardCharge: cardCharge,
+      lat: lat,
+      lng: lng,
+      paidAt: paidAt,
+      newUuid: newUuid,
+    );
+    await _db.enqueueOutbox(OrderOutboxCompanion(
+      orderUuid: Value(key),
+      eventsJson: Value(jsonEncode(<Map<String, dynamic>>[event])),
+      orderNumber: const Value(0),
+      createdAt: Value(paidAt ?? DateTime.now()),
+      attempts: const Value(0),
+      serverRejections: const Value(0),
+      lastError: const Value(null),
+      syncedAt: const Value(null),
+    ));
+
+    await flush();
+    final row = await _db.getOutbox(key);
+    if (row == null) {
+      throw StateError('The QR payment outbox row disappeared.');
+    }
+    return _standaloneQrResult(row);
+  }
+
+  /// A pending QR pay row means a charge/pay attempt has an unresolved fate.
+  /// The settle sheet must never open a second tender while it exists.
+  Future<bool> hasUnresolvedStandaloneQrPay(String orderUuid) async {
+    final row = await _db.getOutbox('$orderUuid:pay');
+    return row != null && row.syncedAt == null;
+  }
+
+  /// Stop automatic replay only after staff has resolved the physical tender
+  /// and the server has accepted an explicit cancelled/uncertain release.
+  Future<void> retireStandaloneQrPay(
+    String orderUuid, {
+    required String reason,
+  }) async {
+    final key = '$orderUuid:pay';
+    final row = await _db.getOutbox(key);
+    if (row == null || row.syncedAt != null || row.serverRejections == 0) {
+      throw StateError(
+        'Only an affirmatively refused QR payment can be retired.',
+      );
+    }
+    await _db.retireOutbox(
+      key,
+      '$_retiredQrPayMarker$reason',
+      DateTime.now(),
+    );
+  }
+
+  StandaloneQrPayResult _standaloneQrResult(OrderOutboxRow row) {
+    final decoded = jsonDecode(row.eventsJson) as List;
+    final event = (decoded.single as Map).cast<String, dynamic>();
+    final state = row.syncedAt != null
+        ? StandaloneQrPayState.processed
+        : row.serverRejections > 0
+            ? StandaloneQrPayState.refused
+            : StandaloneQrPayState.pending;
+    return StandaloneQrPayResult(
+      state: state,
+      outboxKey: row.orderUuid,
+      clientEventId: event['client_event_id']?.toString() ?? '',
+      error: row.lastError,
+    );
   }
 
   /// Phase C2 — mirror a held (parked) order server-side (blueprint §6.7).
@@ -232,8 +343,10 @@ class OrderSyncRepository {
         // the original processed state, which is also success).
         final allProcessed = results.isNotEmpty &&
             results.every((r) => r['status'] == 'processed');
+        final qrPaymentConfirmed = !row.orderUuid.endsWith(':pay') ||
+            _isMatchingPaidQrAck(events, results);
 
-        if (allProcessed) {
+        if (allProcessed && qrPaymentConfirmed) {
           await _db.markOutboxSynced(row.orderUuid, DateTime.now());
           synced++;
         } else {
@@ -392,7 +505,12 @@ class OrderSyncRepository {
     OrderOutboxRow row,
     String error,
   ) async {
-    final rejections = row.serverRejections + 1;
+    // A deterministic refusal after a QR tender must not be retried silently:
+    // staff may already have returned cash or escalated a charged card. Park it
+    // immediately. Transport/no-ACK failures still replay the same event UUID.
+    final rejections = row.orderUuid.endsWith(':pay')
+        ? maxServerRejections
+        : row.serverRejections + 1;
     await _db.markOutboxServerRejection(
       row.orderUuid,
       row.attempts + 1,
@@ -446,5 +564,21 @@ class OrderSyncRepository {
     }
     final statuses = results.map((r) => r['status']).join(', ');
     return 'not settled (statuses: $statuses)';
+  }
+
+  bool _isMatchingPaidQrAck(
+    List<Map<String, dynamic>> events,
+    List<Map<String, dynamic>> results,
+  ) {
+    if (events.length != 1 || results.length != 1) return false;
+    final eventId = events.single['client_event_id']?.toString();
+    final ack = results.single;
+    final rawResult = ack['result'];
+    return eventId != null &&
+        eventId.isNotEmpty &&
+        ack['client_event_id']?.toString() == eventId &&
+        ack['status'] == 'processed' &&
+        rawResult is Map &&
+        rawResult['status'] == 'paid';
   }
 }

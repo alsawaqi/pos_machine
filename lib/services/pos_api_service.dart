@@ -4,6 +4,7 @@ import '../core/api_config.dart';
 import '../models/branch_report.dart';
 import '../models/kitchen_production.dart';
 import '../models/pos_models.dart';
+import '../models/qr_till_models.dart';
 import 'api_models.dart';
 import 'session_service.dart' show OpenShiftData;
 
@@ -220,6 +221,101 @@ class PosApiService {
       () => _dio.post('/device/sync/push', data: {'events': events}),
     );
     return body.dataMap;
+  }
+
+  /// QR-002 S2 — branch table-board rows. Free tables are intentionally absent
+  /// from this endpoint and are merged with the cached config by the screen.
+  Future<List<QrTableBoardRow>> fetchQrTableBoard() async {
+    final body = await _send(() => _dio.get('/device/qr/table-board'));
+    final rows = body.dataMap['tables'];
+    if (rows is! List) return const <QrTableBoardRow>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => QrTableBoardRow.fromJson(
+              row.cast<String, dynamic>(),
+            ))
+        .toList(growable: false);
+  }
+
+  /// QR-002 S2 — read-only active QR detail. Filtering at this boundary is a
+  /// deliberate money guard: a main-POS order can never enter a QR flow merely
+  /// because it shares a table id or UUID-shaped identifier.
+  Future<List<QrActiveOrder>> fetchActiveQrOrders() async {
+    final body = await _send(() => _dio.get('/device/orders/active'));
+    final rows = body.dataMap['orders'];
+    if (rows is! List) return const <QrActiveOrder>[];
+    return rows
+        .whereType<Map>()
+        .map((row) => QrActiveOrder.fromJson(row.cast<String, dynamic>()))
+        .where((order) => order.isQrWeb)
+        .toList(growable: false);
+  }
+
+  /// Atomically reserve an open/held QR order to this attended till. The
+  /// returned amount is frozen server-side and is the only amount the settle
+  /// sheet may display or tender.
+  Future<QrSettlementClaim> claimQrSettlement(
+    String orderUuid, {
+    double? lat,
+    double? lng,
+  }) async {
+    final body = await _send(
+      () => _dio.post('/device/qr/claim-settlement', data: {
+        'order_uuid': orderUuid,
+        if (lat != null && lng != null)
+          'gps': <String, double>{'lat': lat, 'lng': lng},
+      }),
+    );
+    return QrSettlementClaim.fromJson(body.dataMap);
+  }
+
+  /// Release the claim held by this till. `cancelled` is affirmative no-money;
+  /// `uncertain` preserves any terminal evidence for manager reconciliation.
+  Future<Map<String, dynamic>> releaseQrSettlement({
+    required String orderUuid,
+    required QrReleaseOutcome outcome,
+    String? softposReference,
+    String? softposAuthCode,
+    Map<String, dynamic>? bankResponse,
+  }) async {
+    final body = await _send(
+      () => _dio.post('/device/qr/release-charge', data: {
+        'order_uuid': orderUuid,
+        'outcome': outcome.name,
+        if (softposReference != null && softposReference.isNotEmpty)
+          'softpos_reference': softposReference,
+        if (softposAuthCode != null && softposAuthCode.isNotEmpty)
+          'softpos_auth_code': softposAuthCode,
+        'bank_response': ?bankResponse,
+      }),
+    );
+    return body.dataMap;
+  }
+
+  Future<QrOrderActionResult> reopenQrPayment(String orderUuid) async {
+    final body = await _send(
+      () => _dio.post('/device/qr/reopen-payment', data: {
+        'order_uuid': orderUuid,
+      }),
+    );
+    return QrOrderActionResult.fromJson(body.dataMap);
+  }
+
+  Future<QrOrderActionResult> fallbackQrToCounter(String orderUuid) async {
+    final body = await _send(
+      () => _dio.post('/device/qr/fallback-to-counter', data: {
+        'order_uuid': orderUuid,
+      }),
+    );
+    return QrOrderActionResult.fromJson(body.dataMap);
+  }
+
+  Future<void> clearQrTable(int tableId) async {
+    await _send(
+      () => _dio.post('/device/qr/clear-table', data: {
+        'table_id': tableId,
+      }),
+    );
   }
 
   /// GET /device/branch-devices — the OTHER active devices at this device's
@@ -544,7 +640,11 @@ class PosApiService {
       // 401 ({ "message": "Unauthenticated." }, no errors[]) means the device
       // token itself was rejected → drop back to device setup.
       if (errors is List && errors.isNotEmpty) {
-        throw ApiException.fromErrors(errors, status);
+        throw ApiException.fromErrors(
+          errors,
+          status,
+          retryAfter: _retryAfter(resp),
+        );
       }
       if (status == 401) {
         onUnauthorized?.call();
@@ -561,6 +661,7 @@ class PosApiService {
       throw ApiException(
         message: 'Request failed (HTTP $status).',
         statusCode: status,
+        retryAfter: _retryAfter(resp),
       );
     }
 
@@ -577,7 +678,51 @@ class PosApiService {
     throw ApiException(
       message: 'Unexpected response from the server (HTTP $status).',
       statusCode: status,
+      retryAfter: _retryAfter(resp),
     );
+  }
+
+  Duration? _retryAfter(Response<dynamic> response) {
+    final raw = response.headers.value('retry-after')?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    final seconds = int.tryParse(raw);
+    if (seconds != null) {
+      return seconds < 0 ? null : Duration(seconds: seconds);
+    }
+
+    // HTTP Retry-After also permits an IMF-fixdate (RFC 7231). Avoid dart:io's
+    // HttpDate so the Flutter web target keeps compiling.
+    final match = RegExp(
+      r'^[A-Za-z]{3}, (\d{2}) ([A-Za-z]{3}) (\d{4}) '
+      r'(\d{2}):(\d{2}):(\d{2}) GMT$',
+    ).firstMatch(raw);
+    if (match == null) return null;
+    const months = <String, int>{
+      'Jan': 1,
+      'Feb': 2,
+      'Mar': 3,
+      'Apr': 4,
+      'May': 5,
+      'Jun': 6,
+      'Jul': 7,
+      'Aug': 8,
+      'Sep': 9,
+      'Oct': 10,
+      'Nov': 11,
+      'Dec': 12,
+    };
+    final month = months[match.group(2)];
+    if (month == null) return null;
+    final at = DateTime.utc(
+      int.parse(match.group(3)!),
+      month,
+      int.parse(match.group(1)!),
+      int.parse(match.group(4)!),
+      int.parse(match.group(5)!),
+      int.parse(match.group(6)!),
+    );
+    final wait = at.difference(DateTime.now().toUtc());
+    return wait.isNegative ? Duration.zero : wait;
   }
 }
 
@@ -596,25 +741,36 @@ class ApiException implements Exception {
     this.statusCode,
     this.code,
     this.isNetwork = false,
+    this.retryAfter,
   });
 
   final String message;
   final int? statusCode;
   final String? code;
   final bool isNetwork;
+  final Duration? retryAfter;
 
   bool get isUnauthorized => statusCode == 401;
 
-  factory ApiException.fromErrors(List<dynamic> errors, int? status) {
+  factory ApiException.fromErrors(
+    List<dynamic> errors,
+    int? status, {
+    Duration? retryAfter,
+  }) {
     final first = errors.first;
     if (first is Map) {
       return ApiException(
         message: (first['message'] ?? 'Request failed.').toString(),
         code: first['code']?.toString(),
         statusCode: status,
+        retryAfter: retryAfter,
       );
     }
-    return ApiException(message: first.toString(), statusCode: status);
+    return ApiException(
+      message: first.toString(),
+      statusCode: status,
+      retryAfter: retryAfter,
+    );
   }
 
   @override

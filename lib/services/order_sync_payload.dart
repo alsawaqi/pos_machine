@@ -26,6 +26,50 @@ class OrderSyncPayload {
 /// OMR (double, 3 dp) → integer baisas (1 OMR = 1000 baisas).
 int omrToBaisas(double omr) => (omr * 1000).round();
 
+/// QR-002 S2 — build the one and only event a till may emit for an existing
+/// `qr_web` order. It deliberately accepts no lines, prices, loyalty, donation,
+/// discount, comp, table, cart, draft, or history input. The frozen integer
+/// amount came from the server's settlement-claim response and is transmitted
+/// byte-for-byte as baisas.
+Map<String, dynamic> buildStandaloneQrPayEvent({
+  required String orderUuid,
+  required int frozenAmountBaisas,
+  required String method,
+  CardCharge? cardCharge,
+  double? lat,
+  double? lng,
+  DateTime? paidAt,
+  String Function()? newUuid,
+}) {
+  if (method != 'cash' && method != 'card') {
+    throw ArgumentError.value(method, 'method', 'must be cash or card');
+  }
+  if (method == 'cash' && cardCharge != null) {
+    throw ArgumentError('A cash QR tender cannot carry card evidence.');
+  }
+
+  final ts = (paidAt ?? DateTime.now()).toUtc().toIso8601String();
+  final tender = <String, dynamic>{
+    'method': method,
+    'amount_baisas': frozenAmountBaisas,
+    'status': 'success',
+  };
+  _applyCardCharge(tender, cardCharge);
+
+  return <String, dynamic>{
+    'client_event_id': (newUuid ?? uuidV4)(),
+    'event_type': 'order.pay',
+    'client_timestamp': ts,
+    'payload': <String, dynamic>{
+      'order_uuid': orderUuid,
+      'paid_at': ts,
+      'payments': <Map<String, dynamic>>[tender],
+      if (lat != null && lng != null)
+        'gps': <String, double>{'lat': lat, 'lng': lng},
+    },
+  };
+}
+
 /// pos_machine order-type storage value → pos_api Order::TYPES.
 String mapOrderType(String storageValue) {
   switch (storageValue) {
