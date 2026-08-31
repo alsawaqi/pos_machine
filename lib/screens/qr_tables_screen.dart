@@ -22,6 +22,8 @@ enum QrTableDisplayState {
   orphanedMissingSession,
 }
 
+enum _QrRoundDecision { confirm, reject }
+
 QrTableDisplayState qrTableDisplayStateFor(QrTableBoardRow? row) {
   if (row == null) return QrTableDisplayState.free;
   if (row.hasMissingSession) {
@@ -43,6 +45,9 @@ QrTableDisplayState qrTableDisplayStateFor(QrTableBoardRow? row) {
 
 /// Staff-only QR table board. It reads table/floor configuration but never
 /// touches PosController or the local DiningTableSession occupancy store.
+/// Its only sanctioned writes are standalone QR settlement/table recovery and
+/// server-owned pending-round confirmation/rejection; QR orders never enter
+/// the local cart, draft, held, or history stores.
 class QrTablesScreen extends ConsumerStatefulWidget {
   const QrTablesScreen({
     super.key,
@@ -212,6 +217,12 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
     }
   }
 
+  Future<void> _forceRefresh() {
+    _lastBoardFetchAt = null;
+    _lastActiveFetchAt = null;
+    return _refresh();
+  }
+
   QrTableBoardRow? _selectedBoardRow(List<QrTableBoardRow> rows) {
     final key = _tableKey;
     if (key == null) return null;
@@ -288,7 +299,10 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
 
   String _message(ApiException error) {
     if (error.code == null) return error.message;
-    return qrTillMessageForCode(error.code);
+    return qrTillMessageForCode(
+      error.code,
+      arabic: ref.read(settingsControllerProvider).language == 'ar',
+    );
   }
 
   void _notice(String text, {bool success = false}) {
@@ -321,6 +335,189 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
       if (mounted) _notice('The action could not be completed. $error');
     } finally {
       if (mounted) setState(() => _acting = false);
+    }
+  }
+
+  bool get _arabic => ref.read(settingsControllerProvider).language == 'ar';
+
+  String _copy(String key) => qrTillUiCopy(key, arabic: _arabic);
+
+  Future<void> _reviewPendingRound(QrPendingRound summary) async {
+    if (_acting) return;
+    setState(() => _acting = true);
+    QrRoundEnvelope detail;
+    try {
+      detail = await ref.read(qrRoundGatewayProvider).fetchRound(summary.id);
+    } on ApiException catch (error) {
+      if (mounted) _notice(_message(error));
+      return;
+    } catch (error) {
+      if (mounted) _notice('${_copy('round_awaiting')}: $error');
+      return;
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
+    if (!mounted) return;
+
+    final decision = await showDialog<_QrRoundDecision>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: ValueKey('qr-round-detail-${detail.round.id}'),
+        title: Text('${_copy('round_title')} ${detail.round.roundNo}'),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final line in detail.round.lines)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      '${_qty(line.quantity)} × ${_arabic && line.nameAr != null ? line.nameAr : line.name}',
+                    ),
+                    subtitle: line.notes == null
+                        ? null
+                        : Text('${_copy('round_notes')}: ${line.notes}'),
+                    trailing: Text(_money(line.lineTotalBaisas)),
+                  ),
+                const Divider(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _copy('round_total'),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    Text(
+                      _money(detail.round.totalBaisas),
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_copy('round_keep')),
+          ),
+          OutlinedButton(
+            key: const ValueKey('qr-round-reject'),
+            onPressed: () => Navigator.pop(context, _QrRoundDecision.reject),
+            child: Text(_copy('round_reject')),
+          ),
+          FilledButton(
+            key: const ValueKey('qr-round-confirm'),
+            onPressed: () => Navigator.pop(context, _QrRoundDecision.confirm),
+            child: Text(_copy('round_confirm')),
+          ),
+        ],
+      ),
+    );
+    if (decision == null || !mounted) return;
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: ValueKey('qr-round-${decision.name}-confirmation'),
+        title: Text(
+          decision == _QrRoundDecision.confirm
+              ? _copy('round_confirm')
+              : _copy('round_reject'),
+        ),
+        content: Text(
+          decision == _QrRoundDecision.confirm
+              ? _copy('round_confirm_question')
+              : _copy('round_reject_question'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(_copy('round_keep')),
+          ),
+          FilledButton(
+            key: ValueKey('qr-round-${decision.name}-proceed'),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              decision == _QrRoundDecision.confirm
+                  ? _copy('round_confirm')
+                  : _copy('round_reject'),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true || !mounted) return;
+
+    setState(() => _acting = true);
+    try {
+      final service = ref.read(qrRoundGatewayProvider);
+      if (decision == _QrRoundDecision.reject) {
+        await service.rejectRound(detail.round.id);
+        if (mounted) _notice(_copy('round_rejected'), success: true);
+      } else {
+        final confirmed = await service.confirmRound(detail.round.id);
+        var printed = true;
+        if (ref.read(settingsControllerProvider).printKitchenTickets) {
+          printed = await ref
+              .read(qrRoundAutoPrintControllerProvider)
+              .printConfirmedRound(confirmed);
+        }
+        if (mounted) _notice(_copy('round_confirmed'), success: true);
+        if (!printed && mounted) {
+          await _offerRoundPrintRetry(confirmed);
+        }
+      }
+      if (mounted) await _forceRefresh();
+    } on ApiException catch (error) {
+      if (mounted) {
+        _notice(_message(error));
+        await _forceRefresh();
+      }
+    } catch (error) {
+      if (mounted) _notice('${_copy('round_awaiting')}: $error');
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
+  }
+
+  Future<void> _offerRoundPrintRetry(QrRoundEnvelope confirmed) async {
+    var retry = true;
+    while (retry) {
+      if (!mounted) return;
+      retry =
+          await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              key: const ValueKey('qr-round-print-failed'),
+              title: Text(_copy('round_print_failed')),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text(_copy('round_done')),
+                ),
+                FilledButton(
+                  key: const ValueKey('qr-round-retry-print'),
+                  onPressed: () => Navigator.pop(context, true),
+                  child: Text(_copy('round_retry_print')),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (retry) {
+        final printed = await ref
+            .read(qrRoundAutoPrintControllerProvider)
+            .printConfirmedRound(confirmed);
+        if (printed) {
+          retry = false;
+          if (mounted) _notice(_copy('round_confirmed'), success: true);
+        }
+      }
     }
   }
 
@@ -613,15 +810,21 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
                 ],
                 if (table.row?.pendingRounds.isNotEmpty == true) ...[
                   const SizedBox(height: 16),
-                  const Text(
-                    'Rounds awaiting confirmation',
-                    style: TextStyle(fontWeight: FontWeight.w900),
+                  Text(
+                    _copy('rounds_awaiting'),
+                    style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                   for (final round in table.row!.pendingRounds)
-                    ListTile(
-                      leading: const Icon(Icons.hourglass_top_rounded),
-                      title: Text('Round ${round.roundNo}'),
-                      trailing: Text(_money(round.totalBaisas)),
+                    Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        key: ValueKey('qr-pending-round-${round.id}'),
+                        leading: const Icon(Icons.hourglass_top_rounded),
+                        title: Text('${_copy('round_title')} ${round.roundNo}'),
+                        trailing: Text(_money(round.totalBaisas)),
+                        enabled: !_acting,
+                        onTap: () => _reviewPendingRound(round),
+                      ),
                     ),
                 ],
               ],

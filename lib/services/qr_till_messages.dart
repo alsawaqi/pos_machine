@@ -31,6 +31,8 @@ const Set<String> qrTillServerRefusalCodes = {
   'qr_table_unpaid_order',
   'charge_not_claimed_by_device',
   'charge_outcome_uncertain',
+  'qr_round_not_found',
+  'qr_round_not_pending',
 };
 
 /// QR-002 S2's source-enumerated refusal copy. Keep this map explicit: adding a
@@ -96,6 +98,14 @@ const Map<String, QrTillMessage> qrTillRefusalMessages = {
   'charge_outcome_uncertain': (
     en: 'The card outcome is uncertain. Ask a manager and do not retry.',
     ar: 'نتيجة البطاقة غير مؤكدة. اطلب المدير ولا تعِد المحاولة.',
+  ),
+  'qr_round_not_found': (
+    en: 'This QR round was not found. Refresh the tables board.',
+    ar: 'لم يتم العثور على جولة QR هذه. حدّث لوحة الطاولات.',
+  ),
+  'qr_round_not_pending': (
+    en: 'This QR round was already confirmed, rejected, or closed. Refresh the table before acting again.',
+    ar: 'تم تأكيد جولة QR هذه أو رفضها أو إغلاقها مسبقاً. حدّث الطاولة قبل تنفيذ إجراء آخر.',
   ),
   'device_not_payment_station': (
     en: 'This action requires the correct attended payment device.',
@@ -174,6 +184,48 @@ const Map<String, QrTillMessage> qrTillRefusalMessages = {
     ar: 'تعذر تأكيد حجز الدفعة. لم يتم استلام أي مبلغ؛ حدّث الشاشة قبل المحاولة مجدداً.',
   ),
 };
+
+const Map<String, QrTillMessage> qrTillUiMessages = {
+  'round_title': (en: 'Round', ar: 'الجولة'),
+  'round_awaiting': (en: 'Awaiting confirmation', ar: 'بانتظار التأكيد'),
+  'rounds_awaiting': (
+    en: 'Rounds awaiting confirmation',
+    ar: 'جولات بانتظار التأكيد',
+  ),
+  'round_confirm': (en: 'Confirm round', ar: 'تأكيد الجولة'),
+  'round_reject': (en: 'Reject round', ar: 'رفض الجولة'),
+  'round_keep': (en: 'Keep pending', ar: 'إبقاؤها معلّقة'),
+  'round_confirm_question': (
+    en: 'Send this frozen round to the kitchen?',
+    ar: 'هل تريد إرسال هذه الجولة المثبتة إلى المطبخ؟',
+  ),
+  'round_reject_question': (
+    en: 'Reject this round without adding it to the order?',
+    ar: 'هل تريد رفض هذه الجولة دون إضافتها إلى الطلب؟',
+  ),
+  'round_confirmed': (
+    en: 'Round confirmed and added to the order.',
+    ar: 'تم تأكيد الجولة وإضافتها إلى الطلب.',
+  ),
+  'round_rejected': (
+    en: 'Round rejected. No items were added.',
+    ar: 'تم رفض الجولة ولم تُضف أي أصناف.',
+  ),
+  'round_print_failed': (
+    en: 'The round was confirmed, but its kitchen ticket did not print.',
+    ar: 'تم تأكيد الجولة، لكن تعذرت طباعة تذكرة المطبخ.',
+  ),
+  'round_retry_print': (en: 'Retry print', ar: 'إعادة الطباعة'),
+  'round_done': (en: 'Done', ar: 'تم'),
+  'round_notes': (en: 'Notes', ar: 'ملاحظات'),
+  'round_total': (en: 'Round total', ar: 'إجمالي الجولة'),
+};
+
+String qrTillUiCopy(String key, {bool arabic = false}) {
+  final message = qrTillUiMessages[key];
+  if (message == null) return key;
+  return arabic ? message.ar : message.en;
+}
 
 String qrTillMessageForCode(String? code, {bool arabic = false}) {
   final message = qrTillRefusalMessages[code];

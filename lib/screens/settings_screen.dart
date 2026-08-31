@@ -384,6 +384,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   style: const TextStyle(color: Colors.white54),
                 ),
               ),
+              SwitchListTile(
+                key: const ValueKey('settings-print-qr-kitchen-rounds'),
+                contentPadding: EdgeInsets.zero,
+                value: settings.printQrKitchenRounds,
+                onChanged: (v) => ref
+                    .read(settingsControllerProvider.notifier)
+                    .setPrintQrKitchenRounds(v),
+                title: Text(
+                  l10n.settingsPrintQrKitchenRounds,
+                  style: const TextStyle(color: Colors.white),
+                ),
+                subtitle: Text(
+                  l10n.settingsPrintQrKitchenRoundsHint,
+                  style: const TextStyle(color: Colors.white54),
+                ),
+              ),
               const Divider(color: Colors.white12, height: 36),
               // Phase 1A — anonymous on-device audience measurement (camera).
               _sectionLabel('Audience measurement'),

@@ -33,6 +33,8 @@ void main() {
         'qr_table_unpaid_order',
         'charge_not_claimed_by_device',
         'charge_outcome_uncertain',
+        'qr_round_not_found',
+        'qr_round_not_pending',
       };
 
       expect(qrTillServerRefusalCodes, expectedFromServerSource);
@@ -54,6 +56,15 @@ void main() {
       }
     },
   );
+
+  test('new round refusals select Arabic copy when requested', () {
+    for (final code in const {'qr_round_not_found', 'qr_round_not_pending'}) {
+      final copy = qrTillRefusalMessages[code]!;
+      expect(qrTillMessageForCode(code), copy.en);
+      expect(qrTillMessageForCode(code, arabic: true), copy.ar);
+      expect(copy.ar, isNot(copy.en));
+    }
+  });
 
   test('local claim-safety codes have bilingual staff instructions', () {
     const localCodes = {

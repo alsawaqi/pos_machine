@@ -14,6 +14,8 @@ import '../services/local_order_storage_service.dart';
 import '../services/manager_authorization_service.dart';
 import '../services/order_sync_payload.dart' show buildOrderTransferEvent;
 import '../services/pos_api_service.dart' show ApiException, PosApiService;
+import '../services/qr_round_printing.dart'
+    show QrRoundAutoPrintController, QrRoundPrintNoticeKind;
 import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
@@ -184,6 +186,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   late final TextEditingController _vehiclePlateController;
   late final ValueNotifier<DateTime> _clockNow;
   late final ScrollController _currentOrderScrollController;
+  late final QrRoundAutoPrintController _qrRoundAutoPrintController;
   final ManagerAuthorizationService _managerAuthorization =
       ManagerAuthorizationService();
   Timer? _clockTimer;
@@ -247,6 +250,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   void initState() {
     super.initState();
     controller = PosController();
+    _qrRoundAutoPrintController = ref.read(qrRoundAutoPrintControllerProvider);
     controller.onOrderCompleted = _handleOrderCompleted;
     // Phase 3C — push advertising-slide play-time telemetry (best-effort).
     controller.onSliderDisplay = (event) => unawaited(
@@ -281,6 +285,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     ref.listenManual(settingsControllerProvider, (prev, next) {
       controller.printReceipts = next.printReceipts;
       controller.printKitchenTickets = next.printKitchenTickets;
+      if (prev?.printQrKitchenRounds != next.printQrKitchenRounds) {
+        unawaited(
+          _qrRoundAutoPrintController.setEnabled(next.printQrKitchenRounds),
+        );
+      }
       // Phase 1A — re-evaluate the audience camera when the operator toggles
       // the local switch (the server consent still wins, see the gate).
       if (prev?.audienceMeasurement != next.audienceMeasurement) {
@@ -302,7 +311,30 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       }
     });
 
+    ref.listenManual(qrRoundPrintNoticeProvider, (previous, next) {
+      if (next == null || !mounted) return;
+      final arabic = ref.read(settingsControllerProvider).language == 'ar';
+      final message = switch (next.kind) {
+        QrRoundPrintNoticeKind.expiredUnprinted => arabic
+            ? 'انتهت صلاحية ${next.count} جولة غير مطبوعة أثناء توقف الجهاز.'
+            : '${next.count} unprinted QR round(s) expired while this device was offline.',
+        QrRoundPrintNoticeKind.printerFailed => arabic
+            ? 'تعذرت طباعة جولة QR. افحص الطابعة؛ سيعيد الجهاز المحاولة بأمان.'
+            : 'A QR kitchen round did not print. Check the printer; this device will retry safely.',
+      };
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(message)));
+        ref.read(qrRoundPrintNoticeProvider.notifier).clear();
+      });
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _qrRoundAutoPrintController.start(
+        enabled: ref.read(settingsControllerProvider).printQrKitchenRounds,
+      );
       await controller.init();
       await controller.openRearDisplay();
       // Pre-warm a Mosambee login session so the first card payment is fast.
@@ -1211,6 +1243,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   @override
   void dispose() {
+    _qrRoundAutoPrintController.stop();
     _clockTimer?.cancel();
     _configPollTimer?.cancel();
     _transferPollTimer?.cancel();

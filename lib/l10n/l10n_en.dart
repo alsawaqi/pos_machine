@@ -160,6 +160,14 @@ class L10nEn extends L10n {
       'Print an items-only kitchen ticket when an order completes or is held.';
 
   @override
+  String get settingsPrintQrKitchenRounds =>
+      'Print QR kitchen rounds on this device';
+
+  @override
+  String get settingsPrintQrKitchenRoundsHint =>
+      'Print newly accepted dine-in QR rounds. Leave off on other tills to prevent duplicate kitchen tickets.';
+
+  @override
   String get settingsSectionLanguage => 'Language';
 
   @override

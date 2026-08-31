@@ -63,6 +63,8 @@
   "settingsPrintReceiptsHint": "اطبع إيصال Sunmi عند اكتمال الطلب.",
   "settingsPrintKitchenTickets": "طباعة تذاكر المطبخ",
   "settingsPrintKitchenTicketsHint": "اطبع تذكرة مطبخ بالأصناف فقط عند اكتمال الطلب أو تعليقه.",
+  "settingsPrintQrKitchenRounds": "طباعة جولات QR للمطبخ على هذا الجهاز",
+  "settingsPrintQrKitchenRoundsHint": "اطبع جولات طلبات الطاولة عبر QR بعد قبولها. عطّلها على أجهزة الكاشير الأخرى لمنع التذاكر المكررة.",
   "settingsSectionLanguage": "اللغة",
   "settingsLanguageHint": "تُطبَّق فورًا في كامل التطبيق.",
   "languageEnglish": "English",

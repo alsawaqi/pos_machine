@@ -12,6 +12,7 @@ import 'package:pos_machine/providers/providers.dart';
 import 'package:pos_machine/screens/qr_tables_screen.dart';
 import 'package:pos_machine/services/pos_api_service.dart';
 import 'package:pos_machine/services/qr_settlement_coordinator.dart';
+import 'package:pos_machine/services/qr_round_printing.dart';
 import 'package:pos_machine/services/qr_till_service.dart';
 import 'package:pos_machine/services/session_service.dart';
 
@@ -488,6 +489,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(preferences),
             qrTillServiceProvider.overrideWithValue(service),
             qrSettlementCoordinatorProvider.overrideWithValue(flow),
             sessionServiceProvider.overrideWithValue(
@@ -680,12 +682,213 @@ void main() {
     expect(service.boardCalls, 3);
     await _disposeBoard(tester);
   });
+
+  testWidgets('pending round detail confirms and prints from server response', (
+    tester,
+  ) async {
+    final service = _FakeTillGateway(
+      board: [
+        _row(
+          id: 3,
+          sessionStatus: 'active',
+          orderStatus: 'open',
+          pendingRounds: const [
+            QrPendingRound(
+              id: 41,
+              roundNo: 2,
+              subtotalBaisas: 4750,
+              taxBaisas: 0,
+              totalBaisas: 4750,
+            ),
+          ],
+        ),
+      ],
+      active: [_activeOrder()],
+    );
+    final rounds = _FakeRoundGateway();
+    final printer = _FakeRoundPrinter();
+    await _pumpBoard(
+      tester,
+      service: service,
+      roundGateway: rounds,
+      roundPrinter: printer,
+    );
+    await _selectTable(tester, '3');
+
+    await tester.tap(find.byKey(const ValueKey('qr-pending-round-41')));
+    await tester.pump();
+    expect(find.textContaining('No sugar'), findsOneWidget);
+    expect(find.text('OMR 4.750'), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('qr-round-confirm')));
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('qr-round-confirm-confirmation')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('qr-round-confirm-proceed')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(rounds.calls, ['fetch:41', 'confirm:41']);
+    expect(printer.ids, [41]);
+    expect(
+      find.text('Round confirmed and added to the order.'),
+      findsOneWidget,
+    );
+    await _disposeBoard(tester);
+  });
+
+  testWidgets('confirm truth survives printer failure and retry', (
+    tester,
+  ) async {
+    final service = _FakeTillGateway(
+      board: [
+        _row(
+          id: 3,
+          sessionStatus: 'active',
+          orderStatus: 'open',
+          pendingRounds: const [
+            QrPendingRound(
+              id: 41,
+              roundNo: 2,
+              subtotalBaisas: 4750,
+              taxBaisas: 0,
+              totalBaisas: 4750,
+            ),
+          ],
+        ),
+      ],
+      active: [_activeOrder()],
+    );
+    final rounds = _FakeRoundGateway();
+    final printer = _FakeRoundPrinter(outcomes: [false, true]);
+    await _pumpBoard(
+      tester,
+      service: service,
+      roundGateway: rounds,
+      roundPrinter: printer,
+    );
+    await _selectTable(tester, '3');
+    await tester.tap(find.byKey(const ValueKey('qr-pending-round-41')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('qr-round-confirm')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('qr-round-confirm-proceed')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('qr-round-print-failed')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('qr-round-retry-print')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(rounds.calls.where((call) => call == 'confirm:41'), hasLength(1));
+    expect(printer.ids, [41, 41]);
+    await _disposeBoard(tester);
+  });
+
+  testWidgets('reject is confirmed, un-gated, and never prints', (
+    tester,
+  ) async {
+    final service = _FakeTillGateway(
+      board: [
+        _row(
+          id: 3,
+          sessionStatus: 'active',
+          orderStatus: 'open',
+          pendingRounds: const [
+            QrPendingRound(
+              id: 41,
+              roundNo: 2,
+              subtotalBaisas: 4750,
+              taxBaisas: 0,
+              totalBaisas: 4750,
+            ),
+          ],
+        ),
+      ],
+      active: [_activeOrder()],
+    );
+    final rounds = _FakeRoundGateway();
+    final printer = _FakeRoundPrinter();
+    await _pumpBoard(
+      tester,
+      service: service,
+      roundGateway: rounds,
+      roundPrinter: printer,
+    );
+    await _selectTable(tester, '3');
+    await tester.tap(find.byKey(const ValueKey('qr-pending-round-41')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('qr-round-reject')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('qr-round-reject-proceed')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(rounds.calls, ['fetch:41', 'reject:41']);
+    expect(printer.ids, isEmpty);
+    expect(find.text('Round rejected. No items were added.'), findsOneWidget);
+    await _disposeBoard(tester);
+  });
+
+  testWidgets('confirm race renders qr_round_not_pending and refreshes', (
+    tester,
+  ) async {
+    final service = _FakeTillGateway(
+      board: [
+        _row(
+          id: 3,
+          sessionStatus: 'active',
+          orderStatus: 'open',
+          pendingRounds: const [
+            QrPendingRound(
+              id: 41,
+              roundNo: 2,
+              subtotalBaisas: 4750,
+              taxBaisas: 0,
+              totalBaisas: 4750,
+            ),
+          ],
+        ),
+      ],
+      active: [_activeOrder()],
+    );
+    final rounds = _FakeRoundGateway(
+      confirmError: ApiException(
+        message: 'lost race',
+        code: 'qr_round_not_pending',
+        statusCode: 409,
+      ),
+    );
+    await _pumpBoard(
+      tester,
+      service: service,
+      roundGateway: rounds,
+      roundPrinter: _FakeRoundPrinter(),
+    );
+    await _selectTable(tester, '3');
+    await tester.tap(find.byKey(const ValueKey('qr-pending-round-41')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('qr-round-confirm')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('qr-round-confirm-proceed')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('already confirmed'), findsOneWidget);
+    expect(service.boardCalls, greaterThanOrEqualTo(2));
+    await _disposeBoard(tester);
+  });
 }
 
 Future<void> _pumpBoard(
   WidgetTester tester, {
   required _FakeTillGateway service,
   _FakeSettlementFlow? flow,
+  _FakeRoundGateway? roundGateway,
+  _FakeRoundPrinter? roundPrinter,
   DateTime Function()? clock,
 }) async {
   SharedPreferences.setMockInitialValues(const {});
@@ -696,10 +899,15 @@ Future<void> _pumpBoard(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
         qrTillServiceProvider.overrideWithValue(service),
         qrSettlementCoordinatorProvider.overrideWithValue(
           flow ?? _FakeSettlementFlow(),
         ),
+        if (roundGateway != null)
+          qrRoundGatewayProvider.overrideWithValue(roundGateway),
+        if (roundPrinter != null)
+          qrKitchenRoundPrinterProvider.overrideWithValue(roundPrinter),
         sessionServiceProvider.overrideWithValue(
           SessionService(const FlutterSecureStorage(), preferences),
         ),
@@ -731,13 +939,14 @@ QrTableBoardRow _row({
   String? orderStatus,
   bool orphaned = false,
   bool tableDeleted = false,
+  List<QrPendingRound> pendingRounds = const [],
 }) => QrTableBoardRow(
   tableId: id,
   tableLabel: 'Table $id',
   tableStatus: 'available',
   tableDeleted: tableDeleted,
   orphaned: orphaned,
-  pendingRounds: const [],
+  pendingRounds: pendingRounds,
   sessionUuid: sessionUuid,
   sessionStatus: sessionStatus,
   expiresAt: sessionStatus == 'expired'
@@ -860,6 +1069,83 @@ class _FakeTillGateway implements QrTillGateway {
     timeline?.add('clear:$tableId');
   }
 }
+
+class _FakeRoundGateway implements QrRoundGateway {
+  _FakeRoundGateway({this.confirmError});
+
+  final Object? confirmError;
+  final List<String> calls = [];
+
+  @override
+  Future<QrRoundEnvelope> fetchRound(int roundId) async {
+    calls.add('fetch:$roundId');
+    return _roundEnvelope(roundId, status: 'pending_confirmation');
+  }
+
+  @override
+  Future<QrRoundEnvelope> confirmRound(int roundId) async {
+    calls.add('confirm:$roundId');
+    if (confirmError != null) throw confirmError!;
+    return _roundEnvelope(roundId, status: 'accepted');
+  }
+
+  @override
+  Future<QrRoundEnvelope> rejectRound(int roundId) async {
+    calls.add('reject:$roundId');
+    return _roundEnvelope(roundId, status: 'rejected');
+  }
+
+  @override
+  Future<QrAcceptedRoundsPage> fetchAcceptedRounds({
+    String? after,
+    int limit = 25,
+  }) async => const QrAcceptedRoundsPage(rounds: [], skippedExpiredCount: 0);
+}
+
+class _FakeRoundPrinter implements QrKitchenRoundPrinter {
+  _FakeRoundPrinter({List<bool>? outcomes}) : _outcomes = outcomes ?? [];
+
+  final List<bool> _outcomes;
+  final List<int> ids = [];
+
+  @override
+  Future<bool> printRound(
+    QrRoundEnvelope envelope, {
+    required bool arabic,
+  }) async {
+    ids.add(envelope.round.id);
+    return _outcomes.isEmpty ? true : _outcomes.removeAt(0);
+  }
+}
+
+QrRoundEnvelope _roundEnvelope(int id, {required String status}) =>
+    QrRoundEnvelope(
+      round: QrDeviceRound(
+        id: id,
+        roundNo: 2,
+        status: status,
+        lines: const [
+          QrRoundDisplayLine(
+            name: 'Frozen coffee',
+            nameAr: 'قهوة مجمدة',
+            quantity: 1,
+            unitPriceBaisas: 4750,
+            lineDiscountBaisas: 0,
+            lineTotalBaisas: 4750,
+            notes: 'No sugar',
+            addons: [],
+          ),
+        ],
+        subtotalBaisas: 4750,
+        taxBaisas: 0,
+        totalBaisas: 4750,
+        resolvedAt: DateTime.utc(2026, 8, 31, 12),
+      ),
+      orderUuid: 'order-3',
+      sessionUuid: 'session',
+      tableLabel: 'Table 3',
+      receiptNumber: 'QR-0003',
+    );
 
 class _FakeSettlementFlow implements QrSettlementFlow {
   _FakeSettlementFlow({

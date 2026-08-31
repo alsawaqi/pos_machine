@@ -91,6 +91,8 @@
   "settingsPrintReceiptsHint": "Print a Sunmi receipt when an order completes.",
   "settingsPrintKitchenTickets": "Print kitchen tickets",
   "settingsPrintKitchenTicketsHint": "Print an items-only kitchen ticket when an order completes or is held.",
+  "settingsPrintQrKitchenRounds": "Print QR kitchen rounds on this device",
+  "settingsPrintQrKitchenRoundsHint": "Print newly accepted dine-in QR rounds. Leave off on other tills to prevent duplicate kitchen tickets.",
   "settingsSectionLanguage": "Language",
   "settingsLanguageHint": "Applies immediately across the app.",
   "languageEnglish": "English",

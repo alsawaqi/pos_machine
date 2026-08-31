@@ -1,9 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pos_machine/core/api_config.dart';
 import 'package:pos_machine/services/settings_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('SettingsService.normalizeBaseUrl', () {
     test('blank → null (fall back to default)', () {
       expect(SettingsService.normalizeBaseUrl(null), isNull);
@@ -55,6 +58,42 @@ void main() {
       const s = AppSettings(serverBaseUrl: 'http://x:8088/api/v1');
       expect(s.effectiveBaseUrl, 'http://x:8088/api/v1');
       expect(s.usingDefaultServer, isFalse);
+    });
+  });
+
+  group('QR kitchen-round printing setting', () {
+    test(
+      'defaults OFF in both the value object and persisted snapshot',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+
+        expect(const AppSettings().printQrKitchenRounds, isFalse);
+        expect(
+          SettingsService(preferences).snapshot().printQrKitchenRounds,
+          isFalse,
+        );
+      },
+    );
+
+    test('persists opt-in and opt-out across service instances', () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final settings = SettingsService(preferences);
+
+      await settings.savePrintQrKitchenRounds(true);
+      expect(preferences.getBool('print_qr_kitchen_rounds'), isTrue);
+      expect(
+        SettingsService(preferences).snapshot().printQrKitchenRounds,
+        isTrue,
+      );
+
+      await settings.savePrintQrKitchenRounds(false);
+      expect(preferences.getBool('print_qr_kitchen_rounds'), isFalse);
+      expect(
+        SettingsService(preferences).snapshot().printQrKitchenRounds,
+        isFalse,
+      );
     });
   });
 }

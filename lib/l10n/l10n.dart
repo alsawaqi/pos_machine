@@ -349,6 +349,18 @@ abstract class L10n {
   /// **'Print an items-only kitchen ticket when an order completes or is held.'**
   String get settingsPrintKitchenTicketsHint;
 
+  /// No description provided for @settingsPrintQrKitchenRounds.
+  ///
+  /// In en, this message translates to:
+  /// **'Print QR kitchen rounds on this device'**
+  String get settingsPrintQrKitchenRounds;
+
+  /// No description provided for @settingsPrintQrKitchenRoundsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Print newly accepted dine-in QR rounds. Leave off on other tills to prevent duplicate kitchen tickets.'**
+  String get settingsPrintQrKitchenRoundsHint;
+
   /// No description provided for @settingsSectionLanguage.
   ///
   /// In en, this message translates to:

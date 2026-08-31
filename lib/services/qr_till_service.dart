@@ -22,16 +22,43 @@ abstract interface class QrTillGateway {
   Future<void> clearTable(int tableId);
 }
 
+abstract interface class QrRoundGateway {
+  Future<QrRoundEnvelope> fetchRound(int roundId);
+  Future<QrRoundEnvelope> confirmRound(int roundId);
+  Future<QrRoundEnvelope> rejectRound(int roundId);
+  Future<QrAcceptedRoundsPage> fetchAcceptedRounds({
+    String? after,
+    int limit = 25,
+  });
+}
+
 /// Narrow server facade for QR table staff surfaces. No cart, draft, held, or
 /// local-history API exists on this type, which makes the QR money boundary
 /// straightforward to fake and audit.
-class QrTillService implements QrTillGateway {
+class QrTillService implements QrTillGateway, QrRoundGateway {
   QrTillService(this._api);
 
   final PosApiService _api;
 
   @override
   Future<List<QrTableBoardRow>> fetchTableBoard() => _api.fetchQrTableBoard();
+
+  @override
+  Future<QrRoundEnvelope> fetchRound(int roundId) => _api.fetchQrRound(roundId);
+
+  @override
+  Future<QrRoundEnvelope> confirmRound(int roundId) =>
+      _api.confirmQrRound(roundId);
+
+  @override
+  Future<QrRoundEnvelope> rejectRound(int roundId) =>
+      _api.rejectQrRound(roundId);
+
+  @override
+  Future<QrAcceptedRoundsPage> fetchAcceptedRounds({
+    String? after,
+    int limit = 25,
+  }) => _api.fetchAcceptedQrRounds(after: after, limit: limit);
 
   @override
   Future<List<QrActiveOrder>> fetchActiveQrOrders() =>
@@ -88,6 +115,7 @@ class QrPollingPolicy {
   const QrPollingPolicy();
 
   static const Duration normalInterval = Duration(seconds: 10);
+  static const Duration acceptedRoundsInterval = Duration(seconds: 5);
 
   Duration delayAfter(Object error) {
     if (error is ApiException && error.statusCode == 429) {
@@ -104,7 +132,9 @@ class QrPollingPolicy {
   /// The existing Staff POS transfer inbox fetches immediately, then every ten
   /// seconds: seven requests on the same conservative inclusive boundary.
   static const int existingSteadyRequestsPerWorstRollingMinute = 7;
+  static const int acceptedRoundFeedRequestsPerWorstRollingMinute = 13;
   static const int combinedWorstRollingMinute =
       qrRequestsPerWorstRollingMinute +
-      existingSteadyRequestsPerWorstRollingMinute;
+      existingSteadyRequestsPerWorstRollingMinute +
+      acceptedRoundFeedRequestsPerWorstRollingMinute;
 }

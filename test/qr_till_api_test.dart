@@ -7,10 +7,10 @@ import 'package:pos_machine/models/qr_till_models.dart';
 import 'package:pos_machine/services/pos_api_service.dart';
 import 'package:pos_machine/services/qr_till_service.dart';
 
+const orderUuid = '11111111-1111-4111-8111-111111111111';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  const orderUuid = '11111111-1111-4111-8111-111111111111';
 
   test(
     'claim sends nested GPS and parses the frozen integer contract',
@@ -162,6 +162,114 @@ void main() {
   );
 
   test(
+    'round detail uses the nested read contract and parses display data',
+    () async {
+      final adapter = _Adapter(
+        (options) => _json({
+          'data': _roundEnvelope(status: 'pending_confirmation'),
+          'meta': {'money_unit': 'baisas'},
+          'errors': <Object>[],
+        }),
+      );
+      final api = _api(adapter);
+      addTearDown(api.close);
+
+      final result = await api.service.fetchQrRound(42);
+
+      expect(adapter.requests.single.path, '/device/qr/table-round/42');
+      expect(adapter.requests.single.method, 'GET');
+      expect(adapter.requests.single.data, isNull);
+      _expectRoundEnvelope(result, status: 'pending_confirmation');
+    },
+  );
+
+  test(
+    'confirm and reject send only round_id and parse nested responses',
+    () async {
+      final adapter = _Adapter((options) {
+        final status = switch (options.path) {
+          '/device/qr/confirm-round' => 'accepted',
+          '/device/qr/reject-round' => 'rejected',
+          _ => throw StateError('Unexpected path ${options.path}'),
+        };
+        return _json({
+          'data': _roundEnvelope(status: status),
+          'meta': {'money_unit': 'baisas'},
+          'errors': <Object>[],
+        });
+      });
+      final api = _api(adapter);
+      addTearDown(api.close);
+
+      final confirmed = await api.service.confirmQrRound(42);
+      final rejected = await api.service.rejectQrRound(43);
+
+      expect(adapter.requests.map((request) => request.path), [
+        '/device/qr/confirm-round',
+        '/device/qr/reject-round',
+      ]);
+      expect(adapter.requests.map((request) => request.method), [
+        'POST',
+        'POST',
+      ]);
+      expect(adapter.requests[0].data, {'round_id': 42});
+      expect(adapter.requests[1].data, {'round_id': 43});
+      _expectRoundEnvelope(confirmed, status: 'accepted');
+      _expectRoundEnvelope(rejected, status: 'rejected');
+    },
+  );
+
+  test(
+    'accepted-round feed sends cursor/limit and parses flat rows plus meta',
+    () async {
+      final adapter = _Adapter(
+        (options) => _json({
+          'data': {
+            'rounds': [
+              _flatFeedRound(),
+              _flatFeedRound(
+                id: 43,
+                roundNo: 3,
+                tableLabel: null,
+                receiptNumber: null,
+              ),
+            ],
+          },
+          'meta': {
+            'next_cursor': 'cursor-43',
+            'latest_cursor': 'cursor-99',
+            'skipped_expired_count': 2,
+            'money_unit': 'baisas',
+          },
+          'errors': <Object>[],
+        }),
+      );
+      final api = _api(adapter);
+      addTearDown(api.close);
+
+      final page = await api.service.fetchAcceptedQrRounds(
+        after: 'cursor-41',
+        limit: 17,
+      );
+
+      final request = adapter.requests.single;
+      expect(request.path, '/device/qr/accepted-rounds');
+      expect(request.method, 'GET');
+      expect(request.queryParameters, {'after': 'cursor-41', 'limit': 17});
+      expect(page.nextCursor, 'cursor-43');
+      expect(page.latestCursor, 'cursor-99');
+      expect(page.skippedExpiredCount, 2);
+      expect(page.rounds, hasLength(2));
+      _expectRoundEnvelope(page.rounds.first, status: 'accepted');
+      expect(page.rounds.first.sessionUuid, 'session-42');
+      expect(page.rounds[1].round.id, 43);
+      expect(page.rounds[1].round.roundNo, 3);
+      expect(page.rounds[1].tableLabel, isNull);
+      expect(page.rounds[1].receiptNumber, isNull);
+    },
+  );
+
+  test(
     'polling backoff retains Retry-After delta seconds from structured 429',
     () async {
       final adapter = _Adapter(
@@ -232,15 +340,126 @@ void main() {
   test(
     'poll budget uses the conservative inclusive rolling-minute boundary',
     () {
+      expect(
+        QrPollingPolicy.acceptedRoundsInterval,
+        const Duration(seconds: 5),
+      );
       expect(QrPollingPolicy.qrRequestsPerWorstRollingMinute, 14);
       expect(QrPollingPolicy.existingSteadyRequestsPerWorstRollingMinute, 7);
-      expect(QrPollingPolicy.combinedWorstRollingMinute, 21);
+      expect(
+        QrPollingPolicy.acceptedRoundFeedRequestsPerWorstRollingMinute,
+        13,
+      );
+      expect(
+        QrPollingPolicy.combinedWorstRollingMinute,
+        QrPollingPolicy.qrRequestsPerWorstRollingMinute +
+            QrPollingPolicy.existingSteadyRequestsPerWorstRollingMinute +
+            QrPollingPolicy.acceptedRoundFeedRequestsPerWorstRollingMinute,
+      );
+      expect(QrPollingPolicy.combinedWorstRollingMinute, 34);
       expect(
         QrPollingPolicy.qrRequestsPerWorstRollingMinute ~/ 2,
         lessThan(60),
       );
     },
   );
+}
+
+Map<String, dynamic> _roundEnvelope({required String status}) => {
+  'round': _round(status: status),
+  'table_label': 'T-12',
+  'receipt_number': 'QR-0042',
+  'order_uuid': orderUuid,
+  'order': {
+    'subtotal_baisas': 5000,
+    'discount_total_baisas': 250,
+    'tax_total_baisas': 0,
+    'grand_total_baisas': 4750,
+  },
+};
+
+Map<String, dynamic> _flatFeedRound({
+  int id = 42,
+  int roundNo = 2,
+  String? tableLabel = 'T-12',
+  String? receiptNumber = 'QR-0042',
+}) => {
+  ..._round(status: 'accepted', id: id, roundNo: roundNo),
+  'table_label': tableLabel,
+  'receipt_number': receiptNumber,
+  'order_uuid': orderUuid,
+  'session_uuid': 'session-42',
+  // A private field accidentally added server-side must never enter a model.
+  'confirm_payload': {'private': true},
+};
+
+Map<String, dynamic> _round({
+  required String status,
+  int id = 42,
+  int roundNo = 2,
+}) => {
+  'id': id,
+  'round_no': roundNo,
+  'status': status,
+  'priced_lines': [
+    {
+      'product_id': 101,
+      'product_name': 'Flat white',
+      'product_name_ar': 'فلات وايت',
+      'qty': 2,
+      'unit_price_baisas': 2500,
+      'line_discount_baisas': 250,
+      'line_total_baisas': 5000,
+      'notes': 'No sugar',
+      'addons': [
+        {
+          'add_on_id': 7,
+          'name': 'Extra shot',
+          'name_ar': 'جرعة إضافية',
+          'price_delta_baisas': 300,
+        },
+      ],
+    },
+  ],
+  'subtotal_baisas': 5000,
+  'tax_baisas': 0,
+  'total_baisas': 4750,
+  'submitted_at': '2026-08-31T12:00:00Z',
+  'resolved_at': status == 'pending_confirmation'
+      ? null
+      : '2026-08-31T12:01:00Z',
+};
+
+void _expectRoundEnvelope(QrRoundEnvelope envelope, {required String status}) {
+  expect(envelope.orderUuid, orderUuid);
+  expect(envelope.tableLabel, 'T-12');
+  expect(envelope.receiptNumber, 'QR-0042');
+  expect(envelope.round.id, 42);
+  expect(envelope.round.roundNo, 2);
+  expect(envelope.round.status, status);
+  expect(envelope.round.subtotalBaisas, 5000);
+  expect(envelope.round.taxBaisas, 0);
+  expect(envelope.round.totalBaisas, 4750);
+  expect(envelope.round.submittedAt, DateTime.utc(2026, 8, 31, 12));
+  expect(
+    envelope.round.resolvedAt,
+    status == 'pending_confirmation'
+        ? isNull
+        : DateTime.utc(2026, 8, 31, 12, 1),
+  );
+  expect(envelope.round.lines, hasLength(1));
+  final line = envelope.round.lines.single;
+  expect(line.name, 'Flat white');
+  expect(line.nameAr, 'فلات وايت');
+  expect(line.quantity, 2);
+  expect(line.unitPriceBaisas, 2500);
+  expect(line.lineDiscountBaisas, 250);
+  expect(line.lineTotalBaisas, 5000);
+  expect(line.notes, 'No sugar');
+  expect(line.addons.single.addOnId, 7);
+  expect(line.addons.single.name, 'Extra shot');
+  expect(line.addons.single.nameAr, 'جرعة إضافية');
+  expect(line.addons.single.priceDeltaBaisas, 300);
 }
 
 Map<String, dynamic> _activeOrder(String uuid, {required String source}) => {

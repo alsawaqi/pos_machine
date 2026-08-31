@@ -237,6 +237,65 @@ class PosApiService {
         .toList(growable: false);
   }
 
+  Future<QrRoundEnvelope> fetchQrRound(int roundId) async {
+    final body = await _send(
+      () => _dio.get('/device/qr/table-round/$roundId'),
+    );
+    return QrRoundEnvelope.fromJson(body.dataMap);
+  }
+
+  Future<QrRoundEnvelope> confirmQrRound(int roundId) async {
+    final body = await _send(
+      () => _dio.post(
+        '/device/qr/confirm-round',
+        data: {'round_id': roundId},
+      ),
+    );
+    return QrRoundEnvelope.fromJson(body.dataMap);
+  }
+
+  Future<QrRoundEnvelope> rejectQrRound(int roundId) async {
+    final body = await _send(
+      () => _dio.post(
+        '/device/qr/reject-round',
+        data: {'round_id': roundId},
+      ),
+    );
+    return QrRoundEnvelope.fromJson(body.dataMap);
+  }
+
+  Future<QrAcceptedRoundsPage> fetchAcceptedQrRounds({
+    String? after,
+    int limit = 25,
+  }) async {
+    final body = await _send(
+      () => _dio.get(
+        '/device/qr/accepted-rounds',
+        queryParameters: {
+          if (after != null && after.isNotEmpty) 'after': after,
+          'limit': limit,
+        },
+      ),
+    );
+    final rows = body.dataMap['rounds'];
+    return QrAcceptedRoundsPage(
+      rounds: rows is List
+          ? rows
+              .whereType<Map>()
+              .map(
+                (row) => QrRoundEnvelope.fromFeedJson(
+                  row.cast<String, dynamic>(),
+                ),
+              )
+              .toList(growable: false)
+          : const <QrRoundEnvelope>[],
+      nextCursor: _nullableApiString(body.metaMap['next_cursor']),
+      latestCursor: _nullableApiString(body.metaMap['latest_cursor']),
+      skippedExpiredCount:
+          (body.metaMap['skipped_expired_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+
   /// QR-002 S2 — read-only active QR detail. Filtering at this boundary is a
   /// deliberate money guard: a main-POS order can never enter a QR flow merely
   /// because it shares a table id or UUID-shaped identifier.
@@ -733,6 +792,12 @@ class _Envelope {
       (body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
   Map<String, dynamic> get metaMap =>
       (body['meta'] as Map?)?.cast<String, dynamic>() ?? const {};
+}
+
+String? _nullableApiString(Object? value) {
+  if (value == null) return null;
+  final text = value.toString().trim();
+  return text.isEmpty ? null : text;
 }
 
 class ApiException implements Exception {

@@ -50,6 +50,30 @@ class QrPendingRound {
   );
 }
 
+class QrBoardRound {
+  const QrBoardRound({
+    required this.id,
+    required this.roundNo,
+    required this.status,
+    required this.totalBaisas,
+    this.submittedAt,
+  });
+
+  final int id;
+  final int roundNo;
+  final String status;
+  final int totalBaisas;
+  final DateTime? submittedAt;
+
+  factory QrBoardRound.fromJson(Map<String, dynamic> json) => QrBoardRound(
+    id: (json['id'] as num?)?.toInt() ?? 0,
+    roundNo: (json['round_no'] as num?)?.toInt() ?? 0,
+    status: json['status']?.toString() ?? '',
+    totalBaisas: (json['total_baisas'] as num?)?.toInt() ?? 0,
+    submittedAt: DateTime.tryParse(json['submitted_at']?.toString() ?? ''),
+  );
+}
+
 class QrTableBoardRow {
   const QrTableBoardRow({
     required this.tableId,
@@ -58,6 +82,8 @@ class QrTableBoardRow {
     required this.tableDeleted,
     required this.orphaned,
     required this.pendingRounds,
+    this.rounds = const <QrBoardRound>[],
+    this.acceptedRoundCount = 0,
     this.sessionUuid,
     this.sessionStatus,
     this.expiresAt,
@@ -74,12 +100,15 @@ class QrTableBoardRow {
   final bool orphaned;
   final QrBoardOrder? order;
   final List<QrPendingRound> pendingRounds;
+  final List<QrBoardRound> rounds;
+  final int acceptedRoundCount;
 
   bool get hasMissingSession => order != null && sessionUuid == null;
 
   factory QrTableBoardRow.fromJson(Map<String, dynamic> json) {
     final rawOrder = json['order'];
     final rawRounds = json['pending_rounds'];
+    final rawBoardRounds = json['rounds'];
     return QrTableBoardRow(
       tableId: (json['table_id'] as num?)?.toInt() ?? 0,
       tableLabel: json['table_label']?.toString() ?? '',
@@ -100,8 +129,186 @@ class QrTableBoardRow {
                 )
                 .toList(growable: false)
           : const <QrPendingRound>[],
+      rounds: rawBoardRounds is List
+          ? rawBoardRounds
+                .whereType<Map>()
+                .map(
+                  (row) => QrBoardRound.fromJson(row.cast<String, dynamic>()),
+                )
+                .toList(growable: false)
+          : const <QrBoardRound>[],
+      acceptedRoundCount: (json['accepted_round_count'] as num?)?.toInt() ?? 0,
     );
   }
+}
+
+class QrRoundDisplayLine {
+  const QrRoundDisplayLine({
+    required this.name,
+    required this.quantity,
+    required this.unitPriceBaisas,
+    required this.lineDiscountBaisas,
+    required this.lineTotalBaisas,
+    required this.addons,
+    this.nameAr,
+    this.notes,
+  });
+
+  final String name;
+  final String? nameAr;
+  final double quantity;
+  final int unitPriceBaisas;
+  final int lineDiscountBaisas;
+  final int lineTotalBaisas;
+  final String? notes;
+  final List<QrOrderAddon> addons;
+
+  factory QrRoundDisplayLine.fromJson(Map<String, dynamic> json) {
+    final rawAddons = json['addons'];
+    return QrRoundDisplayLine(
+      name: (json['product_name'] ?? json['name'])?.toString() ?? '',
+      nameAr: _nullableString(json['product_name_ar'] ?? json['name_ar']),
+      quantity: (json['qty'] as num?)?.toDouble() ?? 0,
+      unitPriceBaisas: (json['unit_price_baisas'] as num?)?.toInt() ?? 0,
+      lineDiscountBaisas: (json['line_discount_baisas'] as num?)?.toInt() ?? 0,
+      lineTotalBaisas: (json['line_total_baisas'] as num?)?.toInt() ?? 0,
+      notes: _nullableString(json['notes']),
+      addons: rawAddons is List
+          ? rawAddons
+                .whereType<Map>()
+                .map(
+                  (row) => QrOrderAddon.fromJson(row.cast<String, dynamic>()),
+                )
+                .toList(growable: false)
+          : const <QrOrderAddon>[],
+    );
+  }
+
+  Map<String, dynamic> toKitchenItem({required bool arabic}) => {
+    'name': arabic && nameAr != null ? nameAr : name,
+    'qty': quantity,
+    'notes': ?notes,
+    'modifiers': [
+      for (final addon in addons)
+        {
+          'group': '',
+          'label': arabic && addon.nameAr != null ? addon.nameAr : addon.name,
+        },
+    ],
+  };
+}
+
+class QrDeviceRound {
+  const QrDeviceRound({
+    required this.id,
+    required this.roundNo,
+    required this.status,
+    required this.lines,
+    required this.subtotalBaisas,
+    required this.taxBaisas,
+    required this.totalBaisas,
+    this.submittedAt,
+    this.resolvedAt,
+  });
+
+  final int id;
+  final int roundNo;
+  final String status;
+  final List<QrRoundDisplayLine> lines;
+  final int subtotalBaisas;
+  final int taxBaisas;
+  final int totalBaisas;
+  final DateTime? submittedAt;
+  final DateTime? resolvedAt;
+
+  factory QrDeviceRound.fromJson(Map<String, dynamic> json) {
+    final rawLines = json['priced_lines'];
+    return QrDeviceRound(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      roundNo: (json['round_no'] as num?)?.toInt() ?? 0,
+      status: json['status']?.toString() ?? '',
+      lines: rawLines is List
+          ? rawLines
+                .whereType<Map>()
+                .map(
+                  (line) =>
+                      QrRoundDisplayLine.fromJson(line.cast<String, dynamic>()),
+                )
+                .toList(growable: false)
+          : const <QrRoundDisplayLine>[],
+      subtotalBaisas: (json['subtotal_baisas'] as num?)?.toInt() ?? 0,
+      taxBaisas: (json['tax_baisas'] as num?)?.toInt() ?? 0,
+      totalBaisas: (json['total_baisas'] as num?)?.toInt() ?? 0,
+      submittedAt: DateTime.tryParse(json['submitted_at']?.toString() ?? ''),
+      resolvedAt: DateTime.tryParse(json['resolved_at']?.toString() ?? ''),
+    );
+  }
+}
+
+class QrRoundEnvelope {
+  const QrRoundEnvelope({
+    required this.round,
+    required this.orderUuid,
+    this.sessionUuid,
+    this.tableLabel,
+    this.receiptNumber,
+  });
+
+  final QrDeviceRound round;
+  final String orderUuid;
+  final String? sessionUuid;
+  final String? tableLabel;
+  final String? receiptNumber;
+
+  factory QrRoundEnvelope.fromJson(Map<String, dynamic> json) {
+    final rawRound = json['round'];
+    if (rawRound is! Map) {
+      throw const FormatException('QR round response is missing the round.');
+    }
+    return QrRoundEnvelope(
+      round: QrDeviceRound.fromJson(rawRound.cast<String, dynamic>()),
+      orderUuid: json['order_uuid']?.toString() ?? '',
+      sessionUuid: _nullableString(json['session_uuid']),
+      tableLabel: _nullableString(json['table_label']),
+      receiptNumber: _nullableString(json['receipt_number']),
+    );
+  }
+
+  /// The accepted-round print feed deliberately flattens each round row,
+  /// unlike detail/confirm/reject which nest it under `round`. Keep this
+  /// parser explicit so private server-only fields are never retained.
+  factory QrRoundEnvelope.fromFeedJson(Map<String, dynamic> json) =>
+      QrRoundEnvelope(
+        round: QrDeviceRound.fromJson({
+          'id': json['id'],
+          'round_no': json['round_no'],
+          'status': 'accepted',
+          'priced_lines': json['priced_lines'],
+          'subtotal_baisas': json['subtotal_baisas'],
+          'tax_baisas': json['tax_baisas'],
+          'total_baisas': json['total_baisas'],
+          'submitted_at': json['submitted_at'],
+          'resolved_at': json['resolved_at'],
+        }),
+        orderUuid: json['order_uuid']?.toString() ?? '',
+        sessionUuid: _nullableString(json['session_uuid']),
+        tableLabel: _nullableString(json['table_label']),
+        receiptNumber: _nullableString(json['receipt_number']),
+      );
+}
+
+class QrAcceptedRoundsPage {
+  const QrAcceptedRoundsPage({
+    required this.rounds,
+    required this.skippedExpiredCount,
+    this.nextCursor,
+    this.latestCursor,
+  });
+
+  final List<QrRoundEnvelope> rounds;
+  final String? nextCursor;
+  final String? latestCursor;
+  final int skippedExpiredCount;
 }
 
 class QrOrderAddon {
@@ -109,15 +316,18 @@ class QrOrderAddon {
     required this.addOnId,
     required this.name,
     required this.priceDeltaBaisas,
+    this.nameAr,
   });
 
   final int? addOnId;
   final String name;
+  final String? nameAr;
   final int priceDeltaBaisas;
 
   factory QrOrderAddon.fromJson(Map<String, dynamic> json) => QrOrderAddon(
     addOnId: (json['add_on_id'] as num?)?.toInt(),
-    name: json['add_on_name']?.toString() ?? '',
+    name: (json['add_on_name'] ?? json['name'])?.toString() ?? '',
+    nameAr: _nullableString(json['add_on_name_ar'] ?? json['name_ar']),
     priceDeltaBaisas: (json['price_delta_baisas'] as num?)?.toInt() ?? 0,
   );
 }

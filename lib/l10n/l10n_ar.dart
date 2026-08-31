@@ -159,6 +159,14 @@ class L10nAr extends L10n {
       'اطبع تذكرة مطبخ بالأصناف فقط عند اكتمال الطلب أو تعليقه.';
 
   @override
+  String get settingsPrintQrKitchenRounds =>
+      'طباعة جولات QR للمطبخ على هذا الجهاز';
+
+  @override
+  String get settingsPrintQrKitchenRoundsHint =>
+      'اطبع جولات طلبات الطاولة عبر QR بعد قبولها. عطّلها على أجهزة الكاشير الأخرى لمنع التذاكر المكررة.';
+
+  @override
   String get settingsSectionLanguage => 'اللغة';
 
   @override

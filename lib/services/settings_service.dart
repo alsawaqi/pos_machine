@@ -10,6 +10,7 @@ class AppSettings {
     this.serverBaseUrl,
     this.printReceipts = true,
     this.printKitchenTickets = true,
+    this.printQrKitchenRounds = false,
     this.language = 'en',
     this.audienceMeasurement = false,
   });
@@ -25,6 +26,10 @@ class AppSettings {
   /// Phase C1 — whether to print an items-only kitchen ticket on order
   /// completion and on hold (blueprint §6.10).
   final bool printKitchenTickets;
+
+  /// QR-002 S5 — independently opt this till into the accepted-round feed.
+  /// Default OFF prevents two tills at one branch from double-printing.
+  final bool printQrKitchenRounds;
 
   /// Phase C4 (blueprint §9.8) — the UI language: 'en' | 'ar'. Arabic flips
   /// the whole app RTL via MaterialApp's locale.
@@ -48,6 +53,7 @@ class AppSettings {
     String? serverBaseUrl,
     bool? printReceipts,
     bool? printKitchenTickets,
+    bool? printQrKitchenRounds,
     String? language,
     bool? audienceMeasurement,
   }) =>
@@ -55,6 +61,8 @@ class AppSettings {
         serverBaseUrl: serverBaseUrl ?? this.serverBaseUrl,
         printReceipts: printReceipts ?? this.printReceipts,
         printKitchenTickets: printKitchenTickets ?? this.printKitchenTickets,
+        printQrKitchenRounds:
+            printQrKitchenRounds ?? this.printQrKitchenRounds,
         language: language ?? this.language,
         audienceMeasurement: audienceMeasurement ?? this.audienceMeasurement,
       );
@@ -68,6 +76,7 @@ class SettingsService {
   static const _kBaseUrl = 'server_base_url';
   static const _kPrintReceipts = 'print_receipts';
   static const _kPrintKitchenTickets = 'print_kitchen_tickets';
+  static const _kPrintQrKitchenRounds = 'print_qr_kitchen_rounds';
   static const _kLanguage = 'app_language';
   static const _kAudience = 'audience_measurement';
 
@@ -75,6 +84,8 @@ class SettingsService {
         serverBaseUrl: _prefs.getString(_kBaseUrl),
         printReceipts: _prefs.getBool(_kPrintReceipts) ?? true,
         printKitchenTickets: _prefs.getBool(_kPrintKitchenTickets) ?? true,
+        printQrKitchenRounds:
+            _prefs.getBool(_kPrintQrKitchenRounds) ?? false,
         language: _prefs.getString(_kLanguage) == 'ar' ? 'ar' : 'en',
         audienceMeasurement: _prefs.getBool(_kAudience) ?? false,
       );
@@ -99,6 +110,10 @@ class SettingsService {
 
   Future<void> savePrintKitchenTickets(bool value) async {
     await _prefs.setBool(_kPrintKitchenTickets, value);
+  }
+
+  Future<void> savePrintQrKitchenRounds(bool value) async {
+    await _prefs.setBool(_kPrintQrKitchenRounds, value);
   }
 
   Future<void> saveLanguage(String value) async {

@@ -22,6 +22,7 @@ import '../services/live_sync.dart';
 import '../services/mosambee_payment_service.dart';
 import '../services/pos_api_service.dart';
 import '../services/qr_settlement_coordinator.dart';
+import '../services/qr_round_printing.dart';
 import '../services/qr_till_service.dart';
 import '../services/session_service.dart';
 import '../services/settings_service.dart';
@@ -65,6 +66,11 @@ class SettingsController extends Notifier<AppSettings> {
 
   Future<void> setPrintKitchenTickets(bool value) async {
     await _svc.savePrintKitchenTickets(value);
+    state = _svc.snapshot();
+  }
+
+  Future<void> setPrintQrKitchenRounds(bool value) async {
+    await _svc.savePrintQrKitchenRounds(value);
     state = _svc.snapshot();
   }
 
@@ -259,6 +265,42 @@ final orderSyncRepositoryProvider = Provider<OrderSyncRepository>(
 
 final qrTillServiceProvider = Provider<QrTillGateway>(
   (ref) => QrTillService(ref.read(apiServiceProvider)),
+);
+
+final qrRoundGatewayProvider = Provider<QrRoundGateway>(
+  (ref) => QrTillService(ref.read(apiServiceProvider)),
+);
+
+final qrKitchenRoundPrinterProvider = Provider<QrKitchenRoundPrinter>(
+  (ref) => const SunmiQrKitchenRoundPrinter(),
+);
+
+class QrRoundPrintNoticeController extends Notifier<QrRoundPrintNotice?> {
+  @override
+  QrRoundPrintNotice? build() => null;
+
+  void show(QrRoundPrintNotice notice) => state = notice;
+  void clear() => state = null;
+}
+
+final qrRoundPrintNoticeProvider =
+    NotifierProvider<QrRoundPrintNoticeController, QrRoundPrintNotice?>(
+  QrRoundPrintNoticeController.new,
+);
+
+final qrRoundAutoPrintControllerProvider = Provider<QrRoundAutoPrintController>(
+  (ref) {
+    final controller = QrRoundAutoPrintController(
+      gateway: ref.read(qrRoundGatewayProvider),
+      preferences: ref.read(sharedPreferencesProvider),
+      printer: ref.read(qrKitchenRoundPrinterProvider),
+      deviceKey: () => ref.read(sessionServiceProvider).kioskId ?? '',
+      arabic: () => ref.read(settingsControllerProvider).language == 'ar',
+      onNotice: ref.read(qrRoundPrintNoticeProvider.notifier).show,
+    );
+    ref.onDispose(controller.stop);
+    return controller;
+  },
 );
 
 final qrCardTerminalProvider = Provider<QrCardTerminalGateway>(
