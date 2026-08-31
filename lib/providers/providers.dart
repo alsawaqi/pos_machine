@@ -288,6 +288,18 @@ final qrRoundPrintNoticeProvider =
   QrRoundPrintNoticeController.new,
 );
 
+class QrRoundPrintPollingStatusController extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void setUnavailable(bool unavailable) => state = unavailable;
+}
+
+final qrRoundPrintPollingUnavailableProvider =
+    NotifierProvider<QrRoundPrintPollingStatusController, bool>(
+  QrRoundPrintPollingStatusController.new,
+);
+
 final qrRoundAutoPrintControllerProvider = Provider<QrRoundAutoPrintController>(
   (ref) {
     final controller = QrRoundAutoPrintController(
@@ -297,6 +309,9 @@ final qrRoundAutoPrintControllerProvider = Provider<QrRoundAutoPrintController>(
       deviceKey: () => ref.read(sessionServiceProvider).kioskId ?? '',
       arabic: () => ref.read(settingsControllerProvider).language == 'ar',
       onNotice: ref.read(qrRoundPrintNoticeProvider.notifier).show,
+      onPollingStatus: ref
+          .read(qrRoundPrintPollingUnavailableProvider.notifier)
+          .setUnavailable,
     );
     ref.onDispose(controller.stop);
     return controller;

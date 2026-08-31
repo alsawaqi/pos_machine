@@ -20,6 +20,7 @@ import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
+import '../widgets/qr_round_print_status_indicator.dart';
 import '../providers/providers.dart';
 import 'branch_reports_screen.dart';
 import 'kitchen_production_screen.dart';
@@ -321,6 +322,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         QrRoundPrintNoticeKind.printerFailed => arabic
             ? 'تعذرت طباعة جولة QR. افحص الطابعة؛ سيعيد الجهاز المحاولة بأمان.'
             : 'A QR kitchen round did not print. Check the printer; this device will retry safely.',
+        QrRoundPrintNoticeKind.positionReset =>
+            qrRoundPrintPositionResetMessage(arabic: arabic),
       };
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -1263,6 +1266,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final qrRoundPrintPollingUnavailable =
+        ref.watch(qrRoundPrintPollingUnavailableProvider);
+    final arabic = ref.watch(settingsControllerProvider).language == 'ar';
+
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
@@ -1324,6 +1331,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       ),
                     );
                   },
+                ),
+              ),
+              PositionedDirectional(
+                top: 12,
+                start: 12,
+                end: 12,
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: QrRoundPrintStatusIndicator(
+                    unavailable: qrRoundPrintPollingUnavailable,
+                    arabic: arabic,
+                  ),
                 ),
               ),
               if (controller.showCharityRoundUpPrompt)

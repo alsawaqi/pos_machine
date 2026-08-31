@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/qr_till_models.dart';
 import 'kitchen_ticket.dart';
+import 'pos_api_service.dart';
 import 'qr_till_service.dart';
 import 'sunmi_receipt_service.dart';
 
@@ -41,7 +42,7 @@ KitchenTicketData buildQrKitchenTicket(
   );
 }
 
-enum QrRoundPrintNoticeKind { expiredUnprinted, printerFailed }
+enum QrRoundPrintNoticeKind { expiredUnprinted, printerFailed, positionReset }
 
 class QrRoundPrintNotice {
   const QrRoundPrintNotice(this.kind, {this.count = 0});
@@ -61,15 +62,19 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
     required String Function() deviceKey,
     required bool Function() arabic,
     required void Function(QrRoundPrintNotice notice) onNotice,
+    required void Function(bool unavailable) onPollingStatus,
     this.pollInterval = QrPollingPolicy.acceptedRoundsInterval,
   }) : _gateway = gateway,
        _preferences = preferences,
        _printer = printer,
        _deviceKey = deviceKey,
        _arabic = arabic,
-       _onNotice = onNotice;
+       _onNotice = onNotice,
+       _onPollingStatus = onPollingStatus;
 
   static const int pageSize = 25;
+  static const int consecutiveFailureThreshold = 3;
+  static const int maxConfirmPrintedMarks = 1024;
 
   final QrRoundGateway _gateway;
   final SharedPreferences _preferences;
@@ -77,6 +82,7 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
   final String Function() _deviceKey;
   final bool Function() _arabic;
   final void Function(QrRoundPrintNotice notice) _onNotice;
+  final void Function(bool unavailable) _onPollingStatus;
   final Duration pollInterval;
 
   Timer? _timer;
@@ -84,14 +90,18 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
   bool _enabled = false;
   bool _foreground = true;
   bool _polling = false;
+  int _consecutivePollFailures = 0;
+  bool _pollingUnavailable = false;
 
   String get _scope {
     final value = _deviceKey().trim();
     return value.isEmpty ? 'unpaired' : value;
   }
 
-  String get _cursorKey => 'qr_round_print_cursor_$_scope';
-  String get _printedKey => 'qr_round_printed_set_$_scope';
+  String _cursorKeyFor(String scope) => 'qr_round_print_cursor_$scope';
+  String _printedKeyFor(String scope) => 'qr_round_printed_set_$scope';
+  String _resetPendingKeyFor(String scope) =>
+      'qr_round_print_reset_pending_$scope';
 
   void start({required bool enabled}) {
     if (!_started) {
@@ -103,6 +113,7 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
 
   void stop() {
     _enabled = false;
+    _resetPollingHealth();
     _timer?.cancel();
     _timer = null;
     if (_started) WidgetsBinding.instance.removeObserver(this);
@@ -121,31 +132,50 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
     _enabled = enabled;
     _timer?.cancel();
     _timer = null;
-    if (!enabled || !_foreground) return;
+    if (!enabled) {
+      _resetPollingHealth();
+      return;
+    }
+    if (!_foreground) return;
 
-    if (!_preferences.containsKey(_cursorKey)) {
-      await _seedAtLatest();
+    final scope = _scope;
+    if (!_preferences.containsKey(_cursorKeyFor(scope))) {
+      await _seedAtLatest(scope: scope);
     } else {
+      await _deliverPendingResetNotice(scope);
       await pollNow();
     }
   }
 
-  Future<void> _seedAtLatest() async {
+  Future<bool> _seedAtLatest({
+    required String scope,
+    bool schedule = true,
+  }) async {
     try {
       final page = await _gateway.fetchAcceptedRounds(limit: 1);
+      if (!_isActiveScope(scope)) return false;
       // The server returns a tenant/branch-bound sequence-zero cursor when the
       // branch has no acceptances yet. Never replace it with an empty local
       // sentinel: only a real server cursor lets a later poll account for a
       // first acceptance that has already crossed the print horizon.
       final latestCursor = page.latestCursor?.trim();
-      if (latestCursor != null && latestCursor.isNotEmpty) {
-        await _preferences.setString(_cursorKey, latestCursor);
+      if (latestCursor == null || latestCursor.isEmpty) {
+        throw StateError('The accepted-round feed returned no latest cursor.');
       }
+      final cursorKey = _cursorKeyFor(scope);
+      await _preferences.setString(cursorKey, latestCursor);
+      if (!_isActiveScope(scope)) {
+        await _preferences.remove(cursorKey);
+        return false;
+      }
+      _recordPollSuccess();
+      await _deliverPendingResetNotice(scope);
+      return true;
     } catch (_) {
-      // Best-effort background service. The scheduled poll retries without
-      // interrupting the active till surface.
+      if (_isActiveScope(scope)) _recordPollFailure();
+      return false;
     } finally {
-      _schedule();
+      if (schedule) _schedule();
     }
   }
 
@@ -154,19 +184,31 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
     _timer?.cancel();
     _timer = null;
     _polling = true;
+    final scope = _scope;
+    final cursorKey = _cursorKeyFor(scope);
+    final printedKey = _printedKeyFor(scope);
+    String? requestAfter;
     try {
-      var cursor = _preferences.getString(_cursorKey);
+      var cursor = _preferences.getString(cursorKey);
       if (cursor == null) {
-        await _seedAtLatest();
+        await _seedAtLatest(scope: scope, schedule: false);
         return;
       }
-      var after = cursor.isEmpty ? null : cursor;
+      await _deliverPendingResetNotice(scope);
+      if (cursor.trim().isEmpty) {
+        await _preferences.remove(cursorKey);
+        await _seedAtLatest(scope: scope, schedule: false);
+        return;
+      }
+      var after = cursor;
 
       while (_enabled && _foreground) {
+        requestAfter = after;
         final page = await _gateway.fetchAcceptedRounds(
           after: after,
           limit: pageSize,
         );
+        requestAfter = null;
         if (page.skippedExpiredCount > 0) {
           _onNotice(
             QrRoundPrintNotice(
@@ -182,12 +224,13 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
           // notice is the only way to avoid reporting the same stale rows on
           // every five-second poll.
           if (page.skippedExpiredCount > 0 && page.latestCursor != null) {
-            await _preferences.setString(_cursorKey, page.latestCursor!);
+            await _preferences.setString(cursorKey, page.latestCursor!);
           }
+          _recordPollSuccess();
           break;
         }
 
-        final printed = _printedIds();
+        final printed = _printedIds(printedKey);
         var pageComplete = true;
         for (final envelope in page.rounds) {
           if (!_enabled || !_foreground) {
@@ -196,34 +239,55 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
           }
           final key = envelope.round.id.toString();
           if (printed.contains(key)) continue;
-          final ok = await _printer.printRound(envelope, arabic: _arabic());
+          var ok = false;
+          try {
+            ok = await _printer.printRound(envelope, arabic: _arabic());
+          } catch (_) {
+            // Printer faults have their own recovery surface and must not
+            // masquerade as accepted-round feed connectivity failures.
+          }
           if (!ok) {
             pageComplete = false;
+            _recordPollSuccess();
             _onNotice(
               const QrRoundPrintNotice(QrRoundPrintNoticeKind.printerFailed),
             );
             break;
           }
           printed.add(key);
-          await _persistPrinted(printed);
+          await _persistPrinted(printedKey, printed);
         }
         if (!pageComplete) break;
 
         final next = page.nextCursor;
-        if (next == null || next.isEmpty) break;
-        await _preferences.setString(_cursorKey, next);
+        if (next == null || next.isEmpty) {
+          _recordPollSuccess();
+          break;
+        }
+        await _preferences.setString(cursorKey, next);
 
         // Once the cursor is durable, these page ids cannot be replayed and no
         // longer need printed-set space. Confirm-printed ids ahead of the cursor
         // remain until their feed page is durably acknowledged.
         printed.removeAll(page.rounds.map((row) => row.round.id.toString()));
-        await _persistPrinted(printed);
+        await _persistPrinted(printedKey, printed);
+        _recordPollSuccess();
         after = next;
 
         if (page.rounds.length < pageSize) break;
       }
+    } on ApiException catch (error) {
+      if (!_enabled || !_foreground) return;
+      final cursorBearingRequest =
+          requestAfter != null && requestAfter.trim().isNotEmpty;
+      if (cursorBearingRequest && error.code == 'validation_failed') {
+        await _recoverInvalidCursor(scope: scope, cursorKey: cursorKey);
+      } else {
+        _recordPollFailure();
+      }
     } catch (_) {
-      // Transport/server failures are retried on the normal foreground cadence.
+      if (!_enabled || !_foreground) return;
+      _recordPollFailure();
     } finally {
       _polling = false;
       _schedule();
@@ -231,22 +295,87 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
   }
 
   Future<bool> printConfirmedRound(QrRoundEnvelope envelope) async {
-    final printed = _printedIds();
+    final printedKey = _printedKeyFor(_scope);
+    final printed = _printedIds(printedKey);
     final key = envelope.round.id.toString();
-    if (printed.contains(key)) return true;
+    if (printed.contains(key)) {
+      printed.remove(key);
+      printed.add(key);
+      await _persistConfirmPrinted(printedKey, printed);
+      return true;
+    }
     final ok = await _printer.printRound(envelope, arabic: _arabic());
     if (ok) {
       printed.add(key);
-      await _persistPrinted(printed);
+      await _persistConfirmPrinted(printedKey, printed);
     }
     return ok;
   }
 
-  Set<String> _printedIds() =>
-      (_preferences.getStringList(_printedKey) ?? const <String>[]).toSet();
+  Future<void> _recoverInvalidCursor({
+    required String scope,
+    required String cursorKey,
+  }) async {
+    if (!_enabled || !_foreground) return;
+    try {
+      await _preferences.remove(cursorKey);
+      if (!_isActiveScope(scope)) return;
+      await _preferences.setBool(_resetPendingKeyFor(scope), true);
+      if (!_isActiveScope(scope)) return;
+    } catch (_) {
+      if (_isActiveScope(scope)) _recordPollFailure();
+      return;
+    }
 
-  Future<void> _persistPrinted(Set<String> ids) =>
-      _preferences.setStringList(_printedKey, ids.toList(growable: false));
+    await _seedAtLatest(scope: scope, schedule: false);
+  }
+
+  Future<void> _deliverPendingResetNotice(String scope) async {
+    final key = _resetPendingKeyFor(scope);
+    if (!(_preferences.getBool(key) ?? false)) return;
+    _onNotice(const QrRoundPrintNotice(QrRoundPrintNoticeKind.positionReset));
+    await _preferences.remove(key);
+  }
+
+  void _recordPollFailure() {
+    _consecutivePollFailures += 1;
+    if (_consecutivePollFailures < consecutiveFailureThreshold ||
+        _pollingUnavailable) {
+      return;
+    }
+    _pollingUnavailable = true;
+    _onPollingStatus(true);
+  }
+
+  void _recordPollSuccess() {
+    _consecutivePollFailures = 0;
+    if (!_pollingUnavailable) return;
+    _pollingUnavailable = false;
+    _onPollingStatus(false);
+  }
+
+  void _resetPollingHealth() {
+    _consecutivePollFailures = 0;
+    if (!_pollingUnavailable) return;
+    _pollingUnavailable = false;
+    _onPollingStatus(false);
+  }
+
+  bool _isActiveScope(String scope) =>
+      _enabled && _foreground && _scope == scope;
+
+  Set<String> _printedIds(String printedKey) =>
+      (_preferences.getStringList(printedKey) ?? const <String>[]).toSet();
+
+  Future<void> _persistPrinted(String printedKey, Set<String> ids) =>
+      _preferences.setStringList(printedKey, ids.toList(growable: false));
+
+  Future<void> _persistConfirmPrinted(String printedKey, Set<String> ids) {
+    while (ids.length > maxConfirmPrintedMarks) {
+      ids.remove(ids.first);
+    }
+    return _persistPrinted(printedKey, ids);
+  }
 
   void _schedule() {
     _timer?.cancel();

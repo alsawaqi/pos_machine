@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pos_machine/models/qr_till_models.dart';
 import 'package:pos_machine/services/kitchen_ticket.dart';
+import 'package:pos_machine/services/pos_api_service.dart';
 import 'package:pos_machine/services/qr_round_printing.dart';
 import 'package:pos_machine/services/qr_till_service.dart';
 
@@ -101,20 +104,293 @@ void main() {
     },
   );
 
-  test('a missing server cursor is never persisted as an empty sentinel', () async {
-    final preferences = await SharedPreferences.getInstance();
-    final controller = _controller(
-      preferences,
-      _Gateway([
-        const QrAcceptedRoundsPage(rounds: [], skippedExpiredCount: 0),
-      ]),
-      _Printer(),
-    );
+  test(
+    'a missing server cursor is never persisted as an empty sentinel',
+    () async {
+      final preferences = await SharedPreferences.getInstance();
+      final controller = _controller(
+        preferences,
+        _Gateway([
+          const QrAcceptedRoundsPage(rounds: [], skippedExpiredCount: 0),
+        ]),
+        _Printer(),
+      );
 
-    await controller.setEnabled(true);
+      await controller.setEnabled(true);
 
-    expect(preferences.containsKey('qr_round_print_cursor_KIOSK-1'), isFalse);
-  });
+      expect(preferences.containsKey('qr_round_print_cursor_KIOSK-1'), isFalse);
+    },
+  );
+
+  test(
+    'rebind or APP key rotation resets an invalid cursor without printing history',
+    () async {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(
+        'qr_round_print_cursor_KIOSK-1',
+        'old-bound-cursor',
+      );
+      await preferences.setStringList('qr_round_printed_set_KIOSK-1', ['77']);
+      final notices = <QrRoundPrintNotice>[];
+      final statuses = <bool>[];
+      final printer = _Printer();
+      final gateway = _Gateway([
+        ApiException(
+          message: 'The accepted-round cursor was invalid.',
+          statusCode: 422,
+          code: 'validation_failed',
+        ),
+        QrAcceptedRoundsPage(
+          rounds: [_round(90)],
+          nextCursor: 'seed-page-next-is-not-used',
+          latestCursor: 'new-branch-latest',
+          skippedExpiredCount: 0,
+        ),
+        QrAcceptedRoundsPage(
+          rounds: [_round(91)],
+          nextCursor: 'new-branch-91',
+          latestCursor: 'new-branch-91',
+          skippedExpiredCount: 0,
+        ),
+      ]);
+      final controller = _controller(
+        preferences,
+        gateway,
+        printer,
+        notices: notices,
+        pollingStatuses: statuses,
+      );
+
+      await controller.setEnabled(true);
+
+      expect(gateway.afterCalls, ['old-bound-cursor', null]);
+      expect(gateway.limitCalls, [25, 1]);
+      expect(printer.ids, isEmpty);
+      expect(
+        preferences.getString('qr_round_print_cursor_KIOSK-1'),
+        'new-branch-latest',
+      );
+      expect(preferences.getStringList('qr_round_printed_set_KIOSK-1'), ['77']);
+      expect(notices.map((notice) => notice.kind), [
+        QrRoundPrintNoticeKind.positionReset,
+      ]);
+      expect(statuses, isEmpty);
+
+      await controller.pollNow();
+
+      expect(gateway.afterCalls.last, 'new-branch-latest');
+      expect(printer.ids, [91]);
+      expect(
+        preferences.getString('qr_round_print_cursor_KIOSK-1'),
+        'new-branch-91',
+      );
+    },
+  );
+
+  test(
+    'an in-flight rebind cannot delete or overwrite the new device scope',
+    () async {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(
+        'qr_round_print_cursor_KIOSK-OLD',
+        'old-invalid-cursor',
+      );
+      await preferences.setString(
+        'qr_round_print_cursor_KIOSK-NEW',
+        'new-device-cursor',
+      );
+      var deviceKey = 'KIOSK-OLD';
+      final pending = Completer<QrAcceptedRoundsPage>();
+      final notices = <QrRoundPrintNotice>[];
+      final controller = _controller(
+        preferences,
+        _Gateway([pending.future]),
+        _Printer(),
+        notices: notices,
+        deviceKey: () => deviceKey,
+      );
+
+      final poll = controller.setEnabled(true);
+      await Future<void>.delayed(Duration.zero);
+      deviceKey = 'KIOSK-NEW';
+      pending.completeError(
+        ApiException(
+          message: 'The accepted-round cursor was invalid.',
+          statusCode: 422,
+          code: 'validation_failed',
+        ),
+      );
+      await poll;
+
+      expect(
+        preferences.containsKey('qr_round_print_cursor_KIOSK-OLD'),
+        isFalse,
+      );
+      expect(
+        preferences.getString('qr_round_print_cursor_KIOSK-NEW'),
+        'new-device-cursor',
+      );
+      expect(notices, isEmpty);
+    },
+  );
+
+  test(
+    'a late seed failure after disable does not poison feed health',
+    () async {
+      final preferences = await SharedPreferences.getInstance();
+      final pending = Completer<QrAcceptedRoundsPage>();
+      final statuses = <bool>[];
+      final controller = _controller(
+        preferences,
+        _Gateway([pending.future]),
+        _Printer(),
+        pollingStatuses: statuses,
+      );
+
+      final seed = controller.setEnabled(true);
+      await Future<void>.delayed(Duration.zero);
+      await controller.setEnabled(false);
+      pending.completeError(ApiException(message: 'offline', isNetwork: true));
+      await seed;
+
+      expect(statuses, isEmpty);
+      expect(preferences.containsKey('qr_round_print_cursor_KIOSK-1'), isFalse);
+    },
+  );
+
+  test(
+    'failed reset reseed stays cursorless and warns after retry succeeds',
+    () async {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(
+        'qr_round_print_cursor_KIOSK-1',
+        'rotated-cursor',
+      );
+      final notices = <QrRoundPrintNotice>[];
+      final gateway = _Gateway([
+        ApiException(
+          message: 'The accepted-round cursor was invalid.',
+          statusCode: 422,
+          code: 'validation_failed',
+        ),
+        ApiException(message: 'offline', isNetwork: true),
+        const QrAcceptedRoundsPage(
+          rounds: [],
+          latestCursor: 'fresh-latest',
+          skippedExpiredCount: 0,
+        ),
+      ]);
+      final controller = _controller(
+        preferences,
+        gateway,
+        _Printer(),
+        notices: notices,
+      );
+
+      await controller.setEnabled(true);
+
+      expect(preferences.containsKey('qr_round_print_cursor_KIOSK-1'), isFalse);
+      expect(notices, isEmpty);
+
+      await controller.pollNow();
+
+      expect(gateway.afterCalls, ['rotated-cursor', null, null]);
+      expect(
+        preferences.getString('qr_round_print_cursor_KIOSK-1'),
+        'fresh-latest',
+      );
+      expect(notices.single.kind, QrRoundPrintNoticeKind.positionReset);
+    },
+  );
+
+  test(
+    'three consecutive feed failures expose persistent health until success',
+    () async {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString('qr_round_print_cursor_KIOSK-1', 'cursor-4');
+      final statuses = <bool>[];
+      final failure = ApiException(message: 'offline', isNetwork: true);
+      final controller = _controller(
+        preferences,
+        _Gateway([
+          failure,
+          failure,
+          failure,
+          failure,
+          const QrAcceptedRoundsPage(
+            rounds: [],
+            latestCursor: 'cursor-4',
+            skippedExpiredCount: 0,
+          ),
+          failure,
+          failure,
+          failure,
+        ]),
+        _Printer(),
+        pollingStatuses: statuses,
+      );
+
+      await controller.setEnabled(true);
+      await controller.pollNow();
+      expect(statuses, isEmpty);
+
+      await controller.pollNow();
+      expect(statuses, [true]);
+
+      await controller.pollNow();
+      expect(statuses, [true]);
+
+      await controller.pollNow();
+      expect(statuses, [true, false]);
+
+      await controller.pollNow();
+      await controller.pollNow();
+      expect(statuses, [true, false]);
+      await controller.pollNow();
+      expect(statuses, [true, false, true]);
+    },
+  );
+
+  test(
+    'unrelated failures preserve cursors and cursorless validation does not reset',
+    () async {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString('qr_round_print_cursor_KIOSK-1', 'keep-me');
+      final notices = <QrRoundPrintNotice>[];
+      await _controller(
+        preferences,
+        _Gateway([
+          ApiException(
+            message: 'Server failed.',
+            statusCode: 500,
+            code: 'server_error',
+          ),
+        ]),
+        _Printer(),
+        notices: notices,
+      ).setEnabled(true);
+
+      expect(preferences.getString('qr_round_print_cursor_KIOSK-1'), 'keep-me');
+      expect(notices, isEmpty);
+
+      await preferences.remove('qr_round_print_cursor_KIOSK-1');
+      await _controller(
+        preferences,
+        _Gateway([
+          ApiException(
+            message: 'Validation failed.',
+            statusCode: 422,
+            code: 'validation_failed',
+          ),
+        ]),
+        _Printer(),
+        notices: notices,
+      ).setEnabled(true);
+
+      expect(preferences.containsKey('qr_round_print_cursor_KIOSK-1'), isFalse);
+      expect(notices, isEmpty);
+    },
+  );
 
   test('drains a 25-round gap and prints every round exactly once', () async {
     final preferences = await SharedPreferences.getInstance();
@@ -211,6 +487,45 @@ void main() {
   });
 
   test(
+    'confirm printing prunes the durable mark set to its newest bound',
+    () async {
+      final preferences = await SharedPreferences.getInstance();
+      final existing = [
+        for (
+          var id = 0;
+          id < QrRoundAutoPrintController.maxConfirmPrintedMarks + 2;
+          id++
+        )
+          '$id',
+      ];
+      await preferences.setStringList('qr_round_printed_set_KIOSK-1', existing);
+      final printer = _Printer();
+      final controller = _controller(preferences, _Gateway(const []), printer);
+
+      expect(await controller.printConfirmedRound(_round(0)), isTrue);
+      var persisted = preferences.getStringList(
+        'qr_round_printed_set_KIOSK-1',
+      )!;
+      expect(
+        persisted,
+        hasLength(QrRoundAutoPrintController.maxConfirmPrintedMarks),
+      );
+      expect(persisted, contains('0'));
+      expect(persisted, isNot(contains('1')));
+      expect(printer.ids, isEmpty);
+
+      expect(await controller.printConfirmedRound(_round(5000)), isTrue);
+      persisted = preferences.getStringList('qr_round_printed_set_KIOSK-1')!;
+      expect(
+        persisted,
+        hasLength(QrRoundAutoPrintController.maxConfirmPrintedMarks),
+      );
+      expect(persisted, contains('5000'));
+      expect(printer.ids, [5000]);
+    },
+  );
+
+  test(
     'expired-only page notices once and advances to the high-water mark',
     () async {
       final preferences = await SharedPreferences.getInstance();
@@ -261,13 +576,16 @@ QrRoundAutoPrintController _controller(
   _Gateway gateway,
   _Printer printer, {
   List<QrRoundPrintNotice>? notices,
+  List<bool>? pollingStatuses,
+  String Function()? deviceKey,
 }) => QrRoundAutoPrintController(
   gateway: gateway,
   preferences: preferences,
   printer: printer,
-  deviceKey: () => 'KIOSK-1',
+  deviceKey: deviceKey ?? () => 'KIOSK-1',
   arabic: () => false,
   onNotice: (notice) => notices?.add(notice),
+  onPollingStatus: (unavailable) => pollingStatuses?.add(unavailable),
   pollInterval: const Duration(days: 1),
 );
 
@@ -300,9 +618,9 @@ QrRoundEnvelope _round(int id) => QrRoundEnvelope(
 );
 
 class _Gateway implements QrRoundGateway {
-  _Gateway(this.pages);
+  _Gateway(this.results);
 
-  final List<QrAcceptedRoundsPage> pages;
+  final List<Object> results;
   final List<String?> afterCalls = [];
   final List<int> limitCalls = [];
 
@@ -313,7 +631,10 @@ class _Gateway implements QrRoundGateway {
   }) async {
     afterCalls.add(after);
     limitCalls.add(limit);
-    return pages.removeAt(0);
+    final result = results.removeAt(0);
+    if (result is QrAcceptedRoundsPage) return result;
+    if (result is Future<QrAcceptedRoundsPage>) return result;
+    throw result;
   }
 
   @override
