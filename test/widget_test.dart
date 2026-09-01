@@ -114,6 +114,7 @@ void main() {
     PosApiService? apiService,
     ShiftService? shiftService,
     bool stubShiftReconciliation = true,
+    bool? releaseBuild,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final session = SessionService(const FlutterSecureStorage(), prefs);
@@ -129,6 +130,8 @@ void main() {
           apiServiceProvider.overrideWithValue(apiService),
         if (shiftService != null)
           shiftServiceProvider.overrideWithValue(shiftService),
+        if (releaseBuild != null)
+          releaseBuildProvider.overrideWithValue(releaseBuild),
         // Most widget cases exercise screens below the startup gate. Keep the
         // network-owned MC-003 reconciliation deterministic; focused tests
         // cover its API behavior separately.
@@ -137,11 +140,13 @@ void main() {
             (ref, staffId) async => null,
           ),
       ],
-      child: const StaffApp(),
+      child: releaseBuild == null
+          ? const StaffApp()
+          : StaffApp(key: ValueKey('staff-app-$releaseBuild')),
     );
   }
 
-  testWidgets('staff POS screen renders after a terminal ID is restored', (
+  testWidgets('staff POS renders and gates Server settings in both modes', (
     WidgetTester tester,
   ) async {
     seedSignedInSession();
@@ -151,7 +156,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(await testApp());
+    await tester.pumpWidget(await testApp(releaseBuild: false));
     await tester.pumpAndSettle();
 
     expect(find.text('Current Order'), findsOneWidget);
@@ -163,6 +168,22 @@ void main() {
     expect(find.text('Flat White'), findsOneWidget);
     expect(find.text('Favourites'), findsOneWidget);
     expect(find.text('Order History'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('settings-server-address')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(await testApp(releaseBuild: true));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('settings-server-address')), findsNothing);
+    expect(find.text('RECEIPTS'), findsOneWidget);
   });
 
   testWidgets('a foreign cached shift blocks POS until its drawer is closed', (
@@ -597,21 +618,58 @@ void main() {
     expect(find.text('Back To Floor'), findsOneWidget);
   });
 
-  testWidgets('terminal setup screen is shown before the POS unlocks', (
+  testWidgets('device setup renders and gates Server settings in both modes', (
     WidgetTester tester,
   ) async {
+    final api = _PingApi();
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(await testApp());
+    await tester.pumpWidget(
+      await testApp(apiService: api, releaseBuild: false),
+    );
     await tester.pumpAndSettle();
 
     // The unpaired device lands on the enrollment screen, never the POS.
     expect(find.text('Set up this device'), findsOneWidget);
     expect(find.text('Current Order'), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.settings));
+    await tester.pumpAndSettle();
+    final serverField = find.byKey(const ValueKey('settings-server-address'));
+    expect(serverField, findsOneWidget);
+    await tester.enterText(serverField, '192.0.2.10:8088');
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Test connection'));
+    await tester.pumpAndSettle();
+    expect(api.pingedBaseUrl, 'http://192.0.2.10:8088/api/v1');
+    expect(
+      find.text('Server reachable at http://192.0.2.10:8088/api/v1'),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(await testApp(apiService: api, releaseBuild: true));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.settings));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('settings-server-address')), findsNothing);
+    expect(find.text('RECEIPTS'), findsOneWidget);
   });
+}
+
+class _PingApi extends PosApiService {
+  _PingApi() : super(tokenGetter: () => null);
+
+  String? pingedBaseUrl;
+
+  @override
+  Future<bool> pingBaseUrl(String baseUrl) async {
+    pingedBaseUrl = baseUrl;
+    return true;
+  }
 }
 
 class _WidgetShiftApi extends PosApiService {

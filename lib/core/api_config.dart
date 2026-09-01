@@ -12,8 +12,8 @@ import 'package:flutter/foundation.dart' show kReleaseMode;
 ///
 /// So the committed default is SAFE for release APKs, while day-to-day
 /// development automatically talks to the local API with no edits or flags.
-/// (The operator's Settings screen can still override the URL at runtime —
-/// that takes precedence over all of this via the service's baseUrlGetter.)
+/// Debug/profile Settings can still override the URL at runtime. Release
+/// SettingsService reads are locked back to this compile-time value.
 class ApiConfig {
   const ApiConfig._();
 

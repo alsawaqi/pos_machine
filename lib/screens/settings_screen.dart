@@ -8,10 +8,10 @@ import '../providers/providers.dart';
 import '../services/settings_service.dart';
 import 'audience_spike_screen.dart';
 
-/// Device-local POS settings: the server address (so a real device can be
-/// pointed at the right backend without a rebuild), a connection test, and the
-/// receipt-printing toggle. Reachable before activation (device-setup gear) and
-/// from the in-POS top-bar gear.
+/// Device-local POS settings: a debug/profile server address and connection
+/// test, plus operational preferences. Reachable before activation
+/// (device-setup gear) and from the in-POS top-bar gear. Release builds retain
+/// the debug code but do not render the Server section.
 ///
 /// P-F1 — [showOperations] (true when opened from the POS) adds the
 /// operational actions that used to live on the logout sheet: close shift,
@@ -211,6 +211,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsControllerProvider);
+    final releaseBuild = ref.watch(releaseBuildProvider);
     final attentionItems =
         ref.watch(orderSyncAttentionProvider).asData?.value ??
             const <OrderSyncAttention>[];
@@ -273,86 +274,89 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const Divider(color: Colors.white12, height: 36),
               ],
-              _sectionLabel(l10n.settingsSectionServer),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _urlController,
-                style: const TextStyle(color: Colors.white),
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                decoration: _fieldDecoration(
-                  label: l10n.settingsServerAddress,
-                  hint: l10n.settingsServerHint,
+              if (!releaseBuild) ...[
+                _sectionLabel(l10n.settingsSectionServer),
+                const SizedBox(height: 8),
+                TextField(
+                  key: const ValueKey('settings-server-address'),
+                  controller: _urlController,
+                  style: const TextStyle(color: Colors.white),
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  decoration: _fieldDecoration(
+                    label: l10n.settingsServerAddress,
+                    hint: l10n.settingsServerHint,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                settings.usingDefaultServer
-                    ? l10n.settingsUsingDefault(ApiConfig.baseUrl)
-                    : l10n.settingsActive(settings.effectiveBaseUrl),
-                style: const TextStyle(color: Colors.white54, fontSize: 12),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _testing ? null : _testConnection,
-                      icon: _testing
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.wifi_tethering),
-                      label: Text(l10n.settingsTestConnection),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.white24),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                const SizedBox(height: 6),
+                Text(
+                  settings.usingDefaultServer
+                      ? l10n.settingsUsingDefault(ApiConfig.baseUrl)
+                      : l10n.settingsActive(settings.effectiveBaseUrl),
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _testing ? null : _testConnection,
+                        icon: _testing
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.wifi_tethering),
+                        label: Text(l10n.settingsTestConnection),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: const BorderSide(color: Colors.white24),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: _save,
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _save,
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: Text(l10n.commonSave),
                       ),
-                      child: Text(l10n.commonSave),
+                    ),
+                  ],
+                ),
+                if (_testResult != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    _testResult!,
+                    style: TextStyle(
+                      color: _testOk
+                          ? const Color(0xFF35C28B)
+                          : const Color(0xFFFF6B6B),
+                      fontSize: 13,
                     ),
                   ),
                 ],
-              ),
-              if (_testResult != null) ...[
-                const SizedBox(height: 10),
-                Text(
-                  _testResult!,
-                  style: TextStyle(
-                    color: _testOk
-                        ? const Color(0xFF35C28B)
-                        : const Color(0xFFFF6B6B),
-                    fontSize: 13,
+                const SizedBox(height: 6),
+                TextButton(
+                  onPressed: settings.usingDefaultServer
+                      ? null
+                      : () async {
+                          await ref
+                              .read(settingsControllerProvider.notifier)
+                              .setServerBaseUrl(null);
+                          if (mounted) _urlController.text = '';
+                        },
+                  child: Text(
+                    l10n.settingsResetDefault,
+                    style: const TextStyle(color: Colors.white54),
                   ),
                 ),
+                const Divider(color: Colors.white12, height: 36),
               ],
-              const SizedBox(height: 6),
-              TextButton(
-                onPressed: settings.usingDefaultServer
-                    ? null
-                    : () async {
-                        await ref
-                            .read(settingsControllerProvider.notifier)
-                            .setServerBaseUrl(null);
-                        if (mounted) _urlController.text = '';
-                      },
-                child: Text(
-                  l10n.settingsResetDefault,
-                  style: const TextStyle(color: Colors.white54),
-                ),
-              ),
-              const Divider(color: Colors.white12, height: 36),
               _sectionLabel(l10n.settingsSectionReceipts),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

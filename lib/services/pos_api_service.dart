@@ -31,9 +31,9 @@ class PosApiService {
             )) {
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
-        // Resolve the server URL per request so an operator change in Settings
-        // takes effect without rebuilding the client. Falls back to the
-        // compile-time default.
+        // Resolve the server URL per request so debug Settings changes take
+        // effect without rebuilding the client. Release reads are locked to
+        // the compile-time configuration by SettingsService.
         final base = baseUrlGetter?.call();
         if (base != null && base.isNotEmpty) {
           options.baseUrl = base;

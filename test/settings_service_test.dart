@@ -1,7 +1,12 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pos_machine/core/api_config.dart';
+import 'package:pos_machine/main.dart';
+import 'package:pos_machine/providers/providers.dart';
+import 'package:pos_machine/services/session_service.dart';
 import 'package:pos_machine/services/settings_service.dart';
 
 void main() {
@@ -54,10 +59,71 @@ void main() {
       expect(s.usingDefaultServer, isTrue);
     });
 
-    test('uses the override when set', () {
-      const s = AppSettings(serverBaseUrl: 'http://x:8088/api/v1');
-      expect(s.effectiveBaseUrl, 'http://x:8088/api/v1');
-      expect(s.usingDefaultServer, isFalse);
+    test('debug uses the override; release ignores and clears it', () async {
+      const override = 'http://x:8088/api/v1';
+      SharedPreferences.setMockInitialValues({
+        'server_base_url': override,
+        'websocket_config_json': '{"host":"old.example"}',
+      });
+      final preferences = await SharedPreferences.getInstance();
+      final session = SessionService(const FlutterSecureStorage(), preferences);
+      final debug = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          sessionServiceProvider.overrideWithValue(session),
+          releaseBuildProvider.overrideWithValue(false),
+        ],
+      );
+      final release = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          sessionServiceProvider.overrideWithValue(session),
+          releaseBuildProvider.overrideWithValue(true),
+        ],
+      );
+      addTearDown(debug.dispose);
+      addTearDown(release.dispose);
+
+      final debugSettings = debug.read(settingsServiceProvider).snapshot();
+      expect(debugSettings.effectiveBaseUrl, override);
+      expect(debugSettings.usingDefaultServer, isFalse);
+      expect(debug.read(apiServiceProvider).baseUrlGetter!(), override);
+      expect(
+        debugSettings.copyWith(printReceipts: false).effectiveBaseUrl,
+        override,
+      );
+
+      await applyServerAddressPolicyAtStartup(
+        buildMode: debug,
+        preferences: preferences,
+        session: session,
+      );
+      expect(preferences.getString('server_base_url'), override);
+      expect(preferences.containsKey('websocket_config_json'), isTrue);
+
+      final releaseSettings = release.read(settingsServiceProvider).snapshot();
+      expect(releaseSettings.effectiveBaseUrl, ApiConfig.baseUrl);
+      expect(releaseSettings.usingDefaultServer, isTrue);
+      expect(
+        release.read(apiServiceProvider).baseUrlGetter!(),
+        ApiConfig.baseUrl,
+      );
+      expect(
+        releaseSettings.copyWith(printReceipts: false).effectiveBaseUrl,
+        ApiConfig.baseUrl,
+      );
+
+      await applyServerAddressPolicyAtStartup(
+        buildMode: release,
+        preferences: preferences,
+        session: session,
+      );
+      expect(preferences.containsKey('server_base_url'), isFalse);
+      expect(preferences.containsKey('websocket_config_json'), isFalse);
+      expect(
+        release.read(settingsServiceProvider).effectiveBaseUrl,
+        ApiConfig.baseUrl,
+      );
     });
   });
 

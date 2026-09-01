@@ -184,6 +184,46 @@ void main() {
         preferences.getString('qr_round_print_cursor_KIOSK-1'),
         'new-branch-91',
       );
+
+      // S5 verification §8 carry-forward: a crash after persisting the reset
+      // flag must deliver the notice exactly once after controller recreation.
+      controller.stop();
+      await preferences.setBool('qr_round_print_reset_pending_KIOSK-1', true);
+      final restartedNotices = <QrRoundPrintNotice>[];
+      final restarted = _controller(
+        preferences,
+        _Gateway([
+          const QrAcceptedRoundsPage(
+            rounds: [],
+            latestCursor: 'new-branch-91',
+            skippedExpiredCount: 0,
+          ),
+          const QrAcceptedRoundsPage(
+            rounds: [],
+            latestCursor: 'new-branch-91',
+            skippedExpiredCount: 0,
+          ),
+        ]),
+        _Printer(),
+        notices: restartedNotices,
+      );
+
+      await restarted.setEnabled(true);
+
+      expect(restartedNotices, hasLength(1));
+      expect(
+        restartedNotices.single.kind,
+        QrRoundPrintNoticeKind.positionReset,
+      );
+      expect(
+        preferences.containsKey('qr_round_print_reset_pending_KIOSK-1'),
+        isFalse,
+      );
+
+      await restarted.pollNow();
+
+      expect(restartedNotices, hasLength(1));
+      restarted.stop();
     },
   );
 

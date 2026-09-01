@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' show Locale;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
@@ -40,9 +41,16 @@ final sessionServiceProvider = Provider<SessionService>(
 final secureStorageProvider =
     Provider<FlutterSecureStorage>((ref) => const FlutterSecureStorage());
 
-// --- device-local settings (server URL, printer) ---------------------------
+/// Injectable build-mode seam. Release locks are exercised under flutter test
+/// by overriding this provider; production defaults to the const build mode.
+final releaseBuildProvider = Provider<bool>((ref) => kReleaseMode);
+
+// --- device-local settings (debug server URL, printer) ---------------------
 final settingsServiceProvider = Provider<SettingsService>(
-  (ref) => SettingsService(ref.read(sharedPreferencesProvider)),
+  (ref) => SettingsService(
+    ref.read(sharedPreferencesProvider),
+    serverAddressLocked: ref.watch(releaseBuildProvider),
+  ),
 );
 
 final settingsControllerProvider =
@@ -225,7 +233,7 @@ final apiServiceProvider = Provider<PosApiService>((ref) {
   final settings = ref.read(settingsServiceProvider);
   return PosApiService(
     tokenGetter: () => session.deviceToken,
-    // Resolve the operator-configured server URL per request.
+    // Resolve the debug override or release-locked URL per request.
     baseUrlGetter: () => settings.effectiveBaseUrl,
     onUnauthorized: () {
       // A 401 means the device was blocked/unpaired → drop back to pairing.

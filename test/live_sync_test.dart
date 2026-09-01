@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pos_machine/core/api_config.dart';
 import 'package:pos_machine/services/live_sync.dart';
+import 'package:pos_machine/services/settings_service.dart';
 
 /// Phase C3 — the pure Pusher-protocol helpers behind the device's Reverb
 /// subscription (url building, frames, frame parsing).
@@ -50,6 +52,20 @@ void main() {
       );
 
       expect(url, startsWith('ws://192.168.1.20:8085/app/k'));
+
+      const locked = AppSettings(
+        serverBaseUrl: 'http://stale.example:8088/api/v1',
+        serverAddressLocked: true,
+      );
+      final releaseUrl = buildWebsocketUrl(
+        const WebsocketEndpoint(appKey: 'k', port: 8085, scheme: 'http'),
+        apiBaseUrl: locked.effectiveBaseUrl,
+      );
+
+      expect(
+        Uri.parse(releaseUrl!).host,
+        Uri.parse(ApiConfig.baseUrl).host,
+      );
     });
 
     test('unresolvable host returns null (never dials a blank)', () {

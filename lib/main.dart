@@ -22,6 +22,16 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   const secureStorage = FlutterSecureStorage();
   final session = SessionService(secureStorage, prefs);
+  final buildMode = ProviderContainer();
+  try {
+    await applyServerAddressPolicyAtStartup(
+      buildMode: buildMode,
+      preferences: prefs,
+      session: session,
+    );
+  } finally {
+    buildMode.dispose();
+  }
   await session.load();
 
   final app = ProviderScope(
@@ -72,6 +82,19 @@ Future<void> main() async {
       runApp(app);
     },
   );
+}
+
+/// Removes server pointers left by an older installation before any session or
+/// provider can read them. The runtime read lock remains the primary control;
+/// this cleanup prevents invisible stale configuration from surviving updates.
+Future<void> applyServerAddressPolicyAtStartup({
+  required ProviderContainer buildMode,
+  required SharedPreferences preferences,
+  required SessionService session,
+}) async {
+  if (!buildMode.read(releaseBuildProvider)) return;
+  await SettingsService(preferences).saveServerBaseUrl(null);
+  await session.saveWebsocketConfig(null);
 }
 
 @pragma('vm:entry-point')
