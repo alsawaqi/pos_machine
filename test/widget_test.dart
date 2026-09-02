@@ -178,6 +178,8 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('server_base_url', 'http://192.0.2.55:8088/api/v1');
     await tester.pumpWidget(await testApp(releaseBuild: true));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.settings_outlined));
@@ -651,6 +653,8 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('server_base_url', 'http://192.0.2.55:8088/api/v1');
     await tester.pumpWidget(await testApp(apiService: api, releaseBuild: true));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.settings));

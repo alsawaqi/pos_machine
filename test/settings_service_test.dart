@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pos_machine/core/api_config.dart';
 import 'package:pos_machine/main.dart';
 import 'package:pos_machine/providers/providers.dart';
+import 'package:pos_machine/services/pos_api_service.dart';
 import 'package:pos_machine/services/session_service.dart';
 import 'package:pos_machine/services/settings_service.dart';
 
@@ -125,6 +130,44 @@ void main() {
         ApiConfig.baseUrl,
       );
     });
+
+    test(
+      'release-locked URL reaches requests despite a stored override',
+      () async {
+        const storedOverride = 'http://192.0.2.44:8088/api/v1';
+        SharedPreferences.setMockInitialValues({
+          'server_base_url': storedOverride,
+        });
+        final preferences = await SharedPreferences.getInstance();
+        final settings = SettingsService(
+          preferences,
+          serverAddressLocked: true,
+        );
+
+        expect(settings.snapshot().serverBaseUrl, storedOverride);
+        expect(
+          Uri.parse(storedOverride).host,
+          isNot(Uri.parse(ApiConfig.baseUrl).host),
+        );
+        expect(settings.effectiveBaseUrl, ApiConfig.baseUrl);
+
+        final adapter = _CapturingAdapter();
+        final dio = Dio(
+          BaseOptions(baseUrl: storedOverride, validateStatus: (_) => true),
+        )..httpClientAdapter = adapter;
+        addTearDown(() => dio.close(force: true));
+        final api = PosApiService(
+          tokenGetter: () => null,
+          baseUrlGetter: () => settings.effectiveBaseUrl,
+          dio: dio,
+        );
+
+        await api.fetchConfig();
+
+        expect(adapter.request, isNotNull);
+        expect(adapter.request!.baseUrl, ApiConfig.baseUrl);
+      },
+    );
   });
 
   group('QR kitchen-round printing setting', () {
@@ -162,4 +205,27 @@ void main() {
       );
     });
   });
+}
+
+class _CapturingAdapter implements HttpClientAdapter {
+  RequestOptions? request;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    request = options;
+    return ResponseBody.fromString(
+      jsonEncode({'data': <String, dynamic>{}, 'meta': <String, dynamic>{}}),
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
