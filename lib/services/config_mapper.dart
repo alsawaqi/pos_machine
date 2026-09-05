@@ -658,6 +658,11 @@ class ConfigMapper {
       kitchenPositions: Value(jsonEncode(kitchenPositions)),
       orderNumberingJson:
           Value(orderNumbering is Map ? jsonEncode(orderNumbering) : null),
+      tableSessionsMode: Value(
+        const {'off', 'shadow', 'live'}.contains(settings['table_sessions_mode'])
+            ? settings['table_sessions_mode'] as String
+            : 'off',
+      ),
     );
 
     return ParsedConfig(

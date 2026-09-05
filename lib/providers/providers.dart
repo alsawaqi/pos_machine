@@ -11,6 +11,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/sentry.dart';
 import '../data/config_repository.dart';
+import '../data/table_shadow_repository.dart';
+import '../models/remote_table_state.dart';
+import '../services/local_order_storage_service.dart';
+import '../services/table_shadow_service.dart';
 import '../l10n/l10n.dart';
 import '../data/db/app_database.dart';
 import '../data/order_sync_repository.dart';
@@ -274,6 +278,59 @@ final orderSyncRepositoryProvider = Provider<OrderSyncRepository>(
 final qrTillServiceProvider = Provider<QrTillGateway>(
   (ref) => QrTillService(ref.read(apiServiceProvider)),
 );
+
+final tableShadowConfigProvider = StreamProvider<SyncMetaRow?>(
+  (ref) => ref.watch(appDatabaseProvider).watchSyncMeta(),
+);
+
+final tableSessionsModeProvider = Provider<String>(
+  (ref) => tableSessionsMode(
+    ref.watch(tableShadowConfigProvider).asData?.value?.tableSessionsMode,
+  ),
+);
+
+final tableShadowGatewayProvider = Provider<TableShadowGateway>(
+  (ref) => TableShadowService(ref.read(apiServiceProvider)),
+);
+
+final remoteTableStoreProvider = Provider<RemoteTableStore>(
+  (ref) => LocalOrderStorageService.instance,
+);
+
+final tableShadowRepositoryProvider = Provider<TableShadowRepository>((ref) {
+  final preferences = ref.read(sharedPreferencesProvider);
+  final repository = TableShadowRepository(
+    gateway: ref.read(tableShadowGatewayProvider),
+    store: ref.read(remoteTableStoreProvider),
+    readScope: () => preferences.getString('table_shadow_scope'),
+    writeScope: (scope) async {
+      await preferences.setString('table_shadow_scope', scope);
+    },
+  );
+  void configure() {
+    final session = ref.read(sessionServiceProvider);
+    final baseUrl = ref.read(settingsServiceProvider).effectiveBaseUrl;
+    repository.configure(
+      mode: ref.read(tableSessionsModeProvider),
+      scope: '$baseUrl|${session.companyId}|${session.branchId}|${session.kioskId}',
+      sessionEpoch: session.deviceToken,
+      authenticated: session.isConfigured,
+    );
+  }
+  ref.listen(tableSessionsModeProvider, (_, _) => configure());
+  ref.listen(sessionControllerProvider, (_, _) => configure());
+  ref.listen(settingsControllerProvider, (_, _) => configure());
+  configure();
+  repository.start();
+  ref.onDispose(repository.dispose);
+  return repository;
+});
+
+final remoteBoardProvider = StreamProvider<RemoteTableSnapshot>((ref) async* {
+  final repository = ref.watch(tableShadowRepositoryProvider);
+  yield repository.snapshot;
+  yield* repository.changes;
+});
 
 final qrRoundGatewayProvider = Provider<QrRoundGateway>(
   (ref) => QrTillService(ref.read(apiServiceProvider)),

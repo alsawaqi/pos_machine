@@ -7,6 +7,7 @@ import '../models/pos_models.dart';
 import '../models/qr_till_models.dart';
 import 'api_models.dart';
 import 'session_service.dart' show OpenShiftData;
+import 'table_shadow_service.dart';
 
 typedef TokenGetter = String? Function();
 typedef UnauthorizedCallback = void Function();
@@ -225,6 +226,32 @@ class PosApiService {
 
   /// QR-002 S2 — branch table-board rows. Free tables are intentionally absent
   /// from this endpoint and are merged with the cached config by the screen.
+  Future<List<Map<String, dynamic>>> fetchTableBoard() async {
+    final body = await _send(() => _dio.get('/device/tables/board'));
+    final rows = body.dataMap['tables'];
+    if (rows is! List) throw const FormatException('Missing table board rows');
+    return [
+      for (final row in rows) (row as Map).cast<String, dynamic>(),
+    ];
+  }
+
+  Future<TableShadowFeed> fetchTableFeed({required int after, int limit = 100}) async {
+    final body = await _send(() => _dio.get('/device/tables/feed',
+        queryParameters: {'after': after, 'limit': limit}));
+    final rows = body.dataMap['events'] as List;
+    return TableShadowFeed(
+      events: [
+        for (final row in rows)
+          TableShadowEvent(
+            id: (row['id'] as num).toInt(),
+            tableId: (row['table_id'] as num).toInt(),
+          ),
+      ],
+      latestId: (body.metaMap['latest_id'] as num).toInt(),
+      hasMore: body.metaMap['has_more'] == true,
+    );
+  }
+
   Future<List<QrTableBoardRow>> fetchQrTableBoard() async {
     final body = await _send(() => _dio.get('/device/qr/table-board'));
     final rows = body.dataMap['tables'];

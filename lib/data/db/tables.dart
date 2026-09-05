@@ -208,6 +208,8 @@ class SyncMeta extends Table {
   // (`settings.order_numbering`: {enabled, prefix, pad, scope, daily_reset}).
   // null/absent = numbering disabled (device-local numbers).
   TextColumn get orderNumberingJson => text().nullable()();
+  // QR-003 T5: branch-only shadow mode; null/invalid remains off.
+  TextColumn get tableSessionsMode => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

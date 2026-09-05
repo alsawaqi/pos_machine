@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../models/pos_models.dart';
+import '../models/remote_table_state.dart';
 
 abstract class OrderStorageService {
   Future<int> fetchNextOrderNumber();
@@ -30,8 +31,11 @@ abstract class OrderStorageService {
 /// tests park an in-memory fake here. Never set in production.
 OrderStorageService? debugOrderStorageOverride;
 
-class LocalOrderStorageService implements OrderStorageService {
+class LocalOrderStorageService implements OrderStorageService, RemoteTableStore {
   LocalOrderStorageService._();
+
+  @visibleForTesting
+  LocalOrderStorageService.forTesting(Database database) : _database = database;
 
   static final LocalOrderStorageService instance = LocalOrderStorageService._();
 
@@ -200,7 +204,7 @@ class LocalOrderStorageService implements OrderStorageService {
 
     return openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE order_history (
@@ -239,6 +243,7 @@ class LocalOrderStorageService implements OrderStorageService {
             linked_table_ids_json TEXT
           )
         ''');
+        await createRemoteTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -309,8 +314,104 @@ class LocalOrderStorageService implements OrderStorageService {
             'ALTER TABLE dining_tables ADD COLUMN linked_table_ids_json TEXT',
           );
         }
+        if (oldVersion < 5) {
+          await createRemoteTables(db);
+        }
       },
     );
+  }
+
+  /// Shared by fresh creation and the additive v4-to-v5 upgrade.
+  static Future<void> createRemoteTables(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE remote_table_states (
+        table_id INTEGER PRIMARY KEY,
+        seating_uuid TEXT, seating_status TEXT, origin TEXT, temp_reference TEXT,
+        opened_at TEXT, expires_at TEXT,
+        needs_review_count INTEGER NOT NULL DEFAULT 0,
+        joined_table_ids_json TEXT,
+        bill_order_uuid TEXT, bill_status TEXT, bill_grand_total_baisas INTEGER,
+        bill_receipt_number TEXT, bill_temp_reference TEXT,
+        charge_claim_live INTEGER NOT NULL DEFAULT 0,
+        fetched_at TEXT NOT NULL,
+        source TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE remote_sync_meta (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        feed_cursor INTEGER,
+        board_fetched_at TEXT, last_feed_ok_at TEXT, last_error TEXT,
+        consecutive_failures INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE remote_table_disagreements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        observed_at TEXT NOT NULL, table_id TEXT NOT NULL,
+        local_status TEXT NOT NULL,
+        server_status TEXT NOT NULL,
+        server_origin TEXT, server_reference TEXT, local_reference TEXT,
+        kind TEXT NOT NULL
+      )
+    ''');
+  }
+
+  @override
+  Future<List<RemoteTableState>> readRemoteTables() async {
+    final db = await database;
+    return (await db.query('remote_table_states'))
+        .map(RemoteTableState.fromRow).toList(growable: false);
+  }
+
+  @override
+  Future<RemoteSyncMeta> readRemoteMeta() async {
+    final db = await database;
+    final rows = await db.query('remote_sync_meta', where: 'id = 1');
+    return rows.isEmpty ? const RemoteSyncMeta() : RemoteSyncMeta.fromRow(rows.single);
+  }
+
+  @override
+  Future<void> replaceRemoteBoard(List<RemoteTableState> rows, DateTime at) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('remote_table_states');
+      for (final row in rows) {
+        await txn.insert('remote_table_states', row.toRow());
+      }
+      await txn.rawInsert('INSERT OR IGNORE INTO remote_sync_meta (id) VALUES (1)');
+      await txn.update('remote_sync_meta', {'board_fetched_at': at.toIso8601String()},
+          where: 'id = 1');
+    });
+  }
+
+  @override
+  Future<void> saveRemoteMeta(RemoteSyncMeta meta) async {
+    final db = await database;
+    await db.insert('remote_sync_meta', meta.toRow(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  @override
+  Future<void> clearRemoteScope() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('remote_table_states');
+      await txn.delete('remote_sync_meta');
+      await txn.delete('remote_table_disagreements');
+    });
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> readRemoteDisagreements({int limit = 200}) async {
+    final db = await database;
+    return db.query('remote_table_disagreements', orderBy: 'id DESC', limit: limit);
+  }
+
+  @override
+  Future<void> addRemoteDisagreement(Map<String, Object?> row) async {
+    final db = await database;
+    await db.insert('remote_table_disagreements', row);
   }
 
   OrderHistoryRecord _mapHistoryRecord(Map<String, Object?> row) {

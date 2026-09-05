@@ -42,7 +42,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 28;
+  int get schemaVersion => 29;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -183,6 +183,9 @@ class AppDatabase extends _$AppDatabase {
             // A pre-v5 upgrade creates the latest outbox table above, including
             // this column, so only existing outbox installations add it here.
             await m.addColumn(orderOutbox, orderOutbox.serverRejections);
+          }
+          if (from < 29) {
+            await m.addColumn(syncMeta, syncMeta.tableSessionsMode);
           }
         },
       );
