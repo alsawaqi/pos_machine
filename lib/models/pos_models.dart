@@ -1625,6 +1625,7 @@ class OrderSnapshot {
   // allocated server-side at payment time. '' = none (numbering disabled or
   // the device was offline → the local [orderNumber] stands alone).
   final String receiptNumber;
+  final String tempReference;
   // P-F9 — the applied offers frozen at snapshot time: flattened entries
   // {offer_id, name, amount (OMR), line_index?} — per-line allocations plus
   // any order-level (spend_get) amount. Pushed as discounts[] rows carrying
@@ -1716,6 +1717,7 @@ class OrderSnapshot {
     this.discountAmountType,
     this.discountReason = '',
     this.receiptNumber = '',
+    this.tempReference = '',
     this.offers = const <Map<String, dynamic>>[],
     this.loyaltyRedeemRuleId,
     this.loyaltyRedeemPoints = 0,
@@ -1798,6 +1800,7 @@ class OrderSnapshot {
       compLineIndex: (map['compLineIndex'] as num?)?.toInt(),
       compQty: (map['compQty'] as num?)?.toInt(),
       receiptNumber: map['receiptNumber']?.toString() ?? '',
+      tempReference: map['tempReference']?.toString() ?? '',
       offers: ((map['offers'] as List?) ?? const [])
           .whereType<Map>()
           .map((m) => Map<String, dynamic>.from(m))
@@ -1880,6 +1883,7 @@ class OrderSnapshot {
       if (compLineIndex != null) 'compLineIndex': compLineIndex,
       if (compQty != null) 'compQty': compQty,
       if (receiptNumber.isNotEmpty) 'receiptNumber': receiptNumber,
+      if (tempReference.isNotEmpty) 'tempReference': tempReference,
       if (offers.isNotEmpty) 'offers': offers,
       'subtotal': subtotal,
       'tax': tax,
@@ -1929,6 +1933,7 @@ class OrderSnapshot {
     String? discountAmountType,
     String? discountReason,
     String? receiptNumber,
+    String? tempReference,
     List<Map<String, dynamic>>? offers,
     int? loyaltyRedeemRuleId,
     int? loyaltyRedeemPoints,
@@ -1980,6 +1985,7 @@ class OrderSnapshot {
       discountAmountType: discountAmountType ?? this.discountAmountType,
       discountReason: discountReason ?? this.discountReason,
       receiptNumber: receiptNumber ?? this.receiptNumber,
+      tempReference: tempReference ?? this.tempReference,
       offers: offers ?? this.offers,
       loyaltyRedeemRuleId: loyaltyRedeemRuleId ?? this.loyaltyRedeemRuleId,
       loyaltyRedeemPoints: loyaltyRedeemPoints ?? this.loyaltyRedeemPoints,
@@ -2044,6 +2050,10 @@ class OrderSnapshot {
   /// number when one was allocated, else the device-local '#N'.
   String get displayOrderNumber =>
       receiptNumber.isNotEmpty ? receiptNumber : '#$orderNumber';
+
+  String? get staffReference => receiptNumber.isNotEmpty
+      ? receiptNumber
+      : (tempReference.isNotEmpty ? tempReference : null);
 
   bool get isFullyCanceled => cancellations.any((entry) => entry.fullOrder);
 
@@ -2259,6 +2269,7 @@ class OrderHistoryRecord {
       'serverOrderUuid': json['uuid']?.toString() ?? '',
       // P-F8 — the merchant's sequential number, when the order has one.
       'receiptNumber': json['receipt_number']?.toString() ?? '',
+      'tempReference': json['temp_reference']?.toString() ?? '',
       // P-G7 — provider linkage for delivery orders (null otherwise).
       if (json['delivery'] is Map) ...{
         'deliveryProviderId':

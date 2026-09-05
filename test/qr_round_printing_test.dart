@@ -609,6 +609,41 @@ void main() {
     expect(rendered, isNot(contains('4.750')));
     expect(rendered, isNot(contains('OMR')));
   });
+
+  test('QR kitchen ticket uses the trimmed temporary reference before a receipt exists', () {
+    final ticket = buildQrKitchenTicket(
+      _round(3, receiptNumber: null, tempReference: '  T-0905-012  '),
+      arabic: false,
+    );
+    expect(ticket.orderLabel, 'T-0905-012');
+    final lines = buildKitchenTicketLines(ticket);
+    expect(lines.where((line) => line.text == 'T-0905-012'), hasLength(1));
+    expect(
+      buildQrKitchenTicket(
+        _round(3, receiptNumber: '  ', tempReference: 'T-0905-012'),
+        arabic: true,
+      ).orderLabel,
+      'T-0905-012',
+    );
+  });
+
+  test('QR kitchen ticket prefers a trimmed receipt over the temporary reference', () {
+    expect(
+      buildQrKitchenTicket(
+        _round(3, receiptNumber: '  QR-0001  ', tempReference: 'T-0905-012'),
+        arabic: false,
+      ).orderLabel,
+      'QR-0001',
+    );
+  });
+
+  test('QR kitchen ticket retains the localized fallback when both references are absent', () {
+    for (final reference in [null, '', '  ']) {
+      final envelope = _round(3, receiptNumber: reference, tempReference: reference);
+      expect(buildQrKitchenTicket(envelope, arabic: false).orderLabel, 'QR ORDER');
+      expect(buildQrKitchenTicket(envelope, arabic: true).orderLabel, 'طلب QR');
+    }
+  });
 }
 
 QrRoundAutoPrintController _controller(
@@ -629,7 +664,11 @@ QrRoundAutoPrintController _controller(
   pollInterval: const Duration(days: 1),
 );
 
-QrRoundEnvelope _round(int id) => QrRoundEnvelope(
+QrRoundEnvelope _round(
+  int id, {
+  String? receiptNumber = 'QR-0042',
+  String? tempReference,
+}) => QrRoundEnvelope(
   round: QrDeviceRound(
     id: id,
     roundNo: id,
@@ -654,7 +693,8 @@ QrRoundEnvelope _round(int id) => QrRoundEnvelope(
   orderUuid: 'order-$id',
   sessionUuid: 'session-$id',
   tableLabel: 'Table 12',
-  receiptNumber: 'QR-0042',
+  receiptNumber: receiptNumber,
+  tempReference: tempReference,
 );
 
 class _Gateway implements QrRoundGateway {

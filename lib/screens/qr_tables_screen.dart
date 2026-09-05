@@ -582,6 +582,7 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
               uuid: row.order!.uuid,
               status: result.status,
               receiptNumber: result.receiptNumber ?? row.order!.receiptNumber,
+              tempReference: result.tempReference ?? row.order!.tempReference,
               acceptedTotalBaisas: row.order!.acceptedTotalBaisas,
             ),
           )
@@ -780,8 +781,9 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
                     ],
                   ),
                 ),
-                if (order?.receiptNumber != null)
-                  _ReceiptBadge(order!.receiptNumber!),
+                if (order?.receiptNumber ?? order?.tempReference
+                    case final reference?)
+                  _ReceiptBadge(reference),
                 if (table.row?.tableDeleted == true) ...[
                   const SizedBox(width: 8),
                   const Chip(
@@ -1437,6 +1439,9 @@ class _SettlementClaimDialogState extends State<_SettlementClaimDialog> {
                 letterSpacing: 1.1,
               ),
             ),
+            if (widget.claim.receiptNumber ?? widget.claim.tempReference
+                case final reference?)
+              Text(reference, key: const ValueKey('qr-claim-reference')),
             Text(
               _money(widget.claim.frozenAmountBaisas),
               key: const ValueKey('qr-frozen-amount'),
@@ -1620,7 +1625,7 @@ class _TableCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        order.receiptNumber ?? 'QR order',
+                        order.receiptNumber ?? order.tempReference ?? 'QR order',
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),

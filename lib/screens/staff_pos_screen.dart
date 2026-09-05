@@ -10912,11 +10912,12 @@ class _OrderHistoryCard extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      // P-F8 — the merchant's sequential number when the
-                      // order has one, else the local 'Order #N'.
-                      snapshot.receiptNumber.isNotEmpty
-                          ? 'Order ${snapshot.receiptNumber}'
-                          : l10n.posStorageOrderNumber(record.orderNumber),
+                      // Prefer the official receipt, then the QR temporary
+                      // reference, else the existing 'Order #N' fallback.
+                      switch (snapshot.staffReference) {
+                        final ref? => 'Order $ref',
+                        null => l10n.posStorageOrderNumber(record.orderNumber),
+                      },
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w900,

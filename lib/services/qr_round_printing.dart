@@ -29,10 +29,14 @@ KitchenTicketData buildQrKitchenTicket(
 }) {
   final round = envelope.round;
   final receipt = envelope.receiptNumber?.trim();
+  final tempReference = envelope.tempReference?.trim();
+  final reference = receipt != null && receipt.isNotEmpty
+      ? receipt
+      : tempReference;
   return KitchenTicketData(
-    orderLabel: receipt == null || receipt.isEmpty
+    orderLabel: reference == null || reference.isEmpty
         ? (arabic ? 'طلب QR' : 'QR ORDER')
-        : receipt,
+        : reference,
     orderTypeLabel: arabic
         ? 'طلب طاولة QR · الجولة ${round.roundNo}'
         : 'QR DINE-IN · ROUND ${round.roundNo}',

@@ -71,6 +71,72 @@ const _tables = [
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets('temp-only QR references appear on the table card and detail badge', (tester) async {
+    final service = _FakeTillGateway(
+      board: [_row(id: 3, sessionStatus: 'active', orderStatus: 'open', numbered: false, tempReference: 'T-0905-012')],
+      active: [_activeOrder(numbered: false, tempReference: 'T-0905-012')],
+    );
+    await _pumpBoard(tester, service: service);
+    expect(find.text('T-0905-012'), findsOneWidget);
+    await _selectTable(tester, '3');
+    expect(find.text('T-0905-012'), findsNWidgets(2));
+    expect(find.text('QR order'), findsNothing);
+    expect(find.text('QR-0003'), findsNothing);
+    await _disposeBoard(tester);
+  });
+
+  for (final references in [
+    (receipt: null, temp: 'T-0905-012', expected: 'T-0905-012'),
+    (receipt: 'QR-0001', temp: 'T-0905-012', expected: 'QR-0001'),
+    (receipt: null, temp: null, expected: null),
+  ]) {
+    testWidgets('settlement claim reference is ${references.expected ?? 'hidden'}', (tester) async {
+      final service = _FakeTillGateway(
+        board: [_row(id: 3, sessionStatus: 'active', orderStatus: 'open')],
+        active: [_activeOrder()],
+      );
+      final flow = _FakeSettlementFlow(
+        claimValue: _claim('order-3', receiptNumber: references.receipt, tempReference: references.temp),
+      );
+      await _pumpBoard(tester, service: service, flow: flow);
+      await _selectTable(tester, '3');
+      await tester.tap(find.byKey(const ValueKey('qr-action-settle')));
+      await tester.pump();
+      final reference = find.byKey(const ValueKey('qr-claim-reference'));
+      if (references.expected == null) {
+        expect(reference, findsNothing);
+      } else {
+        expect(reference, findsOneWidget);
+        expect(tester.widget<Text>(reference).data, references.expected);
+      }
+      expect(find.byKey(const ValueKey('qr-frozen-amount')), findsOneWidget);
+      await _disposeBoard(tester);
+    });
+  }
+
+  testWidgets('fallback merges the temporary reference before the delayed settlement claim', (tester) async {
+    final service = _FakeTillGateway(
+      board: [_row(id: 5, sessionStatus: 'expired', orderStatus: 'awaiting_payment', orphaned: true, numbered: false)],
+      fallbackResult: const QrOrderActionResult(
+        orderUuid: 'order-5',
+        status: 'held',
+        tempReference: 'T-0905-012',
+      ),
+    );
+    final claim = Completer<QrSettlementClaim>();
+    final flow = _FakeSettlementFlow(delayedClaim: claim);
+    await _pumpBoard(tester, service: service, flow: flow);
+    await _selectTable(tester, '5');
+    await tester.tap(find.byKey(const ValueKey('qr-action-fallback')));
+    await tester.pump();
+    expect(find.text('T-0905-012'), findsNWidgets(2));
+    expect(flow.calls, ['claim:order-5']);
+    claim.complete(_claim('order-5', tempReference: 'T-0905-012'));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('qr-claim-reference')), findsOneWidget);
+    await _disposeBoard(tester);
+  });
+
   test(
     'classifier does not mistake an archived active table for an orphan',
     () {
@@ -939,6 +1005,8 @@ QrTableBoardRow _row({
   String? orderStatus,
   bool orphaned = false,
   bool tableDeleted = false,
+  bool numbered = true,
+  String? tempReference,
   List<QrPendingRound> pendingRounds = const [],
 }) => QrTableBoardRow(
   tableId: id,
@@ -957,19 +1025,25 @@ QrTableBoardRow _row({
       : QrBoardOrder(
           uuid: 'order-$id',
           status: orderStatus,
-          receiptNumber: 'QR-${id.toString().padLeft(4, '0')}',
+          receiptNumber: numbered ? 'QR-${id.toString().padLeft(4, '0')}' : null,
+          tempReference: tempReference,
           acceptedTotalBaisas: 4750,
         ),
 );
 
-QrActiveOrder _activeOrder({int id = 3}) => QrActiveOrder(
+QrActiveOrder _activeOrder({
+  int id = 3,
+  bool numbered = true,
+  String? tempReference,
+}) => QrActiveOrder(
   uuid: 'order-$id',
   status: 'open',
   source: 'qr_web',
   tableId: id,
   customerId: 42,
   plateNumber: 'OM 1234',
-  receiptNumber: 'QR-${id.toString().padLeft(4, '0')}',
+  receiptNumber: numbered ? 'QR-${id.toString().padLeft(4, '0')}' : null,
+  tempReference: tempReference,
   subtotalBaisas: 4500,
   discountTotalBaisas: 0,
   compTotalBaisas: 0,
@@ -990,10 +1064,16 @@ QrActiveOrder _activeOrder({int id = 3}) => QrActiveOrder(
   ],
 );
 
-QrSettlementClaim _claim(String orderUuid) => QrSettlementClaim(
+QrSettlementClaim _claim(
+  String orderUuid, {
+  String? receiptNumber,
+  String? tempReference,
+}) => QrSettlementClaim(
   orderUuid: orderUuid,
   frozenAmountBaisas: 4750,
   status: 'claimed',
+  receiptNumber: receiptNumber,
+  tempReference: tempReference,
   deadlineAt: DateTime.now().add(const Duration(minutes: 2)),
 );
 
@@ -1008,6 +1088,7 @@ class _FakeTillGateway implements QrTillGateway {
     this.board = const [],
     this.active = const [],
     this.reopenError,
+    this.fallbackResult,
   });
 
   List<QrTableBoardRow> board;
@@ -1015,6 +1096,7 @@ class _FakeTillGateway implements QrTillGateway {
   int boardCalls = 0;
   final List<Object> boardErrors = [];
   final Object? reopenError;
+  final QrOrderActionResult? fallbackResult;
   List<String>? timeline;
 
   @override
@@ -1061,7 +1143,7 @@ class _FakeTillGateway implements QrTillGateway {
   @override
   Future<QrOrderActionResult> fallbackToCounter(String orderUuid) async {
     timeline?.add('fallback:$orderUuid');
-    return QrOrderActionResult(orderUuid: orderUuid, status: 'held');
+    return fallbackResult ?? QrOrderActionResult(orderUuid: orderUuid, status: 'held');
   }
 
   @override

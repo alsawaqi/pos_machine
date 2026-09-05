@@ -25,6 +25,63 @@ Map<String, dynamic> _serverOrder({
 /// the server JSON -> OrderHistoryRecord mapping (money is integer baisas -> OMR).
 void main() {
   group('OrderHistoryRecord.fromServerJson', () {
+    test('staff reference uses the temporary reference on an unnumbered QR history row', () {
+      for (final status in ['void', 'paid']) {
+        final record = OrderHistoryRecord.fromServerJson(
+          _serverOrder(extra: {
+            'status': status,
+            'receipt_number': null,
+            'temp_reference': 'T-0905-012',
+          }),
+        );
+        expect(record.snapshot.staffReference, 'T-0905-012');
+        expect(record.snapshot.tempReference, 'T-0905-012');
+        expect(record.snapshot.displayOrderNumber, '#42');
+      }
+    });
+
+    test('staff reference prefers the official receipt when both exist', () {
+      final snapshot = OrderHistoryRecord.fromServerJson(
+        _serverOrder(extra: {
+          'receipt_number': 'QR-0001',
+          'temp_reference': 'T-0905-012',
+        }),
+      ).snapshot;
+      expect(snapshot.staffReference, 'QR-0001');
+      expect(snapshot.displayOrderNumber, 'QR-0001');
+    });
+
+    test('staff reference stays null when both server references are absent', () {
+      final record = OrderHistoryRecord.fromServerJson(
+        _serverOrder(extra: {
+          'receipt_number': null,
+          'temp_reference': null,
+        }),
+      );
+      expect(record.snapshot.staffReference, isNull);
+      expect(record.snapshot.tempReference, '');
+      expect(record.orderNumber, 42);
+      expect(record.snapshot.displayOrderNumber, '#42');
+    });
+
+    test('temporary reference survives the snapshot JSON and copyWith paths', () {
+      final snapshot = OrderHistoryRecord.fromServerJson(
+        _serverOrder(extra: {
+          'receipt_number': null,
+          'temp_reference': 'T-0905-012',
+        }),
+      ).snapshot;
+      final restored = OrderSnapshot.fromMap(snapshot.toMap());
+      expect(restored.tempReference, 'T-0905-012');
+      expect(restored.staffReference, 'T-0905-012');
+      expect(restored.copyWith(note: 'Preserved').tempReference, 'T-0905-012');
+      expect(restored.copyWith(tempReference: 'T-0905-013').staffReference, 'T-0905-013');
+      final cleared = restored.copyWith(tempReference: '');
+      expect(cleared.staffReference, isNull);
+      expect(cleared.toMap(), isNot(contains('tempReference')));
+      expect(OrderSnapshot.initial().tempReference, '');
+    });
+
     test('maps the /device/orders/history shape (baisas -> OMR)', () {
       final json = <String, dynamic>{
         'id': 42,

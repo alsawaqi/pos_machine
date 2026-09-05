@@ -8,17 +8,20 @@ class QrBoardOrder {
     required this.status,
     required this.acceptedTotalBaisas,
     this.receiptNumber,
+    this.tempReference,
   });
 
   final String uuid;
   final String status;
   final String? receiptNumber;
+  final String? tempReference;
   final int acceptedTotalBaisas;
 
   factory QrBoardOrder.fromJson(Map<String, dynamic> json) => QrBoardOrder(
     uuid: json['uuid']?.toString() ?? '',
     status: json['status']?.toString() ?? '',
     receiptNumber: _nullableString(json['receipt_number']),
+    tempReference: _nullableString(json['temp_reference']),
     acceptedTotalBaisas: (json['accepted_total_baisas'] as num?)?.toInt() ?? 0,
   );
 }
@@ -252,6 +255,7 @@ class QrRoundEnvelope {
     this.sessionUuid,
     this.tableLabel,
     this.receiptNumber,
+    this.tempReference,
   });
 
   final QrDeviceRound round;
@@ -259,6 +263,7 @@ class QrRoundEnvelope {
   final String? sessionUuid;
   final String? tableLabel;
   final String? receiptNumber;
+  final String? tempReference;
 
   factory QrRoundEnvelope.fromJson(Map<String, dynamic> json) {
     final rawRound = json['round'];
@@ -271,6 +276,7 @@ class QrRoundEnvelope {
       sessionUuid: _nullableString(json['session_uuid']),
       tableLabel: _nullableString(json['table_label']),
       receiptNumber: _nullableString(json['receipt_number']),
+      tempReference: _nullableString(json['temp_reference']),
     );
   }
 
@@ -294,6 +300,7 @@ class QrRoundEnvelope {
         sessionUuid: _nullableString(json['session_uuid']),
         tableLabel: _nullableString(json['table_label']),
         receiptNumber: _nullableString(json['receipt_number']),
+        tempReference: _nullableString(json['temp_reference']),
       );
 }
 
@@ -396,6 +403,7 @@ class QrActiveOrder {
     this.customerId,
     this.plateNumber,
     this.receiptNumber,
+    this.tempReference,
   });
 
   final String uuid;
@@ -405,6 +413,7 @@ class QrActiveOrder {
   final int? customerId;
   final String? plateNumber;
   final String? receiptNumber;
+  final String? tempReference;
   final int subtotalBaisas;
   final int discountTotalBaisas;
   final int compTotalBaisas;
@@ -425,6 +434,7 @@ class QrActiveOrder {
       customerId: (json['customer_id'] as num?)?.toInt(),
       plateNumber: _nullableString(json['plate_number']),
       receiptNumber: _nullableString(json['receipt_number']),
+      tempReference: _nullableString(json['temp_reference']),
       subtotalBaisas: (json['subtotal_baisas'] as num?)?.toInt() ?? 0,
       discountTotalBaisas:
           (json['discount_total_baisas'] as num?)?.toInt() ?? 0,
@@ -447,6 +457,8 @@ class QrSettlementClaim {
     required this.frozenAmountBaisas,
     required this.status,
     required this.deadlineAt,
+    this.receiptNumber,
+    this.tempReference,
     this.claimedAt,
     this.alreadyClaimedByThisDevice = false,
   });
@@ -455,6 +467,8 @@ class QrSettlementClaim {
   final int frozenAmountBaisas;
   final String status;
   final DateTime deadlineAt;
+  final String? receiptNumber;
+  final String? tempReference;
   final DateTime? claimedAt;
   final bool alreadyClaimedByThisDevice;
 
@@ -473,6 +487,8 @@ class QrSettlementClaim {
           0,
       status: json['status']?.toString() ?? 'awaiting_payment',
       deadlineAt: deadline,
+      receiptNumber: _nullableString(json['receipt_number']),
+      tempReference: _nullableString(json['temp_reference']),
       claimedAt: DateTime.tryParse(json['charge_claimed_at']?.toString() ?? ''),
       alreadyClaimedByThisDevice:
           json['already_claimed_by_this_device'] == true,
@@ -485,12 +501,14 @@ class QrOrderActionResult {
     required this.orderUuid,
     required this.status,
     this.receiptNumber,
+    this.tempReference,
     this.sessionStatus,
   });
 
   final String orderUuid;
   final String status;
   final String? receiptNumber;
+  final String? tempReference;
   final String? sessionStatus;
 
   factory QrOrderActionResult.fromJson(Map<String, dynamic> json) =>
@@ -498,6 +516,7 @@ class QrOrderActionResult {
         orderUuid: json['order_uuid']?.toString() ?? '',
         status: json['status']?.toString() ?? '',
         receiptNumber: _nullableString(json['receipt_number']),
+        tempReference: _nullableString(json['temp_reference']),
         sessionStatus: _nullableString(json['session_status']),
       );
 }

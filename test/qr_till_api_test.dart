@@ -12,6 +12,48 @@ const orderUuid = '11111111-1111-4111-8111-111111111111';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('QR models trim optional references and keep missing references null', () {
+    for (final value in [null, '', '  ', ' T-0905-012 ']) {
+      final expected = value == ' T-0905-012 ' ? 'T-0905-012' : null;
+      final board = QrBoardOrder.fromJson({
+        'uuid': orderUuid,
+        'status': 'open',
+        'receipt_number': null,
+        'temp_reference': value,
+      });
+      final active = QrActiveOrder.fromJson({
+        ..._activeOrder(orderUuid, source: 'qr_web'),
+        'temp_reference': value,
+      });
+      final action = QrOrderActionResult.fromJson({
+        'order_uuid': orderUuid,
+        'status': 'held',
+        'temp_reference': value,
+      });
+      final claim = QrSettlementClaim.fromJson({
+        'order_uuid': orderUuid,
+        'charge_deadline_at': '2026-09-05T12:05:00Z',
+        'receipt_number': value,
+        'temp_reference': value,
+      });
+      final nested = QrRoundEnvelope.fromJson({
+        ..._roundEnvelope(status: 'accepted'),
+        'temp_reference': value,
+      });
+      final feed = QrRoundEnvelope.fromFeedJson(
+        _flatFeedRound(tempReference: value),
+      );
+      expect(board.tempReference, expected);
+      expect(board.receiptNumber, isNull);
+      expect(active.tempReference, expected);
+      expect(action.tempReference, expected);
+      expect(claim.receiptNumber, expected);
+      expect(claim.tempReference, expected);
+      expect(nested.tempReference, expected);
+      expect(feed.tempReference, expected);
+    }
+  });
+
   test(
     'claim sends nested GPS and parses the frozen integer contract',
     () async {
@@ -20,6 +62,8 @@ void main() {
           'data': {
             'order_uuid': orderUuid,
             'status': 'awaiting_payment',
+            'receipt_number': null,
+            'temp_reference': 'T-0905-012',
             'charge_amount_baisas': 4750,
             'charge_claimed_at': '2026-08-30T12:00:00Z',
             'charge_deadline_at': '2026-08-30T12:05:00Z',
@@ -46,6 +90,8 @@ void main() {
       });
       expect(claim.orderUuid, orderUuid);
       expect(claim.status, 'awaiting_payment');
+      expect(claim.receiptNumber, isNull);
+      expect(claim.tempReference, 'T-0905-012');
       expect(claim.frozenAmountBaisas, 4750);
       expect(claim.deadlineAt, DateTime.utc(2026, 8, 30, 12, 5));
     },
@@ -104,6 +150,8 @@ void main() {
 
     expect(orders.map((order) => order.uuid), [orderUuid]);
     expect(orders.single.grandTotalBaisas, 4750);
+    expect(orders.single.receiptNumber, isNull);
+    expect(orders.single.tempReference, 'T-0905-012');
     expect(adapter.requests.single.path, '/device/orders/active');
   });
 
@@ -126,6 +174,7 @@ void main() {
               'data': {
                 'order_uuid': orderUuid,
                 'receipt_number': 'QR-0042',
+                'temp_reference': 'T-0905-012',
                 'status': 'held',
               },
               'errors': <Object>[],
@@ -150,6 +199,7 @@ void main() {
       expect(reopened.sessionStatus, 'active');
       expect(moved.status, 'held');
       expect(moved.receiptNumber, 'QR-0042');
+      expect(moved.tempReference, 'T-0905-012');
       expect(adapter.requests.map((request) => request.path), [
         '/device/qr/reopen-payment',
         '/device/qr/fallback-to-counter',
@@ -266,6 +316,7 @@ void main() {
       expect(page.rounds[1].round.roundNo, 3);
       expect(page.rounds[1].tableLabel, isNull);
       expect(page.rounds[1].receiptNumber, isNull);
+      expect(page.rounds[1].tempReference, 'T-0905-012');
     },
   );
 
@@ -369,6 +420,7 @@ Map<String, dynamic> _roundEnvelope({required String status}) => {
   'round': _round(status: status),
   'table_label': 'T-12',
   'receipt_number': 'QR-0042',
+  'temp_reference': 'T-0905-012',
   'order_uuid': orderUuid,
   'order': {
     'subtotal_baisas': 5000,
@@ -383,10 +435,12 @@ Map<String, dynamic> _flatFeedRound({
   int roundNo = 2,
   String? tableLabel = 'T-12',
   String? receiptNumber = 'QR-0042',
+  String? tempReference = 'T-0905-012',
 }) => {
   ..._round(status: 'accepted', id: id, roundNo: roundNo),
   'table_label': tableLabel,
   'receipt_number': receiptNumber,
+  'temp_reference': tempReference,
   'order_uuid': orderUuid,
   'session_uuid': 'session-42',
   // A private field accidentally added server-side must never enter a model.
@@ -434,6 +488,7 @@ void _expectRoundEnvelope(QrRoundEnvelope envelope, {required String status}) {
   expect(envelope.orderUuid, orderUuid);
   expect(envelope.tableLabel, 'T-12');
   expect(envelope.receiptNumber, 'QR-0042');
+  expect(envelope.tempReference, 'T-0905-012');
   expect(envelope.round.id, 42);
   expect(envelope.round.roundNo, 2);
   expect(envelope.round.status, status);
@@ -466,6 +521,8 @@ Map<String, dynamic> _activeOrder(String uuid, {required String source}) => {
   'uuid': uuid,
   'status': 'open',
   'source': source,
+  'receipt_number': null,
+  'temp_reference': 'T-0905-012',
   'subtotal_baisas': 4500,
   'discount_total_baisas': 0,
   'comp_total_baisas': 0,
