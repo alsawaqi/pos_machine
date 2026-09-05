@@ -215,9 +215,16 @@ class TableShadowRepository with WidgetsBindingObserver {
     final rows = [for (final row in json) RemoteTableState.fromBoard(row, now)];
     await store.replaceRemoteBoard(rows, now);
     if (!_current(generation)) return;
-    await _disagreements.observe(localTables?.call() ?? const [], {
-      for (final row in rows) row.tableId: row,
-    });
+    try {
+      await _disagreements.observe(localTables?.call() ?? const [], {
+        for (final row in rows) row.tableId: row,
+      });
+    } catch (_) {
+      // A failed remote journal read/write must not leave a seemingly usable
+      // shadow. Keep the old cursor so the next successful poll retries it.
+      _snapshot = RemoteTableSnapshot(meta: _snapshot.meta);
+      rethrow;
+    }
     if (!_current(generation)) return;
     final old = _snapshot.meta;
     _snapshot = RemoteTableSnapshot(

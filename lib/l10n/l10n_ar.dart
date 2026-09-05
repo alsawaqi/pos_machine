@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'l10n.dart';
 
 // ignore_for_file: type=lint
@@ -7,6 +8,93 @@ import 'l10n.dart';
 /// The translations for Arabic (`ar`).
 class L10nAr extends L10n {
   L10nAr([String locale = 'ar']) : super(locale);
+
+  @override
+  String get tableServerView => 'عرض الخادم';
+
+  @override
+  String tableServerFree(String age) {
+    return 'الخادم: متاحة · $age';
+  }
+
+  @override
+  String tableServerQr(String reference, String age) {
+    return 'الخادم: ضيوف QR · $reference · $age';
+  }
+
+  @override
+  String tableServerOccupied(String age) {
+    return 'الخادم: مشغولة · $age';
+  }
+
+  @override
+  String get tableServerReferenceDiffers => ' · المرجع مختلف';
+
+  @override
+  String tableServerNeedsReview(int count) {
+    return ' + بحاجة للمراجعة ($count)';
+  }
+
+  @override
+  String get tableServerPayment => 'الخادم: الدفع جارٍ';
+
+  @override
+  String tableServerStale(String age) {
+    return 'عرض الخادم قديم ($age)';
+  }
+
+  @override
+  String tableServerAgeSeconds(int count) {
+    return '$count ث';
+  }
+
+  @override
+  String tableServerAgeMinutes(int count) {
+    return '$count د';
+  }
+
+  @override
+  String get tableSoakTitle => 'مراقبة الطاولات (عرض الخادم)';
+
+  @override
+  String tableSoakMode(String mode) {
+    return 'الوضع: $mode';
+  }
+
+  @override
+  String tableSoakCursor(String value) {
+    return 'المؤشر: $value';
+  }
+
+  @override
+  String tableSoakLastSuccess(String value) {
+    return 'آخر نجاح: $value';
+  }
+
+  @override
+  String tableSoakFailures(int count) {
+    return 'الإخفاقات: $count';
+  }
+
+  @override
+  String tableSoakError(String value) {
+    return 'آخر خطأ: $value';
+  }
+
+  @override
+  String get tableSoakEmpty => 'لا توجد اختلافات مسجلة.';
+
+  @override
+  String get tableSoakCopy => 'نسخ';
+
+  @override
+  String get tableModeOff => 'إيقاف';
+
+  @override
+  String get tableModeShadow => 'مراقبة فقط';
+
+  @override
+  String get tableModeLive => 'مباشر (مراقبة فقط في T5)';
 
   @override
   String get commonCancel => 'إلغاء';

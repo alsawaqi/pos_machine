@@ -1,7 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:pos_machine/data/table_shadow_repository.dart';
 import 'package:pos_machine/models/remote_table_state.dart';
+import 'package:pos_machine/l10n/l10n.dart';
+import 'package:pos_machine/screens/settings_screen.dart';
 
 void main() {
   late _LogStore store;
@@ -102,6 +106,93 @@ void main() {
       expect(store.rows, hasLength(1));
     },
   );
+
+  for (final language in ['en', 'ar']) {
+    testWidgets(
+      'Settings Table soak renders and copies last 200 rows in $language',
+      (tester) async {
+        String? copied;
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          (call) async {
+            if (call.method == 'Clipboard.setData') {
+              copied = (call.arguments as Map)['text'] as String;
+            }
+            return null;
+          },
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            null,
+          ),
+        );
+        final rows = [
+          for (var id = 0; id < 205; id++)
+            <String, Object?>{
+              'observed_at': '2026-09-06T12:00:00Z',
+              'table_id': 'row-$id',
+              'local_status': 'available',
+              'server_status': 'open',
+              'server_origin': 'station',
+              'server_reference': 'T-0906-012',
+              'local_reference': null,
+              'kind': 'server_occupied_local_free',
+            },
+        ];
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: Locale(language),
+            localizationsDelegates: L10n.localizationsDelegates,
+            supportedLocales: L10n.supportedLocales,
+            home: Scaffold(
+              body: SizedBox(
+                width: 550,
+                child: TableSoakPanel(
+                  mode: 'shadow',
+                  meta: RemoteSyncMeta(
+                    feedCursor: 77,
+                    lastFeedOkAt: DateTime.utc(2026, 9, 6),
+                    consecutiveFailures: 2,
+                    lastError: 'http_429',
+                  ),
+                  rows: rows,
+                ),
+              ),
+            ),
+          ),
+        );
+        expect(
+          find.byKey(const ValueKey('table-soak-section')),
+          findsOneWidget,
+        );
+        expect(
+          find.text(language == 'en' ? 'Cursor: 77' : 'المؤشر: 77'),
+          findsOneWidget,
+        );
+        expect(
+          tester
+              .widget<ListView>(find.byKey(const ValueKey('table-soak-rows')))
+              .childrenDelegate
+              .estimatedChildCount,
+          200,
+        );
+        await tester.tap(find.byKey(const ValueKey('table-soak-copy')));
+        await tester.pump();
+        expect(copied, contains('row-199\t'));
+        expect(copied, isNot(contains('row-200\t')));
+        expect(
+          copied!
+              .split('\n')
+              .where((line) => line.startsWith('2026-09-06T12:00:00Z')),
+          hasLength(200),
+        );
+        expect(copied, contains('server_occupied_local_free'));
+        expect(copied, contains('http_429'));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }
 
 class _LogStore implements RemoteTableStore {

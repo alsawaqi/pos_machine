@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'l10n.dart';
 
 // ignore_for_file: type=lint
@@ -7,6 +8,93 @@ import 'l10n.dart';
 /// The translations for English (`en`).
 class L10nEn extends L10n {
   L10nEn([String locale = 'en']) : super(locale);
+
+  @override
+  String get tableServerView => 'Server view';
+
+  @override
+  String tableServerFree(String age) {
+    return 'Server: free · $age';
+  }
+
+  @override
+  String tableServerQr(String reference, String age) {
+    return 'Server: QR party · $reference · $age';
+  }
+
+  @override
+  String tableServerOccupied(String age) {
+    return 'Server: occupied · $age';
+  }
+
+  @override
+  String get tableServerReferenceDiffers => ' · reference differs';
+
+  @override
+  String tableServerNeedsReview(int count) {
+    return ' + needs review ($count)';
+  }
+
+  @override
+  String get tableServerPayment => 'Server: payment in progress';
+
+  @override
+  String tableServerStale(String age) {
+    return 'Server view stale ($age)';
+  }
+
+  @override
+  String tableServerAgeSeconds(int count) {
+    return '${count}s';
+  }
+
+  @override
+  String tableServerAgeMinutes(int count) {
+    return '$count min';
+  }
+
+  @override
+  String get tableSoakTitle => 'Table soak (server view)';
+
+  @override
+  String tableSoakMode(String mode) {
+    return 'Mode: $mode';
+  }
+
+  @override
+  String tableSoakCursor(String value) {
+    return 'Cursor: $value';
+  }
+
+  @override
+  String tableSoakLastSuccess(String value) {
+    return 'Last success: $value';
+  }
+
+  @override
+  String tableSoakFailures(int count) {
+    return 'Failures: $count';
+  }
+
+  @override
+  String tableSoakError(String value) {
+    return 'Last error: $value';
+  }
+
+  @override
+  String get tableSoakEmpty => 'No disagreements recorded.';
+
+  @override
+  String get tableSoakCopy => 'Copy';
+
+  @override
+  String get tableModeOff => 'Off';
+
+  @override
+  String get tableModeShadow => 'Watch only';
+
+  @override
+  String get tableModeLive => 'Live (watch only in T5)';
 
   @override
   String get commonCancel => 'Cancel';

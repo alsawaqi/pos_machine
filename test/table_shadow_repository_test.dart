@@ -222,6 +222,26 @@ void main() {
   });
 
   test(
+    'failed disagreement read clears the shadow and does not acknowledge hints',
+    () async {
+      store.rows = [RemoteTableState(tableId: 1, fetchedAt: now)];
+      store.disagreementReadError = StateError('corrupt remote journal');
+      gateway.pages = [
+        const TableShadowFeed(
+          events: [TableShadowEvent(id: 11, tableId: 1)],
+          latestId: 11,
+          hasMore: false,
+        ),
+      ];
+      await repository.pollNow();
+      expect(repository.snapshot.tables, isEmpty);
+      expect(store.meta.feedCursor, 10);
+      expect(store.meta.consecutiveFailures, 1);
+      expect(store.clears, 0);
+    },
+  );
+
+  test(
     're-pair discards an in-flight old-branch response and clears remote scope',
     () async {
       gateway.delayedFeed = Completer<TableShadowFeed>();
@@ -314,6 +334,7 @@ class _Store implements RemoteTableStore {
   RemoteSyncMeta meta = const RemoteSyncMeta(feedCursor: 10);
   int boardWrites = 0, clears = 0;
   Object? readError;
+  Object? disagreementReadError;
   @override
   Future<List<RemoteTableState>> readRemoteTables() async {
     if (readError != null) throw readError!;
@@ -346,7 +367,11 @@ class _Store implements RemoteTableStore {
   @override
   Future<List<Map<String, Object?>>> readRemoteDisagreements({
     int limit = 200,
-  }) async => [];
+  }) async {
+    if (disagreementReadError != null) throw disagreementReadError!;
+    return [];
+  }
+
   @override
   Future<void> addRemoteDisagreement(Map<String, Object?> row) async {}
 }

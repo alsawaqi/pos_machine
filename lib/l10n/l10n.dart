@@ -97,6 +97,132 @@ abstract class L10n {
     Locale('en'),
   ];
 
+  /// No description provided for @tableServerView.
+  ///
+  /// In en, this message translates to:
+  /// **'Server view'**
+  String get tableServerView;
+
+  /// No description provided for @tableServerFree.
+  ///
+  /// In en, this message translates to:
+  /// **'Server: free · {age}'**
+  String tableServerFree(String age);
+
+  /// No description provided for @tableServerQr.
+  ///
+  /// In en, this message translates to:
+  /// **'Server: QR party · {reference} · {age}'**
+  String tableServerQr(String reference, String age);
+
+  /// No description provided for @tableServerOccupied.
+  ///
+  /// In en, this message translates to:
+  /// **'Server: occupied · {age}'**
+  String tableServerOccupied(String age);
+
+  /// No description provided for @tableServerReferenceDiffers.
+  ///
+  /// In en, this message translates to:
+  /// **' · reference differs'**
+  String get tableServerReferenceDiffers;
+
+  /// No description provided for @tableServerNeedsReview.
+  ///
+  /// In en, this message translates to:
+  /// **' + needs review ({count})'**
+  String tableServerNeedsReview(int count);
+
+  /// No description provided for @tableServerPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Server: payment in progress'**
+  String get tableServerPayment;
+
+  /// No description provided for @tableServerStale.
+  ///
+  /// In en, this message translates to:
+  /// **'Server view stale ({age})'**
+  String tableServerStale(String age);
+
+  /// No description provided for @tableServerAgeSeconds.
+  ///
+  /// In en, this message translates to:
+  /// **'{count}s'**
+  String tableServerAgeSeconds(int count);
+
+  /// No description provided for @tableServerAgeMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} min'**
+  String tableServerAgeMinutes(int count);
+
+  /// No description provided for @tableSoakTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Table soak (server view)'**
+  String get tableSoakTitle;
+
+  /// No description provided for @tableSoakMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Mode: {mode}'**
+  String tableSoakMode(String mode);
+
+  /// No description provided for @tableSoakCursor.
+  ///
+  /// In en, this message translates to:
+  /// **'Cursor: {value}'**
+  String tableSoakCursor(String value);
+
+  /// No description provided for @tableSoakLastSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Last success: {value}'**
+  String tableSoakLastSuccess(String value);
+
+  /// No description provided for @tableSoakFailures.
+  ///
+  /// In en, this message translates to:
+  /// **'Failures: {count}'**
+  String tableSoakFailures(int count);
+
+  /// No description provided for @tableSoakError.
+  ///
+  /// In en, this message translates to:
+  /// **'Last error: {value}'**
+  String tableSoakError(String value);
+
+  /// No description provided for @tableSoakEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No disagreements recorded.'**
+  String get tableSoakEmpty;
+
+  /// No description provided for @tableSoakCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get tableSoakCopy;
+
+  /// No description provided for @tableModeOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get tableModeOff;
+
+  /// No description provided for @tableModeShadow.
+  ///
+  /// In en, this message translates to:
+  /// **'Watch only'**
+  String get tableModeShadow;
+
+  /// No description provided for @tableModeLive.
+  ///
+  /// In en, this message translates to:
+  /// **'Live (watch only in T5)'**
+  String get tableModeLive;
+
   /// No description provided for @commonCancel.
   ///
   /// In en, this message translates to:

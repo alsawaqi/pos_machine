@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -8,6 +9,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
+import '../models/remote_table_state.dart';
+import '../data/table_shadow_repository.dart';
 import '../services/audience_service.dart' show AudienceService;
 import '../services/display_strings.dart';
 import '../services/local_order_storage_service.dart';
@@ -182,6 +185,9 @@ class StaffPosScreen extends ConsumerStatefulWidget {
 }
 
 class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
+  TableShadowRepository? _tableShadow;
+  RemoteTableSnapshot _remoteTables = const RemoteTableSnapshot();
+  String _tableShadowMode = 'off';
   late final PosController controller;
   late final TextEditingController _customerNumberController;
   late final TextEditingController _vehiclePlateController;
@@ -1247,6 +1253,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   @override
   void dispose() {
     _qrRoundAutoPrintController.stop();
+    _tableShadow?.setFloorPlanVisible(false);
+    _tableShadow?.localTables = null;
     _clockTimer?.cancel();
     _configPollTimer?.cancel();
     _transferPollTimer?.cancel();
@@ -1268,11 +1276,30 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Widget build(BuildContext context) {
     final qrRoundPrintPollingUnavailable =
         ref.watch(qrRoundPrintPollingUnavailableProvider);
+    _tableShadowMode = ref.watch(tableSessionsModeProvider);
+    _remoteTables = _tableShadowMode == 'off'
+        ? const RemoteTableSnapshot()
+        : ref.watch(remoteBoardProvider).asData?.value ?? const RemoteTableSnapshot();
+    if (_tableShadowMode != 'off') {
+      _tableShadow = ref.read(tableShadowRepositoryProvider);
+      _tableShadow!.localTables = () => [
+        for (final table in controller.diningTableDefinitions)
+          LocalTableShadowView(
+            tableId: table.id,
+            status: controller.diningSessionFor(table.id)?.status.storageValue ?? 'available',
+            reference: controller.diningSessionFor(table.id)?.orderReference,
+          ),
+      ];
+    }
     final arabic = ref.watch(settingsControllerProvider).language == 'ar';
 
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
+        _tableShadow?.setFloorPlanVisible(
+          _tableShadowMode != 'off' && _showDineInFloorPlan && !_showPaymentPage &&
+              (ModalRoute.of(context)?.isCurrent ?? true),
+        );
         return Scaffold(
           backgroundColor: const Color(0xFF12232B),
           body: Stack(
@@ -1515,7 +1542,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   ),
                 ),
                 SizedBox(
-                  width: 530,
+                  width: _tableShadowMode == 'off' ? 530 : 660,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
@@ -1533,6 +1560,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                         color: Color(0xFF2B8E64),
                         label: 'Paid',
                       ),
+                      if (_tableShadowMode != 'off') ...[
+                        const SizedBox(width: 8),
+                        _DiningLegendDot(
+                          color: const Color(0xFF687873),
+                          label: L10n.of(context).tableServerView,
+                        ),
+                      ],
                       const SizedBox(width: 18),
                       _DiningSearchPill(
                         hint: controller.diningTableSearchQuery.isEmpty
@@ -1637,6 +1671,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   session: session,
                                   status: status,
                                   clock: _clockNow,
+                                  now: _clockNow.value,
+                                  remote: _remoteTables.tables[int.tryParse(table.id)],
+                                  remoteFailures: _remoteTables.meta.consecutiveFailures,
                                   onLongPress: openActions,
                                   onActions: openActions,
                                   linkedToLabel: linkedToLabel,
@@ -9852,6 +9889,9 @@ String _formatOccupancyDurationAt(DateTime? value, DateTime now) {
 }
 
 class _DiningTableCard extends StatelessWidget {
+  final RemoteTableState? remote;
+  final DateTime now;
+  final int remoteFailures;
   final DiningTableDefinition table;
   final DiningTableSession? session;
   final DiningTableStatus status;
@@ -9876,7 +9916,10 @@ class _DiningTableCard extends StatelessWidget {
     required this.session,
     required this.status,
     required this.clock,
+    required this.now,
     required this.onTap,
+    this.remote,
+    this.remoteFailures = 0,
     this.onLongPress,
     this.onActions,
     this.linkedToLabel,
@@ -9909,6 +9952,9 @@ class _DiningTableCard extends StatelessWidget {
       DiningTableStatus.paid => const [Color(0xFFF2FBF3), Color(0xFFEAF7EC)],
     };
     final hasTicket = status != DiningTableStatus.available && session != null;
+    final greyed = remote?.origin == 'station' &&
+        const {'open', 'billing'}.contains(remote?.seatingStatus) &&
+        status == DiningTableStatus.available;
 
     // Same grid-slot size + position, but the card takes the table's SHAPE.
     // Children clip to it: the centered name + status sit inside every shape;
@@ -9935,7 +9981,10 @@ class _DiningTableCard extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: background,
+            colors: greyed
+                ? [for (final color in background)
+                    Color.alphaBlend(const Color(0xFF808080).withValues(alpha: 0.08), color)]
+                : background,
           ),
           shape: cardShape,
           shadows: [
@@ -10188,6 +10237,14 @@ class _DiningTableCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                    if (remote != null) ...[
+                      const SizedBox(height: 5),
+                      DiningServerBadge(
+                        remote: remote!, localStatus: status,
+                        localReference: session?.orderReference,
+                        now: now, failures: remoteFailures,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -10198,6 +10255,91 @@ class _DiningTableCard extends StatelessWidget {
     );
   }
 }
+
+
+/// Pure informational projection; it has no callbacks or controller dependency.
+class DiningServerBadge extends StatelessWidget {
+  const DiningServerBadge({
+    super.key,
+    required this.remote,
+    required this.localStatus,
+    required this.now,
+    this.localReference,
+    this.failures = 0,
+  });
+  final RemoteTableState remote;
+  final DiningTableStatus localStatus;
+  final String? localReference;
+  final DateTime now;
+  final int failures;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
+    final seconds = math.max(0, now.difference(remote.fetchedAt).inSeconds);
+    final age = seconds < 60
+        ? l10n.tableServerAgeSeconds(seconds)
+        : l10n.tableServerAgeMinutes(seconds ~/ 60);
+    final stale = seconds > 60 || failures > 0;
+    final qrParty = remote.origin == 'station' &&
+        const {'open', 'billing'}.contains(remote.seatingStatus) &&
+        localStatus == DiningTableStatus.available;
+    final payment = remote.awaitingPayment || remote.chargeClaimLive;
+    var label = stale
+        ? l10n.tableServerStale(age)
+        : payment
+        ? l10n.tableServerPayment
+        : !remote.occupied
+        ? l10n.tableServerFree(age)
+        : qrParty
+        ? l10n.tableServerQr(remote.reference ?? '—', age)
+        : l10n.tableServerOccupied(age);
+    if (!stale && !payment && remote.occupied &&
+        localStatus == DiningTableStatus.occupied &&
+        remote.reference != localReference) {
+      label += l10n.tableServerReferenceDiffers;
+    }
+    if (remote.needsReviewCount > 0) {
+      label += l10n.tableServerNeedsReview(remote.needsReviewCount);
+    }
+    final color = remote.needsReviewCount > 0
+        ? const Color(0xFFB42318)
+        : !stale && (qrParty || payment)
+        ? const Color(0xFF9A6700)
+        : const Color(0xFF687873);
+    return IgnorePointer(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Container(
+          key: ValueKey('table-server-badge-${remote.tableId}'),
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+          decoration: BoxDecoration(
+            border: !stale && qrParty ? Border.all(color: color) : null,
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: Text(label, maxLines: 1,
+            style: TextStyle(fontSize: 11, color: color,
+              fontStyle: stale ? FontStyle.italic : FontStyle.normal)),
+        ),
+      ),
+    );
+  }
+}
+
+/// Exercises the actual private card, not a replica of its gestures or layout.
+@visibleForTesting
+Widget buildDiningTableCardForTest({
+  required DiningTableDefinition table,
+  required DiningTableStatus status,
+  required ValueListenable<DateTime> clock,
+  required VoidCallback onTap,
+  DiningTableSession? session,
+  RemoteTableState? remote,
+  int failures = 0,
+}) => _DiningTableCard(
+  table: table, session: session, status: status, clock: clock,
+  now: clock.value, onTap: onTap, remote: remote, remoteFailures: failures,
+);
 
 class _TinyInfoBadge extends StatelessWidget {
   final IconData? icon;

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_config.dart';
 import '../data/order_sync_repository.dart';
 import '../l10n/l10n.dart';
 import '../providers/providers.dart';
+import '../models/remote_table_state.dart';
 import '../services/settings_service.dart';
 import 'audience_spike_screen.dart';
 
@@ -272,6 +274,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   subtitle: l10n.posMenuShiftSummarySub,
                   action: 'shift_summary',
                 ),
+                const Divider(color: Colors.white12, height: 36),
+              ],
+              if (widget.showOperations) ...[
+                const _TableSoakSection(),
                 const Divider(color: Colors.white12, height: 36),
               ],
               if (!releaseBuild) ...[
@@ -597,4 +603,131 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           borderSide: const BorderSide(color: Color(0xFF35C28B)),
         ),
       );
+}
+
+class _TableSoakSection extends ConsumerStatefulWidget {
+  const _TableSoakSection();
+  @override
+  ConsumerState<_TableSoakSection> createState() => _TableSoakSectionState();
+}
+
+class _TableSoakSectionState extends ConsumerState<_TableSoakSection> {
+  late Future<(RemoteSyncMeta, List<Map<String, Object?>>)> _loaded;
+
+  @override
+  void initState() {
+    super.initState();
+    _loaded = _load();
+  }
+
+  Future<(RemoteSyncMeta, List<Map<String, Object?>>)> _load() async {
+    final storedScope = ref.read(sharedPreferencesProvider).getString('table_shadow_scope');
+    if (storedScope == null) {
+      return (const RemoteSyncMeta(), <Map<String, Object?>>[]);
+    }
+    final session = ref.read(sessionServiceProvider);
+    final base = ref.read(settingsServiceProvider).effectiveBaseUrl;
+    final scope = '$base|${session.companyId}|${session.branchId}|${session.kioskId}';
+    if (storedScope != scope) {
+      return (const RemoteSyncMeta(), <Map<String, Object?>>[]);
+    }
+    try {
+      final store = ref.read(remoteTableStoreProvider);
+      return (await store.readRemoteMeta(), await store.readRemoteDisagreements());
+    } catch (_) {
+      return (const RemoteSyncMeta(lastError: 'shadow_unavailable', consecutiveFailures: 1),
+          <Map<String, Object?>>[]);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mode = ref.watch(tableSessionsModeProvider);
+    if (mode != 'off') {
+      ref.listen(remoteBoardProvider, (_, _) {
+        if (mounted) {
+          setState(() { _loaded = _load(); });
+        }
+      });
+    }
+    return FutureBuilder<(RemoteSyncMeta, List<Map<String, Object?>>)>(
+      future: _loaded,
+      builder: (context, value) => TableSoakPanel(
+        mode: mode,
+        meta: value.data?.$1 ?? const RemoteSyncMeta(),
+        rows: value.data?.$2 ?? const [],
+      ),
+    );
+  }
+}
+
+class TableSoakPanel extends StatelessWidget {
+  const TableSoakPanel({
+    super.key,
+    required this.mode,
+    required this.meta,
+    required this.rows,
+  });
+  final String mode;
+  final RemoteSyncMeta meta;
+  final List<Map<String, Object?>> rows;
+
+  static const _columns = [
+    'observed_at', 'table_id', 'local_status', 'server_status', 'server_origin',
+    'server_reference', 'local_reference', 'kind',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
+    final visible = rows.take(200).toList(growable: false);
+    final modeLabel = switch (mode) {
+      'shadow' => l10n.tableModeShadow,
+      'live' => l10n.tableModeLive,
+      _ => l10n.tableModeOff,
+    };
+    final details = [
+      l10n.tableSoakMode(modeLabel),
+      l10n.tableSoakCursor(meta.feedCursor?.toString() ?? '—'),
+      l10n.tableSoakLastSuccess(meta.lastFeedOkAt?.toIso8601String() ?? '—'),
+      l10n.tableSoakFailures(meta.consecutiveFailures),
+      if (meta.lastError != null) l10n.tableSoakError(meta.lastError!),
+    ];
+    final lines = [
+      for (final row in visible) _columns.map((key) => row[key]?.toString() ?? '').join('\t'),
+    ];
+    return DefaultTextStyle(
+      style: const TextStyle(color: Colors.white70, fontSize: 12),
+      child: Column(
+        key: const ValueKey('table-soak-section'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l10n.tableSoakTitle,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          for (final detail in details) Text(detail),
+          TextButton.icon(
+            key: const ValueKey('table-soak-copy'),
+            icon: const Icon(Icons.copy),
+            label: Text(l10n.tableSoakCopy),
+            onPressed: () => Clipboard.setData(ClipboardData(text: [
+              l10n.tableSoakTitle, ...details, _columns.join('\t'), ...lines,
+            ].join('\n'))),
+          ),
+          if (visible.isEmpty) Text(l10n.tableSoakEmpty)
+          else SizedBox(
+            height: 220,
+            child: ListView.builder(
+              key: const ValueKey('table-soak-rows'),
+              itemCount: visible.length,
+              itemBuilder: (context, index) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: SelectableText(lines[index]),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
