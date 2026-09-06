@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'l10n.dart';
 
 // ignore_for_file: type=lint
@@ -3435,4 +3434,42 @@ class L10nAr extends L10n {
   @override
   String get posOffersNotForDelivery =>
       'لا تنطبق العروض على طلبات شركات التوصيل — سعر الشركة المعلن نهائي.';
+
+  @override
+  String get tableSharedAdjustmentsUnavailable =>
+      'غير متاح للفواتير المشتركة بعد';
+
+  @override
+  String get tableSendToKitchen => 'إرسال إلى المطبخ';
+
+  @override
+  String tableSentAt(String time) {
+    return 'أُرسل $time';
+  }
+
+  @override
+  String get tableCancelSentTitle => 'إلغاء أصناف مرسلة';
+
+  @override
+  String get tableCancelSentApproval =>
+      'تلزم موافقة المدير لإلغاء أصناف أُرسلت إلى المطبخ.';
+
+  @override
+  String get tableWasPrepared => 'هل تم تحضيره؟';
+
+  @override
+  String get tablePreparedYes => 'نعم — تسجيل هدر';
+
+  @override
+  String get tablePreparedNo => 'لا — إلغاء فقط';
+
+  @override
+  String get tableCancelSentReason => 'السبب (اختياري)';
+
+  @override
+  String get tableLocalOnly => 'محلي فقط';
+
+  @override
+  String get tableActionFailed =>
+      'تعذر حفظ إجراء الطاولة. يرجى المحاولة مجددًا.';
 }

@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'l10n.dart';
 
 // ignore_for_file: type=lint
@@ -3399,4 +3398,42 @@ class L10nEn extends L10n {
   @override
   String get posOffersNotForDelivery =>
       'Promotions don\'t apply to delivery-provider orders — the provider\'s listed price is final.';
+
+  @override
+  String get tableSharedAdjustmentsUnavailable =>
+      'Not available on shared tables yet';
+
+  @override
+  String get tableSendToKitchen => 'Send to kitchen';
+
+  @override
+  String tableSentAt(String time) {
+    return 'Sent $time';
+  }
+
+  @override
+  String get tableCancelSentTitle => 'Cancel sent items';
+
+  @override
+  String get tableCancelSentApproval =>
+      'Manager approval is required to cancel items sent to the kitchen.';
+
+  @override
+  String get tableWasPrepared => 'Was it prepared?';
+
+  @override
+  String get tablePreparedYes => 'Yes — record waste';
+
+  @override
+  String get tablePreparedNo => 'No — cancel only';
+
+  @override
+  String get tableCancelSentReason => 'Reason (optional)';
+
+  @override
+  String get tableLocalOnly => 'local-only';
+
+  @override
+  String get tableActionFailed =>
+      'Table action could not be saved. Please try again.';
 }

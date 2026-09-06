@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -6,16 +7,21 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
 import '../models/remote_table_state.dart';
 import '../data/table_shadow_repository.dart';
+import '../data/table_sync_coordinator.dart';
+import '../models/table_sync_models.dart';
+import '../services/kitchen_ticket.dart';
 import '../services/audience_service.dart' show AudienceService;
 import '../services/display_strings.dart';
 import '../services/local_order_storage_service.dart';
 import '../services/manager_authorization_service.dart';
-import '../services/order_sync_payload.dart' show buildOrderTransferEvent;
+import '../services/order_sync_payload.dart'
+    show buildOrderTransferEvent, buildTableRoundLines, tableLineFingerprint;
 import '../services/pos_api_service.dart' show ApiException, PosApiService;
 import '../services/qr_round_printing.dart'
     show QrRoundAutoPrintController, QrRoundPrintNoticeKind;
@@ -24,6 +30,7 @@ import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
 import '../widgets/qr_round_print_status_indicator.dart';
+import '../widgets/sent_line_cancel_dialog.dart';
 import '../providers/providers.dart';
 import 'branch_reports_screen.dart';
 import 'kitchen_production_screen.dart';
@@ -184,10 +191,182 @@ class StaffPosScreen extends ConsumerStatefulWidget {
   ConsumerState<StaffPosScreen> createState() => _StaffPosScreenState();
 }
 
+/// Screen-owned B3 printer adapter; the coordinator remains the table writer.
+class TableKitchenBridge implements DiningTableSyncHooks {
+  TableKitchenBridge({
+    required this.controller,
+    required this.coordinator,
+    required this.preferences,
+    required this.printer,
+    required this.l10n,
+    required this.onPrintFailure,
+  });
+
+  final PosController controller;
+  final TableSyncCoordinator coordinator;
+  final SharedPreferences preferences;
+  final Future<bool> Function(KitchenTicketData) printer;
+  final L10n Function() l10n;
+  final void Function() onPrintFailure;
+  Future<void> _tail = Future.value();
+  Future<void> get settled => _tail;
+
+  void attach() {
+    controller.diningTableSyncHooks = this;
+    controller.onDiningTableFinalRound = (snapshot) async {
+      if (!coordinator.live) return false;
+      final session = activeSession();
+      if (session == null) throw StateError('Missing Live table at final round.');
+      await send(session);
+      return true;
+    };
+    coordinator.printRound = _print;
+    coordinator.bindBillIdentity = (session, oldUuid, newUuid) {
+      controller.bindDiningTableBillIdentity(
+        live: coordinator.live,
+        tableId: session.tableId,
+        orderReference: session.orderReference,
+        seatingKey: session.seatingKey!,
+        expectedOrderUuid: oldUuid,
+        orderUuid: newUuid,
+      );
+    };
+  }
+
+  void detach() {
+    controller.diningTableSyncHooks = null;
+    controller.onDiningTableFinalRound = null;
+    coordinator.bindBillIdentity = null;
+  }
+
+  DiningTableSession? activeSession() {
+    final id = controller.activeDiningTableId;
+    if (id == null) return null;
+    final session = controller.diningSessionFor(id);
+    if (session == null) return null;
+    return session.copyWith(draft: controller.createDraft(
+      serverOrderUuid: controller.activeDiningTableBillUuid,
+    ));
+  }
+
+  String _localKey(DiningTableSession s) =>
+      'table_local_kitchen_${s.tableId}_${s.orderReference}_${s.occupiedAt}';
+
+  Map<String, int> _localPrinted(DiningTableSession s) {
+    final raw = preferences.getString(_localKey(s));
+    if (raw == null) return {};
+    return (jsonDecode(raw) as Map).map(
+      (key, value) => MapEntry(key.toString(), (value as num).toInt()),
+    );
+  }
+
+  List<CartItem> _localOnly(DiningTableSession s) =>
+      (s.draft?.items ?? []).where((i) => buildTableRoundLines([i]).isEmpty)
+          .toList();
+
+  bool hasLocalOnlyDelta(DiningTableSession s) {
+    final printed = _localPrinted(s);
+    return _localOnly(s).any((i) => i.qty > (printed[i.mergeSignature] ?? 0));
+  }
+
+  Future<bool> _print(
+    DiningTableSession session, List<Map<String, dynamic>> items,
+  ) async {
+    if (!controller.printKitchenTickets) return false;
+    final printed = _localPrinted(session);
+    final localItems = <Map<String, dynamic>>[];
+    for (final item in _localOnly(session)) {
+      final qty = item.qty - (printed[item.mergeSignature] ?? 0);
+      if (qty <= 0) continue;
+      localItems.add({
+        ...item.toMap(),
+        'name': '${item.product.name} (${l10n().tableLocalOnly})',
+        'qty': qty,
+      });
+    }
+    if (items.isEmpty && localItems.isEmpty) return false;
+    final temp = session.tempReference?.trim() ?? '';
+    var ok = false;
+    try {
+      ok = await printer(KitchenTicketData(
+        orderLabel: temp.isEmpty ? session.orderReference : temp,
+        orderTypeLabel: localizedOrderType(l10n(), OrderType.dineIn),
+        tableLabel: controller.diningTableDefinitions
+            .where((t) => t.id == session.tableId).firstOrNull?.name ??
+            session.tableId,
+        time: coordinator.clock().toUtc(),
+        isHold: false,
+        items: [...items, ...localItems],
+      ));
+    } catch (_) {
+      ok = false;
+    }
+    if (!ok) {
+      onPrintFailure();
+      return false;
+    }
+    for (final item in _localOnly(session)) {
+      printed[item.mergeSignature] = math.max(
+        printed[item.mergeSignature] ?? 0, item.qty,
+      );
+    }
+    await preferences.setString(_localKey(session), jsonEncode(printed));
+    return true;
+  }
+
+  Future<void> send(DiningTableSession session) {
+    final operation = _tail.then((_) async {
+      if (!coordinator.live) return;
+      final round = await coordinator.sendRound(session);
+      if (round == null && hasLocalOnlyDelta(session)) await _print(session, []);
+    });
+    _tail = operation.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return operation;
+  }
+
+  @override
+  void onTableOccupied(DiningTableSession s) => coordinator.onTableOccupied(s);
+  @override
+  void onTableDraftPersisted(DiningTableSession s) =>
+      coordinator.onTableDraftPersisted(s);
+  @override
+  void onTableLeft(String tableId) {
+    if (!coordinator.live) return;
+    // Capture before the controller resets; a later occupancy must never be
+    // mistaken for the cart that just left this table.
+    final session = activeSession() ?? coordinator.cachedSession(tableId);
+    if (session != null) unawaited(send(session).catchError((Object _) {}));
+  }
+  @override
+  void onTableTransferred(String fromId, DiningTableSession moved) =>
+      coordinator.onTableTransferred(fromId, moved);
+  @override
+  void onTablesJoined(DiningTableSession head, DiningTableSession seat) =>
+      coordinator.onTablesJoined(head, seat);
+  @override
+  void onTablesCleared(Set<String> ids, DiningTableSession? head) {
+    // The paid-table card's Clear button frees local furniture, not the sale.
+    // Its existing pay row must remain the only money action (even offline).
+    if (head?.status == DiningTableStatus.paid) return;
+    coordinator.onTablesCleared(ids, head);
+  }
+  @override
+  void onTablePaid(DiningTableSession paid, OrderSnapshot snapshot) =>
+      coordinator.onTablePaid(paid, snapshot);
+}
+
 class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   TableShadowRepository? _tableShadow;
   RemoteTableSnapshot _remoteTables = const RemoteTableSnapshot();
   String _tableShadowMode = 'off';
+  TableKitchenBridge? _tableKitchen;
+  Future<void>? _tableKitchenInit;
+  StreamSubscription<void>? _tableKitchenChanges;
+  final _tablePaymentContexts = <String, Completer<TablePaymentContext>>{};
+  Map<String, int> _tableUnsent = {};
+  Map<String, DateTime> _tableSentAt = {};
+  bool _tableSendBusy = false;
+  int _tableSentRefresh = 0;
   late final PosController controller;
   late final TextEditingController _customerNumberController;
   late final TextEditingController _vehiclePlateController;
@@ -257,6 +436,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   void initState() {
     super.initState();
     controller = PosController();
+    controller.isLiveSharedTable = () =>
+        ref.read(tableSessionsModeProvider) == 'live';
+    controller.addListener(_onTableCartChanged);
+    ref.listenManual(tableSessionsModeProvider, (_, next) {
+      if (next == 'live') unawaited(_ensureTableKitchen());
+    });
     _qrRoundAutoPrintController = ref.read(qrRoundAutoPrintControllerProvider);
     controller.onOrderCompleted = _handleOrderCompleted;
     // Phase 3C — push advertising-slide play-time telemetry (best-effort).
@@ -348,6 +533,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         enabled: ref.read(settingsControllerProvider).printQrKitchenRounds,
       );
       await controller.init();
+      if (mounted && ref.read(tableSessionsModeProvider) == 'live') {
+        await _ensureTableKitchen();
+      }
       await controller.openRearDisplay();
       // Pre-warm a Mosambee login session so the first card payment is fast.
       controller.prewarmCardPayment();
@@ -471,6 +659,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// then enqueues to the durable outbox, which persists the order before any
   /// network I/O and retries it on the next reconnect.
   Future<void> _handleOrderCompleted(OrderSnapshot snapshot) async {
+    final sharedTable = ref.read(tableSessionsModeProvider) == 'live' &&
+        snapshot.diningTableId.isNotEmpty;
+    final sharedContext = sharedTable ? Completer<TablePaymentContext>() : null;
+    if (sharedContext != null) {
+      _tablePaymentContexts[snapshot.serverOrderUuid] = sharedContext;
+    }
     // Capture the customer + delivery inputs SYNCHRONOUSLY — the controller
     // resets them shortly after this callback fires, so reading them post-await
     // would race.
@@ -510,6 +704,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       }
     }
 
+    if (sharedContext != null) {
+      sharedContext.complete(TablePaymentContext(
+        lat: lat, lng: lng, cardCharge: cardCharge,
+      ));
+      return; // B2 onTablePaid emits pay only; no customer/create/donation path.
+    }
     if (!mounted) return;
     final staffId = ref.read(sessionServiceProvider).staff?.id;
     final tableId = int.tryParse(snapshot.diningTableId);
@@ -970,14 +1170,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     unawaited(
       ref
           .read(orderSyncRepositoryProvider)
-          .enqueueVoid(
-            orderUuid,
+          .resolveTableBillUuid(orderUuid)
+          .then((billUuid) => ref.read(orderSyncRepositoryProvider).enqueueVoid(
+            billUuid,
             orderNumber: orderNumber,
             reason: reason,
             voidReasonId: voidReasonId,
             staffId: staffId,
             authorizedBy: 'Manager',
-          )
+          ))
           .catchError((_) {}),
     );
   }
@@ -987,6 +1188,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// ALWAYS required; the amount is derived (the line's discounted total, or
   /// the whole discounted subtotal) and validated against the reason's cap.
   Future<void> _openCompDialog() async {
+    if (_liveTable) return;
     final l10n = L10n.of(context);
     final isAr = Localizations.localeOf(context).languageCode == 'ar';
     if (controller.cart.isEmpty) {
@@ -1255,6 +1457,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   @override
   void dispose() {
+    controller.removeListener(_onTableCartChanged);
+    _tableKitchen?.detach();
+    unawaited(_tableKitchenChanges?.cancel());
     _qrRoundAutoPrintController.stop();
     _tableShadow?.setFloorPlanVisible(false);
     _tableShadow?.localTables = null;
@@ -1400,6 +1605,198 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       !controller.isEditingDiningTable;
 
   bool get _isEditingDiningTable => controller.isEditingDiningTable;
+
+  bool get _liveTable => ref.read(tableSessionsModeProvider) == 'live' &&
+      controller.selectedOrderType == OrderType.dineIn &&
+      controller.activeDiningTableId != null;
+
+  Future<void> _ensureTableKitchen() async {
+    if (_tableKitchen != null) return;
+    if (_tableKitchenInit != null) return _tableKitchenInit;
+    final operation = () async {
+      final coordinator = ref.read(tableSyncCoordinatorProvider);
+      await coordinator.hydrate();
+      if (!mounted) return;
+      final bridge = TableKitchenBridge(
+        controller: controller,
+        coordinator: coordinator,
+        preferences: ref.read(sharedPreferencesProvider),
+        printer: SunmiReceiptService.printKitchenTicket,
+        l10n: () => ref.read(l10nProvider),
+        onPrintFailure: () => _handlePrintFailed('kitchen'),
+      );
+      coordinator.paymentContext = (snapshot) =>
+          _tablePaymentContexts.remove(snapshot.serverOrderUuid)?.future ??
+          Future.value(const TablePaymentContext());
+      _tableKitchen = bridge..attach();
+      _tableKitchenChanges = coordinator.changes.listen((_) {
+        unawaited(_refreshTableSentState().catchError((Object _) {}));
+      });
+      await _refreshTableSentState();
+    }();
+    _tableKitchenInit = operation;
+    try {
+      await operation;
+    } finally {
+      _tableKitchenInit = null;
+    }
+  }
+
+  void _onTableCartChanged() {
+    if (_liveTable) {
+      unawaited(_refreshTableSentState().catchError((Object _) {}));
+    } else {
+      _tableSentRefresh++;
+      _tableUnsent = {};
+      _tableSentAt = {};
+    }
+  }
+
+  Future<void> _refreshTableSentState() async {
+    final refresh = ++_tableSentRefresh;
+    final bridge = _tableKitchen;
+    if (!mounted || !_liveTable || bridge == null) return;
+    final session = bridge.activeSession();
+    if (session == null) return;
+    await bridge.coordinator.settled;
+    final delta = await bridge.coordinator.delta(session);
+    final seat = bridge.coordinator.cachedSession(session.tableId)?.seatingKey;
+    final rounds = seat == null ? <LocalTableRound>[] :
+        await bridge.coordinator.store.readLocalTableRounds(seatingKey: seat);
+    if (!mounted || refresh != _tableSentRefresh ||
+        controller.activeDiningTableId != session.tableId ||
+        controller.currentOrderReference != session.orderReference) {
+      return;
+    }
+    setState(() {
+      _tableUnsent = {
+        for (final line in delta) tableLineFingerprint(line): line['qty'] as int,
+      };
+      _tableSentAt = {
+        for (final round in rounds)
+          if (!{'bill_terminal', 'bill_unpaid', 'failed'}.contains(round.status))
+            for (final line in round.lines)
+              tableLineFingerprint(line): round.submittedAt.toLocal(),
+      };
+    });
+  }
+
+  Future<void> _sendTableRound() async {
+    if (!_liveTable || _tableSendBusy) return;
+    setState(() => _tableSendBusy = true);
+    try {
+      await _ensureTableKitchen();
+      final session = _tableKitchen?.activeSession();
+      if (session != null) await _tableKitchen!.send(session);
+      await _refreshTableSentState();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.of(context).tableActionFailed)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _tableSendBusy = false);
+    }
+  }
+
+  bool get _hasTableUnsent {
+    final session = _tableKitchen?.activeSession();
+    return _tableUnsent.values.any((qty) => qty > 0) ||
+        (session != null && _tableKitchen!.hasLocalOnlyDelta(session));
+  }
+
+  DateTime? _sentTimeFor(CartItem item) {
+    final wire = buildTableRoundLines([item]);
+    if (wire.isEmpty) return null;
+    final key = tableLineFingerprint(wire.single);
+    return (_tableUnsent[key] ?? 0) <= 0 ? _tableSentAt[key] : null;
+  }
+
+  Future<bool> _approveSentReduction(CartItem item, int reduction) async {
+    if (!_liveTable) return true;
+    await _ensureTableKitchen();
+    final bridge = _tableKitchen!;
+    final session = bridge.activeSession();
+    final wire = buildTableRoundLines([item]);
+    if (session == null || wire.isEmpty) return true;
+    await bridge.coordinator.settled;
+    final fingerprint = tableLineFingerprint(wire.single);
+    final delta = await bridge.coordinator.delta(session);
+    final unsent = delta.where((l) => tableLineFingerprint(l) == fingerprint)
+        .firstOrNull?['qty'] as int? ?? 0;
+    final sentReduction = math.max(0, reduction - math.max(0, unsent)).toInt();
+    if (sentReduction == 0) return true;
+    if (!mounted) return false;
+    final approval = await requestSentLineCancellation(
+      context,
+      authorizeManager: () => _authorizeManager(
+        subtitle: L10n.of(context).tableCancelSentApproval,
+      ),
+    );
+    if (!mounted || approval == null ||
+        controller.activeDiningTableId != session.tableId ||
+        controller.currentOrderReference != session.orderReference) {
+      return false;
+    }
+    await bridge.coordinator.cancelLine(
+      session, line: wire.single, qty: sentReduction,
+      prepared: approval.prepared, authorizedBy: 'Manager',
+      reason: approval.reason,
+    );
+    bridge.coordinator.clearApproval = TableVoidApproval(
+      authorizedBy: 'Manager', reason: approval.reason ?? 'staff_close',
+    );
+    return true; // Never undo a local edit in response to a business verdict.
+  }
+
+  Future<void> _reduceTableItem(CartItem item, {bool remove = false}) async {
+    if (_tableSendBusy) return;
+    setState(() => _tableSendBusy = true);
+    try {
+      if (!await _approveSentReduction(item, remove ? item.qty : 1)) return;
+      if (!mounted) return;
+      if (remove) { controller.removeCartItem(item); }
+      else { controller.decreaseCartItem(item); }
+      await _refreshTableSentState();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.of(context).tableActionFailed)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _tableSendBusy = false);
+    }
+  }
+
+  Future<bool> _clearSharedTable(String tableId) async {
+    if (ref.read(tableSessionsModeProvider) == 'live') {
+      await _ensureTableKitchen();
+      final coordinator = _tableKitchen!.coordinator;
+      await coordinator.settled;
+      final source = controller.diningSessionFor(tableId);
+      final headId = source?.primaryTableId ?? tableId;
+      final session = coordinator.cachedSession(headId) ??
+          controller.diningSessionFor(headId);
+      final rounds = session?.seatingKey == null ? <LocalTableRound>[] :
+          await coordinator.store.readLocalTableRounds(
+            seatingKey: session!.seatingKey,
+          );
+      if (rounds.isNotEmpty && source?.status != DiningTableStatus.paid) {
+        if (!mounted || !await _authorizeManager(
+          subtitle: L10n.of(context).tableCancelSentApproval,
+        )) {
+          return false;
+        }
+        coordinator.clearApproval = const TableVoidApproval(
+          authorizedBy: 'Manager', reason: 'staff_close',
+        );
+      }
+    }
+    await controller.clearDiningTableById(tableId);
+    return true;
+  }
 
   String get _activeDiningTableLabel =>
       controller.activeDiningTableDefinition?.name ?? '';
@@ -1715,6 +2112,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openPaymentPage() async {
+    if (_liveTable) await _ensureTableKitchen();
     if (controller.cart.isEmpty || controller.isProcessingPayment) {
       if (!mounted || controller.isProcessingPayment) return;
       _showPopupMessage(
@@ -1740,6 +2138,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// marked is_gift on the wire). Gifting needs a manager (fingerprint or
   /// PIN); un-gifting is free — it only increases what the customer pays.
   Future<void> _handleGiftItemToggle(CartItem item) async {
+    if (_liveTable) return;
     final l10n = L10n.of(context);
     if (!item.gifted) {
       final authorized = await _authorizeManager(
@@ -1873,6 +2272,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// customer, inventory still deducts, manager approval required (the same
   /// fingerprint gate the comp flow uses, registering one if absent).
   Future<void> _submitGiftPayment() async {
+    if (_liveTable) return;
     if (controller.isProcessingPayment || controller.cart.isEmpty) return;
     final l10n = L10n.of(context);
 
@@ -2481,6 +2881,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// server when reachable, attach them to the order, and open the details
   /// dialog (plates to pick from + per-rule loyalty + redeem).
   Future<void> _openCustomerDetails() async {
+    if (_liveTable) return;
     final l10n = L10n.of(context);
     CustomerSearchResult? customer = controller.selectedCustomer;
     final q = _customerNumberController.text.trim();
@@ -2638,6 +3039,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openCustomerSearch() async {
+    if (_liveTable) return;
     final l10n = L10n.of(context);
     final result = await showDialog<CustomerSearchResult>(
       context: context,
@@ -2671,6 +3073,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openCustomerNumberKeyboard() async {
+    if (_liveTable) return;
     final l10n = L10n.of(context);
     final value = await showDialog<String>(
       context: context,
@@ -3075,7 +3478,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                         label: l10n.posDiningClearTableButton,
                         onTap: () async {
                           Navigator.of(context).pop();
-                          await controller.clearDiningTableById(table.id);
+                          if (!await _clearSharedTable(table.id)) return;
                           if (!mounted) return;
                           _showPopupMessage(
                             title: l10n.posDiningTableClearedTitle(table.name),
@@ -3100,6 +3503,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// the cached catalog) first, plus a custom amount and a remove option. With
   /// no applicable rules it falls straight through to the manual editor.
   Future<void> _openDiscountDialog() async {
+    if (_liveTable) return;
     final l10n = L10n.of(context);
     final branchId = ref.read(sessionControllerProvider).branchId ?? 0;
     final now = DateTime.now();
@@ -3306,6 +3710,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// Entry point for the payment-console "Redeem Loyalty" action: surfaces
   /// points + stamp redemption (via the discount sheet) or a helpful message.
   Future<void> _openLoyaltyRedeem() async {
+    if (_liveTable) return;
     final l10n = L10n.of(context);
     if (controller.selectedCustomer == null) {
       _showPopupMessage(
@@ -3403,6 +3808,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openManualDiscountDialog() async {
+    if (_liveTable) return;
     final l10n = L10n.of(context);
     final value = await showDialog<DiscountConfiguration>(
       context: context,
@@ -3606,6 +4012,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
     if (!mounted || result == null) return;
 
+    if (_liveTable) {
+      final before = buildTableRoundLines([item]);
+      final after = buildTableRoundLines([CartItem(
+        product: item.product, qty: item.qty,
+        modifiers: result.modifiers, notes: result.notes,
+      )]);
+      final changed = before.isNotEmpty && after.isNotEmpty &&
+          tableLineFingerprint(before.single) != tableLineFingerprint(after.single);
+      if (changed && !await _approveSentReduction(item, item.qty)) return;
+    }
     controller.updateCartItemCustomization(
       item,
       modifiers: result.modifiers,
@@ -4210,7 +4626,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             _buildDeliveryProviderField(),
             const SizedBox(height: 16),
           ],
-          _buildCustomerReferenceField(),
+          if (_liveTable)
+            Text(l10n.tableSharedAdjustmentsUnavailable)
+          else
+            _buildCustomerReferenceField(),
           const SizedBox(height: 16),
           _buildVehiclePlateField(),
           const SizedBox(height: 16),
@@ -4557,7 +4976,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               ),
             ),
             SizedBox(width: 16),
-            Expanded(
+            if (!_liveTable) Expanded(
               child: _PaymentTopActionCard(
                 icon: Icons.percent_rounded,
                 title: l10n.posPaymentAddDiscount,
@@ -4579,7 +4998,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ),
             // Phase B — manager comp (write-off a line / the whole order).
             // Shown only when the company configured comp reasons.
-            if (controller.compReasons.isNotEmpty) ...[
+            if (!_liveTable && controller.compReasons.isNotEmpty) ...[
               const SizedBox(width: 16),
               Expanded(
                 child: _PaymentTopActionCard(
@@ -4907,7 +5326,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           const SizedBox(height: 14),
                           // Phase D4 — gift the whole order (manager-gated;
                           // §6.8 "zero charged… inventory still deducts").
-                          SizedBox(
+                          if (!_liveTable) SizedBox(
                             height: 64,
                             child: _PaymentMethodActionButton(
                               label: l10n.posPaymentGift,
@@ -6273,13 +6692,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                             ),
                             item: item,
                             onAdd: () => controller.incrementCartItem(item),
-                            onRemove: () => controller.decreaseCartItem(item),
-                            onDelete: () => controller.removeCartItem(item),
+                            onRemove: () => _liveTable
+                                ? unawaited(_reduceTableItem(item))
+                                : controller.decreaseCartItem(item),
+                            onDelete: () => _liveTable
+                                ? unawaited(_reduceTableItem(item, remove: true))
+                                : controller.removeCartItem(item),
                             onCustomize: () {
                               unawaited(_openCustomizeDialog(item));
                             },
                             onGift: () =>
                                 unawaited(_handleGiftItemToggle(item)),
+                            allowGift: !_liveTable,
+                            sentAt: _liveTable ? _sentTimeFor(item) : null,
                             highlighted: pulseNonce > 0,
                             pulseNonce: pulseNonce,
                           ),
@@ -6289,6 +6714,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   ),
           ),
           const SizedBox(height: 12),
+          if (_liveTable) ...[
+            Text(l10n.tableSharedAdjustmentsUnavailable),
+            FilledButton.icon(
+              key: const ValueKey('table-send-to-kitchen'),
+              onPressed: !_tableSendBusy && _hasTableUnsent
+                  ? _sendTableRound : null,
+              icon: const Icon(Icons.soup_kitchen_outlined),
+              label: Text(l10n.tableSendToKitchen),
+            ),
+            const SizedBox(height: 8),
+          ],
           _glassInsetCard(
             child: Column(
               children: [
@@ -6373,7 +6809,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   iconColor: Color(0xFF6B757C),
                   onTap: _isEditingDiningTable
                       ? () {
-                          unawaited(controller.clearActiveDiningTable());
+                          if (_liveTable) {
+                            unawaited(_clearSharedTable(controller.activeDiningTableId!));
+                          } else {
+                            unawaited(controller.clearActiveDiningTable());
+                          }
                         }
                       : controller.clearForNextOrder,
                 ),
@@ -6647,7 +7087,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Expanded(
+                if (!_liveTable) Expanded(
                   child: _FooterActionCard(
                     icon: Icons.loyalty_outlined,
                     title: l10n.posNavLoyalty,
@@ -7085,6 +7525,8 @@ class _OrderItemCard extends StatelessWidget {
   final VoidCallback onCustomize;
   // P-F5 — toggle this line as a GIFT (manager-gated at the call site).
   final VoidCallback onGift;
+  final bool allowGift;
+  final DateTime? sentAt;
   final bool highlighted;
   final int pulseNonce;
 
@@ -7096,6 +7538,8 @@ class _OrderItemCard extends StatelessWidget {
     required this.onDelete,
     required this.onCustomize,
     required this.onGift,
+    this.allowGift = true,
+    this.sentAt,
     this.highlighted = false,
     this.pulseNonce = 0,
   });
@@ -7203,11 +7647,20 @@ class _OrderItemCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
+                if (sentAt != null)
+                  Row(children: [
+                    const Icon(Icons.check_circle_outline, size: 14),
+                    const SizedBox(width: 4),
+                    Text(l10n.tableSentAt(
+                      '${sentAt!.hour.toString().padLeft(2, '0')}:'
+                      '${sentAt!.minute.toString().padLeft(2, '0')}',
+                    )),
+                  ]),
                 Row(
                   children: [
                     const Spacer(),
                     // P-F5 — gift this line (purple when active).
-                    InkWell(
+                    if (allowGift) InkWell(
                       onTap: onGift,
                       borderRadius: BorderRadius.circular(18),
                       child: Container(

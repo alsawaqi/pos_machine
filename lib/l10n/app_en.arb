@@ -2118,5 +2118,17 @@
   "ctrlMsgDeliveryCompleted": "Delivery order completed. Awaiting the provider's settlement.",
   "displayStatusPendingVerification": "Pending verification",
   "displayMethodDelivery": "Delivery",
-  "posOffersNotForDelivery": "Promotions don't apply to delivery-provider orders — the provider's listed price is final."
+  "posOffersNotForDelivery": "Promotions don't apply to delivery-provider orders — the provider's listed price is final.",
+  "tableSharedAdjustmentsUnavailable": "Not available on shared tables yet",
+  "tableSendToKitchen": "Send to kitchen",
+  "tableSentAt": "Sent {time}",
+  "@tableSentAt": {"placeholders": {"time": {"type": "String"}}},
+  "tableCancelSentTitle": "Cancel sent items",
+  "tableCancelSentApproval": "Manager approval is required to cancel items sent to the kitchen.",
+  "tableWasPrepared": "Was it prepared?",
+  "tablePreparedYes": "Yes — record waste",
+  "tablePreparedNo": "No — cancel only",
+  "tableCancelSentReason": "Reason (optional)",
+  "tableLocalOnly": "local-only",
+  "tableActionFailed": "Table action could not be saved. Please try again."
 }

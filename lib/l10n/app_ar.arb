@@ -986,5 +986,17 @@
   "ctrlMsgDeliveryCompleted": "اكتمل طلب التوصيل. بانتظار تسوية الشركة.",
   "displayStatusPendingVerification": "بانتظار التحقق",
   "displayMethodDelivery": "توصيل",
-  "posOffersNotForDelivery": "لا تنطبق العروض على طلبات شركات التوصيل — سعر الشركة المعلن نهائي."
+  "posOffersNotForDelivery": "لا تنطبق العروض على طلبات شركات التوصيل — سعر الشركة المعلن نهائي.",
+  "tableSharedAdjustmentsUnavailable": "غير متاح للفواتير المشتركة بعد",
+  "tableSendToKitchen": "إرسال إلى المطبخ",
+  "tableSentAt": "أُرسل {time}",
+  "@tableSentAt": {"placeholders": {"time": {"type": "String"}}},
+  "tableCancelSentTitle": "إلغاء أصناف مرسلة",
+  "tableCancelSentApproval": "تلزم موافقة المدير لإلغاء أصناف أُرسلت إلى المطبخ.",
+  "tableWasPrepared": "هل تم تحضيره؟",
+  "tablePreparedYes": "نعم — تسجيل هدر",
+  "tablePreparedNo": "لا — إلغاء فقط",
+  "tableCancelSentReason": "السبب (اختياري)",
+  "tableLocalOnly": "محلي فقط",
+  "tableActionFailed": "تعذر حفظ إجراء الطاولة. يرجى المحاولة مجددًا."
 }

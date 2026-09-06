@@ -155,11 +155,15 @@ class QrRoundDisplayLine {
     required this.addons,
     this.nameAr,
     this.notes,
+    this.cancelledQuantity = 0,
   });
 
   final String name;
   final String? nameAr;
   final double quantity;
+  final double cancelledQuantity;
+  double get remainingQuantity =>
+      (quantity - cancelledQuantity).clamp(0, quantity).toDouble();
   final int unitPriceBaisas;
   final int lineDiscountBaisas;
   final int lineTotalBaisas;
@@ -172,6 +176,7 @@ class QrRoundDisplayLine {
       name: (json['product_name'] ?? json['name'])?.toString() ?? '',
       nameAr: _nullableString(json['product_name_ar'] ?? json['name_ar']),
       quantity: (json['qty'] as num?)?.toDouble() ?? 0,
+      cancelledQuantity: (json['cancelled_qty'] as num?)?.toDouble() ?? 0,
       unitPriceBaisas: (json['unit_price_baisas'] as num?)?.toInt() ?? 0,
       lineDiscountBaisas: (json['line_discount_baisas'] as num?)?.toInt() ?? 0,
       lineTotalBaisas: (json['line_total_baisas'] as num?)?.toInt() ?? 0,
@@ -189,7 +194,7 @@ class QrRoundDisplayLine {
 
   Map<String, dynamic> toKitchenItem({required bool arabic}) => {
     'name': arabic && nameAr != null ? nameAr : name,
-    'qty': quantity,
+    'qty': remainingQuantity,
     'notes': ?notes,
     'modifiers': [
       for (final addon in addons)

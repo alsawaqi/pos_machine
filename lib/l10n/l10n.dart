@@ -5662,6 +5662,72 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Promotions don\'t apply to delivery-provider orders — the provider\'s listed price is final.'**
   String get posOffersNotForDelivery;
+
+  /// No description provided for @tableSharedAdjustmentsUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available on shared tables yet'**
+  String get tableSharedAdjustmentsUnavailable;
+
+  /// No description provided for @tableSendToKitchen.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to kitchen'**
+  String get tableSendToKitchen;
+
+  /// No description provided for @tableSentAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent {time}'**
+  String tableSentAt(String time);
+
+  /// No description provided for @tableCancelSentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel sent items'**
+  String get tableCancelSentTitle;
+
+  /// No description provided for @tableCancelSentApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'Manager approval is required to cancel items sent to the kitchen.'**
+  String get tableCancelSentApproval;
+
+  /// No description provided for @tableWasPrepared.
+  ///
+  /// In en, this message translates to:
+  /// **'Was it prepared?'**
+  String get tableWasPrepared;
+
+  /// No description provided for @tablePreparedYes.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes — record waste'**
+  String get tablePreparedYes;
+
+  /// No description provided for @tablePreparedNo.
+  ///
+  /// In en, this message translates to:
+  /// **'No — cancel only'**
+  String get tablePreparedNo;
+
+  /// No description provided for @tableCancelSentReason.
+  ///
+  /// In en, this message translates to:
+  /// **'Reason (optional)'**
+  String get tableCancelSentReason;
+
+  /// No description provided for @tableLocalOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'local-only'**
+  String get tableLocalOnly;
+
+  /// No description provided for @tableActionFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Table action could not be saved. Please try again.'**
+  String get tableActionFailed;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

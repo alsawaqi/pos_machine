@@ -53,6 +53,8 @@ class PosController extends ChangeNotifier
   DateTime Function() clock = DateTime.now;
 
   DiningTableSyncHooks? diningTableSyncHooks;
+  /// T6 owner-approved eligibility seam; no change to card charge arithmetic.
+  bool Function()? isLiveSharedTable;
   Future<bool> Function(OrderSnapshot)? onDiningTableFinalRound;
   final Map<String, String> _diningHookOccupancies = {};
   String? _activeDiningTableSeatingKey;
@@ -1546,6 +1548,8 @@ class PosController extends ChangeNotifier
       _roundMoney(offeredCharityRoundUpTotal - activePaymentBaseTotal);
 
   bool get canOfferCharityRoundUp =>
+      !(selectedOrderType == OrderType.dineIn &&
+          activeDiningTableId != null && (isLiveSharedTable?.call() ?? false)) &&
       // P-G7 — no round-up on delivery orders (no till money at all).
       selectedOrderType != OrderType.delivery &&
       // CARD legs only. The round-up must ride the card charge (the bank

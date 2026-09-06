@@ -74,7 +74,10 @@ KitchenTicketData buildQrKitchenTicket(
         : 'QR DINE-IN · ROUND ${round.roundNo}',
     tableLabel: envelope.tableLabel ?? '',
     time: round.resolvedAt ?? round.submittedAt ?? DateTime.now().toUtc(),
-    items: [for (final line in round.lines) line.toKitchenItem(arabic: arabic)],
+    items: [
+      for (final line in round.lines)
+        if (line.remainingQuantity > 0) line.toKitchenItem(arabic: arabic),
+    ],
   );
 }
 
@@ -354,6 +357,9 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
     required String scope,
     bool confirmed = false,
   }) async {
+    // Device print evidence is authoritative. Accepted tickets remain
+    // claimable on the server, so skip before claims, notices or local sets.
+    if (envelope.printedAt != null) return _PrintAttempt.skipped;
     final flightKey = '$scope/${envelope.round.id}';
     final existing = _printing[flightKey];
     if (existing != null) return existing;

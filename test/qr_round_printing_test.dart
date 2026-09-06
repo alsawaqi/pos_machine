@@ -16,6 +16,96 @@ void main() {
 
   setUp(() => SharedPreferences.setMockInitialValues(const {}));
 
+  test('T6 evidence-printed feed row skips claim, notice and local set', () async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString('qr_round_print_cursor_KIOSK-1', 'cursor-0');
+    await preferences.setStringList('qr_round_printed_set_KIOSK-1', ['77']);
+    final base = _round(1);
+    final envelope = QrRoundEnvelope(
+      round: base.round,
+      orderUuid: base.orderUuid,
+      sessionUuid: base.sessionUuid,
+      printedAt: DateTime.utc(2026, 9, 6, 12),
+    );
+    final kitchen = _KitchenGateway();
+    final printer = _Printer();
+    final notices = <QrRoundPrintNotice>[];
+    final controller = _controller(
+      preferences,
+      _Gateway([
+        QrAcceptedRoundsPage(
+          rounds: [envelope],
+          nextCursor: 'cursor-1',
+          latestCursor: 'cursor-1',
+          skippedExpiredCount: 0,
+        ),
+      ]),
+      printer,
+      kitchenGateway: kitchen,
+      notices: notices,
+    );
+    await controller.setEnabled(true);
+    expect(kitchen.claims, isEmpty);
+    expect(kitchen.reports, isEmpty);
+    expect(printer.ids, isEmpty);
+    expect(notices, isEmpty);
+    expect(preferences.getStringList('qr_round_printed_set_KIOSK-1'), ['77']);
+    expect(preferences.getString('qr_round_print_cursor_KIOSK-1'), 'cursor-1');
+    controller.stop();
+  });
+
+  test('T6 kitchen quantity subtracts cancellations and omits zero lines', () {
+    final lines = [
+      QrRoundDisplayLine.fromJson({
+        'product_name': 'Coffee', 'qty': 3, 'cancelled_qty': 1,
+      }),
+      QrRoundDisplayLine.fromJson({
+        'product_name': 'Tea', 'qty': 2, 'cancelled_qty': 2,
+      }),
+      QrRoundDisplayLine.fromJson({'product_name': 'Water', 'qty': 1}),
+    ];
+    final ticket = buildQrKitchenTicket(
+      QrRoundEnvelope(
+        round: QrDeviceRound(
+          id: 1, roundNo: 1, status: 'accepted', lines: lines,
+          subtotalBaisas: 0, taxBaisas: 0, totalBaisas: 0,
+        ),
+        orderUuid: 'order-1',
+        sessionUuid: 'session-1',
+      ),
+      arabic: false,
+    );
+    expect(lines.map((line) => line.cancelledQuantity), [1, 2, 0]);
+    expect(ticket.items.map((item) => item['name']), ['Coffee', 'Water']);
+    expect(ticket.items.map((item) => item['qty']), [2, 1]);
+    final rendered = buildKitchenTicketLines(ticket)
+        .map((line) => line.text).join('\n');
+    expect(rendered, contains('2 x Coffee'));
+    expect(rendered, isNot(contains('Tea')));
+    expect(rendered, contains('1 x Water'));
+  });
+
+  test('T6 claim response preserves cancelled quantity for its print', () async {
+    final preferences = await SharedPreferences.getInstance();
+    final kitchen = _KitchenGateway()
+      ..ticket = QrKitchenTicket.fromJson({
+        'ticket_key': 'round:1', 'round_id': 1, 'order_uuid': 'order-1',
+        'replayed': false, 'print_pending': true, 'priced_lines': [
+          {'product_name': 'Coffee', 'qty': 3, 'cancelled_qty': 2},
+        ],
+      });
+    final printer = _Printer();
+    final controller = _controller(
+      preferences, _Gateway([]), printer, kitchenGateway: kitchen,
+    );
+    expect(await controller.printConfirmedRound(_round(1)), isTrue);
+    final ticket = buildQrKitchenTicket(printer.envelopes.single, arabic: false);
+    expect(ticket.items.single['qty'], 1);
+    expect(kitchen.claims, ['round:1']);
+    expect(kitchen.reports.single.result, 'printed');
+    controller.stop();
+  });
+
   test('first enable seeds latest cursor and prints no history', () async {
     final preferences = await SharedPreferences.getInstance();
     final gateway = _Gateway([
