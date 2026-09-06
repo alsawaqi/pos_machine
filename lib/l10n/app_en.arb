@@ -1,4 +1,131 @@
 {
+  "tableOfflineBanner": "Working offline since {time} — Still works: open tables, add items, move, join, clear, kitchen ticket, cash, card, receipt. Not available: tables opened on other devices, customer phone orders and their confirmation, QR card settlement, cancelling QR orders. Queued: {count} table actions.",
+  "@tableOfflineBanner": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tableReconciledTitle": "Tables reconciled",
+  "tableReconciledDismiss": "Done",
+  "tableReconciledSettings": "Tables",
+  "tableReconciledHistory": "Last 200 reconciliation messages — failed payments remain in the attention list.",
+  "tableReconciledEmpty": "No table reconciliation messages.",
+  "tableHistoryUnavailable": "Table history could not be loaded. Close and reopen this section to retry.",
+  "tableReviewReasonUnknown": "reason not supplied",
+  "tableReconciledAttached": "Table {table} joined the server's existing session.",
+  "@tableReconciledAttached": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledMerged": "Table {table}: another device already had this table; your items were added to that bill and need review.",
+  "@tableReconciledMerged": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledClosed": "Table {table} was closed on the server before your open arrived.",
+  "@tableReconciledClosed": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledHeld": "Table {table}: {count} items could not be priced ({reason}) — review on the QR tab.",
+  "@tableReconciledHeld": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledRoundStopped": "Table {table}: the server bill is closed or awaiting payment; these items were not added. Review on the QR tab.",
+  "@tableReconciledRoundStopped": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledMoveOccupied": "Table {to} was already taken on the server; the server still shows your bill on Table {from}.",
+  "@tableReconciledMoveOccupied": {
+    "placeholders": {
+      "to": {
+        "type": "String"
+      },
+      "from": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledMoveStale": "Move from Table {from} to Table {to} was not applied: the server session is no longer current or was not found. Check the floor; your local table was not changed.",
+  "@tableReconciledMoveStale": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledJoin": "Table {table}: these seats could not be joined on the server: {seats}. Check the floor; local tables were not changed.",
+  "@tableReconciledJoin": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      },
+      "seats": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledUnpaid": "Table {table} still has an unpaid bill on the server — clear it from the QR tab or pay it.",
+  "@tableReconciledUnpaid": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledCancellation": "Table {table}: {count} requested items were not found for cancellation on the server. Review the bill on the QR tab.",
+  "@tableReconciledCancellation": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tableReconciledOther": "Table {table}: server result {outcome}. Review on the QR tab; the local table was not changed.",
+  "@tableReconciledOther": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      },
+      "outcome": {
+        "type": "String"
+      }
+    }
+  },
   "@@locale": "en",
 "tableServerView": "Server view",
 "tableServerFree": "Server: free · {age}",

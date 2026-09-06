@@ -97,6 +97,120 @@ abstract class L10n {
     Locale('en'),
   ];
 
+  /// No description provided for @tableOfflineBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Working offline since {time} — Still works: open tables, add items, move, join, clear, kitchen ticket, cash, card, receipt. Not available: tables opened on other devices, customer phone orders and their confirmation, QR card settlement, cancelling QR orders. Queued: {count} table actions.'**
+  String tableOfflineBanner(String time, int count);
+
+  /// No description provided for @tableReconciledTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Tables reconciled'**
+  String get tableReconciledTitle;
+
+  /// No description provided for @tableReconciledDismiss.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get tableReconciledDismiss;
+
+  /// No description provided for @tableReconciledSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Tables'**
+  String get tableReconciledSettings;
+
+  /// No description provided for @tableReconciledHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 200 reconciliation messages — failed payments remain in the attention list.'**
+  String get tableReconciledHistory;
+
+  /// No description provided for @tableReconciledEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No table reconciliation messages.'**
+  String get tableReconciledEmpty;
+
+  /// No description provided for @tableHistoryUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Table history could not be loaded. Close and reopen this section to retry.'**
+  String get tableHistoryUnavailable;
+
+  /// No description provided for @tableReviewReasonUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'reason not supplied'**
+  String get tableReviewReasonUnknown;
+
+  /// No description provided for @tableReconciledAttached.
+  ///
+  /// In en, this message translates to:
+  /// **'Table {table} joined the server\'s existing session.'**
+  String tableReconciledAttached(String table);
+
+  /// No description provided for @tableReconciledMerged.
+  ///
+  /// In en, this message translates to:
+  /// **'Table {table}: another device already had this table; your items were added to that bill and need review.'**
+  String tableReconciledMerged(String table);
+
+  /// No description provided for @tableReconciledClosed.
+  ///
+  /// In en, this message translates to:
+  /// **'Table {table} was closed on the server before your open arrived.'**
+  String tableReconciledClosed(String table);
+
+  /// No description provided for @tableReconciledHeld.
+  ///
+  /// In en, this message translates to:
+  /// **'Table {table}: {count} items could not be priced ({reason}) — review on the QR tab.'**
+  String tableReconciledHeld(String table, int count, String reason);
+
+  /// No description provided for @tableReconciledRoundStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Table {table}: the server bill is closed or awaiting payment; these items were not added. Review on the QR tab.'**
+  String tableReconciledRoundStopped(String table);
+
+  /// No description provided for @tableReconciledMoveOccupied.
+  ///
+  /// In en, this message translates to:
+  /// **'Table {to} was already taken on the server; the server still shows your bill on Table {from}.'**
+  String tableReconciledMoveOccupied(String to, String from);
+
+  /// No description provided for @tableReconciledMoveStale.
+  ///
+  /// In en, this message translates to:
+  /// **'Move from Table {from} to Table {to} was not applied: the server session is no longer current or was not found. Check the floor; your local table was not changed.'**
+  String tableReconciledMoveStale(String from, String to);
+
+  /// No description provided for @tableReconciledJoin.
+  ///
+  /// In en, this message translates to:
+  /// **'Table {table}: these seats could not be joined on the server: {seats}. Check the floor; local tables were not changed.'**
+  String tableReconciledJoin(String table, String seats);
+
+  /// No description provided for @tableReconciledUnpaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Table {table} still has an unpaid bill on the server — clear it from the QR tab or pay it.'**
+  String tableReconciledUnpaid(String table);
+
+  /// No description provided for @tableReconciledCancellation.
+  ///
+  /// In en, this message translates to:
+  /// **'Table {table}: {count} requested items were not found for cancellation on the server. Review the bill on the QR tab.'**
+  String tableReconciledCancellation(String table, int count);
+
+  /// No description provided for @tableReconciledOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Table {table}: server result {outcome}. Review on the QR tab; the local table was not changed.'**
+  String tableReconciledOther(String table, String outcome);
+
   /// No description provided for @tableServerView.
   ///
   /// In en, this message translates to:

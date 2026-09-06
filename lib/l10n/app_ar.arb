@@ -1,4 +1,131 @@
 {
+  "tableOfflineBanner": "العمل دون اتصال منذ {time} — المتاح: فتح الطاولات، إضافة الأصناف، النقل، الدمج، الإخلاء، تذكرة المطبخ، النقد، البطاقة، الإيصال. غير متاح: الطاولات المفتوحة على أجهزة أخرى، طلبات هاتف العميل وتأكيدها، تسوية بطاقة QR، إلغاء طلبات QR. في الانتظار: {count} إجراء للطاولات.",
+  "@tableOfflineBanner": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tableReconciledTitle": "تمت مزامنة الطاولات",
+  "tableReconciledDismiss": "تم",
+  "tableReconciledSettings": "الطاولات",
+  "tableReconciledHistory": "آخر 200 رسالة مزامنة — تبقى المدفوعات الفاشلة في قائمة التنبيهات.",
+  "tableReconciledEmpty": "لا توجد رسائل مزامنة للطاولات.",
+  "tableHistoryUnavailable": "تعذر تحميل سجل الطاولات. أغلق هذا القسم وافتحه لإعادة المحاولة.",
+  "tableReviewReasonUnknown": "السبب غير مذكور",
+  "tableReconciledAttached": "انضمت الطاولة {table} إلى الجلسة الموجودة على الخادم.",
+  "@tableReconciledAttached": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledMerged": "الطاولة {table}: كانت مفتوحة على جهاز آخر؛ أضيفت أصنافك إلى تلك الفاتورة وتحتاج إلى مراجعة.",
+  "@tableReconciledMerged": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledClosed": "أُغلقت الطاولة {table} على الخادم قبل وصول طلب فتحها.",
+  "@tableReconciledClosed": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledHeld": "الطاولة {table}: تعذر تسعير {count} صنف ({reason}) — راجع تبويب QR.",
+  "@tableReconciledHeld": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledRoundStopped": "الطاولة {table}: الفاتورة على الخادم مغلقة أو بانتظار الدفع؛ لم تُضف هذه الأصناف. راجع تبويب QR.",
+  "@tableReconciledRoundStopped": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledMoveOccupied": "كانت الطاولة {to} مشغولة على الخادم؛ لا يزال الخادم يعرض فاتورتك على الطاولة {from}.",
+  "@tableReconciledMoveOccupied": {
+    "placeholders": {
+      "to": {
+        "type": "String"
+      },
+      "from": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledMoveStale": "لم يُطبّق النقل من الطاولة {from} إلى الطاولة {to}: جلسة الخادم لم تعد سارية أو لم يتم العثور عليها. تحقق من الطاولات؛ لم تتغير طاولتك المحلية.",
+  "@tableReconciledMoveStale": {
+    "placeholders": {
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledJoin": "الطاولة {table}: تعذر دمج هذه الطاولات على الخادم: {seats}. تحقق من الطاولات؛ لم تتغير الطاولات المحلية.",
+  "@tableReconciledJoin": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      },
+      "seats": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledUnpaid": "لا تزال للطاولة {table} فاتورة غير مدفوعة على الخادم — ألغها من تبويب QR أو ادفعها.",
+  "@tableReconciledUnpaid": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      }
+    }
+  },
+  "tableReconciledCancellation": "الطاولة {table}: لم يُعثر على {count} صنف مطلوب للإلغاء على الخادم. راجع الفاتورة في تبويب QR.",
+  "@tableReconciledCancellation": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tableReconciledOther": "الطاولة {table}: نتيجة الخادم {outcome}. راجع تبويب QR؛ لم تتغير الطاولة المحلية.",
+  "@tableReconciledOther": {
+    "placeholders": {
+      "table": {
+        "type": "String"
+      },
+      "outcome": {
+        "type": "String"
+      }
+    }
+  },
   "@@locale": "ar",
 "tableServerView": "عرض الخادم",
 "tableServerFree": "الخادم: متاحة · {age}",

@@ -9,6 +9,89 @@ class L10nAr extends L10n {
   L10nAr([String locale = 'ar']) : super(locale);
 
   @override
+  String tableOfflineBanner(String time, int count) {
+    return 'العمل دون اتصال منذ $time — المتاح: فتح الطاولات، إضافة الأصناف، النقل، الدمج، الإخلاء، تذكرة المطبخ، النقد، البطاقة، الإيصال. غير متاح: الطاولات المفتوحة على أجهزة أخرى، طلبات هاتف العميل وتأكيدها، تسوية بطاقة QR، إلغاء طلبات QR. في الانتظار: $count إجراء للطاولات.';
+  }
+
+  @override
+  String get tableReconciledTitle => 'تمت مزامنة الطاولات';
+
+  @override
+  String get tableReconciledDismiss => 'تم';
+
+  @override
+  String get tableReconciledSettings => 'الطاولات';
+
+  @override
+  String get tableReconciledHistory =>
+      'آخر 200 رسالة مزامنة — تبقى المدفوعات الفاشلة في قائمة التنبيهات.';
+
+  @override
+  String get tableReconciledEmpty => 'لا توجد رسائل مزامنة للطاولات.';
+
+  @override
+  String get tableHistoryUnavailable =>
+      'تعذر تحميل سجل الطاولات. أغلق هذا القسم وافتحه لإعادة المحاولة.';
+
+  @override
+  String get tableReviewReasonUnknown => 'السبب غير مذكور';
+
+  @override
+  String tableReconciledAttached(String table) {
+    return 'انضمت الطاولة $table إلى الجلسة الموجودة على الخادم.';
+  }
+
+  @override
+  String tableReconciledMerged(String table) {
+    return 'الطاولة $table: كانت مفتوحة على جهاز آخر؛ أضيفت أصنافك إلى تلك الفاتورة وتحتاج إلى مراجعة.';
+  }
+
+  @override
+  String tableReconciledClosed(String table) {
+    return 'أُغلقت الطاولة $table على الخادم قبل وصول طلب فتحها.';
+  }
+
+  @override
+  String tableReconciledHeld(String table, int count, String reason) {
+    return 'الطاولة $table: تعذر تسعير $count صنف ($reason) — راجع تبويب QR.';
+  }
+
+  @override
+  String tableReconciledRoundStopped(String table) {
+    return 'الطاولة $table: الفاتورة على الخادم مغلقة أو بانتظار الدفع؛ لم تُضف هذه الأصناف. راجع تبويب QR.';
+  }
+
+  @override
+  String tableReconciledMoveOccupied(String to, String from) {
+    return 'كانت الطاولة $to مشغولة على الخادم؛ لا يزال الخادم يعرض فاتورتك على الطاولة $from.';
+  }
+
+  @override
+  String tableReconciledMoveStale(String from, String to) {
+    return 'لم يُطبّق النقل من الطاولة $from إلى الطاولة $to: جلسة الخادم لم تعد سارية أو لم يتم العثور عليها. تحقق من الطاولات؛ لم تتغير طاولتك المحلية.';
+  }
+
+  @override
+  String tableReconciledJoin(String table, String seats) {
+    return 'الطاولة $table: تعذر دمج هذه الطاولات على الخادم: $seats. تحقق من الطاولات؛ لم تتغير الطاولات المحلية.';
+  }
+
+  @override
+  String tableReconciledUnpaid(String table) {
+    return 'لا تزال للطاولة $table فاتورة غير مدفوعة على الخادم — ألغها من تبويب QR أو ادفعها.';
+  }
+
+  @override
+  String tableReconciledCancellation(String table, int count) {
+    return 'الطاولة $table: لم يُعثر على $count صنف مطلوب للإلغاء على الخادم. راجع الفاتورة في تبويب QR.';
+  }
+
+  @override
+  String tableReconciledOther(String table, String outcome) {
+    return 'الطاولة $table: نتيجة الخادم $outcome. راجع تبويب QR؛ لم تتغير الطاولة المحلية.';
+  }
+
+  @override
   String get tableServerView => 'عرض الخادم';
 
   @override

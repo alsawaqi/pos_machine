@@ -7,6 +7,8 @@ import '../data/order_sync_repository.dart';
 import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../models/remote_table_state.dart';
+import '../models/table_sync_models.dart';
+import '../widgets/table_reconciliation_sheet.dart';
 import '../services/settings_service.dart';
 import 'audience_spike_screen.dart';
 
@@ -278,6 +280,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
               if (widget.showOperations) ...[
                 const _TableSoakSection(),
+                const TableReconciliationSettingsSection(),
                 const Divider(color: Colors.white12, height: 36),
               ],
               if (!releaseBuild) ...[
@@ -603,6 +606,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           borderSide: const BorderSide(color: Color(0xFF35C28B)),
         ),
       );
+}
+
+/// Opening history reads the local verdict ledger only, in every mode. It
+/// neither starts polling nor acknowledges rows that the cashier has not seen.
+class TableReconciliationSettingsSection extends ConsumerStatefulWidget {
+  const TableReconciliationSettingsSection({super.key});
+  @override
+  ConsumerState<TableReconciliationSettingsSection> createState() =>
+      _TableReconciliationSettingsSectionState();
+}
+
+class _TableReconciliationSettingsSectionState
+    extends ConsumerState<TableReconciliationSettingsSection> {
+  Future<List<TableSyncVerdict>>? _rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
+    return ExpansionTile(
+      key: const ValueKey('table-reconciliation-settings'),
+      title: Text(l10n.tableReconciledSettings),
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      tilePadding: EdgeInsets.zero,
+      onExpansionChanged: (expanded) {
+        if (expanded) {
+          setState(() {
+            _rows = ref.read(tableLedgerStoreProvider)
+                .readTableSyncVerdicts(limit: 200);
+          });
+        }
+      },
+      children: [
+        Text(l10n.tableReconciledHistory),
+        SizedBox(
+          height: 280,
+          child: FutureBuilder<List<TableSyncVerdict>>(
+            future: _rows,
+            builder: (context, value) {
+              if (value.hasError) return Center(child: Text(l10n.tableHistoryUnavailable));
+              if (value.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return TableReconciliationHistoryPanel(rows: value.data ?? const []);
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _TableSoakSection extends ConsumerStatefulWidget {

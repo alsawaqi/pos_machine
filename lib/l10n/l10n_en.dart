@@ -9,6 +9,89 @@ class L10nEn extends L10n {
   L10nEn([String locale = 'en']) : super(locale);
 
   @override
+  String tableOfflineBanner(String time, int count) {
+    return 'Working offline since $time — Still works: open tables, add items, move, join, clear, kitchen ticket, cash, card, receipt. Not available: tables opened on other devices, customer phone orders and their confirmation, QR card settlement, cancelling QR orders. Queued: $count table actions.';
+  }
+
+  @override
+  String get tableReconciledTitle => 'Tables reconciled';
+
+  @override
+  String get tableReconciledDismiss => 'Done';
+
+  @override
+  String get tableReconciledSettings => 'Tables';
+
+  @override
+  String get tableReconciledHistory =>
+      'Last 200 reconciliation messages — failed payments remain in the attention list.';
+
+  @override
+  String get tableReconciledEmpty => 'No table reconciliation messages.';
+
+  @override
+  String get tableHistoryUnavailable =>
+      'Table history could not be loaded. Close and reopen this section to retry.';
+
+  @override
+  String get tableReviewReasonUnknown => 'reason not supplied';
+
+  @override
+  String tableReconciledAttached(String table) {
+    return 'Table $table joined the server\'s existing session.';
+  }
+
+  @override
+  String tableReconciledMerged(String table) {
+    return 'Table $table: another device already had this table; your items were added to that bill and need review.';
+  }
+
+  @override
+  String tableReconciledClosed(String table) {
+    return 'Table $table was closed on the server before your open arrived.';
+  }
+
+  @override
+  String tableReconciledHeld(String table, int count, String reason) {
+    return 'Table $table: $count items could not be priced ($reason) — review on the QR tab.';
+  }
+
+  @override
+  String tableReconciledRoundStopped(String table) {
+    return 'Table $table: the server bill is closed or awaiting payment; these items were not added. Review on the QR tab.';
+  }
+
+  @override
+  String tableReconciledMoveOccupied(String to, String from) {
+    return 'Table $to was already taken on the server; the server still shows your bill on Table $from.';
+  }
+
+  @override
+  String tableReconciledMoveStale(String from, String to) {
+    return 'Move from Table $from to Table $to was not applied: the server session is no longer current or was not found. Check the floor; your local table was not changed.';
+  }
+
+  @override
+  String tableReconciledJoin(String table, String seats) {
+    return 'Table $table: these seats could not be joined on the server: $seats. Check the floor; local tables were not changed.';
+  }
+
+  @override
+  String tableReconciledUnpaid(String table) {
+    return 'Table $table still has an unpaid bill on the server — clear it from the QR tab or pay it.';
+  }
+
+  @override
+  String tableReconciledCancellation(String table, int count) {
+    return 'Table $table: $count requested items were not found for cancellation on the server. Review the bill on the QR tab.';
+  }
+
+  @override
+  String tableReconciledOther(String table, String outcome) {
+    return 'Table $table: server result $outcome. Review on the QR tab; the local table was not changed.';
+  }
+
+  @override
   String get tableServerView => 'Server view';
 
   @override

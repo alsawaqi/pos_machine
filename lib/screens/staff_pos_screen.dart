@@ -31,6 +31,8 @@ import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
 import '../widgets/qr_round_print_status_indicator.dart';
 import '../widgets/sent_line_cancel_dialog.dart';
+import '../widgets/table_degraded_banner.dart';
+import '../widgets/table_reconciliation_sheet.dart';
 import '../providers/providers.dart';
 import 'branch_reports_screen.dart';
 import 'kitchen_production_screen.dart';
@@ -355,6 +357,54 @@ class TableKitchenBridge implements DiningTableSyncHooks {
       coordinator.onTablePaid(paid, snapshot);
 }
 
+/// The mid-service Live burst uses cashier-owned local carts only. All keys,
+/// pricing-free payloads and queued_offline decisions remain the coordinator's.
+class TableModeTransition {
+  TableModeTransition(this.bridge);
+  final TableKitchenBridge bridge;
+  Future<void> _tail = Future<void>.value();
+
+  Future<void> enterLive() {
+    final next = _tail.then((_) async {
+      final coordinator = bridge.coordinator;
+      if (!coordinator.live) return;
+      await coordinator.settled;
+      final ids = (await coordinator.loadSessions())
+          .where((s) => s.status == DiningTableStatus.occupied)
+          .map((s) => s.tableId).toList();
+      for (final id in ids) {
+        if (!coordinator.live) return;
+        // Re-read after each await: a cashier may have cleared/moved the table.
+        final stored = (await coordinator.loadSessions())
+            .where((s) => s.tableId == id).firstOrNull;
+        if (stored == null || stored.status != DiningTableStatus.occupied ||
+            (stored.seatingKey?.isNotEmpty ?? false)) {
+          continue;
+        }
+        final active = bridge.activeSession();
+        final session = active?.tableId == id ? active! : stored;
+        if (!coordinator.live) return;
+        // Finish open/identity adoption before capturing the round. An open
+        // ACK may hydrate an older persisted draft, but not the active cart.
+        coordinator.onTableOccupied(session);
+        await coordinator.settled;
+        if (!coordinator.live) return;
+        final current = (await coordinator.loadSessions())
+            .where((s) => s.tableId == id).firstOrNull;
+        if (current == null || current.status != DiningTableStatus.occupied ||
+            current.orderReference != stored.orderReference ||
+            current.occupiedAt != stored.occupiedAt) {
+          continue;
+        }
+        final latest = bridge.activeSession();
+        await bridge.send(latest?.tableId == id ? latest! : current);
+      }
+    });
+    _tail = next.catchError((Object _) {});
+    return next;
+  }
+}
+
 class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   TableShadowRepository? _tableShadow;
   RemoteTableSnapshot _remoteTables = const RemoteTableSnapshot();
@@ -362,6 +412,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   TableKitchenBridge? _tableKitchen;
   Future<void>? _tableKitchenInit;
   StreamSubscription<void>? _tableKitchenChanges;
+  StreamSubscription<List<TableSyncVerdict>>? _tableVerdicts;
+  TableReconciliationPresenter? _tableReconciliation;
+  TableModeTransition? _tableModeTransition;
+  final _tableControllerReady = Completer<void>();
   final _tablePaymentContexts = <String, Completer<TablePaymentContext>>{};
   Map<String, int> _tableUnsent = {};
   Map<String, DateTime> _tableSentAt = {};
@@ -439,8 +493,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.isLiveSharedTable = () =>
         ref.read(tableSessionsModeProvider) == 'live';
     controller.addListener(_onTableCartChanged);
-    ref.listenManual(tableSessionsModeProvider, (_, next) {
-      if (next == 'live') unawaited(_ensureTableKitchen());
+    ref.listenManual(tableSessionsModeProvider, (previous, next) {
+      if (previous != 'live' && next == 'live') {
+        unawaited(_enterLiveTables().catchError((Object _) {
+          if (mounted) _showTableActionFailure();
+        }));
+      }
     });
     _qrRoundAutoPrintController = ref.read(qrRoundAutoPrintControllerProvider);
     controller.onOrderCompleted = _handleOrderCompleted;
@@ -533,6 +591,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         enabled: ref.read(settingsControllerProvider).printQrKitchenRounds,
       );
       await controller.init();
+      _tableControllerReady.complete();
       if (mounted && ref.read(tableSessionsModeProvider) == 'live') {
         await _ensureTableKitchen();
       }
@@ -1460,6 +1519,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.removeListener(_onTableCartChanged);
     _tableKitchen?.detach();
     unawaited(_tableKitchenChanges?.cancel());
+    _tableReconciliation?.dispose();
+    unawaited(_tableVerdicts?.cancel());
     _qrRoundAutoPrintController.stop();
     _tableShadow?.setFloorPlanVisible(false);
     _tableShadow?.localTables = null;
@@ -1485,6 +1546,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final qrRoundPrintPollingUnavailable =
         ref.watch(qrRoundPrintPollingUnavailableProvider);
     _tableShadowMode = ref.watch(tableSessionsModeProvider);
+    final tableDegraded = _tableShadowMode == 'live'
+        ? ref.watch(degradedStateProvider) : const TableDegradedState();
     _remoteTables = _tableShadowMode == 'off'
         ? const RemoteTableSnapshot()
         : ref.watch(remoteBoardProvider).asData?.value ?? const RemoteTableSnapshot();
@@ -1556,11 +1619,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           child: SizedBox(
                             width: _designWidth,
                             height: _designHeight,
-                            child: _showPaymentPage
-                                ? _buildPaymentPageSurface()
-                                : _showDineInFloorPlan
-                                ? _buildDineInFloorPlanSurface(contentHeight)
-                                : _buildCatalogSurface(contentHeight),
+                            child: _buildTableAwareSurface(contentHeight, tableDegraded),
                           ),
                         ),
                       ),
@@ -1610,6 +1669,37 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       controller.selectedOrderType == OrderType.dineIn &&
       controller.activeDiningTableId != null;
 
+  Widget _buildTableAwareSurface(double contentHeight, TableDegradedState state) {
+    Widget surface(double height) => _showPaymentPage
+        ? _buildPaymentPageSurface()
+        : _showDineInFloorPlan
+        ? _buildDineInFloorPlanSurface(height)
+        : _buildCatalogSurface(height);
+    if (!state.degraded || controller.selectedOrderType != OrderType.dineIn) {
+      return surface(contentHeight);
+    }
+    return Column(children: [
+      TableDegradedBanner(mode: _tableShadowMode, state: state),
+      Expanded(child: LayoutBuilder(builder: (context, constraints) =>
+        surface(constraints.maxHeight - _topBarHeight -
+            _bottomBarHeight - (_panelGap * 2)))),
+    ]);
+  }
+
+  Future<void> _enterLiveTables() async {
+    await _tableControllerReady.future;
+    if (!mounted || ref.read(tableSessionsModeProvider) != 'live') return;
+    await _ensureTableKitchen();
+    if (!mounted || ref.read(tableSessionsModeProvider) != 'live') return;
+    await _tableModeTransition!.enterLive();
+  }
+
+  void _showTableActionFailure() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(ref.read(l10nProvider).tableActionFailed)),
+    );
+  }
+
   Future<void> _ensureTableKitchen() async {
     if (_tableKitchen != null) return;
     if (_tableKitchenInit != null) return _tableKitchenInit;
@@ -1629,6 +1719,24 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           _tablePaymentContexts.remove(snapshot.serverOrderUuid)?.future ??
           Future.value(const TablePaymentContext());
       _tableKitchen = bridge..attach();
+      _tableModeTransition = TableModeTransition(bridge);
+      _tableReconciliation = TableReconciliationPresenter(
+        show: (rows) async {
+          if (!mounted) return false;
+          await showModalBottomSheet<void>(
+            context: context,
+            isScrollControlled: true,
+            builder: (_) => TableReconciliationSheet(rows: rows),
+          );
+          return true;
+        },
+        markSeen: coordinator.markVerdictsSeen,
+      );
+      _tableVerdicts = coordinator.verdicts.listen((rows) {
+        unawaited(_tableReconciliation!.present(rows).catchError((Object _) {
+          if (mounted) _showTableActionFailure();
+        }));
+      });
       _tableKitchenChanges = coordinator.changes.listen((_) {
         unawaited(_refreshTableSentState().catchError((Object _) {}));
       });
