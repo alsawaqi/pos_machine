@@ -1,4 +1,65 @@
 {
+  "tableCustomerPending": "{label}: customer order ({count} items) — confirm on the QR tab.",
+  "@tableCustomerPending": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tableCustomerKitchen": "{label}: customer order sent to the kitchen.",
+  "@tableCustomerKitchen": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "tableCustomerBill": "{label}: customer asked for the bill.",
+  "@tableCustomerBill": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "tableSending": "⏳ sending",
+  "tableActivityReview": "needs review ({count})",
+  "@tableActivityReview": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tablePendingBell": "🔔 {count} pending rounds",
+  "@tablePendingBell": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tableSearchOffline": "Server search unavailable offline — local matches only.",
+  "tableSearchFailed": "Server search failed — local matches only.",
+  "tableSearchSearching": "Searching server tables…",
+  "tableSearchMatch": "{label} · {reference} · OMR {total}",
+  "@tableSearchMatch": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "reference": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
   "tableOfflineBanner": "Working offline since {time} — Still works: open tables, add items, move, join, clear, kitchen ticket, cash, card, receipt. Not available: tables opened on other devices, customer phone orders and their confirmation, QR card settlement, cancelling QR orders. Queued: {count} table actions.",
   "@tableOfflineBanner": {
     "placeholders": {

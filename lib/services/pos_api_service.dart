@@ -245,11 +245,31 @@ class PosApiService {
           TableShadowEvent(
             id: (row['id'] as num).toInt(),
             tableId: (row['table_id'] as num).toInt(),
+            eventType: row['event_type']?.toString() ?? '',
+            payload: Map<String, dynamic>.from(row['payload'] as Map? ?? {}),
+            deviceId: (row['device_id'] as num?)?.toInt(),
+            orderUuid: row['order_uuid']?.toString(),
+            createdAt: DateTime.tryParse(row['created_at']?.toString() ?? ''),
           ),
       ],
       latestId: (body.metaMap['latest_id'] as num).toInt(),
       hasMore: body.metaMap['has_more'] == true,
     );
+  }
+
+  Future<List<TableSearchResult>> searchTables(String query) async {
+    final q = query.trim();
+    if (q.length < 2 || q.length > 32) {
+      throw const FormatException('Table search must be 2–32 characters');
+    }
+    final body = await _send(() => _dio.get('/device/tables/search',
+        queryParameters: {'q': q}));
+    final rows = body.dataMap['tables'];
+    if (rows is! List) throw const FormatException('Missing table search rows');
+    return [
+      for (final row in rows)
+        TableSearchResult.fromBoard(Map<String, dynamic>.from(row as Map)),
+    ];
   }
 
   Future<List<QrTableBoardRow>> fetchQrTableBoard() async {

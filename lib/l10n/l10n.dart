@@ -97,6 +97,66 @@ abstract class L10n {
     Locale('en'),
   ];
 
+  /// No description provided for @tableCustomerPending.
+  ///
+  /// In en, this message translates to:
+  /// **'{label}: customer order ({count} items) — confirm on the QR tab.'**
+  String tableCustomerPending(String label, int count);
+
+  /// No description provided for @tableCustomerKitchen.
+  ///
+  /// In en, this message translates to:
+  /// **'{label}: customer order sent to the kitchen.'**
+  String tableCustomerKitchen(String label);
+
+  /// No description provided for @tableCustomerBill.
+  ///
+  /// In en, this message translates to:
+  /// **'{label}: customer asked for the bill.'**
+  String tableCustomerBill(String label);
+
+  /// No description provided for @tableSending.
+  ///
+  /// In en, this message translates to:
+  /// **'⏳ sending'**
+  String get tableSending;
+
+  /// No description provided for @tableActivityReview.
+  ///
+  /// In en, this message translates to:
+  /// **'needs review ({count})'**
+  String tableActivityReview(int count);
+
+  /// No description provided for @tablePendingBell.
+  ///
+  /// In en, this message translates to:
+  /// **'🔔 {count} pending rounds'**
+  String tablePendingBell(int count);
+
+  /// No description provided for @tableSearchOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'Server search unavailable offline — local matches only.'**
+  String get tableSearchOffline;
+
+  /// No description provided for @tableSearchFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Server search failed — local matches only.'**
+  String get tableSearchFailed;
+
+  /// No description provided for @tableSearchSearching.
+  ///
+  /// In en, this message translates to:
+  /// **'Searching server tables…'**
+  String get tableSearchSearching;
+
+  /// No description provided for @tableSearchMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'{label} · {reference} · OMR {total}'**
+  String tableSearchMatch(String label, String reference, String total);
+
   /// No description provided for @tableOfflineBanner.
   ///
   /// In en, this message translates to:

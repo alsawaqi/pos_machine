@@ -30,6 +30,14 @@ class TableShadowRepository with WidgetsBindingObserver {
   final DateTime Function() _clock;
   final void Function(String) _log;
   final _changes = StreamController<RemoteTableSnapshot>.broadcast();
+  final _feedEvents = StreamController<List<TableShadowEvent>>.broadcast();
+  final _activityNotices = StreamController<List<TableActivityNotice>>.broadcast();
+  Map<int, TableActivityBoardRow> _activityBoard = const {};
+  bool _activityBoardLoaded = false;
+  Stream<List<TableShadowEvent>> get feedEvents => _feedEvents.stream;
+  Stream<List<TableActivityNotice>> get activityNotices => _activityNotices.stream;
+  Map<int, TableActivityBoardRow> get activityBoard =>
+      _mode == 'live' ? _activityBoard : const {};
   late final _disagreements = TableDisagreementLog(store, clock: _clock);
   List<LocalTableShadowView> Function()? localTables;
 
@@ -65,6 +73,8 @@ class TableShadowRepository with WidgetsBindingObserver {
     if (_scope != scope || _epoch != sessionEpoch) {
       _generation++;
       _snapshot = const RemoteTableSnapshot();
+      _activityBoard = const {};
+      _activityBoardLoaded = false;
       _loadedScope = null;
       _disagreements.reset();
       _retryNotBefore = null;
@@ -134,6 +144,9 @@ class TableShadowRepository with WidgetsBindingObserver {
       await _loadScope(generation);
       if (!_current(generation)) return;
       var cursor = _snapshot.meta.feedCursor;
+      final priorNoticeId = _snapshot.meta.lastNotifiedEventId;
+      var latestId = cursor ?? 0;
+      final applied = <TableShadowEvent>[];
       if (cursor == null) {
         await _refreshBoard(generation);
         if (!_current(generation)) return;
@@ -143,6 +156,7 @@ class TableShadowRepository with WidgetsBindingObserver {
           throw const FormatException('Initial high-water probe was not empty');
         }
         cursor = latest.latestId;
+        latestId = latest.latestId;
         // Close the board-before-watermark race: anything included in the
         // sampled cursor must also be represented in our initial board.
         await _refreshBoard(generation);
@@ -153,27 +167,49 @@ class TableShadowRepository with WidgetsBindingObserver {
         if (!_current(generation)) return;
         final feed = await gateway.fetchFeed(after: cursor!);
         if (!_current(generation)) return;
+        latestId = math.max(latestId, feed.latestId);
         for (final event in feed.events) {
           if (event.id <= cursor!) {
             throw const FormatException('Table feed is not strictly ascending');
           }
           cursor = event.id;
+          applied.add(event);
           dirty = true;
         }
         if (!feed.hasMore || feed.events.isEmpty) break;
       }
-      if (dirty) await _refreshBoard(generation);
+      // Owner-approved B5 exception: the T5 cache has no pending-round count.
+      // Hydrate it once in Live after startup/scope change, even on a quiet
+      // feed. A dirty-feed refresh satisfies this too; failed loads retry under
+      // the existing backoff. Off/Shadow and the poll cadence are unchanged.
+      if (dirty || (_mode == 'live' && !_activityBoardLoaded)) {
+        await _refreshBoard(generation);
+      }
       if (!_current(generation)) return;
       final meta = RemoteSyncMeta(
         feedCursor: cursor,
         boardFetchedAt: _snapshot.meta.boardFetchedAt,
         lastFeedOkAt: _clock(),
+        // Persist notification dedup with the applied cursor, before emitting
+        // either stream. A failed board/store write emits neither, so retry is
+        // safe. Initial upgrade suppresses all history through latest_id.
+        lastNotifiedEventId: priorNoticeId == null
+            ? latestId : math.max(priorNoticeId, cursor ?? 0),
       );
       await store.saveRemoteMeta(meta);
       if (!_current(generation)) return;
       _snapshot = RemoteTableSnapshot(tables: _snapshot.tables, meta: meta);
       _retryNotBefore = null;
       _emit();
+      _feedEvents.add(List.unmodifiable(applied));
+      if (_mode == 'live' && priorNoticeId != null) {
+        final notices = [
+          for (final event in applied)
+            if (event.id > priorNoticeId)
+              TableActivityNotice.fromEvent(event, _activityBoard[event.tableId]),
+        ].whereType<TableActivityNotice>().toList(growable: false);
+        if (notices.isNotEmpty) _activityNotices.add(List.unmodifiable(notices));
+      }
     } catch (error) {
       if (_current(generation)) await _recordFailure(error);
     } finally {
@@ -227,6 +263,11 @@ class TableShadowRepository with WidgetsBindingObserver {
     }
     if (!_current(generation)) return;
     final old = _snapshot.meta;
+    _activityBoard = Map.unmodifiable({
+      for (final row in json)
+        (row['table_id'] as num).toInt(): TableActivityBoardRow.fromBoard(row),
+    });
+    _activityBoardLoaded = true;
     _snapshot = RemoteTableSnapshot(
       tables: {for (final row in rows) row.tableId: row},
       meta: RemoteSyncMeta(
@@ -235,6 +276,7 @@ class TableShadowRepository with WidgetsBindingObserver {
         lastFeedOkAt: old.lastFeedOkAt,
         lastError: old.lastError,
         consecutiveFailures: old.consecutiveFailures,
+        lastNotifiedEventId: old.lastNotifiedEventId,
       ),
     );
     _emit();
@@ -260,6 +302,7 @@ class TableShadowRepository with WidgetsBindingObserver {
           ? 'shadow_unavailable'
           : 'http_${api.statusCode ?? 0}',
       consecutiveFailures: count,
+      lastNotifiedEventId: _snapshot.meta.lastNotifiedEventId,
     );
     _snapshot = RemoteTableSnapshot(tables: _snapshot.tables, meta: meta);
     _log('Table shadow unavailable: ${meta.lastError}');
@@ -282,6 +325,8 @@ class TableShadowRepository with WidgetsBindingObserver {
     _timer?.cancel();
     if (_started) WidgetsBinding.instance.removeObserver(this);
     unawaited(_changes.close());
+    unawaited(_feedEvents.close());
+    unawaited(_activityNotices.close());
   }
 }
 

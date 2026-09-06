@@ -1,4 +1,65 @@
 {
+  "tableCustomerPending": "{label}: طلب عميل ({count} صنف) — أكّده من تبويب QR.",
+  "@tableCustomerPending": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tableCustomerKitchen": "{label}: أُرسل طلب العميل إلى المطبخ.",
+  "@tableCustomerKitchen": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "tableCustomerBill": "{label}: طلب العميل الفاتورة.",
+  "@tableCustomerBill": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "tableSending": "⏳ جارٍ الإرسال",
+  "tableActivityReview": "تحتاج إلى مراجعة ({count})",
+  "@tableActivityReview": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tablePendingBell": "🔔 {count} جولة بانتظار التأكيد",
+  "@tablePendingBell": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tableSearchOffline": "بحث الخادم غير متاح دون اتصال — النتائج المحلية فقط.",
+  "tableSearchFailed": "تعذر البحث على الخادم — النتائج المحلية فقط.",
+  "tableSearchSearching": "جارٍ البحث في طاولات الخادم…",
+  "tableSearchMatch": "{label} · {reference} · {total} ر.ع.",
+  "@tableSearchMatch": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "reference": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
   "tableOfflineBanner": "العمل دون اتصال منذ {time} — المتاح: فتح الطاولات، إضافة الأصناف، النقل، الدمج، الإخلاء، تذكرة المطبخ، النقد، البطاقة، الإيصال. غير متاح: الطاولات المفتوحة على أجهزة أخرى، طلبات هاتف العميل وتأكيدها، تسوية بطاقة QR، إلغاء طلبات QR. في الانتظار: {count} إجراء للطاولات.",
   "@tableOfflineBanner": {
     "placeholders": {

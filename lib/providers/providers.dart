@@ -432,6 +432,10 @@ final remoteBoardProvider = StreamProvider<RemoteTableSnapshot>((ref) async* {
   yield* repository.changes;
 });
 
+final tableActivityNoticeProvider = StreamProvider<List<TableActivityNotice>>(
+  (ref) => ref.watch(tableShadowRepositoryProvider).activityNotices,
+);
+
 final qrRoundGatewayProvider = Provider<QrRoundGateway>(
   (ref) => QrTillService(ref.read(apiServiceProvider)),
 );

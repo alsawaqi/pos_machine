@@ -9,6 +9,49 @@ class L10nEn extends L10n {
   L10nEn([String locale = 'en']) : super(locale);
 
   @override
+  String tableCustomerPending(String label, int count) {
+    return '$label: customer order ($count items) — confirm on the QR tab.';
+  }
+
+  @override
+  String tableCustomerKitchen(String label) {
+    return '$label: customer order sent to the kitchen.';
+  }
+
+  @override
+  String tableCustomerBill(String label) {
+    return '$label: customer asked for the bill.';
+  }
+
+  @override
+  String get tableSending => '⏳ sending';
+
+  @override
+  String tableActivityReview(int count) {
+    return 'needs review ($count)';
+  }
+
+  @override
+  String tablePendingBell(int count) {
+    return '🔔 $count pending rounds';
+  }
+
+  @override
+  String get tableSearchOffline =>
+      'Server search unavailable offline — local matches only.';
+
+  @override
+  String get tableSearchFailed => 'Server search failed — local matches only.';
+
+  @override
+  String get tableSearchSearching => 'Searching server tables…';
+
+  @override
+  String tableSearchMatch(String label, String reference, String total) {
+    return '$label · $reference · OMR $total';
+  }
+
+  @override
   String tableOfflineBanner(String time, int count) {
     return 'Working offline since $time — Still works: open tables, add items, move, join, clear, kitchen ticket, cash, card, receipt. Not available: tables opened on other devices, customer phone orders and their confirmation, QR card settlement, cancelling QR orders. Queued: $count table actions.';
   }

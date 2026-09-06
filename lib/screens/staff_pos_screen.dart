@@ -5,6 +5,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemSound, SystemSoundType;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,6 +17,7 @@ import '../data/table_shadow_repository.dart';
 import '../data/table_sync_coordinator.dart';
 import '../models/table_sync_models.dart';
 import '../services/kitchen_ticket.dart';
+import '../services/table_shadow_service.dart';
 import '../services/audience_service.dart' show AudienceService;
 import '../services/display_strings.dart';
 import '../services/local_order_storage_service.dart';
@@ -405,6 +407,155 @@ class TableModeTransition {
   }
 }
 
+/// Debounce and stale-response fencing only; has no table/storage capability.
+class TableSearchController extends ChangeNotifier {
+  TableSearchController(this.search);
+  final Future<List<TableSearchResult>> Function(String) search;
+  Timer? _timer;
+  int _generation = 0;
+  String _key = '';
+  bool _disposed = false;
+  bool offline = false, failed = false, searching = false;
+  List<TableSearchResult> results = const [];
+  static bool eligible(String text) {
+    final q = text.trim();
+    return q.length >= 2 && q.length <= 32 &&
+        (q.toLowerCase().startsWith('t-') || RegExp(r'^\d{4,}$').hasMatch(q));
+  }
+  void update(String query, {required bool enabled, required bool degraded,
+    String scope = ''}) {
+    final q = query.trim();
+    final key = '$scope|$enabled|$degraded|$q';
+    if (_disposed || key == _key) return;
+    _key = key;
+    final generation = ++_generation;
+    _timer?.cancel();
+    results = const [];
+    failed = false;
+    offline = enabled && degraded && eligible(q);
+    searching = enabled && !degraded && eligible(q);
+    notifyListeners();
+    if (!searching) return;
+    _timer = Timer(const Duration(milliseconds: 400), () async {
+      try {
+        final rows = await search(q);
+        if (_disposed || generation != _generation) return;
+        results = List.unmodifiable(rows);
+      } catch (_) {
+        if (_disposed || generation != _generation) return;
+        failed = true;
+      }
+      searching = false;
+      notifyListeners();
+    });
+  }
+  @override
+  void dispose() {
+    _disposed = true;
+    _generation++;
+    _timer?.cancel();
+    super.dispose();
+  }
+}
+
+List<DiningTableDefinition> tableSearchMatches({
+  required List<DiningTableDefinition> local,
+  required List<DiningTableDefinition> definitions,
+  required String floorId, required List<TableSearchResult> results,
+}) {
+  final ids = {for (final row in results) row.tableId.toString()};
+  return {
+    for (final table in local) table.id: table,
+    for (final table in definitions)
+      if (table.floorId == floorId && ids.contains(table.id)) table.id: table,
+  }.values.toList()..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+}
+
+String tableActivityMessage(L10n l10n, TableActivityNotice notice) {
+  final label = notice.reference == null ? notice.tableLabel
+      : '${notice.tableLabel} · ${notice.reference}';
+  return switch (notice.kind) {
+    TableActivityKind.pending => l10n.tableCustomerPending(label, notice.itemCount!),
+    TableActivityKind.kitchen => l10n.tableCustomerKitchen(label),
+    TableActivityKind.bill => l10n.tableCustomerBill(label),
+  };
+}
+
+class TableSearchSummary extends StatelessWidget {
+  const TableSearchSummary({super.key, required this.search});
+  final TableSearchController search;
+  @override
+  Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
+    final text = search.offline ? l10n.tableSearchOffline
+        : search.failed ? l10n.tableSearchFailed
+        : search.searching ? l10n.tableSearchSearching : null;
+    if (text != null) return Text(text);
+    if (search.results.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 42,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          for (final result in search.results) Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5FC),
+                border: Border.all(color: const Color(0xFF356BDD)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Text(l10n.tableSearchMatch(
+                  result.label, result.reference ?? '—',
+                  result.totalBaisas == null ? '—' :
+                      (result.totalBaisas! / 1000).toStringAsFixed(3),
+                )),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class DiningTableActivityBadge extends StatelessWidget {
+  const DiningTableActivityBadge({super.key, required this.mode,
+    this.sending = false, this.pendingRounds = 0, this.needsReview = 0});
+  final String mode;
+  final bool sending;
+  final int pendingRounds, needsReview;
+  @override
+  Widget build(BuildContext context) {
+    if (mode != 'live') return const SizedBox.shrink();
+    final l10n = L10n.of(context);
+    final parts = [
+      if (sending) l10n.tableSending,
+      if (needsReview > 0) l10n.tableActivityReview(needsReview),
+      if (pendingRounds > 0) l10n.tablePendingBell(pendingRounds),
+    ];
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return IgnorePointer(child: Text(parts.join(' · '),
+      key: const ValueKey('table-activity-badge'),
+      textAlign: TextAlign.center,
+      style: const TextStyle(fontSize: 11, color: Color(0xFF755411))));
+  }
+}
+
+Future<String?> showTableSearchKeyboard(BuildContext context, {
+  required String initialValue, required ValueChanged<String> onChanged,
+}) => showDialog<String>(
+  context: context,
+  builder: (_) => _InAppKeyboardDialog(
+    title: L10n.of(context).posSearchTablesTitle,
+    initialValue: initialValue,
+    hintText: L10n.of(context).posSearchTablesHint,
+    tableSearch: true, onChanged: onChanged,
+  ),
+);
+
 class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   TableShadowRepository? _tableShadow;
   RemoteTableSnapshot _remoteTables = const RemoteTableSnapshot();
@@ -416,6 +567,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   TableReconciliationPresenter? _tableReconciliation;
   TableModeTransition? _tableModeTransition;
   final _tableControllerReady = Completer<void>();
+  late final TableSearchController _tableSearch;
+  StreamSubscription<void>? _tablePendingChanges;
+  Set<String> _pendingTableIds = {};
   final _tablePaymentContexts = <String, Completer<TablePaymentContext>>{};
   Map<String, int> _tableUnsent = {};
   Map<String, DateTime> _tableSentAt = {};
@@ -490,15 +644,34 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   void initState() {
     super.initState();
     controller = PosController();
+    _tableSearch = TableSearchController(
+      (q) => ref.read(apiServiceProvider).searchTables(q),
+    )..addListener(_onTableSearchChanged);
+    ref.listenManual(sessionControllerProvider, (_, _) => _scheduleTableSearch());
+    ref.listenManual(settingsControllerProvider, (_, _) => _scheduleTableSearch());
     controller.isLiveSharedTable = () =>
         ref.read(tableSessionsModeProvider) == 'live';
     controller.addListener(_onTableCartChanged);
     ref.listenManual(tableSessionsModeProvider, (previous, next) {
+      _scheduleTableSearch();
       if (previous != 'live' && next == 'live') {
         unawaited(_enterLiveTables().catchError((Object _) {
           if (mounted) _showTableActionFailure();
         }));
       }
+    });
+    ref.listenManual(tableActivityNoticeProvider, (_, next) {
+      final notices = next.asData?.value;
+      if (notices == null || ref.read(tableSessionsModeProvider) != 'live') return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || ref.read(tableSessionsModeProvider) != 'live') return;
+        unawaited(SystemSound.play(SystemSoundType.alert).catchError((Object _) {}));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(notices.map((n) =>
+              tableActivityMessage(ref.read(l10nProvider), n)).join('\n')),
+          duration: const Duration(seconds: 8),
+        ));
+      });
     });
     _qrRoundAutoPrintController = ref.read(qrRoundAutoPrintControllerProvider);
     controller.onOrderCompleted = _handleOrderCompleted;
@@ -1521,6 +1694,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     unawaited(_tableKitchenChanges?.cancel());
     _tableReconciliation?.dispose();
     unawaited(_tableVerdicts?.cancel());
+    unawaited(_tablePendingChanges?.cancel());
+    _tableSearch.dispose();
     _qrRoundAutoPrintController.stop();
     _tableShadow?.setFloorPlanVisible(false);
     _tableShadow?.localTables = null;
@@ -1548,6 +1723,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _tableShadowMode = ref.watch(tableSessionsModeProvider);
     final tableDegraded = _tableShadowMode == 'live'
         ? ref.watch(degradedStateProvider) : const TableDegradedState();
+    if (_tableShadowMode == 'live') {
+      ref.listen(degradedStateProvider, (_, _) => _scheduleTableSearch());
+    }
     _remoteTables = _tableShadowMode == 'off'
         ? const RemoteTableSnapshot()
         : ref.watch(remoteBoardProvider).asData?.value ?? const RemoteTableSnapshot();
@@ -1719,6 +1897,26 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           _tablePaymentContexts.remove(snapshot.serverOrderUuid)?.future ??
           Future.value(const TablePaymentContext());
       _tableKitchen = bridge..attach();
+      _tablePendingChanges = ref.read(orderSyncRepositoryProvider).watchPending()
+          .map((rows) {
+            final ids = <String>{};
+            for (final row in rows) {
+              final events = (jsonDecode(row.eventsJson) as List).whereType<Map>();
+              for (final event in events) {
+                final payload = event['payload'] as Map? ?? {};
+                if (row.orderUuid.startsWith('tbl:') && payload['table_id'] != null) {
+                  ids.add(payload['table_id'].toString());
+                } else {
+                  for (final table in controller.diningTableSessions) {
+                    final bill = coordinator.cachedSession(table.tableId)?.serverOrderUuid
+                        ?? table.serverOrderUuid;
+                    if (bill != null && bill == payload['order_uuid']) ids.add(table.tableId);
+                  }
+                }
+              }
+            }
+            if (mounted) setState(() => _pendingTableIds = ids);
+          }).listen((_) {});
       _tableModeTransition = TableModeTransition(bridge);
       _tableReconciliation = TableReconciliationPresenter(
         show: (rows) async {
@@ -1751,6 +1949,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   void _onTableCartChanged() {
+    _updateTableSearch();
     if (_liveTable) {
       unawaited(_refreshTableSentState().catchError((Object _) {}));
     } else {
@@ -1912,6 +2111,27 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   String _formatOccupancyDuration(DateTime? value) =>
       _formatOccupancyDurationAt(value, _clockNow.value);
 
+  void _onTableSearchChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _scheduleTableSearch() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updateTableSearch();
+    });
+  }
+
+  void _updateTableSearch([String? draft]) {
+    final live = ref.read(tableSessionsModeProvider) == 'live';
+    final session = ref.read(sessionServiceProvider);
+    _tableSearch.update(draft ?? controller.diningTableSearchQuery,
+      enabled: live,
+      degraded: live && ref.read(degradedStateProvider).degraded,
+      scope: '${ref.read(settingsServiceProvider).effectiveBaseUrl}|'
+          '${session.companyId}|${session.branchId}|${session.kioskId}',
+    );
+  }
+
   Widget _buildCatalogSurface(double contentHeight) {
     return Column(
       children: [
@@ -1948,7 +2168,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Widget _buildDineInFloorPlanSurface(double _) => _buildDineInFloorPlanPanel();
 
   Widget _buildDineInFloorPlanPanel() {
-    final tables = controller.visibleDiningTables;
+    final tables = _tableShadowMode != 'live' ? controller.visibleDiningTables :
+        tableSearchMatches(local: controller.visibleDiningTables,
+          definitions: controller.diningTableDefinitions,
+          floorId: controller.selectedDiningFloorId,
+          results: _tableSearch.results);
 
     return Container(
       decoration: BoxDecoration(
@@ -2091,6 +2315,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               ],
             ),
           ),
+          if (_tableShadowMode == 'live') TableSearchSummary(search: _tableSearch),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(30, 30, 30, 26),
@@ -2182,6 +2407,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   now: _clockNow.value,
                                   remote: _remoteTables.tables[int.tryParse(table.id)],
                                   remoteFailures: _remoteTables.meta.consecutiveFailures,
+                                  live: _tableShadowMode == 'live',
+                                  sending: _pendingTableIds.contains(table.id),
+                                  pendingRounds: _tableShadow?.activityBoard[int.tryParse(table.id)]?.pendingCount ?? 0,
+                                  searchMatch: _tableShadowMode == 'live' &&
+                                      _tableSearch.results.any((r) => r.tableId.toString() == table.id),
                                   onLongPress: openActions,
                                   onActions: openActions,
                                   linkedToLabel: linkedToLabel,
@@ -3309,6 +3539,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openDiningSearchKeyboard() async {
+    if (ref.read(tableSessionsModeProvider) == 'live') {
+      final value = await showTableSearchKeyboard(context,
+        initialValue: controller.diningTableSearchQuery,
+        onChanged: _updateTableSearch);
+      if (!mounted) return;
+      if (value != null) controller.setDiningTableSearchQuery(value);
+      _updateTableSearch();
+      return;
+    }
     final l10n = L10n.of(context);
     final value = await showDialog<String>(
       context: context,
@@ -10453,6 +10692,8 @@ String _formatOccupancyDurationAt(DateTime? value, DateTime now) {
 }
 
 class _DiningTableCard extends StatelessWidget {
+  final bool live, sending, searchMatch;
+  final int pendingRounds;
   final RemoteTableState? remote;
   final DateTime now;
   final int remoteFailures;
@@ -10489,6 +10730,8 @@ class _DiningTableCard extends StatelessWidget {
     this.linkedToLabel,
     this.groupTotal,
     this.linkedCount = 0,
+    this.live = false, this.sending = false, this.searchMatch = false,
+    this.pendingRounds = 0,
   });
 
   @override
@@ -10526,7 +10769,7 @@ class _DiningTableCard extends StatelessWidget {
     final cardShape = _diningCardShape(
       table.shape,
       BorderSide(
-        color: status == DiningTableStatus.available
+        color: searchMatch ? const Color(0xFF356BDD) : status == DiningTableStatus.available
             ? const Color(0xFFE8EEF0)
             : statusColor.withValues(alpha: 0.2),
         width: 2,
@@ -10809,6 +11052,11 @@ class _DiningTableCard extends StatelessWidget {
                         now: now, failures: remoteFailures,
                       ),
                     ],
+                    if (live) DiningTableActivityBadge(
+                      mode: 'live', sending: sending,
+                      pendingRounds: pendingRounds,
+                      needsReview: remote?.needsReviewCount ?? 0,
+                    ),
                   ],
                 ),
               ),
@@ -10900,9 +11148,12 @@ Widget buildDiningTableCardForTest({
   DiningTableSession? session,
   RemoteTableState? remote,
   int failures = 0,
+  bool live = false, bool sending = false, bool searchMatch = false,
+  int pendingRounds = 0,
 }) => _DiningTableCard(
   table: table, session: session, status: status, clock: clock,
   now: clock.value, onTap: onTap, remote: remote, remoteFailures: failures,
+  live: live, sending: sending, searchMatch: searchMatch, pendingRounds: pendingRounds,
 );
 
 class _TinyInfoBadge extends StatelessWidget {
@@ -13541,12 +13792,16 @@ class _InAppKeyboardDialog extends StatefulWidget {
   final String initialValue;
   final String hintText;
   final bool numbersOnly;
+  final bool tableSearch;
+  final ValueChanged<String>? onChanged;
 
   const _InAppKeyboardDialog({
     required this.title,
     required this.initialValue,
     required this.hintText,
     this.numbersOnly = false,
+    this.tableSearch = false,
+    this.onChanged,
   });
 
   @override
@@ -13570,9 +13825,10 @@ class _InAppKeyboardDialogState extends State<_InAppKeyboardDialog> {
         return;
       }
 
-      if (_value.length >= 30) return;
+      if (_value.length >= (widget.tableSearch ? 32 : 30)) return;
       _value = '$_value$key';
     });
+    widget.onChanged?.call(_value);
   }
 
   void _backspace() {
@@ -13580,6 +13836,7 @@ class _InAppKeyboardDialogState extends State<_InAppKeyboardDialog> {
     setState(() {
       _value = _value.substring(0, _value.length - 1);
     });
+    widget.onChanged?.call(_value);
   }
 
   @override
@@ -13692,6 +13949,9 @@ class _InAppKeyboardDialogState extends State<_InAppKeyboardDialog> {
                         onTap: () => _append(' '),
                       ),
                     ),
+                    if (widget.tableSearch) Expanded(
+                      child: _KeyboardKey(label: '-', onTap: () => _append('-')),
+                    ),
                   ],
                 ),
               ),
@@ -13705,6 +13965,7 @@ class _InAppKeyboardDialogState extends State<_InAppKeyboardDialog> {
                       setState(() {
                         _value = '';
                       });
+                      widget.onChanged?.call(_value);
                     },
                   ),
                 ),

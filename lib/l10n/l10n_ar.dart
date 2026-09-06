@@ -9,6 +9,50 @@ class L10nAr extends L10n {
   L10nAr([String locale = 'ar']) : super(locale);
 
   @override
+  String tableCustomerPending(String label, int count) {
+    return '$label: طلب عميل ($count صنف) — أكّده من تبويب QR.';
+  }
+
+  @override
+  String tableCustomerKitchen(String label) {
+    return '$label: أُرسل طلب العميل إلى المطبخ.';
+  }
+
+  @override
+  String tableCustomerBill(String label) {
+    return '$label: طلب العميل الفاتورة.';
+  }
+
+  @override
+  String get tableSending => '⏳ جارٍ الإرسال';
+
+  @override
+  String tableActivityReview(int count) {
+    return 'تحتاج إلى مراجعة ($count)';
+  }
+
+  @override
+  String tablePendingBell(int count) {
+    return '🔔 $count جولة بانتظار التأكيد';
+  }
+
+  @override
+  String get tableSearchOffline =>
+      'بحث الخادم غير متاح دون اتصال — النتائج المحلية فقط.';
+
+  @override
+  String get tableSearchFailed =>
+      'تعذر البحث على الخادم — النتائج المحلية فقط.';
+
+  @override
+  String get tableSearchSearching => 'جارٍ البحث في طاولات الخادم…';
+
+  @override
+  String tableSearchMatch(String label, String reference, String total) {
+    return '$label · $reference · $total ر.ع.';
+  }
+
+  @override
   String tableOfflineBanner(String time, int count) {
     return 'العمل دون اتصال منذ $time — المتاح: فتح الطاولات، إضافة الأصناف، النقل، الدمج، الإخلاء، تذكرة المطبخ، النقد، البطاقة، الإيصال. غير متاح: الطاولات المفتوحة على أجهزة أخرى، طلبات هاتف العميل وتأكيدها، تسوية بطاقة QR، إلغاء طلبات QR. في الانتظار: $count إجراء للطاولات.';
   }

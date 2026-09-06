@@ -18,8 +18,67 @@ const _table = DiningTableDefinition(
   sortOrder: 1,
 );
 
+void _b5ActivityTests() {
+  Future<void> pump(WidgetTester tester, Widget child, {String lang = 'en'}) =>
+    tester.pumpWidget(MaterialApp(
+      locale: Locale(lang),
+      localizationsDelegates: L10n.localizationsDelegates,
+      supportedLocales: L10n.supportedLocales,
+      home: Scaffold(body: Center(child: SizedBox(width: 550, height: 300, child: child))),
+    ));
+
+  for (final lang in ['en', 'ar']) {
+    testWidgets('B5 Live sending, review and server pending bell ($lang)', (tester) async {
+      await pump(tester, const DiningTableActivityBadge(
+        mode: 'live', sending: true, pendingRounds: 3, needsReview: 2), lang: lang);
+      expect(find.text(lang == 'en'
+        ? '⏳ sending · needs review (2) · 🔔 3 pending rounds'
+        : '⏳ جارٍ الإرسال · تحتاج إلى مراجعة (2) · 🔔 3 جولة بانتظار التأكيد'), findsOneWidget);
+      expect(find.byType(IgnorePointer), findsWidgets);
+      await pump(tester, const DiningTableActivityBadge(
+        mode: 'live', pendingRounds: 0, needsReview: 2), lang: lang);
+      expect(find.textContaining('🔔'), findsNothing);
+      expect(find.text(lang == 'en' ? 'needs review (2)' : 'تحتاج إلى مراجعة (2)'), findsOneWidget);
+      await pump(tester, const DiningTableActivityBadge(mode: 'live'), lang: lang);
+      expect(find.byKey(const ValueKey('table-activity-badge')), findsNothing);
+    });
+  }
+  for (final mode in ['off', 'shadow']) {
+    testWidgets('B5 $mode has no new activity badge', (tester) async {
+      await pump(tester, DiningTableActivityBadge(
+        mode: mode, sending: true, pendingRounds: 3, needsReview: 2));
+      expect(find.byKey(const ValueKey('table-activity-badge')), findsNothing);
+      expect(find.textContaining('🔔'), findsNothing);
+      expect(find.textContaining('sending'), findsNothing);
+    });
+  }
+  testWidgets('B5 search highlight and bell never open or change a local table', (tester) async {
+    final clock = ValueNotifier(DateTime.utc(2026, 9, 6));
+    addTearDown(clock.dispose);
+    var taps = 0;
+    Widget card({bool live = false, bool match = false, int pending = 0}) =>
+      buildDiningTableCardForTest(table: _table, status: DiningTableStatus.available,
+        clock: clock, onTap: () => taps++, live: live,
+        searchMatch: match, pendingRounds: pending, sending: live);
+    await pump(tester, card());
+    final before = (tester.widget<AnimatedContainer>(find.byType(AnimatedContainer))
+      .decoration as ShapeDecoration).gradient;
+    await pump(tester, card(live: true, match: true, pending: 3));
+    expect(taps, 0);
+    expect(find.textContaining('🔔 3 pending rounds'), findsOneWidget);
+    expect((tester.widget<AnimatedContainer>(find.byType(AnimatedContainer))
+      .decoration as ShapeDecoration).gradient, before);
+    await tester.tap(find.text('Table 1'));
+    expect(taps, 1);
+    await pump(tester, card(live: true, match: true));
+    expect(find.textContaining('🔔'), findsNothing);
+    expect(taps, 1);
+  });
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  _b5ActivityTests();
   final now = DateTime.utc(2026, 9, 6, 12);
   RemoteTableState remote({
     bool free = false,
