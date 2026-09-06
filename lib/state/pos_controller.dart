@@ -24,6 +24,16 @@ enum PendingReconChoice { cancel, record, retry }
 /// Outcome of a (possibly retried) card charge attempt.
 enum _CardChargeOutcome { success, recordPending, aborted }
 
+abstract class DiningTableSyncHooks {
+  void onTableOccupied(DiningTableSession s);
+  void onTableDraftPersisted(DiningTableSession s);
+  void onTableLeft(String tableId);
+  void onTableTransferred(String fromId, DiningTableSession moved);
+  void onTablesJoined(DiningTableSession head, DiningTableSession seat);
+  void onTablesCleared(Set<String> groupIds, DiningTableSession? head);
+  void onTablePaid(DiningTableSession paid, OrderSnapshot snapshot);
+}
+
 class PosController extends ChangeNotifier
     implements machine_pricing.MachinePricingState {
   static const Duration _rearDisplaySyncDebounceDuration = Duration(
@@ -41,6 +51,42 @@ class PosController extends ChangeNotifier
   /// Gap sweep G1 — injectable wall clock for the daily availability windows
   /// (tests pin it; production keeps the default).
   DateTime Function() clock = DateTime.now;
+
+  DiningTableSyncHooks? diningTableSyncHooks;
+  Future<bool> Function(OrderSnapshot)? onDiningTableFinalRound;
+  final Map<String, String> _diningHookOccupancies = {};
+  String? _activeDiningTableSeatingKey;
+
+  String get activeDiningTableBillUuid => _activeServerOrderUuid ?? '';
+
+  /// Owner-approved T6 correction: this device's initial proposal/ACK may
+  /// bind the current bill without reopening or reloading the cashier's cart.
+  bool bindDiningTableBillIdentity({
+    required bool live,
+    required String tableId,
+    required String orderReference,
+    required String seatingKey,
+    required String expectedOrderUuid,
+    required String orderUuid,
+  }) {
+    if (!live || selectedOrderType != OrderType.dineIn ||
+        activeDiningTableId != tableId ||
+        currentOrderReference != orderReference || orderUuid.isEmpty) {
+      return false;
+    }
+    final currentSeating = _activeDiningTableSeatingKey ??
+        diningSessionFor(tableId)?.seatingKey;
+    if (currentSeating != null && currentSeating != seatingKey) return false;
+    final active = _activeServerOrderUuid ?? '';
+    if (active == orderUuid) {
+      _activeDiningTableSeatingKey = seatingKey;
+      return true;
+    }
+    if (active != expectedOrderUuid) return false;
+    _activeServerOrderUuid = orderUuid;
+    _activeDiningTableSeatingKey = seatingKey;
+    return true;
+  }
 
   List<String> categories = const [
     'Coffee',
@@ -2035,6 +2081,7 @@ class PosController extends ChangeNotifier
 
     selectedOrderType = OrderType.dineIn;
     activeDiningTableId = tableId;
+    _activeDiningTableSeatingKey = session?.seatingKey;
     selectedDiningFloorId = definition.floorId;
     diningTableSearchQuery = '';
     productSearchQuery = '';
@@ -2059,6 +2106,8 @@ class PosController extends ChangeNotifier
           ? session.orderReference
           : session.draft!.orderReference;
       selectedCategory = session.draft!.selectedCategory;
+      _activeServerOrderUuid = session.draft!.serverOrderUuid.isEmpty
+          ? null : session.draft!.serverOrderUuid;
       customerReferenceNumber = session.draft!.customerReferenceNumber;
       discount = session.draft!.discount;
       splitCount = session.draft!.splitCount;
@@ -2092,7 +2141,11 @@ class PosController extends ChangeNotifier
   Future<void> returnToDiningFloorPlan() async {
     if (selectedOrderType != OrderType.dineIn) return;
 
+    final leavingTableId = activeDiningTableId;
     await _flushActiveDiningTablePersistence();
+    if (leavingTableId != null) {
+      diningTableSyncHooks?.onTableLeft(leavingTableId);
+    }
     _resetForNextOrder(
       advanceOrderNumber: false,
       nextOrderType: OrderType.dineIn,
@@ -2108,9 +2161,12 @@ class PosController extends ChangeNotifier
     _cancelPendingDiningTablePersistence();
     // Discarding the bill frees the whole joined party, not just the head.
     final groupIds = _diningGroupIds(tableId);
+    final clearedHead = diningSessionFor(_diningGroupHeadId(tableId));
     for (final id in groupIds) {
       await _orderStorage.clearDiningTable(id);
+      _diningHookOccupancies.remove(id);
     }
+    diningTableSyncHooks?.onTablesCleared(groupIds, clearedHead);
     diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
       ..removeWhere((session) => groupIds.contains(session.tableId));
     _resetForNextOrder(
@@ -2125,6 +2181,7 @@ class PosController extends ChangeNotifier
     // Resolve to the whole party (head + linked seats) so discarding any one
     // table frees the joined group together.
     final groupIds = _diningGroupIds(tableId);
+    final clearedHead = diningSessionFor(_diningGroupHeadId(tableId));
     final clearsActive =
         activeDiningTableId != null && groupIds.contains(activeDiningTableId);
     if (clearsActive) {
@@ -2133,7 +2190,9 @@ class PosController extends ChangeNotifier
 
     for (final id in groupIds) {
       await _orderStorage.clearDiningTable(id);
+      _diningHookOccupancies.remove(id);
     }
+    diningTableSyncHooks?.onTablesCleared(groupIds, clearedHead);
     diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
       ..removeWhere((session) => groupIds.contains(session.tableId));
 
@@ -2196,6 +2255,17 @@ class PosController extends ChangeNotifier
     // between duplicates a row, never loses the cart.
     await _orderStorage.saveDiningTableSession(moved);
     await _orderStorage.clearDiningTable(fromTableId);
+    _diningHookOccupancies.remove(fromTableId);
+    diningTableSyncHooks?.onTableTransferred(fromTableId, moved.copyWith(
+      seatingKey: source.seatingKey,
+      seatingUuid: source.seatingUuid,
+      seatingState: source.seatingState,
+      serverOrderUuid: source.serverOrderUuid,
+      tempReference: source.tempReference,
+      winnerSeatingUuid: source.winnerSeatingUuid,
+      lastVerdict: source.lastVerdict,
+      lastVerdictAt: source.lastVerdictAt,
+    ));
     diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
       ..removeWhere(
         (s) => s.tableId == fromTableId || s.tableId == targetDef.id,
@@ -2263,6 +2333,7 @@ class PosController extends ChangeNotifier
 
     await _orderStorage.saveDiningTableSession(updatedHead);
     await _orderStorage.saveDiningTableSession(seat);
+    diningTableSyncHooks?.onTablesJoined(updatedHead, seat);
     diningTableSessions = <DiningTableSession>[
       updatedHead,
       seat,
@@ -3302,7 +3373,10 @@ class PosController extends ChangeNotifier
       );
       if (!ok) _reportPrintFailure('receipt');
     }
-    if (printKitchenTickets) {
+    final tableRoundHandled = isDineInPayment &&
+        await (onDiningTableFinalRound?.call(completedSnapshot) ??
+            Future<bool>.value(false));
+    if (printKitchenTickets && !tableRoundHandled) {
       // Phase C1 — the kitchen copy: items + add-ons + notes, no prices. The
       // service itself swallows printer errors.
       final ok = await SunmiReceiptService.printKitchenTicket(
@@ -3848,10 +3922,19 @@ class PosController extends ChangeNotifier
           ..removeWhere((s) => groupIds.contains(s.tableId));
         for (final id in groupIds) {
           await _orderStorage.clearDiningTable(id);
+          _diningHookOccupancies.remove(id);
         }
+        diningTableSyncHooks?.onTablesCleared(groupIds, existing);
         _notifySafely();
       } else {
         await _orderStorage.saveDiningTableSession(session);
+        final occupancy = '${session.orderReference}|${session.occupiedAt}';
+        if (_diningHookOccupancies[tableId] == occupancy) {
+          diningTableSyncHooks?.onTableDraftPersisted(session);
+        } else {
+          _diningHookOccupancies[tableId] = occupancy;
+          diningTableSyncHooks?.onTableOccupied(session);
+        }
       }
     } catch (error) {
       debugPrint('Failed to persist dining table $tableId: $error');
@@ -3938,6 +4021,7 @@ class PosController extends ChangeNotifier
       for (final id in freeIds) {
         await _orderStorage.clearDiningTable(id);
       }
+      diningTableSyncHooks?.onTablePaid(paidSession, completedSnapshot);
     } catch (error) {
       debugPrint('Failed to mark dining table as paid: $error');
     }
@@ -3956,6 +4040,7 @@ class PosController extends ChangeNotifier
     // from the held list of any branch terminal.
     _activeServerOrderUuid = null;
     paymentStatus = 'Waiting';
+    _activeDiningTableSeatingKey = null;
     selectedPaymentMethod = 'Cash';
     lastPaymentMessage = '';
     displayNote = note;

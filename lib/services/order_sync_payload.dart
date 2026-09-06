@@ -1,8 +1,10 @@
 import 'dart:math';
+import 'dart:convert';
 
 import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 
 import '../models/pos_models.dart';
+import '../models/table_sync_models.dart';
 import 'pricing_adapter.dart';
 
 /// Builds the pos_api `/device/sync/push` event batch for a completed order.
@@ -25,6 +27,92 @@ class OrderSyncPayload {
 
 /// OMR (double, 3 dp) → integer baisas (1 OMR = 1000 baisas).
 int omrToBaisas(double omr) => (omr * 1000).round();
+
+/// The catalogue identity portion of order.create's line mapping, without
+/// client money. Demo products/add-ons are excluded by the same integer parse.
+List<Map<String, dynamic>> buildTableRoundLines(List<CartItem> items) => [
+  for (final item in items)
+    if (int.tryParse(item.product.id) case final int productId)
+      {
+        'product_id': productId,
+        'qty': item.qty,
+        if (item.normalizedNotes.isNotEmpty) 'notes': item.normalizedNotes,
+        if (item.modifiers.any((m) => int.tryParse(m.id) != null))
+          'addon_ids': [
+            for (final modifier in item.modifiers)
+              if (int.tryParse(modifier.id) case final int id) id,
+          ],
+      },
+];
+
+String tableLineFingerprint(Map<String, dynamic> line) {
+  final ids = (line['addon_ids'] as List? ?? const [])
+      .whereType<num>().map((id) => id.toInt()).toSet().toList()..sort();
+  final notes = (line['notes']?.toString() ?? '').trim()
+      .replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+  return jsonEncode([line['product_id'], ids, notes]);
+}
+
+/// Includes negative deltas for manager cancellation; callers send only
+/// positive entries as a new round. Queued cancellation intent counts once.
+List<Map<String, dynamic>> tableRoundDelta(
+  List<CartItem> items,
+  List<LocalTableRound> rounds,
+  List<LocalLineCancellation> cancellations,
+) {
+  final lines = <String, Map<String, dynamic>>{};
+  void add(Map<String, dynamic> line, int quantity) {
+    final key = tableLineFingerprint(line);
+    lines.putIfAbsent(key, () => {...line, 'qty': 0});
+    lines[key]!['qty'] = (lines[key]!['qty'] as int) + quantity;
+  }
+  for (final line in buildTableRoundLines(items)) {
+    add(line, line['qty'] as int);
+  }
+  for (final round in rounds) {
+    if (const {'bill_terminal', 'bill_unpaid', 'failed'}
+        .contains(round.status)) {
+      continue;
+    }
+    for (final line in round.lines) {
+      add(line, -(line['qty'] as num).toInt());
+    }
+  }
+  for (final cancellation in cancellations) {
+    final quantity = cancellation.status == 'queued'
+        ? cancellation.qty : (cancellation.cancelledQty ?? 0);
+    if (quantity == 0) continue;
+    add({
+      'product_id': cancellation.productId,
+      'addon_ids': cancellation.addonIds,
+      if ((cancellation.notes ?? '').isNotEmpty)
+        'notes': cancellation.notes,
+    }, quantity);
+  }
+  return lines.values.where((line) => line['qty'] != 0).toList();
+}
+
+Map<String, dynamic> buildTableSessionEvent(
+  String operation, {
+  required String seatingKey,
+  required String tableId,
+  required bool queuedOffline,
+  required Map<String, dynamic> payload,
+  int? staffId,
+  DateTime? now,
+  String Function()? newUuid,
+}) => {
+  'client_event_id': (newUuid ?? uuidV4)(),
+  'event_type': 'table.session.$operation',
+  'client_timestamp': (now ?? DateTime.now()).toUtc().toIso8601String(),
+  'payload': {
+    ...payload,
+    'seating_key': seatingKey,
+    'table_id': int.parse(tableId),
+    'queued_offline': queuedOffline,
+    'staff_id': ?staffId,
+  },
+};
 
 /// QR-002 S2 — build the one and only event a till may emit for an existing
 /// `qr_web` order. It deliberately accepts no lines, prices, loyalty, donation,
@@ -347,6 +435,121 @@ OrderSyncPayload buildOrderSyncPayload(
     'note': ?note,
   };
 
+  final payEvent = _orderPayPayload(
+    snapshot,
+    orderUuid: orderUuid,
+    ts: ts,
+    gps: gps,
+    cardCharge: cardCharge,
+    loyaltyRuleIds: loyaltyRuleIds,
+  );
+  final payments = payEvent['payments'] as List<Map<String, dynamic>>;
+
+  // P-G7 — a NO-TENDER delivery-provider order (the Proceed popup set a
+  // provider reference): the second event is order.deliver, never order.pay.
+  // The server lands it pending_verification, consumes inventory, and the
+  // merchant's Deliveries page settles the money later. No loyalty, no
+  // round-up, no tenders by design. Deliberately NOT conditioned on the
+  // provider id: a reference-bearing order with a somehow-missing provider
+  // must FAIL server-side (provider_id required) rather than silently
+  // become a phantom paid-cash sale via the pay branch.
+  final isPendingDelivery =
+      snapshot.orderType == 'delivery' && snapshot.deliveryReference.isNotEmpty;
+
+  final deliverEvent = <String, dynamic>{
+    'order_uuid': orderUuid,
+    'delivered_at': ts,
+    'delivery': <String, dynamic>{
+      'provider_id': snapshot.deliveryProviderId,
+      'reference': snapshot.deliveryReference,
+      if (snapshot.customerReferenceNumber.trim().isNotEmpty)
+        'customer_phone': snapshot.customerReferenceNumber.trim(),
+      if (snapshot.deliveryDriverPhone.trim().isNotEmpty)
+        'driver_phone': snapshot.deliveryDriverPhone.trim(),
+    },
+    'gps': ?gps,
+  };
+
+  final events = <Map<String, dynamic>>[
+    {
+      'client_event_id': gen(),
+      'event_type': 'order.create',
+      'client_timestamp': ts,
+      'payload': {'order': order},
+    },
+    if (isPendingDelivery)
+      {
+        'client_event_id': gen(),
+        'event_type': 'order.deliver',
+        'client_timestamp': ts,
+        'payload': deliverEvent,
+      }
+    else
+      buildOrderPayEvent(
+        snapshot,
+        lat: lat,
+        lng: lng,
+        cardCharge: cardCharge,
+        loyaltyRuleIds: loyaltyRuleIds,
+        now: DateTime.parse(ts),
+        orderUuid: orderUuid,
+        clientEventId: gen(),
+      ),
+  ];
+
+  // ---- round-up donations: each accepted round-up rides ITS OWN card leg.
+  // One donation.record per rounding card leg, carrying payment_index — the
+  // leg's position in payments[] (the server inserts payment rows in array
+  // order, so the index maps to the exact pos_payments row). Every charity
+  // transaction therefore traces to the guest who rounded, even when two
+  // card guests in one split both round up. Non-card legs can never round
+  // (canOfferCharityRoundUp is card-only); a stale flag on one is skipped
+  // defensively — never transmit a donation with no card charge behind it. ----
+  final donationLegs = <Map<String, int>>[];
+  if (snapshot.splitPayments.isNotEmpty) {
+    for (var i = 0; i < snapshot.splitPayments.length; i++) {
+      final rec = snapshot.splitPayments[i];
+      final legBaisas = omrToBaisas(rec.charityRoundUpAmount);
+      if (rec.charityRoundUpAccepted &&
+          legBaisas > 0 &&
+          payments[i]['method'] == 'card') {
+        donationLegs.add({'index': i, 'baisas': legBaisas});
+      }
+    }
+  } else if (snapshot.charityRoundUpAccepted) {
+    final singleBaisas = omrToBaisas(snapshot.charityRoundUpAmount);
+    final cardIndex = payments.indexWhere((p) => p['method'] == 'card');
+    if (singleBaisas > 0 && cardIndex >= 0) {
+      donationLegs.add({'index': cardIndex, 'baisas': singleBaisas});
+    }
+  }
+  for (final leg in donationLegs) {
+    events.add({
+      'client_event_id': gen(),
+      'event_type': 'donation.record',
+      'client_timestamp': ts,
+      'payload': {
+        'order_uuid': orderUuid,
+        'amount_baisas': leg['baisas'],
+        'payment_index': leg['index'],
+        'occurred_at': ts,
+      },
+    });
+  }
+
+  return OrderSyncPayload(orderUuid: orderUuid, events: events);
+}
+
+/// Snapshot-frozen tender payload shared by full-sale and table pay events.
+Map<String, dynamic> _orderPayPayload(
+  OrderSnapshot snapshot, {
+  required String orderUuid,
+  required String ts,
+  Map<String, double>? gps,
+  CardCharge? cardCharge,
+  List<int> loyaltyRuleIds = const <int>[],
+}) {
+  final priced = frozenPriceResultFromSnapshot(snapshot);
   // ---- tenders: split into one row each, else a single tender. Sum is forced
   // to equal grand_total exactly (the server tolerates ±1 baisa). A CARD tender
   // carries its Soft POS evidence (reference / auth code / raw bank response)
@@ -401,87 +604,42 @@ OrderSyncPayload buildOrderSyncPayload(
     };
   }
 
-  // P-G7 — a NO-TENDER delivery-provider order (the Proceed popup set a
-  // provider reference): the second event is order.deliver, never order.pay.
-  // The server lands it pending_verification, consumes inventory, and the
-  // merchant's Deliveries page settles the money later. No loyalty, no
-  // round-up, no tenders by design. Deliberately NOT conditioned on the
-  // provider id: a reference-bearing order with a somehow-missing provider
-  // must FAIL server-side (provider_id required) rather than silently
-  // become a phantom paid-cash sale via the pay branch.
-  final isPendingDelivery =
-      snapshot.orderType == 'delivery' && snapshot.deliveryReference.isNotEmpty;
+  return payEvent;
+}
 
-  final deliverEvent = <String, dynamic>{
-    'order_uuid': orderUuid,
-    'delivered_at': ts,
-    'delivery': <String, dynamic>{
-      'provider_id': snapshot.deliveryProviderId,
-      'reference': snapshot.deliveryReference,
-      if (snapshot.customerReferenceNumber.trim().isNotEmpty)
-        'customer_phone': snapshot.customerReferenceNumber.trim(),
-      if (snapshot.deliveryDriverPhone.trim().isNotEmpty)
-        'driver_phone': snapshot.deliveryDriverPhone.trim(),
-    },
-    'gps': ?gps,
+/// The legacy batch's second event, without an order.create on the wire.
+/// With an independent generator we reserve its create-event slot, retaining
+/// exact ID equivalence with buildOrderSyncPayload. The full builder supplies
+/// the already allocated event ID and resolved bill UUID instead.
+Map<String, dynamic> buildOrderPayEvent(
+  OrderSnapshot snapshot, {
+  double? lat,
+  double? lng,
+  CardCharge? cardCharge,
+  List<int> loyaltyRuleIds = const <int>[],
+  DateTime? now,
+  String Function()? newUuid,
+  String? orderUuid,
+  String? clientEventId,
+}) {
+  final gen = newUuid ?? uuidV4;
+  final billUuid = orderUuid ??
+      (snapshot.serverOrderUuid.isNotEmpty ? snapshot.serverOrderUuid : gen());
+  final ts = (now ?? DateTime.now()).toUtc().toIso8601String();
+  if (clientEventId == null) gen(); // The legacy create-event UUID slot.
+  return <String, dynamic>{
+    'client_event_id': clientEventId ?? gen(),
+    'event_type': 'order.pay',
+    'client_timestamp': ts,
+    'payload': _orderPayPayload(
+      snapshot,
+      orderUuid: billUuid,
+      ts: ts,
+      gps: lat != null && lng != null ? {'lat': lat, 'lng': lng} : null,
+      cardCharge: cardCharge,
+      loyaltyRuleIds: loyaltyRuleIds,
+    ),
   };
-
-  final events = <Map<String, dynamic>>[
-    {
-      'client_event_id': gen(),
-      'event_type': 'order.create',
-      'client_timestamp': ts,
-      'payload': {'order': order},
-    },
-    {
-      'client_event_id': gen(),
-      'event_type': isPendingDelivery ? 'order.deliver' : 'order.pay',
-      'client_timestamp': ts,
-      'payload': isPendingDelivery ? deliverEvent : payEvent,
-    },
-  ];
-
-  // ---- round-up donations: each accepted round-up rides ITS OWN card leg.
-  // One donation.record per rounding card leg, carrying payment_index — the
-  // leg's position in payments[] (the server inserts payment rows in array
-  // order, so the index maps to the exact pos_payments row). Every charity
-  // transaction therefore traces to the guest who rounded, even when two
-  // card guests in one split both round up. Non-card legs can never round
-  // (canOfferCharityRoundUp is card-only); a stale flag on one is skipped
-  // defensively — never transmit a donation with no card charge behind it. ----
-  final donationLegs = <Map<String, int>>[];
-  if (snapshot.splitPayments.isNotEmpty) {
-    for (var i = 0; i < snapshot.splitPayments.length; i++) {
-      final rec = snapshot.splitPayments[i];
-      final legBaisas = omrToBaisas(rec.charityRoundUpAmount);
-      if (rec.charityRoundUpAccepted &&
-          legBaisas > 0 &&
-          payments[i]['method'] == 'card') {
-        donationLegs.add({'index': i, 'baisas': legBaisas});
-      }
-    }
-  } else if (snapshot.charityRoundUpAccepted) {
-    final singleBaisas = omrToBaisas(snapshot.charityRoundUpAmount);
-    final cardIndex = payments.indexWhere((p) => p['method'] == 'card');
-    if (singleBaisas > 0 && cardIndex >= 0) {
-      donationLegs.add({'index': cardIndex, 'baisas': singleBaisas});
-    }
-  }
-  for (final leg in donationLegs) {
-    events.add({
-      'client_event_id': gen(),
-      'event_type': 'donation.record',
-      'client_timestamp': ts,
-      'payload': {
-        'order_uuid': orderUuid,
-        'amount_baisas': leg['baisas'],
-        'payment_index': leg['index'],
-        'occurred_at': ts,
-      },
-    });
-  }
-
-  return OrderSyncPayload(orderUuid: orderUuid, events: events);
 }
 
 /// Phase C2 — build the single `order.hold` event that mirrors a held cart

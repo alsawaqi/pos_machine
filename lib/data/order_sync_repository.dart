@@ -1,6 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show SentryLevel;
 
@@ -16,6 +17,12 @@ enum OrderSyncAttentionReason {
 }
 
 enum StandaloneQrPayState { processed, refused, pending }
+
+typedef OutboxAckListener = FutureOr<void> Function(
+  OrderOutboxRow row,
+  List<Map<String, dynamic>> events,
+  List<Map<String, dynamic>> results,
+);
 
 class StandaloneQrPayResult {
   const StandaloneQrPayResult({
@@ -53,6 +60,137 @@ class OrderSyncRepository {
   final PosApiService _api;
   final AppDatabase _db;
   Future<void> _flushTail = Future<void>.value();
+  final List<OutboxAckListener> _ackListeners = [];
+  final _flushCompletions = StreamController<bool>.broadcast();
+
+  Stream<bool> get flushCompletions => _flushCompletions.stream;
+
+  void addAckListener(OutboxAckListener listener) => _ackListeners.add(listener);
+  void removeAckListener(OutboxAckListener listener) =>
+      _ackListeners.remove(listener);
+
+  Future<void> dispose() => _flushCompletions.close();
+
+  /// A generic durable single-event row. An existing key is immutable: retries
+  /// retain the first event ID/payload, including rows already acknowledged.
+  Future<void> enqueueEvent(
+    String key,
+    Map<String, dynamic> event, {
+    DateTime? createdAt,
+    Future<Map<String, dynamic>> Function()? beforeFlush,
+    Map<String, Map<String, dynamic>> followingEvents = const {},
+  }) async {
+    // Serialize preparation with pushes: a local kitchen print and its
+    // evidence must finish before any pass can see this newly durable row.
+    final preparation = _flushTail.then((_) async {
+      if (await _db.getOutbox(key) != null) return;
+      await _db.transaction(() async {
+        final at = createdAt ?? DateTime.now();
+        for (final entry in {key: event, ...followingEvents}.entries) {
+          if (await _db.getOutbox(entry.key) != null) continue;
+          await _db.enqueueOutbox(OrderOutboxCompanion(
+            orderUuid: Value(entry.key),
+            eventsJson: Value(jsonEncode([entry.value])),
+            orderNumber: const Value(0),
+            createdAt: Value(at),
+          ));
+        }
+      });
+      if (beforeFlush != null) {
+        final prepared = await beforeFlush();
+        if (prepared['client_event_id'] != event['client_event_id'] ||
+            prepared['event_type'] != event['event_type']) {
+          throw StateError('Event preparation cannot change its identity.');
+        }
+        await (_db.update(_db.orderOutbox)
+              ..where((table) => table.orderUuid.equals(key) &
+                  table.syncedAt.isNull()))
+            .write(OrderOutboxCompanion(
+              eventsJson: Value(jsonEncode([prepared])),
+            ));
+      }
+    });
+    _flushTail = preparation.then<void>((_) {},
+        onError: (Object _, StackTrace _) {});
+    await preparation;
+    await flush();
+  }
+
+  Future<List<OrderOutboxRow>> pendingRows() => _db.pendingOutbox();
+  Future<OrderOutboxRow?> rowForKey(String key) => _db.getOutbox(key);
+
+  /// A historical local UUID remains the durable row key after rebinding.
+  /// Resolve a later manager void without editing the saved receipt or a
+  /// synced row. This never follows the independent QR :pay namespace.
+  Future<String> resolveTableBillUuid(String localUuid) async {
+    final row = await _db.getOutbox(localUuid);
+    if (row == null) return localUuid;
+    final events = (jsonDecode(row.eventsJson) as List).whereType<Map>();
+    if (events.length != 1 || events.single['event_type'] != 'order.pay') {
+      return localUuid;
+    }
+    return (events.single['payload'] as Map)['order_uuid']?.toString() ??
+        localUuid;
+  }
+
+  /// Derive monotonic move/join suffixes from retained durable rows, including
+  /// synced ones, so a process restart cannot reuse an earlier operation key.
+  Future<int> nextTableOperationNumber(String seatingKey, String kind) async {
+    final prefix = 'tbl:$seatingKey:$kind:';
+    final rows = await (_db.select(_db.orderOutbox)).get();
+    var largest = 0;
+    for (final row in rows) {
+      if (!row.orderUuid.startsWith(prefix)) continue;
+      final number = int.tryParse(row.orderUuid.substring(prefix.length)) ?? 0;
+      if (number > largest) largest = number;
+    }
+    return largest + 1;
+  }
+
+  /// Only the named seating's pending pay/void wire UUIDs change. Keep each
+  /// internal row key and event ID stable, avoiding collisions when two local
+  /// tenders are rebound to one server bill. Synced rows are never rewritten.
+  Future<void> rewritePendingOrderUuid(
+    String seatingKey,
+    String oldUuid,
+    String newUuid,
+  ) async {
+    if (seatingKey.isEmpty || oldUuid.isEmpty || oldUuid == newUuid ||
+        newUuid.isEmpty) {
+      return;
+    }
+    await _db.transaction(() async {
+      final rows = await _db.pendingOutbox();
+      for (final row in rows) {
+        if (row.orderUuid.endsWith(':pay')) continue;
+        final events = (jsonDecode(row.eventsJson) as List)
+            .whereType<Map>()
+            .map((event) => event.cast<String, dynamic>())
+            .toList();
+        if (events.length != 1) continue; // Never rewrite legacy create batches.
+        var changed = false;
+        for (final event in events) {
+          if (event['event_type'] != 'order.pay' &&
+              event['event_type'] != 'order.void') {
+            continue;
+          }
+          final payload = event['payload'];
+          if (payload is Map && payload['order_uuid'] == oldUuid) {
+            payload['order_uuid'] = newUuid;
+            changed = true;
+          }
+        }
+        if (changed) {
+          await (_db.update(_db.orderOutbox)
+                ..where((table) => table.orderUuid.equals(row.orderUuid) &
+                    table.syncedAt.isNull()))
+              .write(OrderOutboxCompanion(
+                eventsJson: Value(jsonEncode(events)),
+              ));
+        }
+      }
+    });
+  }
 
   /// Build the push events for [snapshot], persist them to the outbox, then try
   /// to flush immediately. The DB write happens BEFORE any network I/O, so the
@@ -296,8 +434,13 @@ class OrderSyncRepository {
         branch?.latitude != null && branch?.longitude != null;
     Future<({double lat, double lng})?>? freshFix;
     var synced = 0;
+    var successful = true;
 
-    for (final row in pending) {
+    for (final queuedRow in pending) {
+      // A preceding table ACK may have rebound a later payment in this very
+      // pass. Decode its current durable payload, not the captured snapshot.
+      final row = await _db.getOutbox(queuedRow.orderUuid);
+      if (row == null || row.syncedAt != null) continue;
       // Parked revenue is retained forever but no longer hammers a deterministic
       // refusal. Manual retry resets only the rejection counter.
       if (isStuck(row)) continue;
@@ -309,8 +452,33 @@ class OrderSyncRepository {
             .map((e) => e.cast<String, dynamic>())
             .toList();
       } catch (e) {
+        successful = false;
         await _db.markOutboxAttempt(row.orderUuid, row.attempts + 1, 'corrupt outbox payload: $e');
         continue;
+      }
+
+      if (row.orderUuid.startsWith('tbl:') &&
+          DateTime.now().difference(row.createdAt).inSeconds > 300) {
+        var changed = false;
+        for (final event in events) {
+          if (!(event['event_type']?.toString() ?? '')
+              .startsWith('table.session.')) {
+            continue;
+          }
+          final payload = event['payload'];
+          if (payload is Map && payload['queued_offline'] != true) {
+            payload['queued_offline'] = true;
+            changed = true;
+          }
+        }
+        if (changed) {
+          await (_db.update(_db.orderOutbox)
+                ..where((table) => table.orderUuid.equals(row.orderUuid) &
+                    table.syncedAt.isNull()))
+              .write(OrderOutboxCompanion(
+                eventsJson: Value(jsonEncode(events)),
+              ));
+        }
       }
 
       // A fenced branch fails closed when create/pay reaches the server without
@@ -322,6 +490,7 @@ class OrderSyncRepository {
           freshFix ??= _acquireFreshFix();
           final fix = await freshFix;
           if (fix == null) {
+            successful = false;
             // Keep the sale queued without manufacturing a deterministic server
             // rejection. Other eligible rows in this pass can still settle.
             continue;
@@ -347,13 +516,18 @@ class OrderSyncRepository {
             _isMatchingPaidQrAck(events, results);
 
         if (allProcessed && qrPaymentConfirmed) {
+          for (final listener in List<OutboxAckListener>.of(_ackListeners)) {
+            await listener(row, events, results);
+          }
           await _db.markOutboxSynced(row.orderUuid, DateTime.now());
           synced++;
         } else {
+          successful = false;
           final error = _firstError(results);
           await _recordServerRejection(row, error);
         }
       } on ApiException catch (e) {
+        successful = false;
         if (_isDeterministicServerRejection(e)) {
           await _recordServerRejection(row, e.message);
         } else {
@@ -364,6 +538,7 @@ class OrderSyncRepository {
           );
         }
       } catch (e) {
+        successful = false;
         // Network / transport failure — no ACK at all. The same batch (same
         // client_event_ids) re-pushes cleanly next time.
         await _db.markOutboxAttempt(
@@ -374,6 +549,7 @@ class OrderSyncRepository {
       }
     }
 
+    if (!_flushCompletions.isClosed) _flushCompletions.add(successful);
     return synced;
   }
 

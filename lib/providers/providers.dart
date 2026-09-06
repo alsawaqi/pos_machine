@@ -12,6 +12,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/sentry.dart';
 import '../data/config_repository.dart';
 import '../data/table_shadow_repository.dart';
+import '../data/table_sync_coordinator.dart';
+import '../models/table_sync_models.dart';
 import '../models/remote_table_state.dart';
 import '../services/local_order_storage_service.dart';
 import '../services/table_shadow_service.dart';
@@ -268,12 +270,110 @@ final configRepositoryProvider = Provider<ConfigRepository>(
 
 /// Offline-first order push: enqueues a completed order to the durable outbox
 /// and flushes it to pos_api (now + on reconnect).
-final orderSyncRepositoryProvider = Provider<OrderSyncRepository>(
-  (ref) => OrderSyncRepository(
+final orderSyncRepositoryProvider = Provider<OrderSyncRepository>((ref) {
+  final repository = OrderSyncRepository(
     ref.read(apiServiceProvider),
     ref.read(appDatabaseProvider),
-  ),
+  );
+  ref.onDispose(repository.dispose);
+  return repository;
+});
+
+final tableLedgerStoreProvider = Provider<TableLedgerStore>(
+  (ref) => LocalOrderStorageService.instance,
 );
+
+final tableSyncCoordinatorProvider = Provider<TableSyncCoordinator>((ref) {
+  final preferences = ref.read(sharedPreferencesProvider);
+  final coordinator = TableSyncCoordinator(
+    outbox: ref.read(orderSyncRepositoryProvider),
+    store: ref.read(tableLedgerStoreProvider),
+    loadSessions: LocalOrderStorageService.instance.loadDiningTableSessions,
+    mode: () => ref.read(tableSessionsModeProvider),
+    degraded: () => ref.read(degradedStateProvider).degraded,
+    staffId: () => ref.read(sessionServiceProvider).staff?.id,
+    markPrinted: (id) async {
+      final device = ref.read(sessionServiceProvider).kioskId?.trim() ?? '';
+      final scope = device.isEmpty ? 'unpaired' : device;
+      final key = 'qr_round_printed_set_$scope';
+      final ids = (preferences.getStringList(key) ?? []).toSet()..add(id);
+      await preferences.setStringList(key, ids.toList());
+    },
+  );
+  ref.onDispose(coordinator.dispose);
+  return coordinator;
+});
+
+final tableSyncVerdictsProvider =
+    StreamProvider<List<TableSyncVerdict>>((ref) =>
+      ref.watch(tableSyncCoordinatorProvider).verdicts);
+
+class TableDegradedState {
+  const TableDegradedState({
+    this.degraded = false, this.since, this.queuedActions = 0,
+  });
+  final bool degraded;
+  final DateTime? since;
+  final int queuedActions;
+}
+
+class TableDegradedController extends Notifier<TableDegradedState> {
+  List<OrderOutboxRow> _pending = [];
+  DateTime? _lastSuccessfulFlush;
+
+  @override
+  TableDegradedState build() {
+    final repository = ref.read(orderSyncRepositoryProvider);
+    final pending = repository.watchPending().listen((rows) {
+      _pending = rows.where((row) => row.orderUuid.startsWith('tbl:')).toList();
+      _evaluate();
+    });
+    final flushes = repository.flushCompletions.listen((success) {
+      if (success) _lastSuccessfulFlush = DateTime.now();
+      _evaluate();
+    });
+    ref.listen(connectivityProvider, (_, _) => _evaluate());
+    ref.listen(remoteBoardProvider, (_, _) => _evaluate());
+    ref.listen(tableSessionsModeProvider, (_, _) => _evaluate());
+    final timer = Timer.periodic(const Duration(seconds: 5), (_) => _evaluate());
+    ref.onDispose(() {
+      timer.cancel();
+      unawaited(pending.cancel());
+      unawaited(flushes.cancel());
+    });
+    return const TableDegradedState();
+  }
+
+  void _evaluate() {
+    if (ref.read(tableSessionsModeProvider) != 'live') {
+      state = const TableDegradedState();
+      return;
+    }
+    final now = DateTime.now();
+    final online = ref.read(connectivityProvider).asData?.value ?? false;
+    final meta = ref.read(remoteBoardProvider).asData?.value.meta;
+    final oldRow = _pending.any((row) =>
+        now.difference(row.createdAt) > const Duration(seconds: 20));
+    final triggered = !online || (meta?.consecutiveFailures ?? 0) >= 2 || oldRow;
+    final since = state.since ?? (triggered ? now : null);
+    final flushRecovered = since != null &&
+        _lastSuccessfulFlush != null &&
+        !_lastSuccessfulFlush!.isBefore(since);
+    final feedRecovered = since != null && meta?.lastFeedOkAt != null &&
+        !meta!.lastFeedOkAt!.isBefore(since);
+    final stillDegraded = triggered ||
+        (state.degraded && !(flushRecovered && feedRecovered));
+    state = TableDegradedState(
+      degraded: stillDegraded, since: stillDegraded ? since : null,
+      queuedActions: _pending.length,
+    );
+  }
+}
+
+final degradedStateProvider =
+    NotifierProvider<TableDegradedController, TableDegradedState>(
+      TableDegradedController.new,
+    );
 
 final qrTillServiceProvider = Provider<QrTillGateway>(
   (ref) => QrTillService(ref.read(apiServiceProvider)),
