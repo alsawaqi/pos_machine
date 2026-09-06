@@ -1,0 +1,146 @@
+{
+  "case": "07b_attached",
+  "server_pin": "3ea99241dee704da7ab953cd59928f5b6a43a12e",
+  "clock_epoch": "2099-09-06T12:00:00.000Z",
+  "replay_note": "Isolated virtual clock. Shift all client/received timestamps together at replay; preserve offsets and queued_offline. Bind setup identities, seeded device/staff/product/table IDs and server-generated IDs from actual responses. Never change outcome expectations. Only print-result wall-clock timestamps are omitted; device outbox events are verbatim.",
+  "script": [
+    {
+      "setup": "customer",
+      "table_id": 5,
+      "qty": 1,
+      "pending": true,
+      "seating_key": "customer-1",
+      "order_uuid": "ffffffff-ffff-4fff-8fff-000000000002"
+    },
+    {
+      "device": 1,
+      "received_at": "2099-09-06T12:00:00.000Z",
+      "events": [
+        {
+          "client_event_id": "00000000-0000-4000-8000-000000001002",
+          "event_type": "table.session.open",
+          "client_timestamp": "2099-09-06T12:00:00.000Z",
+          "payload": {
+            "opened_at": "2099-09-06T12:00:00.000Z",
+            "order_uuid": "00000000-0000-4000-8000-000000001001",
+            "joined_table_ids": [],
+            "seating_key": "00000000-0000-4000-8000-000000001002",
+            "table_id": 5,
+            "queued_offline": false,
+            "staff_id": 1
+          }
+        }
+      ],
+      "results": [
+        {
+          "client_event_id": "00000000-0000-4000-8000-000000001002",
+          "status": "processed",
+          "result": {
+            "outcome": "attached",
+            "table_session_uuid": "ffffffff-ffff-4fff-8fff-000000000003",
+            "winner_table_session_uuid": "ffffffff-ffff-4fff-8fff-000000000001",
+            "order_uuid": "ffffffff-ffff-4fff-8fff-000000000002",
+            "temp_reference": "T-0906-001",
+            "needs_review": false,
+            "event_id": null,
+            "seating_key": "00000000-0000-4000-8000-000000001002",
+            "table_id": 5
+          }
+        }
+      ],
+      "ack_delivered": true
+    },
+    {
+      "device": 1,
+      "received_at": "2099-09-06T12:00:00.000Z",
+      "events": [
+        {
+          "client_event_id": "00000000-0000-4000-8000-000000001003",
+          "event_type": "table.session.round",
+          "client_timestamp": "2099-09-06T12:00:00.000Z",
+          "payload": {
+            "client_request_id": "00000000-0000-4000-8000-000000001003",
+            "lines": [
+              {
+                "product_id": 10,
+                "qty": 2
+              }
+            ],
+            "submitted_at": "2099-09-06T12:00:00.000Z",
+            "printed_at": null,
+            "order_uuid": "ffffffff-ffff-4fff-8fff-000000000002",
+            "seating_key": "00000000-0000-4000-8000-000000001002",
+            "table_id": 5,
+            "queued_offline": false,
+            "staff_id": 1
+          }
+        }
+      ],
+      "results": [
+        {
+          "client_event_id": "00000000-0000-4000-8000-000000001003",
+          "status": "processed",
+          "result": {
+            "outcome": "appended",
+            "table_session_uuid": "ffffffff-ffff-4fff-8fff-000000000003",
+            "winner_table_session_uuid": "ffffffff-ffff-4fff-8fff-000000000001",
+            "order_uuid": "ffffffff-ffff-4fff-8fff-000000000002",
+            "temp_reference": "T-0906-001",
+            "needs_review": false,
+            "event_id": null,
+            "seating_key": "00000000-0000-4000-8000-000000001002",
+            "table_id": 5,
+            "round_id": 2,
+            "round_no": 2,
+            "round_status": "accepted",
+            "total_baisas": 4000,
+            "accepted_seq": 2,
+            "print_pending": false,
+            "review_reasons": [],
+            "held_lines": []
+          }
+        }
+      ],
+      "ack_delivered": true
+    }
+  ],
+  "local": [
+    {
+      "device": 1,
+      "tables": [
+        {
+          "table_id": "5",
+          "status": "occupied",
+          "seating_key": "00000000-0000-4000-8000-000000001002",
+          "seating_state": "open",
+          "server_order_uuid": "ffffffff-ffff-4fff-8fff-000000000002",
+          "temp_reference": "T-0906-001",
+          "local_qty": 2
+        }
+      ],
+      "rounds": [
+        {
+          "request": "00000000-0000-4000-8000-000000001003",
+          "status": "appended",
+          "server_round_id": 2,
+          "printed_at": null
+        }
+      ],
+      "sheet": [
+        "attached"
+      ],
+      "pending": 0,
+      "parked": 0,
+      "local_prints": 0,
+      "printed_set": []
+    }
+  ],
+  "assertions": {
+    "outcomes": [
+      "attached",
+      "appended"
+    ],
+    "notices": 1,
+    "bell": 1
+  }
+}

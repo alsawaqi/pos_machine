@@ -1,0 +1,225 @@
+{
+  "case": "10_cancel_waste",
+  "server_pin": "3ea99241dee704da7ab953cd59928f5b6a43a12e",
+  "clock_epoch": "2099-09-06T12:00:00.000Z",
+  "replay_note": "Isolated virtual clock. Shift all client/received timestamps together at replay; preserve offsets and queued_offline. Bind setup identities, seeded device/staff/product/table IDs and server-generated IDs from actual responses. Never change outcome expectations. Only print-result wall-clock timestamps are omitted; device outbox events are verbatim.",
+  "script": [
+    {
+      "setup": "customer",
+      "table_id": 5,
+      "qty": 1,
+      "pending": false,
+      "seating_key": "customer-1",
+      "order_uuid": "ffffffff-ffff-4fff-8fff-000000000002"
+    },
+    {
+      "setup": "frozen_accounting",
+      "seating_key": "customer-1",
+      "round": {
+        "id": 1,
+        "head": "customer-1",
+        "request": "customer-round",
+        "order_uuid": "ffffffff-ffff-4fff-8fff-000000000002",
+        "round_no": 1,
+        "status": "accepted",
+        "merged": false,
+        "held": false,
+        "lines": [
+          {
+            "product_id": 10,
+            "qty": 3,
+            "addon_ids": [],
+            "notes": null,
+            "unit_price_baisas": 1000,
+            "line_discount_baisas": 300,
+            "order_item_id": 101,
+            "cancelled_qty": 0,
+            "cancelled_discount_baisas": 0
+          },
+          {
+            "product_id": 20,
+            "qty": 1,
+            "addon_ids": [],
+            "notes": null,
+            "unit_price_baisas": 2000,
+            "line_discount_baisas": 0,
+            "order_item_id": 102,
+            "cancelled_qty": 0,
+            "cancelled_discount_baisas": 0
+          }
+        ],
+        "subtotal": 5000,
+        "tax": 223,
+        "total": 4673,
+        "printed_at": null
+      }
+    },
+    {
+      "device": 1,
+      "received_at": "2099-09-06T12:00:00.000Z",
+      "events": [
+        {
+          "client_event_id": "00000000-0000-4000-8000-000000001002",
+          "event_type": "table.session.open",
+          "client_timestamp": "2099-09-06T12:00:00.000Z",
+          "payload": {
+            "opened_at": "2099-09-06T12:00:00.000Z",
+            "order_uuid": "00000000-0000-4000-8000-000000001001",
+            "joined_table_ids": [],
+            "seating_key": "00000000-0000-4000-8000-000000001002",
+            "table_id": 5,
+            "queued_offline": false,
+            "staff_id": 1
+          }
+        }
+      ],
+      "results": [
+        {
+          "client_event_id": "00000000-0000-4000-8000-000000001002",
+          "status": "processed",
+          "result": {
+            "outcome": "attached",
+            "table_session_uuid": "ffffffff-ffff-4fff-8fff-000000000003",
+            "winner_table_session_uuid": "ffffffff-ffff-4fff-8fff-000000000001",
+            "order_uuid": "ffffffff-ffff-4fff-8fff-000000000002",
+            "temp_reference": "T-0906-001",
+            "needs_review": false,
+            "event_id": null,
+            "seating_key": "00000000-0000-4000-8000-000000001002",
+            "table_id": 5
+          }
+        }
+      ],
+      "ack_delivered": true
+    },
+    {
+      "device": 1,
+      "received_at": "2099-09-06T12:00:00.000Z",
+      "events": [
+        {
+          "client_event_id": "00000000-0000-4000-8000-000000001003",
+          "event_type": "table.session.cancel_line",
+          "client_timestamp": "2099-09-06T12:00:00.000Z",
+          "payload": {
+            "client_request_id": "00000000-0000-4000-8000-000000001003",
+            "product_id": 10,
+            "addon_ids": [],
+            "notes": null,
+            "qty": 1,
+            "prepared": true,
+            "reason": "Prepared cancellation",
+            "authorized_by": "Manager",
+            "cancelled_at": "2099-09-06T12:00:00.000Z",
+            "seating_key": "00000000-0000-4000-8000-000000001002",
+            "table_id": 5,
+            "queued_offline": true,
+            "staff_id": 1
+          }
+        }
+      ],
+      "results": [
+        {
+          "client_event_id": "00000000-0000-4000-8000-000000001003",
+          "status": "processed",
+          "result": {
+            "outcome": "cancelled",
+            "table_session_uuid": "ffffffff-ffff-4fff-8fff-000000000003",
+            "winner_table_session_uuid": "ffffffff-ffff-4fff-8fff-000000000001",
+            "order_uuid": "ffffffff-ffff-4fff-8fff-000000000002",
+            "temp_reference": "T-0906-001",
+            "needs_review": false,
+            "event_id": null,
+            "seating_key": "00000000-0000-4000-8000-000000001002",
+            "table_id": 5,
+            "cancelled_qty": 1,
+            "unlinked_line_count": 0,
+            "grand_total_baisas": 3778,
+            "rounds": [
+              {
+                "round_id": 1,
+                "line_index": 0,
+                "qty": 1,
+                "unit_price_baisas": 1000,
+                "discount_baisas": 100,
+                "subtotal_baisas": 4000,
+                "tax_baisas": 180,
+                "total_baisas": 3778
+              }
+            ]
+          }
+        }
+      ],
+      "ack_delivered": true
+    },
+    {
+      "device": 1,
+      "received_at": "2099-09-06T12:00:00.000Z",
+      "events": [
+        {
+          "client_event_id": "00000000-0000-4000-8000-000000001004",
+          "event_type": "product.waste",
+          "client_timestamp": "2099-09-06T12:00:00.000Z",
+          "payload": {
+            "lines": [
+              {
+                "product_id": 10,
+                "qty": 1,
+                "reason": "other"
+              }
+            ],
+            "note": "cancelled after preparation — table Table 5, ref T-0906-001",
+            "staff_id": 1,
+            "wasted_at": "2099-09-06T12:00:00.000Z"
+          }
+        }
+      ],
+      "results": [
+        {
+          "client_event_id": "00000000-0000-4000-8000-000000001004",
+          "status": "processed",
+          "result": {
+            "recorded": true
+          }
+        }
+      ],
+      "ack_delivered": true
+    }
+  ],
+  "local": [
+    {
+      "device": 1,
+      "tables": [
+        {
+          "table_id": "5",
+          "status": "occupied",
+          "seating_key": "00000000-0000-4000-8000-000000001002",
+          "seating_state": "open",
+          "server_order_uuid": "ffffffff-ffff-4fff-8fff-000000000002",
+          "temp_reference": "T-0906-001",
+          "local_qty": 3
+        }
+      ],
+      "rounds": [],
+      "sheet": [
+        "attached"
+      ],
+      "pending": 0,
+      "parked": 0,
+      "local_prints": 0,
+      "printed_set": []
+    }
+  ],
+  "assertions": {
+    "outcomes": [
+      "attached",
+      "cancelled",
+      "processed"
+    ],
+    "round": [
+      4000,
+      180,
+      3778
+    ],
+    "cancelled_qty": 1
+  }
+}
