@@ -12,6 +12,7 @@ class AppSettings {
     this.printReceipts = true,
     this.printKitchenTickets = true,
     this.printQrKitchenRounds = false,
+    this.showLegacyQrTablesTab = false,
     this.language = 'en',
     this.audienceMeasurement = false,
   });
@@ -34,6 +35,9 @@ class AppSettings {
   /// QR-002 S5 — independently opt this till into the accepted-round feed.
   /// Default OFF prevents two tills at one branch from double-printing.
   final bool printQrKitchenRounds;
+
+  /// One-release fallback; branches in Off always retain the legacy tab.
+  final bool showLegacyQrTablesTab;
 
   /// Phase C4 (blueprint §9.8) — the UI language: 'en' | 'ar'. Arabic flips
   /// the whole app RTL via MaterialApp's locale.
@@ -61,6 +65,7 @@ class AppSettings {
     bool? printReceipts,
     bool? printKitchenTickets,
     bool? printQrKitchenRounds,
+    bool? showLegacyQrTablesTab,
     String? language,
     bool? audienceMeasurement,
   }) =>
@@ -72,6 +77,8 @@ class AppSettings {
         printKitchenTickets: printKitchenTickets ?? this.printKitchenTickets,
         printQrKitchenRounds:
             printQrKitchenRounds ?? this.printQrKitchenRounds,
+        showLegacyQrTablesTab:
+            showLegacyQrTablesTab ?? this.showLegacyQrTablesTab,
         language: language ?? this.language,
         audienceMeasurement: audienceMeasurement ?? this.audienceMeasurement,
       );
@@ -87,6 +94,7 @@ class SettingsService {
   static const _kPrintReceipts = 'print_receipts';
   static const _kPrintKitchenTickets = 'print_kitchen_tickets';
   static const _kPrintQrKitchenRounds = 'print_qr_kitchen_rounds';
+  static const _kShowLegacyQrTablesTab = 'show_legacy_qr_tables_tab';
   static const _kLanguage = 'app_language';
   static const _kAudience = 'audience_measurement';
 
@@ -97,12 +105,16 @@ class SettingsService {
         printKitchenTickets: _prefs.getBool(_kPrintKitchenTickets) ?? true,
         printQrKitchenRounds:
             _prefs.getBool(_kPrintQrKitchenRounds) ?? false,
+        showLegacyQrTablesTab: showLegacyQrTablesTab,
         language: _prefs.getString(_kLanguage) == 'ar' ? 'ar' : 'en',
         audienceMeasurement: _prefs.getBool(_kAudience) ?? false,
       );
 
   /// The base URL the API client should use right now.
   String get effectiveBaseUrl => snapshot().effectiveBaseUrl;
+
+  bool get showLegacyQrTablesTab =>
+      _prefs.getBool(_kShowLegacyQrTablesTab) ?? false;
 
   /// Persist a debug/profile server URL (normalized), or clear it (back to the
   /// default) when blank. The release read remains locked regardless.
@@ -125,6 +137,10 @@ class SettingsService {
 
   Future<void> savePrintQrKitchenRounds(bool value) async {
     await _prefs.setBool(_kPrintQrKitchenRounds, value);
+  }
+
+  Future<void> saveShowLegacyQrTablesTab(bool value) async {
+    await _prefs.setBool(_kShowLegacyQrTablesTab, value);
   }
 
   Future<void> saveLanguage(String value) async {

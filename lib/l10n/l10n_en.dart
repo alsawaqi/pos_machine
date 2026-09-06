@@ -9,6 +9,13 @@ class L10nEn extends L10n {
   L10nEn([String locale = 'en']) : super(locale);
 
   @override
+  String get settingsShowLegacyQrTablesTab => 'Show the old QR Tables tab';
+
+  @override
+  String get settingsShowLegacyQrTablesTabHint =>
+      'Fallback for one release. The floor plan is the table surface.';
+
+  @override
   String get tableSettleBill => 'Settle bill';
 
   @override

@@ -1,4 +1,6 @@
 {
+  "settingsShowLegacyQrTablesTab": "Show the old QR Tables tab",
+  "settingsShowLegacyQrTablesTabHint": "Fallback for one release. The floor plan is the table surface.",
   "tableSettleBill": "Settle bill",
   "tableCustomerPending": "{label}: customer order ({count} items) — confirm by tapping the table.",
   "@tableCustomerPending": {

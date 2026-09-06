@@ -97,6 +97,18 @@ abstract class L10n {
     Locale('en'),
   ];
 
+  /// No description provided for @settingsShowLegacyQrTablesTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Show the old QR Tables tab'**
+  String get settingsShowLegacyQrTablesTab;
+
+  /// No description provided for @settingsShowLegacyQrTablesTabHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Fallback for one release. The floor plan is the table surface.'**
+  String get settingsShowLegacyQrTablesTabHint;
+
   /// No description provided for @tableSettleBill.
   ///
   /// In en, this message translates to:

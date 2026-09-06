@@ -1,4 +1,6 @@
 {
+  "settingsShowLegacyQrTablesTab": "إظهار تبويب طاولات QR القديم",
+  "settingsShowLegacyQrTablesTabHint": "خيار احتياطي لإصدار واحد. مخطط الصالة هو واجهة الطاولات.",
   "tableSettleBill": "تسوية الفاتورة",
   "tableCustomerPending": "{label}: طلب عميل ({count} صنف) — أكّده بالضغط على الطاولة.",
   "@tableCustomerPending": {

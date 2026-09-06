@@ -9,6 +9,13 @@ class L10nAr extends L10n {
   L10nAr([String locale = 'ar']) : super(locale);
 
   @override
+  String get settingsShowLegacyQrTablesTab => 'إظهار تبويب طاولات QR القديم';
+
+  @override
+  String get settingsShowLegacyQrTablesTabHint =>
+      'خيار احتياطي لإصدار واحد. مخطط الصالة هو واجهة الطاولات.';
+
+  @override
   String get tableSettleBill => 'تسوية الفاتورة';
 
   @override

@@ -6336,6 +6336,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Widget _buildSecondaryNavGroup({required AlignmentGeometry alignment}) {
     final l10n = L10n.of(context);
+    final showLegacy = _tableShadowMode == 'off' ||
+        ref.read(settingsControllerProvider).showLegacyQrTablesTab;
+    final navItems = _secondaryNavItems
+        .where((item) => item.title != 'QR Tables' || showLegacy).toList();
     // The stored _NavItemData titles stay English IDENTITY values (the switch
     // below compares them); only the rendered chip label is localized.
     String navChipTitle(String identity) => switch (identity) {
@@ -6353,13 +6357,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         fit: BoxFit.scaleDown,
         alignment: alignment,
         child: Row(
-          children: _secondaryNavItems
+          children: navItems
               .asMap()
               .entries
               .map(
                 (entry) => Padding(
                   padding: EdgeInsetsDirectional.only(
-                    end: entry.key == _secondaryNavItems.length - 1 ? 0 : 8,
+                    end: entry.key == navItems.length - 1 ? 0 : 8,
                   ),
                   child: _HeaderNavChip(
                     title: navChipTitle(entry.value.title),

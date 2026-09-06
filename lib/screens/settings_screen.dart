@@ -413,6 +413,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   style: const TextStyle(color: Colors.white54),
                 ),
               ),
+              SwitchListTile(
+                key: const ValueKey('settings-legacy-qr-tab-toggle'),
+                contentPadding: EdgeInsets.zero,
+                value: settings.showLegacyQrTablesTab,
+                onChanged: (value) async {
+                  await ref
+                      .read(settingsServiceProvider)
+                      .saveShowLegacyQrTablesTab(value);
+                  if (mounted) ref.invalidate(settingsControllerProvider);
+                },
+                title: Text(
+                  l10n.settingsShowLegacyQrTablesTab,
+                  style: const TextStyle(color: Colors.white),
+                ),
+                subtitle: Text(
+                  l10n.settingsShowLegacyQrTablesTabHint,
+                  style: const TextStyle(color: Colors.white54),
+                ),
+              ),
               const Divider(color: Colors.white12, height: 36),
               // Phase 1A — anonymous on-device audience measurement (camera).
               _sectionLabel('Audience measurement'),
