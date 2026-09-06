@@ -133,12 +133,14 @@ class RemoteSyncMeta {
     this.lastFeedOkAt,
     this.lastError,
     this.consecutiveFailures = 0,
+    this.lastNotifiedEventId,
   });
 
   final int? feedCursor;
   final DateTime? boardFetchedAt, lastFeedOkAt;
   final String? lastError;
   final int consecutiveFailures;
+  final int? lastNotifiedEventId;
 
   factory RemoteSyncMeta.fromRow(Map<String, Object?> row) => RemoteSyncMeta(
     feedCursor: row['feed_cursor'] as int?,
@@ -146,6 +148,7 @@ class RemoteSyncMeta {
     lastFeedOkAt: _date(row['last_feed_ok_at']),
     lastError: row['last_error'] as String?,
     consecutiveFailures: row['consecutive_failures'] as int? ?? 0,
+    lastNotifiedEventId: row['last_notified_event_id'] as int?,
   );
 
   Map<String, Object?> toRow() => {
@@ -155,6 +158,7 @@ class RemoteSyncMeta {
     'last_feed_ok_at': lastFeedOkAt?.toIso8601String(),
     'last_error': lastError,
     'consecutive_failures': consecutiveFailures,
+    if (lastNotifiedEventId != null) 'last_notified_event_id': lastNotifiedEventId,
   };
 }
 

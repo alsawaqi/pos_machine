@@ -8,6 +8,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../models/pos_models.dart';
 import '../models/remote_table_state.dart';
+import '../models/table_sync_models.dart';
 
 abstract class OrderStorageService {
   Future<int> fetchNextOrderNumber();
@@ -31,7 +32,7 @@ abstract class OrderStorageService {
 /// tests park an in-memory fake here. Never set in production.
 OrderStorageService? debugOrderStorageOverride;
 
-class LocalOrderStorageService implements OrderStorageService, RemoteTableStore {
+class LocalOrderStorageService implements OrderStorageService, RemoteTableStore, TableLedgerStore {
   LocalOrderStorageService._();
 
   @visibleForTesting
@@ -133,26 +134,46 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore 
       return;
     }
 
-    await db.insert('dining_tables', {
-      'table_id': session.tableId,
-      'floor_id': session.floorId,
-      'status': session.status.storageValue,
-      'order_number': session.orderNumber,
-      'order_reference': session.orderReference,
-      'updated_at': session.updatedAt.toIso8601String(),
-      'occupied_at': session.occupiedAt?.toIso8601String(),
-      'paid_at': session.paidAt?.toIso8601String(),
-      'draft_json': session.draft == null
-          ? null
-          : jsonEncode(session.draft!.toMap()),
-      'paid_snapshot_json': session.paidSnapshot == null
-          ? null
-          : jsonEncode(session.paidSnapshot!.toMap()),
-      'primary_table_id': session.primaryTableId,
-      'linked_table_ids_json': session.linkedTableIds.isEmpty
-          ? null
-          : jsonEncode(session.linkedTableIds),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.transaction((txn) async {
+      final existing = await txn.query('dining_tables',
+          columns: tableSyncColumns, where: 'table_id = ?', whereArgs: [session.tableId]);
+      // Cashier snapshots can predate an acknowledgement. Identity changes
+      // go through updateTableSyncFields; ordinary saves cannot undo them.
+      final sync = <String, Object?>{
+        'seating_key': session.seatingKey,
+        'seating_uuid': session.seatingUuid,
+        'seating_state': session.seatingState,
+        'server_order_uuid': session.serverOrderUuid,
+        'temp_reference': session.tempReference,
+        'winner_seating_uuid': session.winnerSeatingUuid,
+        'last_verdict': session.lastVerdict,
+        'last_verdict_at': session.lastVerdictAt?.toIso8601String(),
+        if (existing.isNotEmpty) ...existing.single,
+      };
+      final draft = session.draft?.toMap();
+      if (draft != null && sync['server_order_uuid'] is String) {
+        draft['serverOrderUuid'] = sync['server_order_uuid'];
+      }
+      await txn.insert('dining_tables', {
+        'table_id': session.tableId,
+        'floor_id': session.floorId,
+        'status': session.status.storageValue,
+        'order_number': session.orderNumber,
+        'order_reference': session.orderReference,
+        'updated_at': session.updatedAt.toIso8601String(),
+        'occupied_at': session.occupiedAt?.toIso8601String(),
+        'paid_at': session.paidAt?.toIso8601String(),
+        'draft_json': draft == null ? null : jsonEncode(draft),
+        'paid_snapshot_json': session.paidSnapshot == null
+            ? null
+            : jsonEncode(session.paidSnapshot!.toMap()),
+        'primary_table_id': session.primaryTableId,
+        'linked_table_ids_json': session.linkedTableIds.isEmpty
+            ? null
+            : jsonEncode(session.linkedTableIds),
+        ...sync,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
   }
 
   @override
@@ -204,7 +225,7 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore 
 
     return openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE order_history (
@@ -244,6 +265,7 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore 
           )
         ''');
         await createRemoteTables(db);
+        await createTableLedger(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -317,6 +339,9 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore 
         if (oldVersion < 5) {
           await createRemoteTables(db);
         }
+        if (oldVersion < 6) {
+          await createTableLedger(db);
+        }
       },
     );
   }
@@ -357,6 +382,131 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore 
     ''');
   }
 
+  /// Additive v5-to-v6 schema; also applied after the v5 fresh schema.
+  static Future<void> createTableLedger(DatabaseExecutor db) async {
+    for (final column in tableSyncColumns) {
+      await db.execute('ALTER TABLE dining_tables ADD COLUMN $column TEXT');
+    }
+    await db.execute('ALTER TABLE remote_sync_meta ADD COLUMN last_notified_event_id INTEGER');
+    await db.execute('''
+      CREATE TABLE local_table_rounds (
+        client_request_id TEXT PRIMARY KEY,
+        table_id TEXT NOT NULL, seating_key TEXT NOT NULL,
+        local_round_no INTEGER NOT NULL, lines_json TEXT NOT NULL,
+        submitted_at TEXT NOT NULL, printed_at TEXT, outbox_key TEXT NOT NULL,
+        status TEXT NOT NULL, server_round_id INTEGER, server_round_no INTEGER,
+        order_uuid TEXT, total_baisas INTEGER, review_reasons_json TEXT,
+        held_lines_json TEXT, acked_at TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE local_line_cancellations (
+        client_request_id TEXT PRIMARY KEY,
+        table_id TEXT NOT NULL, seating_key TEXT NOT NULL,
+        product_id INTEGER NOT NULL, addon_ids_json TEXT NOT NULL, notes TEXT,
+        qty INTEGER NOT NULL, prepared INTEGER NOT NULL, reason TEXT, authorized_by TEXT,
+        cancelled_at TEXT NOT NULL, outbox_key TEXT NOT NULL, status TEXT NOT NULL,
+        cancelled_qty INTEGER, acked_at TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE table_sync_verdicts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        observed_at TEXT NOT NULL, table_id TEXT NOT NULL, seating_key TEXT,
+        event_kind TEXT NOT NULL, outcome TEXT NOT NULL, detail_json TEXT,
+        seen INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+  }
+
+  static const tableSyncColumns = [
+    'seating_key', 'seating_uuid', 'seating_state', 'server_order_uuid',
+    'temp_reference', 'winner_seating_uuid', 'last_verdict', 'last_verdict_at',
+  ];
+
+  @override
+  Future<void> saveLocalTableRound(LocalTableRound round) async {
+    final db = await database;
+    await db.insert('local_table_rounds', round.toRow(), conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  @override
+  Future<List<LocalTableRound>> readLocalTableRounds({String? tableId, String? seatingKey}) async {
+    final db = await database;
+    return (await db.query('local_table_rounds',
+      where: _ledgerWhere(tableId, seatingKey),
+      whereArgs: [?tableId, ?seatingKey],
+      orderBy: 'local_round_no, client_request_id',
+    )).map(LocalTableRound.fromRow).toList(growable: false);
+  }
+
+  @override
+  Future<void> saveLocalLineCancellation(LocalLineCancellation cancellation) async {
+    final db = await database;
+    await db.insert('local_line_cancellations', cancellation.toRow(), conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  @override
+  Future<List<LocalLineCancellation>> readLocalLineCancellations({String? tableId, String? seatingKey}) async {
+    final db = await database;
+    return (await db.query('local_line_cancellations',
+      where: _ledgerWhere(tableId, seatingKey),
+      whereArgs: [?tableId, ?seatingKey],
+      orderBy: 'cancelled_at, client_request_id',
+    )).map(LocalLineCancellation.fromRow).toList(growable: false);
+  }
+
+  String? _ledgerWhere(String? tableId, String? seatingKey) {
+    final clauses = [if (tableId != null) 'table_id = ?', if (seatingKey != null) 'seating_key = ?'];
+    return clauses.isEmpty ? null : clauses.join(' AND ');
+  }
+
+  @override
+  Future<int> addTableSyncVerdict(TableSyncVerdict verdict) async {
+    final db = await database;
+    return db.insert('table_sync_verdicts', verdict.toRow());
+  }
+
+  @override
+  Future<List<TableSyncVerdict>> readTableSyncVerdicts({bool unseenOnly = false, int limit = 200}) async {
+    final db = await database;
+    return (await db.query('table_sync_verdicts', where: unseenOnly ? 'seen = 0' : null,
+      orderBy: 'id DESC', limit: limit.clamp(1, 200),
+    )).map(TableSyncVerdict.fromRow).toList(growable: false);
+  }
+
+  @override
+  Future<void> markTableSyncVerdictsSeen(List<int> ids) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final id in ids) {
+        await txn.update('table_sync_verdicts', {'seen': 1}, where: 'id = ?', whereArgs: [id]);
+      }
+    });
+  }
+
+  /// Own-event acknowledgements may change identity metadata, never table status.
+  @override
+  Future<void> updateTableSyncFields(String tableId, Map<String, Object?> fields) async {
+    if (fields.keys.any((key) => !tableSyncColumns.contains(key))) {
+      throw ArgumentError('Only seating metadata may be patched by a table acknowledgement');
+    }
+    if (fields.isEmpty) return;
+    final db = await database;
+    await db.transaction((txn) async {
+      final values = Map<String, Object?>.of(fields);
+      final uuid = fields['server_order_uuid'];
+      if (uuid is String && uuid.isNotEmpty) {
+        final rows = await txn.query('dining_tables', columns: ['draft_json'], where: 'table_id = ?', whereArgs: [tableId]);
+        if (rows.isNotEmpty && rows.single['draft_json'] != null) {
+          final draft = _decodeJsonMap(rows.single['draft_json']);
+          values['draft_json'] = jsonEncode({...draft, 'serverOrderUuid': uuid});
+        }
+      }
+      await txn.update('dining_tables', values, where: 'table_id = ?', whereArgs: [tableId]);
+    });
+  }
+
   @override
   Future<List<RemoteTableState>> readRemoteTables() async {
     final db = await database;
@@ -388,8 +538,15 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore 
   @override
   Future<void> saveRemoteMeta(RemoteSyncMeta meta) async {
     final db = await database;
-    await db.insert('remote_sync_meta', meta.toRow(),
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.transaction((txn) async {
+      final existing = await txn.query('remote_sync_meta', where: 'id = 1');
+      final row = meta.toRow();
+      final watermark = existing.isEmpty ? null : existing.single['last_notified_event_id'];
+      if (watermark is int && (meta.lastNotifiedEventId == null || watermark > meta.lastNotifiedEventId!)) {
+        row['last_notified_event_id'] = watermark;
+      }
+      await txn.insert('remote_sync_meta', row, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
   }
 
   @override
@@ -466,6 +623,14 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore 
           ? row['primary_table_id'] as String
           : null,
       linkedTableIds: _decodeStringList(row['linked_table_ids_json']),
+      seatingKey: row['seating_key'] as String?,
+      seatingUuid: row['seating_uuid'] as String?,
+      seatingState: row['seating_state'] as String?,
+      serverOrderUuid: row['server_order_uuid'] as String?,
+      tempReference: row['temp_reference'] as String?,
+      winnerSeatingUuid: row['winner_seating_uuid'] as String?,
+      lastVerdict: row['last_verdict'] as String?,
+      lastVerdictAt: _parseStoredDate(row['last_verdict_at']),
     );
   }
 

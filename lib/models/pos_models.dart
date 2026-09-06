@@ -2085,6 +2085,9 @@ class DiningTableSession {
   // group frees together when the bill is paid or discarded.
   final String? primaryTableId;
   final List<String> linkedTableIds;
+  final String? seatingKey, seatingUuid, seatingState, serverOrderUuid;
+  final String? tempReference, winnerSeatingUuid, lastVerdict;
+  final DateTime? lastVerdictAt;
 
   const DiningTableSession({
     required this.tableId,
@@ -2099,6 +2102,14 @@ class DiningTableSession {
     this.paidSnapshot,
     this.primaryTableId,
     this.linkedTableIds = const [],
+    this.seatingKey,
+    this.seatingUuid,
+    this.seatingState,
+    this.serverOrderUuid,
+    this.tempReference,
+    this.winnerSeatingUuid,
+    this.lastVerdict,
+    this.lastVerdictAt,
   });
 
   /// This table is a linked seat — its bill lives on [primaryTableId].
@@ -2131,6 +2142,15 @@ class DiningTableSession {
     List<String>? linkedTableIds,
     bool clearDraft = false,
     bool clearPrimary = false,
+    String? seatingKey,
+    String? seatingUuid,
+    String? seatingState,
+    String? serverOrderUuid,
+    String? tempReference,
+    String? winnerSeatingUuid,
+    String? lastVerdict,
+    DateTime? lastVerdictAt,
+    bool clearSeating = false,
   }) {
     return DiningTableSession(
       tableId: tableId,
@@ -2145,8 +2165,49 @@ class DiningTableSession {
       paidSnapshot: paidSnapshot ?? this.paidSnapshot,
       primaryTableId: clearPrimary ? null : (primaryTableId ?? this.primaryTableId),
       linkedTableIds: linkedTableIds ?? this.linkedTableIds,
+      seatingKey: clearSeating ? null : (seatingKey ?? this.seatingKey),
+      seatingUuid: clearSeating ? null : (seatingUuid ?? this.seatingUuid),
+      seatingState: clearSeating ? null : (seatingState ?? this.seatingState),
+      serverOrderUuid: clearSeating ? null : (serverOrderUuid ?? this.serverOrderUuid),
+      tempReference: clearSeating ? null : (tempReference ?? this.tempReference),
+      winnerSeatingUuid: clearSeating ? null : (winnerSeatingUuid ?? this.winnerSeatingUuid),
+      lastVerdict: clearSeating ? null : (lastVerdict ?? this.lastVerdict),
+      lastVerdictAt: clearSeating ? null : (lastVerdictAt ?? this.lastVerdictAt),
     );
   }
+
+  Map<String, dynamic> toMap() => {
+    'tableId': tableId, 'floorId': floorId, 'status': status.storageValue,
+    'orderNumber': orderNumber, 'orderReference': orderReference,
+    'updatedAt': updatedAt.toIso8601String(),
+    'occupiedAt': occupiedAt?.toIso8601String(), 'paidAt': paidAt?.toIso8601String(),
+    'draft': draft?.toMap(), 'paidSnapshot': paidSnapshot?.toMap(),
+    'primaryTableId': primaryTableId, 'linkedTableIds': linkedTableIds,
+    'seatingKey': seatingKey, 'seatingUuid': seatingUuid, 'seatingState': seatingState,
+    'serverOrderUuid': serverOrderUuid, 'tempReference': tempReference,
+    'winnerSeatingUuid': winnerSeatingUuid, 'lastVerdict': lastVerdict,
+    'lastVerdictAt': lastVerdictAt?.toIso8601String(),
+  };
+
+  factory DiningTableSession.fromMap(Map<String, dynamic> map) => DiningTableSession(
+    tableId: map['tableId']?.toString() ?? '',
+    floorId: map['floorId']?.toString() ?? '',
+    status: DiningTableStatusLabel.fromStorage(map['status']?.toString()),
+    orderNumber: (map['orderNumber'] as num?)?.toInt(),
+    orderReference: map['orderReference']?.toString() ?? '',
+    updatedAt: DateTime.parse(map['updatedAt'] as String),
+    occupiedAt: DateTime.tryParse(map['occupiedAt']?.toString() ?? ''),
+    paidAt: DateTime.tryParse(map['paidAt']?.toString() ?? ''),
+    draft: map['draft'] is Map ? OrderSessionDraft.fromMap(Map<String, dynamic>.from(map['draft'] as Map)) : null,
+    paidSnapshot: map['paidSnapshot'] is Map ? OrderSnapshot.fromMap(Map<String, dynamic>.from(map['paidSnapshot'] as Map)) : null,
+    primaryTableId: map['primaryTableId'] as String?,
+    linkedTableIds: (map['linkedTableIds'] as List? ?? const []).cast<String>(),
+    seatingKey: map['seatingKey'] as String?, seatingUuid: map['seatingUuid'] as String?,
+    seatingState: map['seatingState'] as String?, serverOrderUuid: map['serverOrderUuid'] as String?,
+    tempReference: map['tempReference'] as String?, winnerSeatingUuid: map['winnerSeatingUuid'] as String?,
+    lastVerdict: map['lastVerdict'] as String?,
+    lastVerdictAt: DateTime.tryParse(map['lastVerdictAt']?.toString() ?? ''),
+  );
 }
 
 class OrderHistoryRecord {
