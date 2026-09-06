@@ -256,6 +256,10 @@ class QrRoundEnvelope {
     this.tableLabel,
     this.receiptNumber,
     this.tempReference,
+    this.ticketKey,
+    this.claimedByDeviceId,
+    this.printedAt,
+    this.needsReview = false,
   });
 
   final QrDeviceRound round;
@@ -264,6 +268,11 @@ class QrRoundEnvelope {
   final String? tableLabel;
   final String? receiptNumber;
   final String? tempReference;
+
+  final String? ticketKey;
+  final int? claimedByDeviceId;
+  final DateTime? printedAt;
+  final bool needsReview;
 
   factory QrRoundEnvelope.fromJson(Map<String, dynamic> json) {
     final rawRound = json['round'];
@@ -277,6 +286,10 @@ class QrRoundEnvelope {
       tableLabel: _nullableString(json['table_label']),
       receiptNumber: _nullableString(json['receipt_number']),
       tempReference: _nullableString(json['temp_reference']),
+      ticketKey: _nullableString(json['ticket_key']),
+      claimedByDeviceId: (json['claimed_by_device_id'] as num?)?.toInt(),
+      printedAt: DateTime.tryParse(json['printed_at']?.toString() ?? ''),
+      needsReview: json['needs_review'] == true,
     );
   }
 
@@ -301,7 +314,89 @@ class QrRoundEnvelope {
         tableLabel: _nullableString(json['table_label']),
         receiptNumber: _nullableString(json['receipt_number']),
         tempReference: _nullableString(json['temp_reference']),
+        ticketKey: _nullableString(json['ticket_key']),
+        claimedByDeviceId: (json['claimed_by_device_id'] as num?)?.toInt(),
+        printedAt: DateTime.tryParse(json['printed_at']?.toString() ?? ''),
+        needsReview: json['needs_review'] == true,
       );
+}
+
+class QrKitchenTicket {
+  const QrKitchenTicket({
+    required this.ticketKey,
+    required this.roundId,
+    required this.orderUuid,
+    required this.replayed,
+    required this.pricedLines,
+    this.claimedByDeviceId,
+    this.claimedAt,
+    this.printResult,
+    this.printedAt,
+    this.printPending = false,
+  });
+
+  final String ticketKey;
+  final int roundId;
+  final String orderUuid;
+  final bool replayed;
+  final List<QrRoundDisplayLine> pricedLines;
+  final int? claimedByDeviceId;
+  final DateTime? claimedAt;
+  final String? printResult;
+  final DateTime? printedAt;
+  final bool printPending;
+
+  factory QrKitchenTicket.fromJson(Map<String, dynamic> json) {
+    if (json['ticket_key'] is! String ||
+        json['round_id'] is! num ||
+        json['order_uuid'] is! String ||
+        json['replayed'] is! bool ||
+        json['priced_lines'] is! List) {
+      throw const FormatException('Invalid kitchen print claim.');
+    }
+    return QrKitchenTicket(
+      ticketKey: json['ticket_key'] as String,
+      roundId: (json['round_id'] as num).toInt(),
+      orderUuid: json['order_uuid'] as String,
+      replayed: json['replayed'] as bool,
+      pricedLines: [
+        for (final line in json['priced_lines'] as List)
+          QrRoundDisplayLine.fromJson((line as Map).cast<String, dynamic>()),
+      ],
+      claimedByDeviceId: (json['claimed_by_device_id'] as num?)?.toInt(),
+      claimedAt: DateTime.tryParse(json['claimed_at']?.toString() ?? ''),
+      printResult: _nullableString(json['print_result']),
+      printedAt: DateTime.tryParse(json['printed_at']?.toString() ?? ''),
+      printPending: json['print_pending'] == true,
+    );
+  }
+
+  QrRoundEnvelope forPrinting(QrRoundEnvelope envelope) {
+    if (!printPending && !envelope.needsReview) return envelope;
+    final round = envelope.round;
+    return QrRoundEnvelope(
+      round: QrDeviceRound(
+        id: round.id,
+        roundNo: round.roundNo,
+        status: round.status,
+        lines: pricedLines,
+        subtotalBaisas: round.subtotalBaisas,
+        taxBaisas: round.taxBaisas,
+        totalBaisas: round.totalBaisas,
+        submittedAt: round.submittedAt,
+        resolvedAt: round.resolvedAt,
+      ),
+      orderUuid: envelope.orderUuid,
+      sessionUuid: envelope.sessionUuid,
+      tableLabel: envelope.tableLabel,
+      receiptNumber: envelope.receiptNumber,
+      tempReference: envelope.tempReference,
+      ticketKey: ticketKey,
+      claimedByDeviceId: claimedByDeviceId,
+      printedAt: printedAt,
+      needsReview: envelope.needsReview,
+    );
+  }
 }
 
 class QrAcceptedRoundsPage {

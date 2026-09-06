@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,6 +13,37 @@ import 'sunmi_receipt_service.dart';
 abstract interface class QrKitchenRoundPrinter {
   Future<bool> printRound(QrRoundEnvelope envelope, {required bool arabic});
 }
+
+abstract interface class KitchenPrintGateway {
+  Future<QrKitchenTicket> claim(String ticketKey);
+  Future<void> recordResult({
+    required String ticketKey,
+    required String printResult,
+    required DateTime? printedAt,
+  });
+}
+
+class ApiKitchenPrintGateway implements KitchenPrintGateway {
+  const ApiKitchenPrintGateway(this.api);
+  final PosApiService api;
+
+  @override
+  Future<QrKitchenTicket> claim(String ticketKey) =>
+      api.claimKitchenPrint(ticketKey);
+
+  @override
+  Future<void> recordResult({
+    required String ticketKey,
+    required String printResult,
+    required DateTime? printedAt,
+  }) => api.recordKitchenPrintResult(
+    ticketKey: ticketKey,
+    printResult: printResult,
+    printedAt: printedAt,
+  );
+}
+
+enum _PrintAttempt { printed, skipped, retry, printerFailed }
 
 class SunmiQrKitchenRoundPrinter implements QrKitchenRoundPrinter {
   const SunmiQrKitchenRoundPrinter();
@@ -46,7 +78,12 @@ KitchenTicketData buildQrKitchenTicket(
   );
 }
 
-enum QrRoundPrintNoticeKind { expiredUnprinted, printerFailed, positionReset }
+enum QrRoundPrintNoticeKind {
+  expiredUnprinted,
+  printerFailed,
+  positionReset,
+  heldForReview,
+}
 
 class QrRoundPrintNotice {
   const QrRoundPrintNotice(this.kind, {this.count = 0});
@@ -61,6 +98,7 @@ class QrRoundPrintNotice {
 class QrRoundAutoPrintController with WidgetsBindingObserver {
   QrRoundAutoPrintController({
     required QrRoundGateway gateway,
+    required KitchenPrintGateway kitchenGateway,
     required SharedPreferences preferences,
     required QrKitchenRoundPrinter printer,
     required String Function() deviceKey,
@@ -69,6 +107,7 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
     required void Function(bool unavailable) onPollingStatus,
     this.pollInterval = QrPollingPolicy.acceptedRoundsInterval,
   }) : _gateway = gateway,
+       _kitchenGateway = kitchenGateway,
        _preferences = preferences,
        _printer = printer,
        _deviceKey = deviceKey,
@@ -81,6 +120,9 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
   static const int maxConfirmPrintedMarks = 1024;
 
   final QrRoundGateway _gateway;
+  final KitchenPrintGateway _kitchenGateway;
+  final Map<String, Future<_PrintAttempt>> _printing = {};
+  bool _legacyLogged = false;
   final SharedPreferences _preferences;
   final QrKitchenRoundPrinter _printer;
   final String Function() _deviceKey;
@@ -193,6 +235,8 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
     final printedKey = _printedKeyFor(scope);
     String? requestAfter;
     try {
+      await _flushPrintReports(scope);
+      if (!_isActiveScope(scope)) return;
       var cursor = _preferences.getString(cursorKey);
       if (cursor == null) {
         await _seedAtLatest(scope: scope, schedule: false);
@@ -234,23 +278,19 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
           break;
         }
 
-        final printed = _printedIds(printedKey);
         var pageComplete = true;
         for (final envelope in page.rounds) {
           if (!_enabled || !_foreground) {
             pageComplete = false;
             break;
           }
-          final key = envelope.round.id.toString();
-          if (printed.contains(key)) continue;
-          var ok = false;
-          try {
-            ok = await _printer.printRound(envelope, arabic: _arabic());
-          } catch (_) {
-            // Printer faults have their own recovery surface and must not
-            // masquerade as accepted-round feed connectivity failures.
+          final attempt = await _claimAndPrint(envelope, scope: scope);
+          if (attempt == _PrintAttempt.retry) {
+            pageComplete = false;
+            _recordPollFailure();
+            break;
           }
-          if (!ok) {
+          if (attempt == _PrintAttempt.printerFailed) {
             pageComplete = false;
             _recordPollSuccess();
             _onNotice(
@@ -258,8 +298,6 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
             );
             break;
           }
-          printed.add(key);
-          await _persistPrinted(printedKey, printed);
         }
         if (!pageComplete) break;
 
@@ -273,8 +311,11 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
         // Once the cursor is durable, these page ids cannot be replayed and no
         // longer need printed-set space. Confirm-printed ids ahead of the cursor
         // remain until their feed page is durably acknowledged.
-        printed.removeAll(page.rounds.map((row) => row.round.id.toString()));
-        await _persistPrinted(printedKey, printed);
+        final currentPrinted = _printedIds(printedKey);
+        currentPrinted.removeAll(
+          page.rounds.map((row) => row.round.id.toString()),
+        );
+        await _persistPrinted(printedKey, currentPrinted);
         _recordPollSuccess();
         after = next;
 
@@ -299,21 +340,178 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
   }
 
   Future<bool> printConfirmedRound(QrRoundEnvelope envelope) async {
-    final printedKey = _printedKeyFor(_scope);
+    final attempt = await _claimAndPrint(
+      envelope,
+      scope: _scope,
+      confirmed: true,
+    );
+    // A business skip must not open the old printer-failure retry dialog.
+    return attempt == _PrintAttempt.printed || attempt == _PrintAttempt.skipped;
+  }
+
+  Future<_PrintAttempt> _claimAndPrint(
+    QrRoundEnvelope envelope, {
+    required String scope,
+    bool confirmed = false,
+  }) async {
+    final flightKey = '$scope/${envelope.round.id}';
+    final existing = _printing[flightKey];
+    if (existing != null) return existing;
+    final operation = _printClaimed(
+      envelope,
+      scope,
+      confirmed,
+    ).catchError((Object _) => _PrintAttempt.retry);
+    _printing[flightKey] = operation;
+    try {
+      return await operation;
+    } catch (_) {
+      return _PrintAttempt.retry;
+    } finally {
+      _printing.remove(flightKey);
+    }
+  }
+
+  Future<_PrintAttempt> _printClaimed(
+    QrRoundEnvelope envelope,
+    String scope,
+    bool confirmed,
+  ) async {
+    final id = envelope.round.id.toString();
+    final ticketKey = 'round:$id';
+    final printedKey = _printedKeyFor(scope);
+    final reportKey = 'qr_round_print_result_${scope}_$id';
+    bool active() =>
+        _scope == scope && (confirmed || (_enabled && _foreground));
+    if (!active()) return _PrintAttempt.retry;
+
+    // Retry only the result after a physical print succeeded. Persisting this
+    // small receipt also prevents an acknowledgement failure/restart from
+    // causing another physical print of the same ticket.
+    final pending = _preferences.getString(reportKey);
+    if (pending != null) {
+      final report = (jsonDecode(pending) as Map).cast<String, dynamic>();
+      await _kitchenGateway.recordResult(
+        ticketKey: ticketKey,
+        printResult: report['print_result'] as String,
+        printedAt: DateTime.tryParse(report['printed_at']?.toString() ?? ''),
+      );
+      await _preferences.remove(reportKey);
+      if (!active()) return _PrintAttempt.retry;
+      if (report['print_result'] == 'printed') {
+        final restored = _printedIds(printedKey)..add(id);
+        if (confirmed) {
+          await _persistConfirmPrinted(printedKey, restored);
+        } else {
+          await _persistPrinted(printedKey, restored);
+        }
+        return _PrintAttempt.printed;
+      }
+    }
     final printed = _printedIds(printedKey);
-    final key = envelope.round.id.toString();
-    if (printed.contains(key)) {
-      printed.remove(key);
-      printed.add(key);
-      await _persistConfirmPrinted(printedKey, printed);
-      return true;
+    if (printed.contains(id)) {
+      if (confirmed) {
+        printed.remove(id);
+        printed.add(id);
+        await _persistConfirmPrinted(printedKey, printed);
+      }
+      return _PrintAttempt.printed;
     }
-    final ok = await _printer.printRound(envelope, arabic: _arabic());
+
+    QrKitchenTicket? ticket;
+    try {
+      ticket = await _kitchenGateway.claim(ticketKey);
+    } on ApiException catch (error) {
+      if (error.statusCode == 409 && error.code == 'kitchen_ticket_claimed') {
+        return _PrintAttempt.skipped;
+      }
+      if (error.statusCode == 409 &&
+          error.code == 'kitchen_round_not_printable') {
+        _onNotice(
+          const QrRoundPrintNotice(QrRoundPrintNoticeKind.heldForReview),
+        );
+        return _PrintAttempt.skipped;
+      }
+      // Structured business 404s (notably kitchen_round_not_found) are NOT an
+      // absent route and must never grant permission to print.
+      if (error.statusCode != 404 || error.code != null) rethrow;
+      if (!_legacyLogged) {
+        _legacyLogged = true;
+        debugPrint(
+          'Kitchen claim route missing (404); using legacy local print fence.',
+        );
+      }
+    }
+    if (!active()) return _PrintAttempt.retry;
+    if (ticket != null &&
+        (ticket.ticketKey != ticketKey ||
+            ticket.roundId != envelope.round.id ||
+            ticket.orderUuid != envelope.orderUuid)) {
+      throw const FormatException('Kitchen claim identity mismatch.');
+    }
+    final toPrint = ticket?.forPrinting(envelope) ?? envelope;
+    var ok = false;
+    try {
+      ok = await _printer.printRound(toPrint, arabic: _arabic());
+    } catch (_) {
+      // A printer exception is a failed physical result, not a successful stamp.
+    }
+    final printedAt = ok ? DateTime.now().toUtc() : null;
+    if (ticket != null) {
+      await _preferences.setString(
+        reportKey,
+        jsonEncode({
+          'print_result': ok ? 'printed' : 'failed',
+          'printed_at': printedAt?.toIso8601String(),
+        }),
+      );
+    }
     if (ok) {
-      printed.add(key);
-      await _persistConfirmPrinted(printedKey, printed);
+      final latest = _printedIds(printedKey)..add(id);
+      if (confirmed) {
+        await _persistConfirmPrinted(printedKey, latest);
+      } else {
+        await _persistPrinted(printedKey, latest);
+      }
     }
-    return ok;
+    if (ticket != null) {
+      if (!active()) return _PrintAttempt.retry;
+      await _kitchenGateway.recordResult(
+        ticketKey: ticketKey,
+        printResult: ok ? 'printed' : 'failed',
+        printedAt: printedAt,
+      );
+      await _preferences.remove(reportKey);
+    }
+    return ok ? _PrintAttempt.printed : _PrintAttempt.printerFailed;
+  }
+
+  Future<void> _flushPrintReports(String scope) async {
+    final prefix = 'qr_round_print_result_${scope}_';
+    for (final key
+        in _preferences
+            .getKeys()
+            .where((key) => key.startsWith(prefix))
+            .toList()) {
+      if (!_isActiveScope(scope)) return;
+      final id = key.substring(prefix.length);
+      // An in-flight physical print owns its own result.
+      if (_printing.containsKey('$scope/$id')) continue;
+      final report = (jsonDecode(_preferences.getString(key)!) as Map)
+          .cast<String, dynamic>();
+      await _kitchenGateway.recordResult(
+        ticketKey: 'round:$id',
+        printResult: report['print_result'] as String,
+        printedAt: DateTime.tryParse(report['printed_at']?.toString() ?? ''),
+      );
+      if (report['print_result'] == 'printed') {
+        await _persistPrinted(
+          _printedKeyFor(scope),
+          _printedIds(_printedKeyFor(scope))..add(id),
+        );
+      }
+      await _preferences.remove(key);
+    }
   }
 
   Future<void> _recoverInvalidCursor({

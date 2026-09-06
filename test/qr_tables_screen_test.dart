@@ -967,6 +967,7 @@ Future<void> _pumpBoard(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(preferences),
         qrTillServiceProvider.overrideWithValue(service),
+        kitchenPrintGatewayProvider.overrideWithValue(_FakeKitchenClaims()),
         qrSettlementCoordinatorProvider.overrideWithValue(
           flow ?? _FakeSettlementFlow(),
         ),
@@ -1182,6 +1183,21 @@ class _FakeRoundGateway implements QrRoundGateway {
     String? after,
     int limit = 25,
   }) async => const QrAcceptedRoundsPage(rounds: [], skippedExpiredCount: 0);
+}
+
+class _FakeKitchenClaims implements KitchenPrintGateway {
+  @override
+  Future<QrKitchenTicket> claim(String ticketKey) async => QrKitchenTicket(
+    ticketKey: ticketKey, roundId: int.parse(ticketKey.split(':').last),
+    orderUuid: 'order-3', replayed: false, pricedLines: const [],
+  );
+
+  @override
+  Future<void> recordResult({
+    required String ticketKey,
+    required String printResult,
+    required DateTime? printedAt,
+  }) async {}
 }
 
 class _FakeRoundPrinter implements QrKitchenRoundPrinter {

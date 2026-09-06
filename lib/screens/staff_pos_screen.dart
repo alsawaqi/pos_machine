@@ -330,6 +330,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             : 'A QR kitchen round did not print. Check the printer; this device will retry safely.',
         QrRoundPrintNoticeKind.positionReset =>
             qrRoundPrintPositionResetMessage(arabic: arabic),
+        QrRoundPrintNoticeKind.heldForReview => arabic
+            ? 'جولة المطبخ معلقة للمراجعة.'
+            : 'Kitchen round held for review.',
       };
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;

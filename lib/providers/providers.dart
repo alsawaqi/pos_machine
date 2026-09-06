@@ -336,6 +336,10 @@ final qrRoundGatewayProvider = Provider<QrRoundGateway>(
   (ref) => QrTillService(ref.read(apiServiceProvider)),
 );
 
+final kitchenPrintGatewayProvider = Provider<KitchenPrintGateway>(
+  (ref) => ApiKitchenPrintGateway(ref.read(apiServiceProvider)),
+);
+
 final qrKitchenRoundPrinterProvider = Provider<QrKitchenRoundPrinter>(
   (ref) => const SunmiQrKitchenRoundPrinter(),
 );
@@ -369,6 +373,7 @@ final qrRoundAutoPrintControllerProvider = Provider<QrRoundAutoPrintController>(
   (ref) {
     final controller = QrRoundAutoPrintController(
       gateway: ref.read(qrRoundGatewayProvider),
+      kitchenGateway: ref.read(kitchenPrintGatewayProvider),
       preferences: ref.read(sharedPreferencesProvider),
       printer: ref.read(qrKitchenRoundPrinterProvider),
       deviceKey: () => ref.read(sessionServiceProvider).kioskId ?? '',

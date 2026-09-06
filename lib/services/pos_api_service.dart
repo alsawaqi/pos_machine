@@ -264,6 +264,32 @@ class PosApiService {
         .toList(growable: false);
   }
 
+  Future<QrKitchenTicket> claimKitchenPrint(String ticketKey) async {
+    final body = await _send(() async {
+      final response = await _dio.post(
+        '/device/kitchen/claim-print', data: {'ticket_key': ticketKey},
+      );
+      final status = response.statusCode ?? 0;
+      if (status >= 200 && status < 300 && status != 201) {
+        throw const FormatException('Kitchen claim must return HTTP 201.');
+      }
+      return response;
+    });
+    return QrKitchenTicket.fromJson(body.dataMap);
+  }
+
+  Future<void> recordKitchenPrintResult({
+    required String ticketKey,
+    required String printResult,
+    required DateTime? printedAt,
+  }) async {
+    await _send(() => _dio.post('/device/kitchen/print-result', data: {
+      'ticket_key': ticketKey,
+      'print_result': printResult,
+      'printed_at': printedAt?.toUtc().toIso8601String(),
+    }));
+  }
+
   Future<QrRoundEnvelope> fetchQrRound(int roundId) async {
     final body = await _send(
       () => _dio.get('/device/qr/table-round/$roundId'),
