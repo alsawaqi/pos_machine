@@ -1,5 +1,6 @@
 {
-  "tableCustomerPending": "{label}: customer order ({count} items) — confirm on the QR tab.",
+  "tableSettleBill": "Settle bill",
+  "tableCustomerPending": "{label}: customer order ({count} items) — confirm by tapping the table.",
   "@tableCustomerPending": {
     "placeholders": {
       "label": {
@@ -102,7 +103,7 @@
       }
     }
   },
-  "tableReconciledHeld": "Table {table}: {count} items could not be priced ({reason}) — review on the QR tab.",
+  "tableReconciledHeld": "Table {table}: {count} items could not be priced ({reason}) — review by tapping the table.",
   "@tableReconciledHeld": {
     "placeholders": {
       "table": {
@@ -116,7 +117,7 @@
       }
     }
   },
-  "tableReconciledRoundStopped": "Table {table}: the server bill is closed or awaiting payment; these items were not added. Review on the QR tab.",
+  "tableReconciledRoundStopped": "Table {table}: the server bill is closed or awaiting payment; these items were not added. Review by tapping the table.",
   "@tableReconciledRoundStopped": {
     "placeholders": {
       "table": {
@@ -157,7 +158,7 @@
       }
     }
   },
-  "tableReconciledUnpaid": "Table {table} still has an unpaid bill on the server — clear it from the QR tab or pay it.",
+  "tableReconciledUnpaid": "Table {table} still has an unpaid bill on the server — tap the table to clear or pay it.",
   "@tableReconciledUnpaid": {
     "placeholders": {
       "table": {
@@ -165,7 +166,7 @@
       }
     }
   },
-  "tableReconciledCancellation": "Table {table}: {count} requested items were not found for cancellation on the server. Review the bill on the QR tab.",
+  "tableReconciledCancellation": "Table {table}: {count} requested items were not found for cancellation on the server. Review the bill by tapping the table.",
   "@tableReconciledCancellation": {
     "placeholders": {
       "table": {
@@ -176,7 +177,7 @@
       }
     }
   },
-  "tableReconciledOther": "Table {table}: server result {outcome}. Review on the QR tab; the local table was not changed.",
+  "tableReconciledOther": "Table {table}: server result {outcome}. Review by tapping the table; the local table was not changed.",
   "@tableReconciledOther": {
     "placeholders": {
       "table": {

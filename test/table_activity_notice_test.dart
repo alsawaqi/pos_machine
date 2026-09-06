@@ -322,11 +322,11 @@ void main() {
     expect(h.repository.activityBoard[5]!.pendingCount, 3);
     expect(
       tableActivityMessage(L10nEn(), notice),
-      'Table 5 · T-0906-012: customer order (5 items) — confirm on the QR tab.',
+      'Table 5 · T-0906-012: customer order (5 items) — confirm by tapping the table.',
     );
     expect(
       tableActivityMessage(L10nAr(), notice),
-      'Table 5 · T-0906-012: طلب عميل (5 صنف) — أكّده من تبويب QR.',
+      'Table 5 · T-0906-012: طلب عميل (5 صنف) — أكّده بالضغط على الطاولة.',
     );
     h.gateway.board = [b5Board(count: 0, pending: false)];
     await h.poll([arrival(12, type: 'round_resolved')]);

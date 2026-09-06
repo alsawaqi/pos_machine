@@ -9,8 +9,11 @@ class L10nAr extends L10n {
   L10nAr([String locale = 'ar']) : super(locale);
 
   @override
+  String get tableSettleBill => 'تسوية الفاتورة';
+
+  @override
   String tableCustomerPending(String label, int count) {
-    return '$label: طلب عميل ($count صنف) — أكّده من تبويب QR.';
+    return '$label: طلب عميل ($count صنف) — أكّده بالضغط على الطاولة.';
   }
 
   @override
@@ -97,12 +100,12 @@ class L10nAr extends L10n {
 
   @override
   String tableReconciledHeld(String table, int count, String reason) {
-    return 'الطاولة $table: تعذر تسعير $count صنف ($reason) — راجع تبويب QR.';
+    return 'الطاولة $table: تعذر تسعير $count صنف ($reason) — راجع بالضغط على الطاولة.';
   }
 
   @override
   String tableReconciledRoundStopped(String table) {
-    return 'الطاولة $table: الفاتورة على الخادم مغلقة أو بانتظار الدفع؛ لم تُضف هذه الأصناف. راجع تبويب QR.';
+    return 'الطاولة $table: الفاتورة على الخادم مغلقة أو بانتظار الدفع؛ لم تُضف هذه الأصناف. راجع بالضغط على الطاولة.';
   }
 
   @override
@@ -122,17 +125,17 @@ class L10nAr extends L10n {
 
   @override
   String tableReconciledUnpaid(String table) {
-    return 'لا تزال للطاولة $table فاتورة غير مدفوعة على الخادم — ألغها من تبويب QR أو ادفعها.';
+    return 'لا تزال للطاولة $table فاتورة غير مدفوعة على الخادم — اضغط على الطاولة لإلغائها أو دفعها.';
   }
 
   @override
   String tableReconciledCancellation(String table, int count) {
-    return 'الطاولة $table: لم يُعثر على $count صنف مطلوب للإلغاء على الخادم. راجع الفاتورة في تبويب QR.';
+    return 'الطاولة $table: لم يُعثر على $count صنف مطلوب للإلغاء على الخادم. راجع الفاتورة بالضغط على الطاولة.';
   }
 
   @override
   String tableReconciledOther(String table, String outcome) {
-    return 'الطاولة $table: نتيجة الخادم $outcome. راجع تبويب QR؛ لم تتغير الطاولة المحلية.';
+    return 'الطاولة $table: نتيجة الخادم $outcome. راجع بالضغط على الطاولة؛ لم تتغير الطاولة المحلية.';
   }
 
   @override

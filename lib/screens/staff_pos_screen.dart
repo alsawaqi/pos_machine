@@ -286,6 +286,101 @@ Future<String?> showCustomerDiningTableActions(
   );
 }
 
+bool tableBillNeedsSheet(String mode, RemoteTableState? bill) =>
+    mode == 'live' && bill?.billOrderUuid != null &&
+    (bill?.billSource == 'qr_web' ||
+        (const {'main_pos', 'handheld'}.contains(bill?.billSource) &&
+            (bill?.billCustomerRounds ?? 0) > 0));
+
+/// Screen-only tender read; no repository, ledger or polling writes.
+class TableCartPayRouter {
+  bool busy = false;
+  String? _contextKey;
+  int? _tableId;
+  DateTime? _readAt;
+  RemoteTableState? _row;
+
+  RemoteTableState? known({
+    required int tableId,
+    required String contextKey,
+    required RemoteTableSnapshot board,
+  }) {
+    final row = board.tables[tableId];
+    final boardAt = board.meta.boardFetchedAt ?? row?.fetchedAt;
+    if (_tableId == tableId && _contextKey == contextKey && _readAt != null &&
+        (boardAt == null || !boardAt.isAfter(_readAt!))) {
+      return _row;
+    }
+    return row;
+  }
+
+  Future<void> route({
+    required String mode,
+    required int? tableId,
+    required String contextKey,
+    required RemoteTableSnapshot board,
+    required Future<List<Map<String, dynamic>>> Function() fetchBoard,
+    required bool Function() isCurrent,
+    required VoidCallback changed,
+    required Future<void> Function() openSheet,
+    required Future<void> Function() openLocal,
+    RemoteTableSnapshot Function()? latestBoard,
+  }) async {
+    if (busy || !isCurrent()) return;
+    if (mode != 'live' || tableId == null) {
+      await openLocal();
+      return;
+    }
+    busy = true;
+    changed();
+    try {
+      var bill = known(tableId: tableId, contextKey: contextKey, board: board);
+      // Timestamp at request start: a newer polling snapshot must win later.
+      final readAt = DateTime.now();
+      try {
+        final rows = await fetchBoard();
+        final raw = rows.where((row) => row['table_id'] == tableId).firstOrNull;
+        final fresh = raw == null ? null : RemoteTableState.fromBoard(raw, readAt);
+        if (!isCurrent()) return;
+        bill = fresh;
+        _contextKey = contextKey;
+        _tableId = tableId;
+        _readAt = readAt;
+        _row = fresh;
+        bill = known(
+          tableId: tableId, contextKey: contextKey,
+          board: latestBoard?.call() ?? board,
+        );
+      } catch (_) {
+        // Offline/read failure uses the last known identity, never a price.
+        bill = known(
+          tableId: tableId, contextKey: contextKey,
+          board: latestBoard?.call() ?? board,
+        );
+      }
+      if (!isCurrent()) return;
+      changed();
+      if (tableBillNeedsSheet(mode, bill)) {
+        await openSheet();
+      } else {
+        await openLocal();
+      }
+    } finally {
+      busy = false;
+      changed();
+    }
+  }
+}
+
+Widget buildTableCartPayButtonForTest({
+  required double total,
+  required bool busy,
+  required bool settleBill,
+  required VoidCallback onTap,
+}) => _PayButton(
+  total: total, busy: busy, settleBill: settleBill, onTap: onTap,
+);
+
 class StaffPosScreen extends ConsumerStatefulWidget {
   const StaffPosScreen({super.key});
 
@@ -662,6 +757,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   RemoteTableSnapshot _remoteTables = const RemoteTableSnapshot();
   String _tableShadowMode = 'off';
   bool _customerBillRouteOpen = false;
+  final _tableCartPay = TableCartPayRouter();
   TableKitchenBridge? _tableKitchen;
   Future<void>? _tableKitchenInit;
   StreamSubscription<void>? _tableKitchenChanges;
@@ -2627,8 +2723,60 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
+  String get _tablePayContext {
+    final session = ref.read(sessionServiceProvider);
+    final local = controller.diningSessionFor(controller.activeDiningTableId ?? '');
+    return jsonEncode([
+      ref.read(settingsServiceProvider).effectiveBaseUrl,
+      session.companyId, session.branchId, session.kioskId, session.deviceToken,
+      session.staff?.id, session.openShift?.uuid,
+      controller.activeDiningTableId, local?.orderReference,
+      local?.occupiedAt?.toIso8601String(), local?.seatingKey,
+      controller.activeDiningTableBillUuid,
+    ]);
+  }
+
+  RemoteTableState? get _cartBill {
+    final id = int.tryParse(controller.activeDiningTableId ?? '');
+    if (id == null || _tableShadowMode == 'off') return null;
+    return _tableCartPay.known(
+      tableId: id, contextKey: _tablePayContext, board: _remoteTables,
+    );
+  }
+
   Future<void> _openPaymentPage() async {
+    final mode = ref.read(tableSessionsModeProvider);
+    final tableId = int.tryParse(controller.activeDiningTableId ?? '');
+    if (mode != 'live' || tableId == null) {
+      await _openLocalPaymentPage();
+      return;
+    }
+    final contextKey = _tablePayContext;
+    bool current() => mounted && (ModalRoute.of(context)?.isCurrent ?? false) &&
+        !_showPaymentPage && !_customerBillRouteOpen &&
+        !controller.isProcessingPayment && !controller.showCharityRoundUpPrompt &&
+        !controller.showPaymentLaunchOverlay &&
+        !(controller.hasRecordedSplitPayments && controller.cart.isNotEmpty) &&
+        ref.read(tableSessionsModeProvider) == mode &&
+        _tablePayContext == contextKey;
+    await _tableCartPay.route(
+      mode: mode, tableId: tableId, contextKey: contextKey, board: _remoteTables,
+      latestBoard: () => _remoteTables,
+      fetchBoard: ref.read(apiServiceProvider).fetchTableBoard,
+      isCurrent: current,
+      changed: () { if (mounted) setState(() {}); },
+      openSheet: () => _openCustomerBill(tableId.toString()),
+      openLocal: () => _openLocalPaymentPage(stillCurrent: current),
+    );
+  }
+
+  Future<void> _openLocalPaymentPage({bool Function()? stillCurrent}) async {
     if (_liveTable) await _ensureTableKitchen();
+    if (stillCurrent != null && !stillCurrent()) return;
+    if (stillCurrent != null && tableBillNeedsSheet(_tableShadowMode, _cartBill)) {
+      await _openCustomerBill(controller.activeDiningTableId!);
+      return;
+    }
     if (controller.cart.isEmpty || controller.isProcessingPayment) {
       if (!mounted || controller.isProcessingPayment) return;
       _showPopupMessage(
@@ -2648,6 +2796,38 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     });
     _customerNumberController.text = controller.customerReferenceNumber;
     _vehiclePlateController.text = controller.vehiclePlateNumber;
+  }
+
+  // Re-check at dispatch too: a customer may adopt the bill while its local
+  // tender page is open. Existing tender/accounting code runs only if local.
+  Future<bool> _allowLocalTableTender() async {
+    final mode = ref.read(tableSessionsModeProvider);
+    final tableId = int.tryParse(controller.activeDiningTableId ?? '');
+    if (mode != 'live' || tableId == null) return true;
+    final contextKey = _tablePayContext;
+    var allowed = false;
+    bool current() => mounted && (ModalRoute.of(context)?.isCurrent ?? false) &&
+        _showPaymentPage && !_customerBillRouteOpen &&
+        !controller.isProcessingPayment && !controller.showCharityRoundUpPrompt &&
+        !controller.showPaymentLaunchOverlay &&
+        ref.read(tableSessionsModeProvider) == mode &&
+        _tablePayContext == contextKey;
+    await _tableCartPay.route(
+      mode: mode, tableId: tableId, contextKey: contextKey, board: _remoteTables,
+      latestBoard: () => _remoteTables,
+      fetchBoard: ref.read(apiServiceProvider).fetchTableBoard,
+      isCurrent: current,
+      changed: () { if (mounted) setState(() {}); },
+      openLocal: () async { allowed = true; },
+      openSheet: () async {
+        if (controller.hasRecordedSplitPayments && controller.cart.isNotEmpty) {
+          return;
+        }
+        setState(() => _showPaymentPage = false);
+        await _openCustomerBill(tableId.toString());
+      },
+    );
+    return allowed && current();
   }
 
   /// P-F5 — gift ONE cart line (a 100% write-off riding the comp plumbing,
@@ -2694,7 +2874,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// P-F5 — the customer paid on the bank's standalone terminal; record the
   /// exact amount (no charge launch, no change math, wire method bank_pos).
   Future<void> _submitBankPosPayment() async {
-    if (controller.isProcessingPayment) return;
+    if (_liveTable && !await _allowLocalTableTender()) return;
+    if (!mounted || controller.isProcessingPayment) return;
     controller.setCustomerReferenceNumber(_customerNumberController.text);
     controller.selectPaymentMethod('Bank POS');
     final message = await controller.payAndPrint();
@@ -2716,7 +2897,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _submitCardPayment() async {
-    if (controller.isProcessingPayment) return;
+    if (_liveTable && !await _allowLocalTableTender()) return;
+    if (!mounted || controller.isProcessingPayment) return;
     controller.setCustomerReferenceNumber(_customerNumberController.text);
     controller.selectPaymentMethod('Credit Card');
     final message = await controller.payAndPrint();
@@ -2744,7 +2926,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _submitCashPayment() async {
-    if (controller.isProcessingPayment) return;
+    if (_liveTable && !await _allowLocalTableTender()) return;
+    if (!mounted || controller.isProcessingPayment) return;
     final l10n = L10n.of(context);
     final tendered = _tenderedCashAmount;
     if (tendered < controller.activePaymentBaseTotal) {
@@ -2850,7 +3033,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _submitMixedPayment() async {
-    if (controller.isProcessingPayment) return;
+    if (_liveTable && !await _allowLocalTableTender()) return;
+    if (!mounted || controller.isProcessingPayment) return;
     final l10n = L10n.of(context);
     if (controller.splitCount > 1 || controller.hasRecordedSplitPayments) {
       _showPopupMessage(
@@ -7187,8 +7371,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           ),
           const SizedBox(height: 10),
           if (_isEditingDiningTable && _tableShadowMode != 'off' &&
-              _remoteTables.tables[int.tryParse(controller.activeDiningTableId ?? '')]
-                  ?.billSource == 'qr_web')
+              (_cartBill?.billSource == 'qr_web' ||
+                  tableBillNeedsSheet(_tableShadowMode, _cartBill)))
             TextButton.icon(
               key: const ValueKey('cart-customer-bill'),
               onPressed: () => _openCustomerBill(controller.activeDiningTableId!),
@@ -7581,7 +7765,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           width: _currentOrderPanelWidth,
           child: _PayButton(
             total: controller.activePaymentBaseTotal,
-            busy: controller.isProcessingPayment,
+            busy: controller.isProcessingPayment || _tableCartPay.busy,
+            settleBill: tableBillNeedsSheet(_tableShadowMode, _cartBill),
             onTap: () {
               unawaited(_openPaymentPage());
             },
@@ -10569,12 +10754,14 @@ class _FooterActionCard extends StatelessWidget {
 class _PayButton extends StatelessWidget {
   final double total;
   final bool busy;
+  final bool settleBill;
   final VoidCallback onTap;
 
   const _PayButton({
     required this.total,
     required this.busy,
     required this.onTap,
+    this.settleBill = false,
   });
 
   @override
@@ -10622,7 +10809,9 @@ class _PayButton extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    busy ? l10n.posPayBtnProcessing : l10n.posPayBtnProcessToPay,
+                    busy ? l10n.posPayBtnProcessing
+                        : settleBill ? l10n.tableSettleBill
+                        : l10n.posPayBtnProcessToPay,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -10635,6 +10824,7 @@ class _PayButton extends StatelessWidget {
                   Text(
                     busy
                         ? l10n.posPayBtnCompletingOrder
+                        : settleBill ? l10n.tableCustomerBillTitle
                         : l10n.posPayBtnPayAmount(
                             SunmiReceiptService.money(total),
                           ),

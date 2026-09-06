@@ -142,11 +142,11 @@ void main() {
       );
       expect(
         tableReconciliationCopy(L10nEn(), row),
-        'Table 5: 2 items could not be priced (product_missing, catalogue) — review on the QR tab.',
+        'Table 5: 2 items could not be priced (product_missing, catalogue) — review by tapping the table.',
       );
       expect(
         tableReconciliationCopy(L10nAr(), row),
-        'الطاولة 5: تعذر تسعير 2 صنف (product_missing, catalogue) — راجع تبويب QR.',
+        'الطاولة 5: تعذر تسعير 2 صنف (product_missing, catalogue) — راجع بالضغط على الطاولة.',
       );
     },
   );
@@ -167,7 +167,7 @@ void main() {
           en,
           verdict(1, kind: 'round', outcome: outcome),
         ),
-        'Table 5: the server bill is closed or awaiting payment; these items were not added. Review on the QR tab.',
+        'Table 5: the server bill is closed or awaiting payment; these items were not added. Review by tapping the table.',
       );
     }
     final move = {
@@ -207,7 +207,7 @@ void main() {
         en,
         verdict(1, kind: 'close', outcome: 'bill_unpaid'),
       ),
-      'Table 5 still has an unpaid bill on the server — clear it from the QR tab or pay it.',
+      'Table 5 still has an unpaid bill on the server — tap the table to clear or pay it.',
     );
     for (final outcome in ['cancelled', 'nothing_to_cancel', 'bill_terminal']) {
       final cancelled = outcome == 'cancelled' ? 2 : 0;
@@ -224,7 +224,7 @@ void main() {
             },
           ),
         ),
-        'Table 5: ${3 - cancelled} requested items were not found for cancellation on the server. Review the bill on the QR tab.',
+        'Table 5: ${3 - cancelled} requested items were not found for cancellation on the server. Review the bill by tapping the table.',
       );
     }
   });

@@ -9,8 +9,11 @@ class L10nEn extends L10n {
   L10nEn([String locale = 'en']) : super(locale);
 
   @override
+  String get tableSettleBill => 'Settle bill';
+
+  @override
   String tableCustomerPending(String label, int count) {
-    return '$label: customer order ($count items) — confirm on the QR tab.';
+    return '$label: customer order ($count items) — confirm by tapping the table.';
   }
 
   @override
@@ -96,12 +99,12 @@ class L10nEn extends L10n {
 
   @override
   String tableReconciledHeld(String table, int count, String reason) {
-    return 'Table $table: $count items could not be priced ($reason) — review on the QR tab.';
+    return 'Table $table: $count items could not be priced ($reason) — review by tapping the table.';
   }
 
   @override
   String tableReconciledRoundStopped(String table) {
-    return 'Table $table: the server bill is closed or awaiting payment; these items were not added. Review on the QR tab.';
+    return 'Table $table: the server bill is closed or awaiting payment; these items were not added. Review by tapping the table.';
   }
 
   @override
@@ -121,17 +124,17 @@ class L10nEn extends L10n {
 
   @override
   String tableReconciledUnpaid(String table) {
-    return 'Table $table still has an unpaid bill on the server — clear it from the QR tab or pay it.';
+    return 'Table $table still has an unpaid bill on the server — tap the table to clear or pay it.';
   }
 
   @override
   String tableReconciledCancellation(String table, int count) {
-    return 'Table $table: $count requested items were not found for cancellation on the server. Review the bill on the QR tab.';
+    return 'Table $table: $count requested items were not found for cancellation on the server. Review the bill by tapping the table.';
   }
 
   @override
   String tableReconciledOther(String table, String outcome) {
-    return 'Table $table: server result $outcome. Review on the QR tab; the local table was not changed.';
+    return 'Table $table: server result $outcome. Review by tapping the table; the local table was not changed.';
   }
 
   @override

@@ -97,10 +97,16 @@ abstract class L10n {
     Locale('en'),
   ];
 
+  /// No description provided for @tableSettleBill.
+  ///
+  /// In en, this message translates to:
+  /// **'Settle bill'**
+  String get tableSettleBill;
+
   /// No description provided for @tableCustomerPending.
   ///
   /// In en, this message translates to:
-  /// **'{label}: customer order ({count} items) — confirm on the QR tab.'**
+  /// **'{label}: customer order ({count} items) — confirm by tapping the table.'**
   String tableCustomerPending(String label, int count);
 
   /// No description provided for @tableCustomerKitchen.
@@ -226,13 +232,13 @@ abstract class L10n {
   /// No description provided for @tableReconciledHeld.
   ///
   /// In en, this message translates to:
-  /// **'Table {table}: {count} items could not be priced ({reason}) — review on the QR tab.'**
+  /// **'Table {table}: {count} items could not be priced ({reason}) — review by tapping the table.'**
   String tableReconciledHeld(String table, int count, String reason);
 
   /// No description provided for @tableReconciledRoundStopped.
   ///
   /// In en, this message translates to:
-  /// **'Table {table}: the server bill is closed or awaiting payment; these items were not added. Review on the QR tab.'**
+  /// **'Table {table}: the server bill is closed or awaiting payment; these items were not added. Review by tapping the table.'**
   String tableReconciledRoundStopped(String table);
 
   /// No description provided for @tableReconciledMoveOccupied.
@@ -256,19 +262,19 @@ abstract class L10n {
   /// No description provided for @tableReconciledUnpaid.
   ///
   /// In en, this message translates to:
-  /// **'Table {table} still has an unpaid bill on the server — clear it from the QR tab or pay it.'**
+  /// **'Table {table} still has an unpaid bill on the server — tap the table to clear or pay it.'**
   String tableReconciledUnpaid(String table);
 
   /// No description provided for @tableReconciledCancellation.
   ///
   /// In en, this message translates to:
-  /// **'Table {table}: {count} requested items were not found for cancellation on the server. Review the bill on the QR tab.'**
+  /// **'Table {table}: {count} requested items were not found for cancellation on the server. Review the bill by tapping the table.'**
   String tableReconciledCancellation(String table, int count);
 
   /// No description provided for @tableReconciledOther.
   ///
   /// In en, this message translates to:
-  /// **'Table {table}: server result {outcome}. Review on the QR tab; the local table was not changed.'**
+  /// **'Table {table}: server result {outcome}. Review by tapping the table; the local table was not changed.'**
   String tableReconciledOther(String table, String outcome);
 
   /// No description provided for @tableServerView.

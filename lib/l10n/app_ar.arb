@@ -1,5 +1,6 @@
 {
-  "tableCustomerPending": "{label}: طلب عميل ({count} صنف) — أكّده من تبويب QR.",
+  "tableSettleBill": "تسوية الفاتورة",
+  "tableCustomerPending": "{label}: طلب عميل ({count} صنف) — أكّده بالضغط على الطاولة.",
   "@tableCustomerPending": {
     "placeholders": {
       "label": {
@@ -102,7 +103,7 @@
       }
     }
   },
-  "tableReconciledHeld": "الطاولة {table}: تعذر تسعير {count} صنف ({reason}) — راجع تبويب QR.",
+  "tableReconciledHeld": "الطاولة {table}: تعذر تسعير {count} صنف ({reason}) — راجع بالضغط على الطاولة.",
   "@tableReconciledHeld": {
     "placeholders": {
       "table": {
@@ -116,7 +117,7 @@
       }
     }
   },
-  "tableReconciledRoundStopped": "الطاولة {table}: الفاتورة على الخادم مغلقة أو بانتظار الدفع؛ لم تُضف هذه الأصناف. راجع تبويب QR.",
+  "tableReconciledRoundStopped": "الطاولة {table}: الفاتورة على الخادم مغلقة أو بانتظار الدفع؛ لم تُضف هذه الأصناف. راجع بالضغط على الطاولة.",
   "@tableReconciledRoundStopped": {
     "placeholders": {
       "table": {
@@ -157,7 +158,7 @@
       }
     }
   },
-  "tableReconciledUnpaid": "لا تزال للطاولة {table} فاتورة غير مدفوعة على الخادم — ألغها من تبويب QR أو ادفعها.",
+  "tableReconciledUnpaid": "لا تزال للطاولة {table} فاتورة غير مدفوعة على الخادم — اضغط على الطاولة لإلغائها أو دفعها.",
   "@tableReconciledUnpaid": {
     "placeholders": {
       "table": {
@@ -165,7 +166,7 @@
       }
     }
   },
-  "tableReconciledCancellation": "الطاولة {table}: لم يُعثر على {count} صنف مطلوب للإلغاء على الخادم. راجع الفاتورة في تبويب QR.",
+  "tableReconciledCancellation": "الطاولة {table}: لم يُعثر على {count} صنف مطلوب للإلغاء على الخادم. راجع الفاتورة بالضغط على الطاولة.",
   "@tableReconciledCancellation": {
     "placeholders": {
       "table": {
@@ -176,7 +177,7 @@
       }
     }
   },
-  "tableReconciledOther": "الطاولة {table}: نتيجة الخادم {outcome}. راجع تبويب QR؛ لم تتغير الطاولة المحلية.",
+  "tableReconciledOther": "الطاولة {table}: نتيجة الخادم {outcome}. راجع بالضغط على الطاولة؛ لم تتغير الطاولة المحلية.",
   "@tableReconciledOther": {
     "placeholders": {
       "table": {
