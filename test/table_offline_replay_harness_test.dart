@@ -80,6 +80,8 @@ class ReplayDevice {
       mode: () => 'live',
       degraded: () => !transport.online,
       staffId: () => id,
+      // Device catalogue: fixture product 10 maps to unit-stock product 105.
+      stockModeForProduct: (productId) => const {10: 'unit'}[productId],
       clock: () => now,
       newUuid: () =>
           '00000000-0000-4000-8000-${(id * 1000 + ++next).toString().padLeft(12, '0')}',

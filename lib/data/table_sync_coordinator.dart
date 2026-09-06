@@ -38,6 +38,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
     required this.staffId,
     required this.markPrinted,
     this.bindBillIdentity,
+    this.stockModeForProduct,
     DateTime Function()? clock,
     String Function()? newUuid,
   }) : clock = clock ?? DateTime.now,
@@ -57,6 +58,8 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
   final Future<void> Function(String roundId) markPrinted;
   void Function(DiningTableSession session, String oldUuid, String newUuid)?
   bindBillIdentity;
+  // Current device catalogue, not the frozen cart snapshot or a server read.
+  String? Function(int productId)? stockModeForProduct;
   final DateTime Function() clock;
   final String Function() newUuid;
 
@@ -557,6 +560,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
         cancelledAt: at,
         outboxKey: key,
       );
+      final stockMode = stockModeForProduct?.call(cancellation.productId);
       final event = _event(
         'cancel_line',
         session,
@@ -579,7 +583,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
         event,
         createdAt: at,
         followingEvents: {
-          if (prepared)
+          if (prepared && (stockMode == 'unit' || stockMode == 'cooked'))
             'tbl:${session.seatingKey}:waste:$requestId': {
               'client_event_id': newUuid(),
               'event_type': 'product.waste',

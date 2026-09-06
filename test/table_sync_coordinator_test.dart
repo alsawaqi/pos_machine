@@ -225,6 +225,7 @@ class _Harness {
       mode: () => mode,
       degraded: () => !adapter.online,
       staffId: () => 7,
+      stockModeForProduct: (id) => stockModes[id],
       clock: () => now,
       newUuid: () =>
           '00000000-0000-4000-8000-${(++next).toString().padLeft(12, '0')}',
@@ -252,6 +253,7 @@ class _Harness {
   late final TableSyncCoordinator coordinator;
   final printed = <String>{};
   final bindings = <List<String>>[];
+  final stockModes = <int, String?>{10: 'unit'};
   var mode = 'live';
   var now = DateTime.now().toUtc();
   var next = 0;
@@ -764,6 +766,71 @@ void main() {
       expect((h.events.last['payload'] as Map)['authorized_by'], 'Manager');
       expect(h.table.seatingState, 'closed');
       expect(h.table.status, DiningTableStatus.occupied);
+    },
+  );
+
+  for (final stockMode in ['unit', 'cooked', 'untracked', 'ingredient', null]) {
+    for (final prepared in [false, true]) {
+      test(
+        'cancel prepared=$prepared stock=$stockMode gates waste locally',
+        () async {
+          final h = _Harness();
+          h.stockModes[10] = stockMode;
+          await h.open();
+          h.adapter.online = false;
+          await h.coordinator.cancelLine(
+            h.table,
+            line: {'product_id': 10},
+            qty: 1,
+            prepared: prepared,
+            authorizedBy: 'Manager',
+          );
+          final rows = await h.outbox.pendingRows();
+          final events = rows
+              .map((r) => (jsonDecode(r.eventsJson) as List).single as Map)
+              .toList();
+          final waste = prepared && ['unit', 'cooked'].contains(stockMode);
+          expect(events.map((e) => e['event_type']), [
+            'table.session.cancel_line',
+            if (waste) 'product.waste',
+          ]);
+          expect((events.first['payload'] as Map)['prepared'], prepared);
+          expect((events.first['payload'] as Map)['queued_offline'], true);
+          expect(
+            (events.first['payload'] as Map).containsKey('stock_mode'),
+            false,
+          );
+          expect(h.ledger.cancellations.values.single.prepared, prepared);
+          expect(h.table.status, DiningTableStatus.occupied);
+          expect(h.table.draft!.items.single.qty, 2);
+          h.adapter.online = true;
+          await h.outbox.flush();
+          expect(await h.outbox.pendingRows(), isEmpty);
+          expect(h.ledger.cancellations.values.single.status, 'cancelled');
+        },
+      );
+    }
+  }
+
+  test(
+    'prepared cancellation without catalogue lookup emits no waste',
+    () async {
+      final h = _Harness();
+      h.coordinator.stockModeForProduct = null;
+      await h.open();
+      h.adapter.online = false;
+      await h.coordinator.cancelLine(
+        h.table,
+        line: {'product_id': 10},
+        qty: 1,
+        prepared: true,
+        authorizedBy: 'Manager',
+      );
+      final row = (await h.outbox.pendingRows()).single;
+      final event = (jsonDecode(row.eventsJson) as List).single as Map;
+      expect(event['event_type'], 'table.session.cancel_line');
+      expect((event['payload'] as Map)['prepared'], true);
+      expect(h.ledger.cancellations.values.single.prepared, true);
     },
   );
 

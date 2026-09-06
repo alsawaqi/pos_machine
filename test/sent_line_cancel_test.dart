@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/l10n/l10n.dart';
+import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/widgets/sent_line_cancel_dialog.dart';
 
 import 'send_to_kitchen_test.dart' show B3Harness;
@@ -99,6 +100,7 @@ void main() {
       () async {
         final h = B3Harness();
         await h.init();
+        h.controller.allProducts = [_stockProduct('unit')];
         await h.bridge.send(h.bridge.activeSession()!);
         h.online = false;
         await h.coordinator.cancelLine(
@@ -148,4 +150,56 @@ void main() {
       expect(h.tickets, hasLength(1), reason: 'A cancellation never reprints.');
     },
   );
+
+  for (final stockMode in ['unit', 'cooked', 'untracked', 'ingredient', null]) {
+    test(
+      'prepared sent cancellation uses current catalogue stock=$stockMode',
+      () async {
+        final h = B3Harness();
+        await h.init();
+        await h.bridge.send(h.bridge.activeSession()!);
+        // Stored cart products omit stock metadata. Consult the live catalogue,
+        // including a mode changed since this round was sent.
+        expect(
+          h.bridge.activeSession()!.draft!.items.single.product.stockMode,
+          isNull,
+        );
+        h.controller.allProducts = [_stockProduct(stockMode)];
+        h.online = false;
+        await h.coordinator.cancelLine(
+          h.bridge.activeSession()!,
+          line: {'product_id': 10},
+          qty: 1,
+          prepared: true,
+          authorizedBy: 'Manager',
+        );
+        final rows = await h.outbox.pendingRows();
+        final events = rows
+            .map((r) => (jsonDecode(r.eventsJson) as List).single as Map)
+            .toList();
+        expect(events.map((e) => e['event_type']), [
+          'table.session.cancel_line',
+          if (['unit', 'cooked'].contains(stockMode)) 'product.waste',
+        ]);
+        expect((events.first['payload'] as Map)['prepared'], true);
+        expect(h.memory.cancellations.values.single.prepared, true);
+        expect(h.controller.cart.single.qty, 2);
+        expect(h.tickets, hasLength(1));
+        h.online = true;
+        await h.outbox.flush();
+        expect(await h.outbox.pendingRows(), isEmpty);
+        expect(h.memory.cancellations.values.single.status, 'cancelled');
+        h.bridge.detach();
+        expect(h.coordinator.stockModeForProduct, isNull);
+      },
+    );
+  }
 }
+
+Product _stockProduct(String? mode) => Product(
+  id: '10',
+  name: 'Coffee',
+  category: 'Drinks',
+  price: 2.7,
+  stockMode: mode,
+);

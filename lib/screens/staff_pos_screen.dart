@@ -225,6 +225,8 @@ class TableKitchenBridge implements DiningTableSyncHooks {
       return true;
     };
     coordinator.printRound = _print;
+    coordinator.stockModeForProduct = (id) => controller.allProducts
+        .where((product) => product.id == id.toString()).firstOrNull?.stockMode;
     coordinator.bindBillIdentity = (session, oldUuid, newUuid) {
       controller.bindDiningTableBillIdentity(
         live: coordinator.live,
@@ -241,6 +243,7 @@ class TableKitchenBridge implements DiningTableSyncHooks {
     controller.diningTableSyncHooks = null;
     controller.onDiningTableFinalRound = null;
     coordinator.bindBillIdentity = null;
+    coordinator.stockModeForProduct = null;
   }
 
   DiningTableSession? activeSession() {
