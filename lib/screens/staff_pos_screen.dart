@@ -41,6 +41,7 @@ import 'kitchen_production_screen.dart';
 import 'log_expense_screen.dart';
 import 'restock_request_screen.dart';
 import 'qr_tables_screen.dart';
+import 'dining_table_qr_sheet.dart';
 import 'stock_count_screen.dart';
 import 'waste_product_screen.dart';
 import 'settings_screen.dart';
@@ -186,6 +187,103 @@ String _formatStorageDateTime(DateTime value) {
   final minute = value.minute.toString().padLeft(2, '0');
   final meridiem = value.hour >= 12 ? 'PM' : 'AM';
   return '${months[value.month - 1]} ${value.day}, ${value.year} | ${hour.toString().padLeft(2, '0')}:$minute $meridiem';
+}
+
+/// Display-only union; server occupancy never mutates a local table session.
+bool customerOccupiesDiningTable({
+  required String mode,
+  required DiningTableSession? session,
+  RemoteTableState? remote,
+}) => mode != 'off' && session == null &&
+    const {'open', 'billing'}.contains(remote?.seatingStatus);
+
+bool customerBillEntryBlocked({
+  required bool localCheckoutOpen,
+  required bool processingPayment,
+  required bool charityPrompt,
+  required bool paymentLaunchOverlay,
+  required bool recordedSplitWithCart,
+}) => localCheckoutOpen || processingPayment || charityPrompt ||
+    paymentLaunchOverlay || recordedSplitWithCart;
+
+/// Shared production tap seam. Only the legacy local branch opens the cart.
+Future<void> routeDiningTableTap({
+  required String tableId,
+  required String mode,
+  required DiningTableSession? session,
+  required RemoteTableState? remote,
+  required PosController controller,
+  required Future<void> Function() openCustomerBill,
+  required Future<void> Function() openPaidDialog,
+  required VoidCallback localOpened,
+}) async {
+  if (session?.status == DiningTableStatus.paid) {
+    await openPaidDialog();
+  } else if (customerOccupiesDiningTable(
+    mode: mode, session: session, remote: remote,
+  )) {
+    await openCustomerBill();
+  } else {
+    await controller.openDiningTable(tableId);
+    localOpened();
+  }
+}
+
+class TableActivityNoticeContent extends StatelessWidget {
+  const TableActivityNoticeContent({
+    super.key, required this.notices, required this.onTap,
+  });
+  final List<TableActivityNotice> notices;
+  final ValueChanged<TableActivityNotice> onTap;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      for (final notice in notices)
+        InkWell(
+          key: ValueKey('table-notice-${notice.eventId}'),
+          onTap: () => onTap(notice),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(tableActivityMessage(L10n.of(context), notice)),
+          ),
+        ),
+    ],
+  );
+}
+
+Future<String?> showCustomerDiningTableActions(
+  BuildContext context, {required String mode, required bool hasBill}
+) {
+  final l10n = L10n.of(context);
+  return showModalBottomSheet<String>(
+    context: context,
+    builder: (context) => SafeArea(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (hasBill)
+          ListTile(
+            key: const ValueKey('table-action-customer-bill'),
+            leading: const Icon(Icons.receipt_long_outlined),
+            title: Text(l10n.tableCustomerBillTitle),
+            onTap: () => Navigator.pop(context, 'customer_bill'),
+          ),
+        if (mode != 'off')
+          ListTile(
+            key: const ValueKey('table-action-add-items'),
+            leading: const Icon(Icons.add),
+            title: Text(mode == 'live'
+                ? l10n.tableAddItems : l10n.tableSeparateLocal),
+            onTap: () => Navigator.pop(context, 'add_items'),
+          ),
+        ListTile(
+          title: Text(l10n.commonCancel),
+          onTap: () => Navigator.pop(context),
+        ),
+      ]),
+    ),
+  );
 }
 
 class StaffPosScreen extends ConsumerStatefulWidget {
@@ -563,6 +661,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   TableShadowRepository? _tableShadow;
   RemoteTableSnapshot _remoteTables = const RemoteTableSnapshot();
   String _tableShadowMode = 'off';
+  bool _customerBillRouteOpen = false;
   TableKitchenBridge? _tableKitchen;
   Future<void>? _tableKitchenInit;
   StreamSubscription<void>? _tableKitchenChanges;
@@ -670,8 +769,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         if (!mounted || ref.read(tableSessionsModeProvider) != 'live') return;
         unawaited(SystemSound.play(SystemSoundType.alert).catchError((Object _) {}));
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(notices.map((n) =>
-              tableActivityMessage(ref.read(l10nProvider), n)).join('\n')),
+          content: TableActivityNoticeContent(
+            notices: notices,
+            onTap: (notice) {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              unawaited(_openCustomerBill(
+                notice.tableId.toString(), tableLabel: notice.tableLabel,
+              ));
+            },
+          ),
           duration: const Duration(seconds: 8),
         ));
       });
@@ -2111,6 +2217,68 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   String get _activeDiningTableLabel =>
       controller.activeDiningTableDefinition?.name ?? '';
 
+  bool _hasServerBillFor(String tableId) => _tableShadowMode != 'off' &&
+      _remoteTables.tables[int.tryParse(tableId)]?.billOrderUuid != null;
+
+  Future<void> _openCustomerBill(String tableId, {String? tableLabel}) async {
+    final id = int.tryParse(tableId);
+    if (!mounted || id == null || _customerBillRouteOpen ||
+        ref.read(tableSessionsModeProvider) == 'off') {
+      return;
+    }
+    // A snackbar lives above the local checkout's pointer barriers. It must
+    // not open a second money surface or abandon a partially paid local bill.
+    if (customerBillEntryBlocked(
+      localCheckoutOpen: _showPaymentPage,
+      processingPayment: controller.isProcessingPayment,
+      charityPrompt: controller.showCharityRoundUpPrompt,
+      paymentLaunchOverlay: controller.showPaymentLaunchOverlay,
+      recordedSplitWithCart:
+          controller.hasRecordedSplitPayments && controller.cart.isNotEmpty,
+    )) {
+      return;
+    }
+    final table = controller.diningTableDefinitionById(tableId);
+    final floor = controller.diningFloors
+        .where((floor) => floor.id == table?.floorId).firstOrNull;
+    _customerBillRouteOpen = true;
+    try {
+      await Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (_) => DiningTableQrSheet(
+          controller: controller, tableId: id,
+          tableLabel: tableLabel ?? table?.name ?? tableId,
+          floorLabel: floor?.label ?? '',
+        ),
+      ));
+    } finally {
+      _customerBillRouteOpen = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _openRemoteDiningTableActions(
+    DiningTableDefinition table, {bool canAddItems = true}
+  ) async {
+    if (_tableShadowMode == 'off') return;
+    final action = await showCustomerDiningTableActions(
+      context,
+      mode: canAddItems ? _tableShadowMode : 'off',
+      hasBill: _hasServerBillFor(table.id),
+    );
+    if (!mounted || ref.read(tableSessionsModeProvider) == 'off') return;
+    if (action == 'customer_bill') {
+      await _openCustomerBill(table.id);
+    } else if (action == 'add_items') {
+      if (ref.read(tableSessionsModeProvider) == 'shadow' &&
+          !await confirmSeparateLocalTable(context)) {
+        return;
+      }
+      if (!mounted || ref.read(tableSessionsModeProvider) == 'off') return;
+      await controller.openDiningTable(table.id);
+      if (mounted) setState(() => _showPaymentPage = false);
+    }
+  }
+
   String _formatOccupancyDuration(DateTime? value) =>
       _formatOccupancyDurationAt(value, _clockNow.value);
 
@@ -2366,6 +2534,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 final status =
                                     session?.status ??
                                     DiningTableStatus.available;
+                                final remote = _remoteTables.tables[int.tryParse(table.id)];
+                                final customerOccupied = customerOccupiesDiningTable(
+                                  mode: _tableShadowMode, session: session, remote: remote,
+                                );
 
                                 // Joined tables — a linked seat shows a
                                 // "Joined → head" badge + the shared bill total
@@ -2395,7 +2567,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 // still on long-press). A linked seat has no
                                 // actions of its own; manage it from the head.
                                 final openActions =
-                                    status == DiningTableStatus.occupied &&
+                                    customerOccupied
+                                        ? () => unawaited(_openRemoteDiningTableActions(table))
+                                        : isLinkedSeat && _hasServerBillFor(table.id) &&
+                                            status != DiningTableStatus.paid
+                                        ? () => unawaited(_openRemoteDiningTableActions(
+                                            table, canAddItems: false,
+                                          ))
+                                        : status == DiningTableStatus.occupied &&
                                             session != null &&
                                             !isLinkedSeat
                                         ? () => unawaited(
@@ -2408,11 +2587,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   status: status,
                                   clock: _clockNow,
                                   now: _clockNow.value,
-                                  remote: _remoteTables.tables[int.tryParse(table.id)],
+                                  remote: remote,
+                                  customerOccupied: customerOccupied,
+                                  customerReference: remote?.tempReference,
                                   remoteFailures: _remoteTables.meta.consecutiveFailures,
                                   live: _tableShadowMode == 'live',
                                   sending: _pendingTableIds.contains(table.id),
-                                  pendingRounds: _tableShadow?.activityBoard[int.tryParse(table.id)]?.pendingCount ?? 0,
+                                  pendingRounds: _tableShadow?.displayActivityBoard[int.tryParse(table.id)]?.pendingCount ?? 0,
                                   searchMatch: _tableShadowMode == 'live' &&
                                       _tableSearch.results.any((r) => r.tableId.toString() == table.id),
                                   onLongPress: openActions,
@@ -2421,22 +2602,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   groupTotal: groupTotal,
                                   linkedCount: linkedCount,
                                   onTap: () async {
-                                    if (status == DiningTableStatus.paid &&
-                                        session != null) {
-                                      await _openPaidDiningTableDialog(
-                                        table,
-                                        session,
-                                      );
-                                      return;
-                                    }
-
-                                    // openDiningTable redirects a linked seat to
-                                    // its head's shared bill.
-                                    await controller.openDiningTable(table.id);
-                                    if (!mounted) return;
-                                    setState(() {
-                                      _showPaymentPage = false;
-                                    });
+                                    await routeDiningTableTap(
+                                      tableId: table.id, mode: _tableShadowMode,
+                                      session: session, remote: remote,
+                                      controller: controller,
+                                      openCustomerBill: () => _openCustomerBill(table.id),
+                                      openPaidDialog: () => _openPaidDiningTableDialog(table, session!),
+                                      localOpened: () {
+                                        if (mounted) setState(() => _showPaymentPage = false);
+                                      },
+                                    );
                                   },
                                 );
                               },
@@ -3593,6 +3768,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               title: Text(l10n.posDiningActionOpen),
               onTap: () => Navigator.pop(ctx, 'open'),
             ),
+            if (_hasServerBillFor(table.id))
+              ListTile(
+                key: const ValueKey('table-action-customer-bill'),
+                leading: const Icon(Icons.receipt_long_outlined),
+                title: Text(l10n.tableCustomerBillTitle),
+                onTap: () => Navigator.pop(ctx, 'customer_bill'),
+              ),
             // A joined party can't be moved piecemeal — Move only shows for a
             // standalone occupied table.
             if (!session.hasJoinedTables)
@@ -3620,6 +3802,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (!mounted || action == null) return;
 
     switch (action) {
+      case 'customer_bill':
+        await _openCustomerBill(table.id);
       case 'open':
         await controller.openDiningTable(table.id);
         if (mounted) setState(() => _showPaymentPage = false);
@@ -7002,6 +7186,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ],
           ),
           const SizedBox(height: 10),
+          if (_isEditingDiningTable && _tableShadowMode != 'off' &&
+              _remoteTables.tables[int.tryParse(controller.activeDiningTableId ?? '')]
+                  ?.billSource == 'qr_web')
+            TextButton.icon(
+              key: const ValueKey('cart-customer-bill'),
+              onPressed: () => _openCustomerBill(controller.activeDiningTableId!),
+              icon: const Icon(Icons.receipt_long_outlined),
+              label: Text(l10n.tableCustomerBillTitle),
+            ),
           Expanded(
             child: controller.cart.isEmpty
                 ? const _EmptyOrderState()
@@ -10696,6 +10889,8 @@ String _formatOccupancyDurationAt(DateTime? value, DateTime now) {
 
 class _DiningTableCard extends StatelessWidget {
   final bool live, sending, searchMatch;
+  final bool customerOccupied;
+  final String? customerReference;
   final int pendingRounds;
   final RemoteTableState? remote;
   final DateTime now;
@@ -10735,22 +10930,25 @@ class _DiningTableCard extends StatelessWidget {
     this.linkedCount = 0,
     this.live = false, this.sending = false, this.searchMatch = false,
     this.pendingRounds = 0,
+    this.customerOccupied = false,
+    this.customerReference,
   });
 
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
-    final statusColor = switch (status) {
+    final displayStatus = customerOccupied ? DiningTableStatus.occupied : status;
+    final statusColor = switch (displayStatus) {
       DiningTableStatus.available => const Color(0xFF218947),
       DiningTableStatus.occupied => const Color(0xFFC9470F),
       DiningTableStatus.paid => const Color(0xFF277C4E),
     };
-    final ticketColor = switch (status) {
+    final ticketColor = switch (displayStatus) {
       DiningTableStatus.available => const Color(0xFFDAF4E4),
       DiningTableStatus.occupied => const Color(0xFFFF7C22),
       DiningTableStatus.paid => const Color(0xFF3C8A57),
     };
-    final background = switch (status) {
+    final background = switch (displayStatus) {
       DiningTableStatus.available => const [
         Color(0xFFFFFFFF),
         Color(0xFFFAFDFC),
@@ -10761,8 +10959,9 @@ class _DiningTableCard extends StatelessWidget {
       ],
       DiningTableStatus.paid => const [Color(0xFFF2FBF3), Color(0xFFEAF7EC)],
     };
-    final hasTicket = status != DiningTableStatus.available && session != null;
-    final greyed = remote?.origin == 'station' &&
+    final hasTicket = customerOccupied ||
+        (status != DiningTableStatus.available && session != null);
+    final greyed = !customerOccupied && remote?.origin == 'station' &&
         const {'open', 'billing'}.contains(remote?.seatingStatus) &&
         status == DiningTableStatus.available;
 
@@ -10772,14 +10971,14 @@ class _DiningTableCard extends StatelessWidget {
     final cardShape = _diningCardShape(
       table.shape,
       BorderSide(
-        color: searchMatch ? const Color(0xFF356BDD) : status == DiningTableStatus.available
+        color: searchMatch ? const Color(0xFF356BDD) : displayStatus == DiningTableStatus.available
             ? const Color(0xFFE8EEF0)
             : statusColor.withValues(alpha: 0.2),
         width: 2,
       ),
     );
 
-    return InkWell(
+    final card = InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
       customBorder: cardShape,
@@ -10808,7 +11007,7 @@ class _DiningTableCard extends StatelessWidget {
               blurRadius: 1,
               offset: const Offset(0, 1),
             ),
-            if (status == DiningTableStatus.occupied)
+            if (displayStatus == DiningTableStatus.occupied)
               BoxShadow(
                 color: const Color(0xFFFF8A2C).withValues(alpha: 0.1),
                 blurRadius: 18,
@@ -10837,14 +11036,18 @@ class _DiningTableCard extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
-                        Icons.receipt_long_rounded,
+                      Icon(
+                        customerOccupied
+                            ? Icons.phone_android_rounded
+                            : Icons.receipt_long_rounded,
                         size: 11,
                         color: Colors.white,
                       ),
                       const SizedBox(width: 5),
                       Text(
-                        status == DiningTableStatus.paid
+                        customerOccupied
+                            ? customerReference ?? remote?.reference ?? ''
+                            : status == DiningTableStatus.paid
                             ? l10n.posDiningTicketNumber(
                                 '${session!.orderNumber ?? '-'}',
                               )
@@ -10865,7 +11068,7 @@ class _DiningTableCard extends StatelessWidget {
             // Move/Merge actions sheet (it was a decorative dot; long-press
             // was the only — and invisible — way in). Its own InkWell wins
             // the gesture arena over the card's onTap.
-            if (status == DiningTableStatus.occupied && onActions != null)
+            if (displayStatus == DiningTableStatus.occupied && onActions != null)
               Positioned(
                 top: 10,
                 right: 10,
@@ -10903,7 +11106,7 @@ class _DiningTableCard extends StatelessWidget {
                   ),
                 ),
               )
-            else if (status == DiningTableStatus.occupied)
+            else if (displayStatus == DiningTableStatus.occupied)
               Positioned(
                 top: 17,
                 right: 17,
@@ -10942,7 +11145,13 @@ class _DiningTableCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 14),
-                    if (status == DiningTableStatus.available)
+                    if (customerOccupied)
+                      _StatusCapsule(
+                        label: l10n.tableCustomerOccupied,
+                        color: const Color(0xFFFFE0C5),
+                        foreground: const Color(0xFF9E3410),
+                      )
+                    else if (status == DiningTableStatus.available)
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
@@ -11047,6 +11256,15 @@ class _DiningTableCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                    if (status == DiningTableStatus.occupied &&
+                        remote?.billSource == 'qr_web') ...[
+                      const SizedBox(height: 5),
+                      _TinyInfoBadge(
+                        label: l10n.tableShared,
+                        icon: Icons.link_rounded,
+                        tint: const Color(0xFFFFE0C5),
+                      ),
+                    ],
                     if (remote != null) ...[
                       const SizedBox(height: 5),
                       DiningServerBadge(
@@ -11059,7 +11277,13 @@ class _DiningTableCard extends StatelessWidget {
                       mode: 'live', sending: sending,
                       pendingRounds: pendingRounds,
                       needsReview: remote?.needsReviewCount ?? 0,
-                    ),
+                    )
+                    else if (pendingRounds > 0 && remote != null)
+                      Text(
+                        l10n.tablePendingBell(pendingRounds),
+                        key: const ValueKey('customer-table-pending'),
+                        style: const TextStyle(fontSize: 11, color: Color(0xFF755411)),
+                      ),
                   ],
                 ),
               ),
@@ -11068,6 +11292,12 @@ class _DiningTableCard extends StatelessWidget {
         ),
       ),
     );
+    return customerOccupied
+        ? Semantics(
+            label: '${table.name} · ${l10n.tableCustomerOccupied}',
+            child: card,
+          )
+        : card;
   }
 }
 
@@ -11153,10 +11383,15 @@ Widget buildDiningTableCardForTest({
   int failures = 0,
   bool live = false, bool sending = false, bool searchMatch = false,
   int pendingRounds = 0,
+  bool customerOccupied = false,
+  String? customerReference,
+  VoidCallback? onLongPress,
 }) => _DiningTableCard(
   table: table, session: session, status: status, clock: clock,
   now: clock.value, onTap: onTap, remote: remote, remoteFailures: failures,
   live: live, sending: sending, searchMatch: searchMatch, pendingRounds: pendingRounds,
+  customerOccupied: customerOccupied, customerReference: customerReference,
+  onLongPress: onLongPress,
 );
 
 class _TinyInfoBadge extends StatelessWidget {

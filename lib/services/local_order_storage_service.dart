@@ -225,7 +225,7 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore,
 
     return openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE order_history (
@@ -266,6 +266,7 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore,
         ''');
         await createRemoteTables(db);
         await createTableLedger(db);
+        await createRemoteBillIdentity(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -342,6 +343,9 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore,
         if (oldVersion < 6) {
           await createTableLedger(db);
         }
+        if (oldVersion < 7) {
+          await createRemoteBillIdentity(db);
+        }
       },
     );
   }
@@ -417,6 +421,14 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore,
         seen INTEGER NOT NULL DEFAULT 0
       )
     ''');
+  }
+
+  /// Additive v6-to-v7 board identity; local tables and the Drift outbox are untouched.
+  static Future<void> createRemoteBillIdentity(DatabaseExecutor db) async {
+    await db.execute('ALTER TABLE remote_table_states ADD COLUMN bill_source TEXT');
+    await db.execute('ALTER TABLE remote_table_states ADD COLUMN bill_customer_rounds INTEGER');
+    await db.execute('ALTER TABLE remote_table_states ADD COLUMN bill_staff_rounds INTEGER');
+    await db.execute('ALTER TABLE remote_table_states ADD COLUMN credential_status TEXT');
   }
 
   static const tableSyncColumns = [

@@ -38,6 +38,9 @@ class TableShadowRepository with WidgetsBindingObserver {
   Stream<List<TableActivityNotice>> get activityNotices => _activityNotices.stream;
   Map<int, TableActivityBoardRow> get activityBoard =>
       _mode == 'live' ? _activityBoard : const {};
+  /// Display-only T7 bell; does not enable Shadow notifications or new reads.
+  Map<int, TableActivityBoardRow> get displayActivityBoard =>
+      _mode == 'off' ? const {} : _activityBoard;
   late final _disagreements = TableDisagreementLog(store, clock: _clock);
   List<LocalTableShadowView> Function()? localTables;
 

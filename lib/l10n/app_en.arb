@@ -2318,5 +2318,12 @@
   "tablePreparedNo": "No — cancel only",
   "tableCancelSentReason": "Reason (optional)",
   "tableLocalOnly": "local-only",
-  "tableActionFailed": "Table action could not be saved. Please try again."
+  "tableActionFailed": "Table action could not be saved. Please try again.",
+  "tableCustomerBillTitle": "Customer bill",
+  "tableAddItems": "Add items",
+  "tableSeparateLocal": "Open a separate local table",
+  "tableSeparateLocalWarning": "This branch is in watch-only mode: the till cannot add to the customer's bill yet. Opening a local table starts a separate bill on this till.",
+  "tableSheetClose": "Close",
+  "tableShared": "shared",
+  "tableCustomerOccupied": "Occupied by customer"
 }

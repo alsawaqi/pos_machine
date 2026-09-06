@@ -3562,4 +3562,26 @@ class L10nEn extends L10n {
   @override
   String get tableActionFailed =>
       'Table action could not be saved. Please try again.';
+
+  @override
+  String get tableCustomerBillTitle => 'Customer bill';
+
+  @override
+  String get tableAddItems => 'Add items';
+
+  @override
+  String get tableSeparateLocal => 'Open a separate local table';
+
+  @override
+  String get tableSeparateLocalWarning =>
+      'This branch is in watch-only mode: the till cannot add to the customer\'s bill yet. Opening a local table starts a separate bill on this till.';
+
+  @override
+  String get tableSheetClose => 'Close';
+
+  @override
+  String get tableShared => 'shared';
+
+  @override
+  String get tableCustomerOccupied => 'Occupied by customer';
 }

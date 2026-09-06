@@ -21,6 +21,10 @@ class RemoteTableState {
     this.billGrandTotalBaisas,
     this.billReceiptNumber,
     this.billTempReference,
+    this.billSource,
+    this.billCustomerRounds,
+    this.billStaffRounds,
+    this.credentialStatus,
     this.chargeClaimLive = false,
   });
 
@@ -32,6 +36,8 @@ class RemoteTableState {
   final String? billOrderUuid, billStatus;
   final int? billGrandTotalBaisas;
   final String? billReceiptNumber, billTempReference;
+  final String? billSource, credentialStatus;
+  final int? billCustomerRounds, billStaffRounds;
   final bool chargeClaimLive;
   final DateTime fetchedAt;
   final String source;
@@ -71,6 +77,10 @@ class RemoteTableState {
       billGrandTotalBaisas: (bill?['grand_total_baisas'] as num?)?.toInt(),
       billReceiptNumber: bill?['receipt_number'] as String?,
       billTempReference: bill?['temp_reference'] as String?,
+      billSource: bill?['source'] as String?,
+      billCustomerRounds: (bill?['customer_rounds'] as num?)?.toInt(),
+      billStaffRounds: (bill?['staff_rounds'] as num?)?.toInt(),
+      credentialStatus: seating?['credential_status'] as String?,
       chargeClaimLive: bill?['charge_claim_live'] == true,
       fetchedAt: fetchedAt,
     );
@@ -91,6 +101,10 @@ class RemoteTableState {
     'bill_grand_total_baisas': billGrandTotalBaisas,
     'bill_receipt_number': billReceiptNumber,
     'bill_temp_reference': billTempReference,
+    if (billSource != null) 'bill_source': billSource,
+    if (billCustomerRounds != null) 'bill_customer_rounds': billCustomerRounds,
+    if (billStaffRounds != null) 'bill_staff_rounds': billStaffRounds,
+    if (credentialStatus != null) 'credential_status': credentialStatus,
     'charge_claim_live': chargeClaimLive ? 1 : 0,
     'fetched_at': fetchedAt.toIso8601String(),
     'source': source,
@@ -117,6 +131,10 @@ class RemoteTableState {
         billGrandTotalBaisas: row['bill_grand_total_baisas'] as int?,
         billReceiptNumber: row['bill_receipt_number'] as String?,
         billTempReference: row['bill_temp_reference'] as String?,
+        billSource: row['bill_source'] as String?,
+        billCustomerRounds: (row['bill_customer_rounds'] as num?)?.toInt(),
+        billStaffRounds: (row['bill_staff_rounds'] as num?)?.toInt(),
+        credentialStatus: row['credential_status'] as String?,
         chargeClaimLive: row['charge_claim_live'] == 1,
         fetchedAt: DateTime.parse(row['fetched_at'] as String),
         source: row['source'] as String,

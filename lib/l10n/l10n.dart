@@ -5902,6 +5902,48 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Table action could not be saved. Please try again.'**
   String get tableActionFailed;
+
+  /// No description provided for @tableCustomerBillTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer bill'**
+  String get tableCustomerBillTitle;
+
+  /// No description provided for @tableAddItems.
+  ///
+  /// In en, this message translates to:
+  /// **'Add items'**
+  String get tableAddItems;
+
+  /// No description provided for @tableSeparateLocal.
+  ///
+  /// In en, this message translates to:
+  /// **'Open a separate local table'**
+  String get tableSeparateLocal;
+
+  /// No description provided for @tableSeparateLocalWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This branch is in watch-only mode: the till cannot add to the customer\'s bill yet. Opening a local table starts a separate bill on this till.'**
+  String get tableSeparateLocalWarning;
+
+  /// No description provided for @tableSheetClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get tableSheetClose;
+
+  /// No description provided for @tableShared.
+  ///
+  /// In en, this message translates to:
+  /// **'shared'**
+  String get tableShared;
+
+  /// No description provided for @tableCustomerOccupied.
+  ///
+  /// In en, this message translates to:
+  /// **'Occupied by customer'**
+  String get tableCustomerOccupied;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

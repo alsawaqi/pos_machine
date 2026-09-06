@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/data/table_shadow_repository.dart';
@@ -9,11 +10,15 @@ import 'package:pos_machine/l10n/l10n_en.dart';
 import 'package:pos_machine/models/remote_table_state.dart';
 import 'package:pos_machine/providers/providers.dart';
 import 'package:pos_machine/screens/staff_pos_screen.dart';
+import 'package:pos_machine/screens/dining_table_qr_sheet.dart';
 import 'package:pos_machine/services/local_order_storage_service.dart';
 import 'package:pos_machine/services/table_shadow_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'table_ledger_store_test.dart' show createV5;
+import 'dining_floor_plan_occupancy_test.dart' show pumpT7FloorNotice;
+import 'dining_table_qr_sheet_test.dart' show T7SheetGateway, T7SpyController,
+    t7SheetRow, t7SheetActiveOrder, disposeT7Sheet;
 
 Map<String, dynamic> b5Board({int count = 3, bool pending = true}) => {
   'table_id': 5,
@@ -157,6 +162,46 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
 
+  testWidgets('T7 notice tap opens the noticed table sheet without touching the cart', (tester) async {
+    final controller = T7SpyController();
+    final service = T7SheetGateway(
+      board: [
+        t7SheetRow(id: 3, sessionStatus: 'active', orderStatus: 'open'),
+        t7SheetRow(id: 5, sessionStatus: 'active', orderStatus: 'open'),
+      ],
+      active: [
+        t7SheetActiveOrder(id: 3, productName: 'Other table item'),
+        t7SheetActiveOrder(id: 5, productName: 'Noticed table item'),
+      ],
+    );
+    const notice = TableActivityNotice(
+      eventId: 91, tableId: 5, tableLabel: 'Table 5',
+      kind: TableActivityKind.pending, reference: 'T-0906-012', itemCount: 5,
+    );
+    await pumpT7FloorNotice(tester, service: service,
+      builder: (context) => TableActivityNoticeContent(
+        notices: const [notice],
+        onTap: (notice) => Navigator.of(context).push<void>(MaterialPageRoute(
+          builder: (_) => DiningTableQrSheet(
+            controller: controller, tableId: notice.tableId,
+            tableLabel: notice.tableLabel, floorLabel: 'Main floor',
+          ),
+        )),
+      ),
+    );
+    expect(service.calls, isEmpty);
+    expect(controller.calls, isEmpty);
+    await tester.tap(find.byKey(const ValueKey('table-notice-91')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('dining-table-qr-sheet-5')), findsOneWidget);
+    expect(find.byKey(const ValueKey('dining-table-qr-sheet-3')), findsNothing);
+    expect(find.text('Noticed table item'), findsOneWidget);
+    expect(find.text('Other table item'), findsNothing);
+    expect(controller.calls, isEmpty);
+    expect(controller.cart, isEmpty);
+    await disposeT7Sheet(tester);
+  });
+
   test('only customer_order_arrived with device_id null notifies; cursor precedes feed emission', () async {
     final h = ActivityHarness();
     await h.init();
@@ -174,6 +219,26 @@ void main() {
     ]);
     expect(h.gateway.calls, ['feed:10', 'board']);
     expect((await h.store.readRemoteMeta()).lastNotifiedEventId, 16);
+  });
+
+  test('T7 Shadow display bell exposes the existing board without enabling notices or new polling', () async {
+    final h = ActivityHarness();
+    await h.init(mode: 'shadow');
+    await h.poll([arrival(11)]);
+    expect(h.repository.activityBoard, isEmpty);
+    expect(h.repository.displayActivityBoard[5]?.pendingCount, 3);
+    expect(h.notices, isEmpty);
+    expect(h.gateway.calls, ['feed:10', 'board']);
+    await h.poll([]);
+    expect(h.gateway.calls, ['feed:10', 'board', 'feed:11']);
+    expect(h.notices, isEmpty);
+    h.repository.configure(
+      mode: 'off', scope: 'branch:device', sessionEpoch: 'token',
+      authenticated: true,
+    );
+    expect(h.repository.displayActivityBoard, isEmpty);
+    await h.poll([arrival(12)]);
+    expect(h.gateway.calls, ['feed:10', 'board', 'feed:11']);
   });
 
   test(

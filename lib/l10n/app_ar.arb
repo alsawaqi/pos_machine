@@ -1186,5 +1186,12 @@
   "tablePreparedNo": "لا — إلغاء فقط",
   "tableCancelSentReason": "السبب (اختياري)",
   "tableLocalOnly": "محلي فقط",
-  "tableActionFailed": "تعذر حفظ إجراء الطاولة. يرجى المحاولة مجددًا."
+  "tableActionFailed": "تعذر حفظ إجراء الطاولة. يرجى المحاولة مجددًا.",
+  "tableCustomerBillTitle": "فاتورة العميل",
+  "tableAddItems": "إضافة أصناف",
+  "tableSeparateLocal": "فتح طاولة محلية منفصلة",
+  "tableSeparateLocalWarning": "هذا الفرع في وضع المتابعة فقط: لا يمكن لجهاز الكاشير إضافة أصناف إلى فاتورة العميل بعد. فتح طاولة محلية يبدأ فاتورة منفصلة على هذا الجهاز.",
+  "tableSheetClose": "إغلاق",
+  "tableShared": "مشتركة",
+  "tableCustomerOccupied": "مشغولة بواسطة عميل"
 }

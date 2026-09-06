@@ -3599,4 +3599,26 @@ class L10nAr extends L10n {
   @override
   String get tableActionFailed =>
       'تعذر حفظ إجراء الطاولة. يرجى المحاولة مجددًا.';
+
+  @override
+  String get tableCustomerBillTitle => 'فاتورة العميل';
+
+  @override
+  String get tableAddItems => 'إضافة أصناف';
+
+  @override
+  String get tableSeparateLocal => 'فتح طاولة محلية منفصلة';
+
+  @override
+  String get tableSeparateLocalWarning =>
+      'هذا الفرع في وضع المتابعة فقط: لا يمكن لجهاز الكاشير إضافة أصناف إلى فاتورة العميل بعد. فتح طاولة محلية يبدأ فاتورة منفصلة على هذا الجهاز.';
+
+  @override
+  String get tableSheetClose => 'إغلاق';
+
+  @override
+  String get tableShared => 'مشتركة';
+
+  @override
+  String get tableCustomerOccupied => 'مشغولة بواسطة عميل';
 }
