@@ -1,13 +1,10 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/qr_board_feed.dart';
 import '../models/pos_models.dart';
 import '../models/qr_till_models.dart';
 import '../providers/providers.dart';
-import '../services/pos_api_service.dart';
-import '../services/qr_till_messages.dart';
 import '../widgets/qr_table_money_panel.dart';
 
 export '../widgets/qr_table_money_panel.dart'
@@ -39,215 +36,64 @@ class QrTablesScreen extends ConsumerStatefulWidget {
 class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
     with WidgetsBindingObserver
     implements QrTableMoneyHost {
-  static const _archivedFloor = '__archived_qr_tables__';
+  late final QrBoardFeed _feed;
 
-  Timer? _pollTimer;
-  List<QrTableBoardRow> _board = const [];
-  Map<String, QrActiveOrder> _active = const {};
-  String? _floorId;
-  String? _tableKey;
-  bool _foreground = true;
-  bool _refreshing = false;
-  String? _error;
-  DateTime? _updatedAt;
-  DateTime? _lastBoardFetchAt;
-  DateTime? _lastActiveFetchAt;
-  bool _backingOff = false;
-
-  DateTime _now() => widget.clock?.call() ?? DateTime.now();
+  List<QrTableBoardRow> get _board => _feed.board;
+  Map<String, QrActiveOrder> get _active => _feed.active;
+  String? get _floorId => _feed.floorId;
+  String? get _tableKey => _feed.selectedKey;
+  bool get _refreshing => _feed.refreshing;
+  String? get _error => _feed.error;
+  DateTime? get _updatedAt => _feed.updatedAt;
+  List<_TableView> get _tables => _feed.tableViews;
+  List<(String, String)> get _floors => _feed.floorViews;
+  _TableView? get _selectedTable => _feed.selectedTable;
 
   @override
   void initState() {
     super.initState();
+    _feed = QrBoardFeed(
+      ref.read(qrTillServiceProvider),
+      pollInterval: widget.pollInterval,
+      clock: () => widget.clock?.call() ?? DateTime.now(),
+      floors: widget.floors,
+      tables: widget.tables,
+      arabic: () => ref.read(settingsControllerProvider).language == 'ar',
+      readService: () => ref.read(qrTillServiceProvider),
+    )..addListener(_feedChanged);
     WidgetsBinding.instance.addObserver(this);
-    _floorId = widget.floors.firstOrNull?.id;
+  }
+
+  @override
+  void didUpdateWidget(covariant QrTablesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _feed.updateConfiguration(
+      floors: widget.floors,
+      tables: widget.tables,
+      pollInterval: widget.pollInterval,
+    );
+  }
+
+  void _feedChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _pollTimer?.cancel();
+    _feed
+      ..removeListener(_feedChanged)
+      ..dispose();
     super.dispose();
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    _foreground = state == AppLifecycleState.resumed;
-    if (!_foreground) {
-      // Keep a Retry-After timer alive only as a clock. Its callback cannot
-      // request in the background, and resume still cannot bypass it.
-      if (!_backingOff) {
-        _pollTimer?.cancel();
-        _pollTimer = null;
-      }
-    } else {
-      _refresh();
-    }
-  }
+  void didChangeAppLifecycleState(AppLifecycleState state) =>
+      _feed.setForeground(state == AppLifecycleState.resumed);
 
-  void _schedule([Duration? serverDelay]) {
-    _pollTimer?.cancel();
-    if (!mounted || !_foreground) return;
-    final candidate = serverDelay ?? widget.pollInterval;
-    final delay = candidate < widget.pollInterval
-        ? widget.pollInterval
-        : candidate;
-    _pollTimer = Timer(delay, _refresh);
-  }
-
-  Future<void> _refresh() async {
-    if (!mounted || !_foreground || _refreshing || _backingOff) return;
-    _pollTimer?.cancel();
-    setState(() => _refreshing = true);
-    Duration? retryAfter;
-    try {
-      final service = ref.read(qrTillServiceProvider);
-      final now = _now();
-      var board = _board;
-      if (_lastBoardFetchAt == null ||
-          now.difference(_lastBoardFetchAt!) >= widget.pollInterval) {
-        // Record the attempt before awaiting so overlapping UI events cannot
-        // create a second request inside the ten-second budget.
-        _lastBoardFetchAt = now;
-        board = await service.fetchTableBoard();
-      }
-      Map<String, QrActiveOrder> active = _active;
-      final selected = _selectedBoardRow(board);
-      if ((selected?.order?.status == 'open' ||
-              selected?.order?.status == 'held') &&
-          (_lastActiveFetchAt == null ||
-              now.difference(_lastActiveFetchAt!) >= widget.pollInterval)) {
-        _lastActiveFetchAt = now;
-        final rows = await service.fetchActiveQrOrders();
-        // Branch-active reads include main_pos orders. Drop them at the seam:
-        // a non-QR order must never reach this board or its action handlers.
-        active = {
-          for (final order in rows)
-            if (order.isQrWeb) order.uuid: order,
-        };
-      }
-      if (!mounted) return;
-      setState(() {
-        _board = board;
-        _active = active;
-        _updatedAt = _now();
-        _error = null;
-        _repairSelection();
-      });
-    } on ApiException catch (error) {
-      if (error.statusCode == 429) {
-        retryAfter = error.retryAfter;
-      }
-      if (mounted) setState(() => _error = _message(error));
-    } catch (error) {
-      if (mounted) {
-        setState(() => _error = 'Could not refresh QR tables. $error');
-      }
-    } finally {
-      if (mounted) setState(() => _refreshing = false);
-      if (retryAfter != null) {
-        _pollTimer?.cancel();
-        _backingOff = true;
-        final delay = retryAfter < widget.pollInterval
-            ? widget.pollInterval
-            : retryAfter;
-        _pollTimer = Timer(delay, () {
-          _backingOff = false;
-          _refresh();
-        });
-      } else {
-        _schedule();
-      }
-    }
-  }
-
-  Future<void> _forceRefresh() {
-    _lastBoardFetchAt = null;
-    _lastActiveFetchAt = null;
-    return _refresh();
-  }
-
-  QrTableBoardRow? _selectedBoardRow(List<QrTableBoardRow> rows) {
-    final key = _tableKey;
-    if (key == null) return null;
-    for (final row in rows) {
-      if ('${row.tableId}' == key) return row;
-    }
-    return null;
-  }
-
-  List<_TableView> get _tables {
-    final live = <String, QrTableBoardRow>{
-      for (final row in _board) '${row.tableId}': row,
-    };
-    final result = <_TableView>[
-      for (final table in widget.tables)
-        _configuredTableView(table, live.remove(table.id)),
-    ];
-    // Soft-deleted tables are absent from config. The board still exposes the
-    // recovery root but not its floor, so keep it in an explicit archive.
-    result.addAll(
-      live.values.map(
-        (row) => _TableView(
-          key: '${row.tableId}',
-          floorId: _archivedFloor,
-          label: row.tableLabel,
-          row: row,
-        ),
-      ),
-    );
-    return result;
-  }
-
-  _TableView _configuredTableView(
-    DiningTableDefinition table,
-    QrTableBoardRow? row,
-  ) => _TableView(
-    key: table.id,
-    floorId: row?.tableDeleted == true ? _archivedFloor : table.floorId,
-    label: table.name,
-    row: row,
-  );
-
-  List<(String, String)> get _floors => [
-    for (final floor in widget.floors) (floor.id, floor.label),
-    if (_tables.any((table) => table.floorId == _archivedFloor))
-      (_archivedFloor, 'Archived tables'),
-  ];
-
-  _TableView? get _selectedTable {
-    final key = _tableKey;
-    if (key == null) return null;
-    for (final table in _tables) {
-      if (table.key == key) return table;
-    }
-    return null;
-  }
-
-  void _repairSelection() {
-    if (_tableKey != null && !_tables.any((table) => table.key == _tableKey)) {
-      _tableKey = null;
-    }
-    if (_floorId == null || !_floors.any((floor) => floor.$1 == _floorId)) {
-      _floorId = _floors.firstOrNull?.$1;
-    }
-  }
-
-  void _select(_TableView table) {
-    setState(() => _tableKey = table.key);
-    if (table.row?.order?.status == 'open' ||
-        table.row?.order?.status == 'held') {
-      _refresh();
-    }
-  }
-
-  String _message(ApiException error) {
-    if (error.code == null) return error.message;
-    return qrTillMessageForCode(
-      error.code,
-      arabic: ref.read(settingsControllerProvider).language == 'ar',
-    );
-  }
+  Future<void> _refresh() => _feed.refresh();
+  Future<void> _forceRefresh() => _feed.forceRefresh();
+  void _select(_TableView table) => _feed.selectTable(table);
 
   void _notice(String text, {bool success = false}) {
     ScaffoldMessenger.of(context)
@@ -279,36 +125,8 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
   Future<void> refresh() => _refresh();
 
   @override
-  void applyOrderAction(QrOrderActionResult result) {
-    setState(() => _applyOrderAction(result));
-  }
-
-  void _applyOrderAction(QrOrderActionResult result) {
-    _board = [
-      for (final row in _board)
-        if (row.order?.uuid == result.orderUuid)
-          QrTableBoardRow(
-            tableId: row.tableId,
-            tableLabel: row.tableLabel,
-            tableStatus: row.tableStatus,
-            tableDeleted: row.tableDeleted,
-            orphaned: row.orphaned,
-            pendingRounds: row.pendingRounds,
-            sessionUuid: row.sessionUuid,
-            sessionStatus: result.sessionStatus ?? row.sessionStatus,
-            expiresAt: row.expiresAt,
-            order: QrBoardOrder(
-              uuid: row.order!.uuid,
-              status: result.status,
-              receiptNumber: result.receiptNumber ?? row.order!.receiptNumber,
-              tempReference: result.tempReference ?? row.order!.tempReference,
-              acceptedTotalBaisas: row.order!.acceptedTotalBaisas,
-            ),
-          )
-        else
-          row,
-    ];
-  }
+  void applyOrderAction(QrOrderActionResult result) =>
+      _feed.applyOrderAction(result);
 
   @override
   Widget build(BuildContext context) {
@@ -417,10 +235,7 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
                           key: ValueKey('qr-floor-${floor.$1}'),
                           label: Text(floor.$2),
                           selected: floor.$1 == _floorId,
-                          onSelected: (_) => setState(() {
-                            _floorId = floor.$1;
-                            _tableKey = null;
-                          }),
+                          onSelected: (_) => _feed.selectFloor(floor.$1),
                         ),
                       ),
                   ],
@@ -463,17 +278,9 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
 
 }
 
-class _TableView {
-  const _TableView({
-    required this.key,
-    required this.floorId,
-    required this.label,
-    this.row,
-  });
-  final String key;
-  final String floorId;
-  final String label;
-  final QrTableBoardRow? row;
+typedef _TableView = QrBoardTableView;
+
+extension on QrBoardTableView {
   QrTableDisplayState get state => qrTableDisplayStateFor(row);
 }
 
