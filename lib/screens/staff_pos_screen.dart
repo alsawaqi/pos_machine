@@ -31,6 +31,7 @@ import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
+import '../widgets/qr_pending_section.dart';
 import '../widgets/qr_round_print_status_indicator.dart';
 import '../widgets/sent_line_cancel_dialog.dart';
 import '../widgets/table_degraded_banner.dart';
@@ -3133,54 +3134,56 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         return _StorageOverlayShell(
           title: l10n.posHeldOrdersTitle,
           subtitle: l10n.posHeldOrdersSubtitle,
-          child: _HeldOrdersPanel(
-            records: controller.heldOrders,
-            onResume: (record) async {
-              final message = await controller.resumeHeldOrder(record);
-              if (!context.mounted) return;
-              Navigator.of(context).pop(true);
-              if (message != null && mounted) {
-                _showPopupMessage(
-                  title: l10n.posHeldResumedTitle,
-                  message: message,
-                  tone: FeedbackTone.success,
-                );
-              }
-            },
-            onDiscard: (record) async {
-              // Phase C2 — confirm, then delete locally + void the server
-              // mirror so it leaves every terminal's held list.
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (dialogContext) => AlertDialog(
-                  title: Text(l10n.posHeldDiscardConfirmTitle),
-                  content: Text(
-                    l10n.posHeldDiscardConfirmMessage(record.orderReference),
+          child: QrPendingStorageLayout(
+            heldOrders: _HeldOrdersPanel(
+              records: controller.heldOrders,
+              onResume: (record) async {
+                final message = await controller.resumeHeldOrder(record);
+                if (!context.mounted) return;
+                Navigator.of(context).pop(true);
+                if (message != null && mounted) {
+                  _showPopupMessage(
+                    title: l10n.posHeldResumedTitle,
+                    message: message,
+                    tone: FeedbackTone.success,
+                  );
+                }
+              },
+              onDiscard: (record) async {
+                // Phase C2 — confirm, then delete locally + void the server
+                // mirror so it leaves every terminal's held list.
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    title: Text(l10n.posHeldDiscardConfirmTitle),
+                    content: Text(
+                      l10n.posHeldDiscardConfirmMessage(record.orderReference),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(false),
+                        child: Text(l10n.posHeldKeepButton),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(true),
+                        child: Text(l10n.posHeldDiscardButton),
+                      ),
+                    ],
                   ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(false),
-                      child: Text(l10n.posHeldKeepButton),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(true),
-                      child: Text(l10n.posHeldDiscardButton),
-                    ),
-                  ],
-                ),
-              );
-              if (confirmed != true || !context.mounted) return;
-              final message = await controller.discardHeldOrder(record);
-              if (!context.mounted) return;
-              Navigator.of(context).pop(false);
-              if (mounted) {
-                _showPopupMessage(
-                  title: l10n.posHeldDiscardedTitle,
-                  message: message,
-                  tone: FeedbackTone.warning,
                 );
-              }
-            },
+                if (confirmed != true || !context.mounted) return;
+                final message = await controller.discardHeldOrder(record);
+                if (!context.mounted) return;
+                Navigator.of(context).pop(false);
+                if (mounted) {
+                  _showPopupMessage(
+                    title: l10n.posHeldDiscardedTitle,
+                    message: message,
+                    tone: FeedbackTone.warning,
+                  );
+                }
+              },
+            ),
           ),
         );
       },

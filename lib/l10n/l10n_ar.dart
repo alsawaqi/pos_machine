@@ -3631,4 +3631,76 @@ class L10nAr extends L10n {
 
   @override
   String get tableCustomerOccupied => 'مشغولة بواسطة عميل';
+
+  @override
+  String get qrPendingTitle => 'قيد الانتظار عبر QR';
+
+  @override
+  String get qrPendingWaitingStation => 'بانتظار الدفع عند الجهاز';
+
+  @override
+  String get qrPendingAtCounter => 'عند الكاشير';
+
+  @override
+  String get qrPendingSessionEnded => 'انتهت الجلسة';
+
+  @override
+  String get qrPendingCardInProgress => 'دفع البطاقة جارٍ';
+
+  @override
+  String get qrPendingDeclined => 'رُفضت محاولة الدفع';
+
+  @override
+  String get qrPendingCancelled => 'أُلغيت محاولة الدفع';
+
+  @override
+  String get qrPendingRecovery => 'يحتاج إلى مراجعة';
+
+  @override
+  String get qrPendingSendToCounter => 'إرسال إلى الكاشير';
+
+  @override
+  String get qrPendingSettle => 'تسوية';
+
+  @override
+  String get qrPendingVoid => 'إلغاء الطلب';
+
+  @override
+  String get qrPendingEmpty => 'لا توجد طلبات QR سريعة غير مدفوعة.';
+
+  @override
+  String get qrPendingUnavailable =>
+      'القائمة غير متاحة. حدّثها قبل استلام الدفع.';
+
+  @override
+  String get qrPendingRefresh => 'تحديث';
+
+  @override
+  String qrPendingStale(String time) {
+    return 'لم يتم التحديث منذ $time';
+  }
+
+  @override
+  String qrPendingAge(int minutes) {
+    return 'منذ $minutes دقيقة';
+  }
+
+  @override
+  String qrPendingItems(int count) {
+    return '$count أصناف';
+  }
+
+  @override
+  String qrPendingPhone(String tail) {
+    return 'رقم الهاتف ينتهي بـ $tail';
+  }
+
+  @override
+  String get qrPendingMoved => 'تم نقل الطلب إلى الكاشير.';
+
+  @override
+  String get qrPendingGone => 'لم يعد هذا الطلب قيد الانتظار.';
+
+  @override
+  String get qrPendingClose => 'إغلاق';
 }

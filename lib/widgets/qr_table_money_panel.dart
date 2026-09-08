@@ -58,6 +58,7 @@ class QrTableMoneyPanel extends ConsumerStatefulWidget {
   const QrTableMoneyPanel({
     super.key,
     required this.host,
+    this.standaloneOrder,
     this.tableKey,
     this.tableLabel,
     this.forceRefresh,
@@ -65,6 +66,7 @@ class QrTableMoneyPanel extends ConsumerStatefulWidget {
   });
 
   final QrTableMoneyHost host;
+  final QrBoardOrder? standaloneOrder;
   final String? tableKey;
   final String? tableLabel;
   final Future<void> Function()? forceRefresh;
@@ -133,13 +135,25 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final key = widget.tableKey ?? widget.host.row?.tableId.toString();
+    final standalone = widget.tableKey == null && widget.host.row == null
+        ? widget.standaloneOrder
+        : null;
+    final key =
+        widget.tableKey ??
+        widget.host.row?.tableId.toString() ??
+        (standalone == null ? null : 'quick-${standalone.uuid}');
     final table = key == null
         ? null
         : _TableView(
             key: key,
             floorId: '',
-            label: widget.tableLabel ?? widget.host.row?.tableLabel ?? '',
+            label:
+                widget.tableLabel ??
+                widget.host.row?.tableLabel ??
+                standalone?.receiptNumber ??
+                standalone?.tempReference ??
+                standalone?.uuid ??
+                '',
             row: widget.host.row,
           );
     final detail = _detail(table);
@@ -404,7 +418,8 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
 
   Widget _detail(_TableView? table) {
     if (table == null) return const _EmptyDetail();
-    final order = table.row?.order;
+    final order = table.row?.order ?? widget.standaloneOrder;
+    final standalone = table.row == null && widget.standaloneOrder != null;
     final active =
         order != null && (order.status == 'open' || order.status == 'held')
         ? _active[order.uuid]
@@ -431,7 +446,7 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
                         ),
                       ),
                       const SizedBox(height: 5),
-                      _StatePill(state: table.state),
+                      if (!standalone) _StatePill(state: table.state),
                     ],
                   ),
                 ),
@@ -453,7 +468,7 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
             child: ListView(
               padding: const EdgeInsets.all(18),
               children: [
-                _StateExplanation(state: table.state),
+                if (!standalone) _StateExplanation(state: table.state),
                 if (order != null) ...[
                   const SizedBox(height: 16),
                   _Totals(board: order, active: active),
@@ -464,7 +479,8 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
                   const SizedBox(height: 16),
                   _ReadOnlyItems(active),
                 ],
-                if (table.row?.pendingRounds.isNotEmpty == true) ...[
+                if (!standalone &&
+                    table.row?.pendingRounds.isNotEmpty == true) ...[
                   const SizedBox(height: 16),
                   Text(
                     _copy('rounds_awaiting'),
@@ -493,7 +509,8 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
   }
 
   Widget _actions(_TableView table, QrActiveOrder? active) {
-    final order = table.row?.order;
+    final order = table.row?.order ?? widget.standaloneOrder;
+    final standalone = table.row == null && widget.standaloneOrder != null;
     final actions = <Widget>[];
     final orphan =
         table.state == QrTableDisplayState.orphanedExpired ||
@@ -501,7 +518,7 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
     final terminal =
         order != null &&
         const {'paid', 'voided', 'cancelled'}.contains(order.status);
-    if (terminal) {
+    if (terminal && !standalone) {
       actions.add(
         _Action(
           key: const ValueKey('qr-action-clear'),
@@ -512,7 +529,7 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
           onPressed: () => _clear(table),
         ),
       );
-    } else if (orphan && order != null) {
+    } else if (!standalone && orphan && order != null) {
       // `held` is the durable restart marker written by fallback.
       final recovered = order.status == 'held';
       actions.add(
@@ -538,7 +555,7 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
       actions.add(
         _Action(
           key: const ValueKey('qr-action-settle'),
-          label: 'Settle',
+          label: standalone && _arabic ? 'تسوية' : 'Settle',
           icon: Icons.payments_rounded,
           primary: true,
           enabled: !_qrSettlementBlocked,
@@ -548,13 +565,13 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
       actions.add(
         _Action(
           key: const ValueKey('qr-action-void'),
-          label: 'Void',
+          label: standalone && _arabic ? 'إلغاء الطلب' : 'Void',
           icon: Icons.cancel_outlined,
           enabled: !_acting,
           onPressed: () => _void(active!),
         ),
       );
-    } else if (order?.status == 'awaiting_payment') {
+    } else if (!standalone && order?.status == 'awaiting_payment') {
       actions.add(
         _Action(
           key: const ValueKey('qr-action-reopen'),
@@ -565,8 +582,9 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
           onPressed: () => _reopen(order!),
         ),
       );
-    } else if (table.state == QrTableDisplayState.orphanedExpired ||
-        table.state == QrTableDisplayState.orphanedMissingSession) {
+    } else if (!standalone &&
+        (table.state == QrTableDisplayState.orphanedExpired ||
+            table.state == QrTableDisplayState.orphanedMissingSession)) {
       actions.add(
         _Action(
           key: const ValueKey('qr-action-clear'),

@@ -39,6 +39,10 @@ const Set<String> qrTillServerRefusalCodes = {
 /// server exception code must fail the companion enumeration test until staff
 /// receive an actionable message in both languages.
 const Map<String, QrTillMessage> qrTillRefusalMessages = {
+  'qr_claim_not_enabled': (
+    en: 'Quick QR settlement is not enabled on this server.',
+    ar: 'تسوية طلبات QR السريعة غير مفعّلة على هذا الخادم.',
+  ),
   'device_not_table_board_reader': (
     en: 'This device is not allowed to view the QR tables board.',
     ar: 'هذا الجهاز غير مخوّل لعرض لوحة طاولات QR.',

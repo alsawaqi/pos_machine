@@ -5962,6 +5962,132 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Occupied by customer'**
   String get tableCustomerOccupied;
+
+  /// No description provided for @qrPendingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'QR pending'**
+  String get qrPendingTitle;
+
+  /// No description provided for @qrPendingWaitingStation.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting at station'**
+  String get qrPendingWaitingStation;
+
+  /// No description provided for @qrPendingAtCounter.
+  ///
+  /// In en, this message translates to:
+  /// **'At the counter'**
+  String get qrPendingAtCounter;
+
+  /// No description provided for @qrPendingSessionEnded.
+  ///
+  /// In en, this message translates to:
+  /// **'Session ended'**
+  String get qrPendingSessionEnded;
+
+  /// No description provided for @qrPendingCardInProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Card in progress'**
+  String get qrPendingCardInProgress;
+
+  /// No description provided for @qrPendingDeclined.
+  ///
+  /// In en, this message translates to:
+  /// **'Attempt declined'**
+  String get qrPendingDeclined;
+
+  /// No description provided for @qrPendingCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Attempt cancelled'**
+  String get qrPendingCancelled;
+
+  /// No description provided for @qrPendingRecovery.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs recovery'**
+  String get qrPendingRecovery;
+
+  /// No description provided for @qrPendingSendToCounter.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to counter'**
+  String get qrPendingSendToCounter;
+
+  /// No description provided for @qrPendingSettle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settle'**
+  String get qrPendingSettle;
+
+  /// No description provided for @qrPendingVoid.
+  ///
+  /// In en, this message translates to:
+  /// **'Void'**
+  String get qrPendingVoid;
+
+  /// No description provided for @qrPendingEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No unpaid quick QR orders.'**
+  String get qrPendingEmpty;
+
+  /// No description provided for @qrPendingUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'QR pending is unavailable. Refresh before taking payment.'**
+  String get qrPendingUnavailable;
+
+  /// No description provided for @qrPendingRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get qrPendingRefresh;
+
+  /// No description provided for @qrPendingStale.
+  ///
+  /// In en, this message translates to:
+  /// **'Not updated since {time}'**
+  String qrPendingStale(String time);
+
+  /// No description provided for @qrPendingAge.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min ago'**
+  String qrPendingAge(int minutes);
+
+  /// No description provided for @qrPendingItems.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} items'**
+  String qrPendingItems(int count);
+
+  /// No description provided for @qrPendingPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone ending {tail}'**
+  String qrPendingPhone(String tail);
+
+  /// No description provided for @qrPendingMoved.
+  ///
+  /// In en, this message translates to:
+  /// **'Order moved to the counter.'**
+  String get qrPendingMoved;
+
+  /// No description provided for @qrPendingGone.
+  ///
+  /// In en, this message translates to:
+  /// **'This order is no longer pending.'**
+  String get qrPendingGone;
+
+  /// No description provided for @qrPendingClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get qrPendingClose;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

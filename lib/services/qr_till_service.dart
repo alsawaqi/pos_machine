@@ -1,4 +1,5 @@
 import '../models/qr_till_models.dart';
+import '../models/qr_pending_order.dart';
 import 'pos_api_service.dart';
 
 abstract interface class QrTillGateway {
@@ -32,13 +33,45 @@ abstract interface class QrRoundGateway {
   });
 }
 
+/// Additive capability: existing table-only gateways and their tests stay valid.
+abstract interface class QrPendingGateway {
+  Future<List<QrPendingOrder>> fetchQrPendingOrders();
+  Future<QrPendingOrder> moveQrPendingToCounter(String orderUuid);
+}
+
+extension QrPendingRequests on QrTillGateway {
+  Future<List<QrPendingOrder>> fetchQrPendingOrders() {
+    final gateway = this;
+    if (gateway is QrPendingGateway) {
+      return (gateway as QrPendingGateway).fetchQrPendingOrders();
+    }
+    throw UnsupportedError('QR pending is unavailable on this gateway.');
+  }
+
+  Future<QrPendingOrder> moveQrPendingToCounter(String orderUuid) {
+    final gateway = this;
+    if (gateway is QrPendingGateway) {
+      return (gateway as QrPendingGateway).moveQrPendingToCounter(orderUuid);
+    }
+    throw UnsupportedError('QR pending is unavailable on this gateway.');
+  }
+}
+
 /// Narrow server facade for QR table staff surfaces. No cart, draft, held, or
 /// local-history API exists on this type, which makes the QR money boundary
 /// straightforward to fake and audit.
-class QrTillService implements QrTillGateway, QrRoundGateway {
+class QrTillService implements QrTillGateway, QrRoundGateway, QrPendingGateway {
   QrTillService(this._api);
 
   final PosApiService _api;
+
+  @override
+  Future<List<QrPendingOrder>> fetchQrPendingOrders() =>
+      _api.fetchQrPendingOrders();
+
+  @override
+  Future<QrPendingOrder> moveQrPendingToCounter(String orderUuid) =>
+      _api.moveQrPendingToCounter(orderUuid);
 
   @override
   Future<List<QrTableBoardRow>> fetchTableBoard() => _api.fetchQrTableBoard();

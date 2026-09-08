@@ -3594,4 +3594,76 @@ class L10nEn extends L10n {
 
   @override
   String get tableCustomerOccupied => 'Occupied by customer';
+
+  @override
+  String get qrPendingTitle => 'QR pending';
+
+  @override
+  String get qrPendingWaitingStation => 'Waiting at station';
+
+  @override
+  String get qrPendingAtCounter => 'At the counter';
+
+  @override
+  String get qrPendingSessionEnded => 'Session ended';
+
+  @override
+  String get qrPendingCardInProgress => 'Card in progress';
+
+  @override
+  String get qrPendingDeclined => 'Attempt declined';
+
+  @override
+  String get qrPendingCancelled => 'Attempt cancelled';
+
+  @override
+  String get qrPendingRecovery => 'Needs recovery';
+
+  @override
+  String get qrPendingSendToCounter => 'Send to counter';
+
+  @override
+  String get qrPendingSettle => 'Settle';
+
+  @override
+  String get qrPendingVoid => 'Void';
+
+  @override
+  String get qrPendingEmpty => 'No unpaid quick QR orders.';
+
+  @override
+  String get qrPendingUnavailable =>
+      'QR pending is unavailable. Refresh before taking payment.';
+
+  @override
+  String get qrPendingRefresh => 'Refresh';
+
+  @override
+  String qrPendingStale(String time) {
+    return 'Not updated since $time';
+  }
+
+  @override
+  String qrPendingAge(int minutes) {
+    return '$minutes min ago';
+  }
+
+  @override
+  String qrPendingItems(int count) {
+    return '$count items';
+  }
+
+  @override
+  String qrPendingPhone(String tail) {
+    return 'Phone ending $tail';
+  }
+
+  @override
+  String get qrPendingMoved => 'Order moved to the counter.';
+
+  @override
+  String get qrPendingGone => 'This order is no longer pending.';
+
+  @override
+  String get qrPendingClose => 'Close';
 }

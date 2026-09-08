@@ -5,6 +5,7 @@ import '../models/branch_report.dart';
 import '../models/kitchen_production.dart';
 import '../models/pos_models.dart';
 import '../models/qr_till_models.dart';
+import '../models/qr_pending_order.dart';
 import 'api_models.dart';
 import 'session_service.dart' show OpenShiftData;
 import 'table_shadow_service.dart';
@@ -381,6 +382,28 @@ class PosApiService {
         .map((row) => QrActiveOrder.fromJson(row.cast<String, dynamic>()))
         .where((order) => order.isQrWeb)
         .toList(growable: false);
+  }
+
+  Future<List<QrPendingOrder>> fetchQrPendingOrders() async {
+    final body = await _send(() => _dio.get('/device/qr/pending-orders'));
+    final orders = body.dataMap['orders'];
+    if (orders is! List) throw const FormatException('Missing pending orders');
+    return orders
+        .map(
+          (row) =>
+              QrPendingOrder.fromJson((row as Map).cast<String, dynamic>()),
+        )
+        .toList(growable: false);
+  }
+
+  /// Online only. A refusal or lost response is never added to the outbox.
+  Future<QrPendingOrder> moveQrPendingToCounter(String orderUuid) async {
+    final body = await _send(
+      () => _dio.post(
+        '/device/qr/pending-orders/${Uri.encodeComponent(orderUuid)}/to-counter',
+      ),
+    );
+    return QrPendingOrder.fromJson(body.dataMap);
   }
 
   /// Atomically reserve an open/held QR order to this attended till. The
