@@ -31,7 +31,8 @@ import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
-import '../widgets/qr_pending_section.dart';
+import '../qr_quick/qr_quick_copy.dart';
+import 'qr_quick_orders_screen.dart';
 import '../widgets/qr_round_print_status_indicator.dart';
 import '../widgets/sent_line_cancel_dialog.dart';
 import '../widgets/table_degraded_banner.dart';
@@ -823,6 +824,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   // on the bottom action bar — both removed here to declutter the cramped top
   // bar (the order-history dialog stays reachable from the footer card).
   static const _secondaryNavItems = <_NavItemData>[
+    _NavItemData('QR Quick Orders', Icons.receipt_long_outlined),
     _NavItemData('QR Tables', Icons.qr_code_2_rounded),
     _NavItemData('Offers', Icons.local_offer_outlined), // P-F9
     _NavItemData('Kitchen', Icons.soup_kitchen_outlined), // P-G1
@@ -3134,8 +3136,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         return _StorageOverlayShell(
           title: l10n.posHeldOrdersTitle,
           subtitle: l10n.posHeldOrdersSubtitle,
-          child: QrPendingStorageLayout(
-            heldOrders: _HeldOrdersPanel(
+          child: _HeldOrdersPanel(
               records: controller.heldOrders,
               onResume: (record) async {
                 final message = await controller.resumeHeldOrder(record);
@@ -3183,7 +3184,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   );
                 }
               },
-            ),
           ),
         );
       },
@@ -6352,6 +6352,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       'Messages' => l10n.posNavMessages,
       'Report' => l10n.posNavReport,
       'History' => l10n.posNavHistory,
+      'QR Quick Orders' => QuickCopy(Localizations.localeOf(context).languageCode == 'ar').title,
       _ => identity,
     };
     return Align(
@@ -6378,6 +6379,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                         : 0,
                     onTap: () {
                       switch (entry.value.title) {
+                        case 'QR Quick Orders':
+                          unawaited(Navigator.of(context).push<void>(
+                            MaterialPageRoute(builder: (_) => const QrQuickOrdersScreen()),
+                          ));
+                          break;
                         case 'QR Tables':
                           // QR orders remain server-owned. This route passes
                           // configuration labels only; it never imports QR

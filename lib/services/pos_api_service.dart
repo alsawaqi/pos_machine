@@ -396,6 +396,20 @@ class PosApiService {
         .toList(growable: false);
   }
 
+  String get quickOrderBaseUrl => baseUrlGetter?.call() ?? _dio.options.baseUrl;
+
+  Future<Map<String, dynamic>> fetchQuickInbox() async =>
+      (await _send(() => _dio.get('/device/qr/pending-orders'))).dataMap;
+
+  Future<void> moveQuickInbox(String uuid) async {
+    await moveQrPendingToCounter(uuid);
+  }
+
+  Future<Map<String, dynamic>> appendQuickInbox(String uuid, Map<String, dynamic> payload) async =>
+      (await _send(() => _dio.post(
+        '/device/qr/pending-orders/${Uri.encodeComponent(uuid)}/items', data: payload,
+      ))).dataMap;
+
   /// Online only. A refusal or lost response is never added to the outbox.
   Future<QrPendingOrder> moveQrPendingToCounter(String orderUuid) async {
     final body = await _send(
