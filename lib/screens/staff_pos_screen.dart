@@ -32,6 +32,14 @@ import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
 import '../qr_quick/qr_quick_copy.dart';
+import '../qr_quick/qr_quick_gateway.dart';
+import '../qr_quick/qr_quick_store.dart';
+import '../qr_checkout/qr_checkout_controller.dart';
+import '../qr_checkout/qr_checkout_gateway.dart';
+import '../qr_checkout/qr_checkout_models.dart';
+import '../qr_checkout/qr_checkout_store.dart';
+import '../qr_checkout/qr_checkout_widgets.dart';
+import '../services/mosambee_payment_service.dart' show MosambeeFailurePhase;
 import 'qr_quick_orders_screen.dart';
 import '../widgets/qr_round_print_status_indicator.dart';
 import '../widgets/sent_line_cancel_dialog.dart';
@@ -797,6 +805,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// tick as soon as the console is idle — never dropped silently.
   Map<String, dynamic>? _claimedTransferPendingLoad;
   bool _showPaymentPage = false;
+  bool _normalQrCheckoutOpen = false;
   String _cashTenderInput = '';
   _StaffPopupMessage? _popupMessage;
   int _popupSeed = 0;
@@ -2344,6 +2353,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     try {
       await Navigator.of(context).push<void>(MaterialPageRoute(
         builder: (_) => DiningTableQrSheet(
+          openCheckout: _launchQrCheckout,
           controller: controller, tableId: id,
           tableLabel: tableLabel ?? table?.name ?? tableId,
           floorLabel: floor?.label ?? '',
@@ -5211,17 +5221,110 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  Widget _buildPaymentPageSurface() {
+  Future<void> _launchQrCheckout(String? uuid) async {
+    if (_normalQrCheckoutOpen || controller.isProcessingPayment ||
+        controller.hasRecordedSplitPayments || controller.showPaymentLaunchOverlay) {
+      return;
+    }
+    _normalQrCheckoutOpen = true;
+    QrCheckoutController? checkout;
+    try {
+      final api = ref.read(apiServiceProvider);
+      final session = ref.read(sessionServiceProvider);
+      final gateway = ApiCheckoutGateway(api: api,
+        currentScope: () => quickDeviceScope(api.quickOrderBaseUrl,
+          session.companyId, session.branchId, session.kioskId),
+        location: ref.read(qrLocationProvider).currentFix,
+        legacyGuard: (orderUuid) async {
+          if (ref.read(qrSettlementCoordinatorProvider).pendingManagerRecoveries.isNotEmpty ||
+              await ref.read(orderSyncRepositoryProvider).hasUnresolvedStandaloneQrPay(orderUuid)) {
+            throw StateError('An earlier QR settlement requires recovery.');
+          }
+          final requests = await SqliteQrQuickStore.open(quickDeviceScope(
+            api.quickOrderBaseUrl, session.companyId, session.branchId, session.kioskId));
+          if ((await requests.load()).any((r) => r.orderUuid == orderUuid)) {
+            throw StateError('Resolve the pending item addition before payment.');
+          }
+        });
+      final store = await SqliteCheckoutStore.open(gateway.scope);
+      checkout = QrCheckoutController(gateway: gateway, store: store,
+        authorizeGift: () async {
+          if (!mounted || !await _authorizeManager(subtitle: L10n.of(context).posPayGiftManagerApprovalMessage)) return false;
+          if (!mounted) return false;
+          return await showDialog<bool>(context: context, builder: (dialog) => AlertDialog(
+            title: Text(L10n.of(context).posPayGiftConfirmTitle),
+            content: Text(L10n.of(context).posPayGiftConfirmMessage(SunmiReceiptService.money(checkout!.total / 1000))),
+            actions: [TextButton(onPressed: () => Navigator.pop(dialog, false), child: Text(L10n.of(context).commonCancel)),
+              FilledButton(onPressed: () => Navigator.pop(dialog, true), child: Text(L10n.of(context).posPaymentGift))])) ?? false;
+        },
+        captureBank: (amount) { gateway.checkScope(); return confirmCheckoutBank(context, amount); },
+        captureCard: (amount) async {
+          gateway.checkScope();
+          final result = await ref.read(qrCardTerminalProvider).captureBaisas(amount);
+          final state = result.isSuccess && !result.isCanceled ? CheckoutCaptureState.approved :
+              result.isCanceled && !result.isSuccess ? CheckoutCaptureState.cancelled :
+              result.failurePhase == MosambeeFailurePhase.preDispatch ? CheckoutCaptureState.notDispatched :
+              CheckoutCaptureState.uncertain;
+          return CheckoutCapture(state, evidence: {
+            if (result.softposReference != null) 'softpos_reference': result.softposReference,
+            if (result.softposAuthCode != null) 'softpos_auth_code': result.softposAuthCode,
+            'bank_response': result.payload,
+          });
+        });
+      if (!mounted) return;
+      final payment = checkout;
+      unawaited(payment.open(uuid));
+      await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => QrCheckoutBoundary(
+        controller: payment,
+        authorizeManager: () => _authorizeManager(subtitle: checkoutText(context, 'manager')),
+        paymentPage: (_, exit) => buildQrPaymentPage(payment, exit),
+      )));
+    } catch (_) {
+      if (mounted) {
+        _showPopupMessage(title: checkoutText(context, 'title'),
+        message: checkoutText(context, 'unavailable'), tone: FeedbackTone.warning);
+      }
+    } finally {
+      checkout?.dispose();
+      _normalQrCheckoutOpen = false;
+    }
+  }
+
+  /// Reuses the normal payment layout without handing a QR bill to the cart.
+  Widget buildQrPaymentPage(QrCheckoutController payment, VoidCallback exit) => Scaffold(
+    resizeToAvoidBottomInset: false,
+    body: SafeArea(child: ColoredBox(color: const Color(0xFFEAF3F5),
+      child: Center(child: FittedBox(fit: BoxFit.contain,
+        child: SizedBox(width: _designWidth, height: _designHeight,
+          child: Padding(padding: const EdgeInsets.all(24),
+            child: _buildPaymentPageSurface(qr: payment, exit: exit))))))));
+
+  Future<void> _payQr(QrCheckoutController qr, String method) async {
+    if (!qr.ready) return;
+    if (method == 'cash' && qr.cashBaisas < qr.total) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(checkoutText(context, 'amount_error'))));
+      return;
+    }
+    await qr.pay([CheckoutTender(method, qr.total, change: method == 'cash' ? qr.changeBaisas : 0)]);
+  }
+
+  Future<void> _splitQr(QrCheckoutController qr) async {
+    if (!qr.ready) return;
+    final plan = await checkoutMixedPlan(context, qr.total);
+    if (plan != null && qr.ready) await qr.pay(plan);
+  }
+
+  Widget _buildPaymentPageSurface({QrCheckoutController? qr, VoidCallback? exit}) {
     return Column(
       children: [
-        SizedBox(height: _paymentHeaderHeight, child: _buildPaymentHeader()),
+        SizedBox(height: _paymentHeaderHeight, child: _buildPaymentHeader(qr: qr, exit: exit)),
         const SizedBox(height: _panelGap),
-        Expanded(child: _buildPaymentBody()),
+        Expanded(child: _buildPaymentBody(qr: qr, exit: exit)),
       ],
     );
   }
 
-  Widget _buildPaymentHeader() {
+  Widget _buildPaymentHeader({QrCheckoutController? qr, VoidCallback? exit}) {
     final l10n = L10n.of(context);
     return _glassPanel(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
@@ -5229,7 +5332,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         children: [
           _CircleGlassButton(
             icon: Icons.arrow_back_rounded,
-            onTap: _closePaymentPage,
+            onTap: exit ?? _closePaymentPage,
           ),
           const SizedBox(width: 14),
           Text(
@@ -5250,9 +5353,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               boxShadow: _softShadow,
             ),
             child: Text(
-              controller.currentOrderReference.isEmpty
+              (qr?.reference ?? controller.currentOrderReference).isEmpty
                   ? l10n.posPaymentNewOrder
-                  : l10n.posPaymentOrderRef(controller.currentOrderReference),
+                  : l10n.posPaymentOrderRef(qr?.reference ?? controller.currentOrderReference),
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
@@ -5260,7 +5363,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               ),
             ),
           ),
-          if (_isEditingDiningTable) ...[
+          if (qr == null && _isEditingDiningTable) ...[
             const SizedBox(width: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -5283,13 +5386,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           const Spacer(),
           _buildTimeBlock(),
           const SizedBox(width: 12),
-          _buildProfileBlock(),
+          if (qr == null) _buildProfileBlock(),
         ],
       ),
     );
   }
 
-  Widget _buildPaymentBody() {
+  Widget _buildPaymentBody({QrCheckoutController? qr, VoidCallback? exit}) {
     return _glassPanel(
       padding: const EdgeInsets.all(18),
       tint: const Color(0xA8F7FBFD),
@@ -5304,12 +5407,47 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(width: 330, child: _buildPaymentOrderPanel()),
+          SizedBox(width: 330, child: qr == null ? _buildPaymentOrderPanel() : _buildQrPaymentOrderPanel(qr)),
           const SizedBox(width: 18),
-          Expanded(child: _buildPaymentConsole()),
+          Expanded(child: _buildPaymentConsole(qr: qr, exit: exit)),
         ],
       ),
     );
+  }
+
+  Widget _buildQrPaymentOrderPanel(QrCheckoutController qr) {
+    final order = qr.snapshot!;
+    final l10n = L10n.of(context);
+    return _glassPanel(tint: Colors.white.withValues(alpha: 0.72),
+      padding: const EdgeInsets.all(18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(l10n.posPaymentOrderItems, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 18),
+        Expanded(child: ListView.separated(itemCount: order.lines.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 12),
+          itemBuilder: (_, index) {
+            final line = order.lines[index];
+            return _glassPanel(padding: const EdgeInsets.all(14), child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${line['qty']} × ${line['product_name']}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                Text(SunmiReceiptService.money((line['line_total_baisas'] as int) / 1000)),
+                for (final addon in (line['addons'] as List? ?? const [])) Text(checkoutMap(addon)['add_on_name']?.toString() ?? ''),
+                if (line['notes'] != null) Text(line['notes'].toString()),
+                if (line['status'] != 'open') Text(line['status']?.toString() ?? ''),
+              ]));
+          })),
+        const SizedBox(height: 16),
+        if (order.customerLabel.isNotEmpty) Text(order.customerLabel, key: const ValueKey('qr-checkout-customer')),
+        if (order.order['plate_number'] != null) Text(order.order['plate_number'].toString()),
+        const SizedBox(height: 16),
+        _paymentTotalRow(l10n.posPaymentSubtotal, (order.order['subtotal_baisas'] as int) / 1000),
+        _paymentTotalRow(l10n.posPaymentDiscountFallback, -(order.order['discount_total_baisas'] as int) / 1000),
+        _paymentTotalRow(checkoutText(context, 'comp'), -(order.order['comp_total_baisas'] as int) / 1000),
+        _paymentTotalRow(checkoutText(context, 'tax'), (order.order['tax_total_baisas'] as int) / 1000),
+        const Divider(),
+        Text(SunmiReceiptService.money(order.total / 1000), key: const ValueKey('qr-checkout-total'),
+          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+      ]));
   }
 
   Widget _buildPaymentOrderPanel() {
@@ -5672,13 +5810,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  Widget _buildPaymentConsole() {
+  Widget _buildPaymentConsole({QrCheckoutController? qr, VoidCallback? exit}) {
     final l10n = L10n.of(context);
-    final quickAmounts = _quickCashAmounts();
+    final quickAmounts = qr == null ? _quickCashAmounts() :
+        (<int>{(qr.total / 1000).ceil(), (qr.total / 1000).ceil() + 1, 5, 10}.toList()..sort());
+    final qrMixed = qr != null && qr.cashBaisas > 0 && qr.cashBaisas < qr.total;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (qr != null) Padding(padding: const EdgeInsets.only(bottom: 16),
+          child: Text(checkoutText(context, 'frozen'))),
+        if (qr == null)
         Row(
           children: [
             // Device↔device order transfer (replaced the Loyalty shortcut —
@@ -5777,7 +5920,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                     const Spacer(),
                                     Text(
                                       SunmiReceiptService.money(
-                                        _tenderedCashAmount,
+                                        qr == null ? _tenderedCashAmount : qr.cashBaisas / 1000,
                                       ),
                                       key: const ValueKey('tendered-amount'),
                                       style: const TextStyle(
@@ -5797,7 +5940,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 Row(
                                   children: [
                                     Text(
-                                      _showMixedCardBalance
+                                      (qr == null ? _showMixedCardBalance : qrMixed)
                                           ? l10n.posPaymentCardBalance
                                           : l10n.posPaymentChange,
                                       style: const TextStyle(
@@ -5809,15 +5952,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                     const Spacer(),
                                     Text(
                                       SunmiReceiptService.money(
-                                        _showMixedCardBalance
-                                            ? _mixedCardBalance
-                                            : _cashChangeAmount,
+                                        qr == null ? (_showMixedCardBalance ? _mixedCardBalance : _cashChangeAmount) :
+                                            (qrMixed ? (qr.total - qr.cashBaisas) / 1000 : qr.changeBaisas / 1000),
                                       ),
                                       key: const ValueKey('change-amount'),
                                       style: TextStyle(
                                         fontSize: 20,
                                         fontWeight: FontWeight.w900,
-                                        color: _showMixedCardBalance
+                                        color: (qr == null ? _showMixedCardBalance : qrMixed)
                                             ? const Color(0xFF1B6F37)
                                             : const Color(0xFF1FA153),
                                       ),
@@ -5841,7 +5983,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                       child: _QuickCashButton(
                                         label: l10n.posPaymentQuickCash(amount),
                                         onTap: () =>
-                                            _setQuickCashAmount(amount),
+                                            qr == null ? _setQuickCashAmount(amount) : qr.cashAmount(amount * 1000),
                                       ),
                                     ),
                                   ),
@@ -5852,7 +5994,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           Expanded(
                             child: Column(
                               children: [
-                                if (controller.splitCount > 1)
+                                if (qr == null && controller.splitCount > 1)
                                   Container(
                                     width: double.infinity,
                                     margin: const EdgeInsets.only(bottom: 12),
@@ -5888,11 +6030,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                     textDirection: TextDirection.ltr,
                                     child: Row(
                                       children: [
-                                        _buildPaymentKeyCell('1'),
+                                        _buildPaymentKeyCell('1', qr: qr),
                                         const SizedBox(width: 12),
-                                        _buildPaymentKeyCell('2'),
+                                        _buildPaymentKeyCell('2', qr: qr),
                                         const SizedBox(width: 12),
-                                        _buildPaymentKeyCell('3'),
+                                        _buildPaymentKeyCell('3', qr: qr),
                                       ],
                                     ),
                                   ),
@@ -5903,11 +6045,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                     textDirection: TextDirection.ltr,
                                     child: Row(
                                       children: [
-                                        _buildPaymentKeyCell('4'),
+                                        _buildPaymentKeyCell('4', qr: qr),
                                         const SizedBox(width: 12),
-                                        _buildPaymentKeyCell('5'),
+                                        _buildPaymentKeyCell('5', qr: qr),
                                         const SizedBox(width: 12),
-                                        _buildPaymentKeyCell('6'),
+                                        _buildPaymentKeyCell('6', qr: qr),
                                       ],
                                     ),
                                   ),
@@ -5918,11 +6060,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                     textDirection: TextDirection.ltr,
                                     child: Row(
                                       children: [
-                                        _buildPaymentKeyCell('7'),
+                                        _buildPaymentKeyCell('7', qr: qr),
                                         const SizedBox(width: 12),
-                                        _buildPaymentKeyCell('8'),
+                                        _buildPaymentKeyCell('8', qr: qr),
                                         const SizedBox(width: 12),
-                                        _buildPaymentKeyCell('9'),
+                                        _buildPaymentKeyCell('9', qr: qr),
                                       ],
                                     ),
                                   ),
@@ -5935,12 +6077,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                       children: [
                                         _buildPaymentKeyCell(
                                           '.',
+                                          qr: qr,
                                           buttonKey: const ValueKey(
                                             'payment-key-decimal',
                                           ),
                                         ),
                                         const SizedBox(width: 12),
-                                        _buildPaymentKeyCell('0'),
+                                        _buildPaymentKeyCell('0', qr: qr),
                                         const SizedBox(width: 12),
                                         Expanded(
                                           child: _PaymentKeyButton(
@@ -5948,7 +6091,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                               'payment-key-backspace',
                                             ),
                                             icon: Icons.backspace_outlined,
-                                            onTap: _backspaceCashKey,
+                                            onTap: qr == null ? _backspaceCashKey : () => qr.cashKey('back'),
                                           ),
                                         ),
                                       ],
@@ -5970,7 +6113,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                         // the provider pays later, minus commission. Proceed
                         // collects the provider's order number (+ optional
                         // contacts) and completes as pending verification.
-                        children: controller.selectedOrderType ==
+                        children: qr == null && controller.selectedOrderType ==
                                 OrderType.delivery
                             ? [
                                 Expanded(
@@ -6011,7 +6154,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 end: Alignment.bottomRight,
                                 colors: [Color(0xFF1DB14A), Color(0xFF17A243)],
                               ),
-                              onTap: _submitCashPayment,
+                              onTap: qr == null ? _submitCashPayment : () => _payQr(qr, 'cash'),
                             ),
                           ),
                           const SizedBox(height: 14),
@@ -6024,7 +6167,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 end: Alignment.bottomRight,
                                 colors: [Color(0xFF2A8B42), Color(0xFF1F7236)],
                               ),
-                              onTap: _submitCardPayment,
+                              onTap: qr == null ? _submitCardPayment : () => _payQr(qr, 'card'),
                             ),
                           ),
                           const SizedBox(height: 14),
@@ -6041,13 +6184,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 end: Alignment.bottomRight,
                                 colors: [Color(0xFF2E5E8C), Color(0xFF234A72)],
                               ),
-                              onTap: _submitBankPosPayment,
+                              onTap: qr == null ? _submitBankPosPayment : () => _payQr(qr, 'bank_pos'),
                             ),
                           ),
                           const SizedBox(height: 14),
                           // Phase D4 — gift the whole order (manager-gated;
                           // §6.8 "zero charged… inventory still deducts").
-                          if (!_liveTable) SizedBox(
+                          if (qr != null || !_liveTable) SizedBox(
                             height: 64,
                             child: _PaymentMethodActionButton(
                               label: l10n.posPaymentGift,
@@ -6057,7 +6200,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 end: Alignment.bottomRight,
                                 colors: [Color(0xFF8E5BA6), Color(0xFF6E4385)],
                               ),
-                              onTap: _submitGiftPayment,
+                              onTap: qr == null ? _submitGiftPayment : () => _payQr(qr, 'gift'),
                             ),
                           ),
                           const SizedBox(height: 14),
@@ -6069,7 +6212,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   child: _PaymentBottomActionButton(
                                     label: l10n.commonCancel,
                                     icon: Icons.close_rounded,
-                                    onTap: _closePaymentPage,
+                                    onTap: exit ?? _closePaymentPage,
                                   ),
                                 ),
                                 const SizedBox(width: 14),
@@ -6078,7 +6221,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                     label: l10n.posPaymentSplitPayment,
                                     icon: Icons.call_split_rounded,
                                     filled: true,
-                                    onTap: _submitMixedPayment,
+                                    onTap: qr == null ? _submitMixedPayment : () => _splitQr(qr),
                                   ),
                                 ),
                               ],
@@ -6167,12 +6310,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  Widget _buildPaymentKeyCell(String keyLabel, {Key? buttonKey}) {
+  Widget _buildPaymentKeyCell(String keyLabel, {Key? buttonKey, QrCheckoutController? qr}) {
     return Expanded(
       child: _PaymentKeyButton(
         buttonKey: buttonKey ?? ValueKey('payment-key-$keyLabel'),
         label: keyLabel,
-        onTap: () => _appendCashKey(keyLabel),
+        onTap: () => qr == null ? _appendCashKey(keyLabel) : qr.cashKey(keyLabel),
       ),
     );
   }
@@ -6381,7 +6524,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       switch (entry.value.title) {
                         case 'QR Quick Orders':
                           unawaited(Navigator.of(context).push<void>(
-                            MaterialPageRoute(builder: (_) => const QrQuickOrdersScreen()),
+                            MaterialPageRoute(builder: (_) => QrQuickOrdersScreen(openCheckout: _launchQrCheckout)),
                           ));
                           break;
                         case 'QR Tables':
@@ -6392,6 +6535,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                             Navigator.of(context).push(
                               MaterialPageRoute<void>(
                                 builder: (_) => QrTablesScreen(
+                                  openCheckout: _launchQrCheckout,
                                   floors: List<DiningFloor>.unmodifiable(
                                     controller.diningFloors,
                                   ),

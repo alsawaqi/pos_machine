@@ -64,7 +64,8 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
 }
 
 class QrQuickOrdersScreen extends ConsumerWidget {
-  const QrQuickOrdersScreen({super.key});
+  const QrQuickOrdersScreen({super.key, this.openCheckout});
+  final Future<void> Function(String?)? openCheckout;
   @override
   Widget build(BuildContext context, WidgetRef ref) => QrQuickScreen(
     arabic: Localizations.localeOf(context).languageCode == 'ar',
@@ -85,9 +86,10 @@ class QrQuickOrdersScreen extends ConsumerWidget {
     },
     catalogue: () =>
         machineQuickCatalogue(ref.read(catalogProvider).asData?.value),
-    // Temporary host until the next stage integrates the normal payment page.
-    // All existing claim, replay, recovery and route-exit guards stay in place.
-    onPay: (context, order) => Navigator.of(context).push<void>(
+    onRecoverPayment: openCheckout == null ? null : () => openCheckout!(null),
+    onPay: (context, order) => openCheckout != null
+        ? openCheckout!(order.uuid)
+        : Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) =>
             QrPendingSheet(order: QrPendingOrder.fromJson(order.json)),

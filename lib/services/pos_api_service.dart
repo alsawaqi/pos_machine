@@ -398,6 +398,19 @@ class PosApiService {
 
   String get quickOrderBaseUrl => baseUrlGetter?.call() ?? _dio.options.baseUrl;
 
+  Future<Map<String, dynamic>> checkoutClaim(Map<String, dynamic> payload) async =>
+      (await _send(() => _dio.post('/device/qr/claim-settlement', data: payload))).dataMap;
+
+  Future<Map<String, dynamic>> checkoutRead(String uuid) async =>
+      (await _send(() => _dio.get('/device/qr/orders/${Uri.encodeComponent(uuid)}/checkout'))).dataMap;
+
+  Future<void> checkoutRelease(Map<String, dynamic> payload) async {
+    await _send(() => _dio.post('/device/qr/release-charge', data: payload));
+  }
+
+  Future<List<Map<String, dynamic>>> checkoutPush(Map<String, dynamic> event) async =>
+      ((await pushSync([event]))['results'] as List).map((row) => Map<String, dynamic>.from(row as Map)).toList();
+
   Future<Map<String, dynamic>> fetchQuickInbox() async =>
       (await _send(() => _dio.get('/device/qr/pending-orders'))).dataMap;
 

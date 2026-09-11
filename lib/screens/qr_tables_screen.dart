@@ -22,12 +22,14 @@ class QrTablesScreen extends ConsumerStatefulWidget {
     required this.tables,
     this.pollInterval = const Duration(seconds: 10),
     this.clock,
+    this.openCheckout,
   });
 
   final List<DiningFloor> floors;
   final List<DiningTableDefinition> tables;
   final Duration pollInterval;
   final DateTime Function()? clock;
+  final Future<void> Function(String)? openCheckout;
 
   @override
   ConsumerState<QrTablesScreen> createState() => _QrTablesScreenState();
@@ -135,6 +137,7 @@ class _QrTablesScreenState extends ConsumerState<QrTablesScreen>
         .toList(growable: false);
     return QrTableMoneyPanel(
       host: this,
+      openCheckout: widget.openCheckout,
       tableKey: _selectedTable?.key,
       tableLabel: _selectedTable?.label,
       forceRefresh: _forceRefresh,

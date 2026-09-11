@@ -63,9 +63,11 @@ class QrTableMoneyPanel extends ConsumerStatefulWidget {
     this.tableLabel,
     this.forceRefresh,
     this.builder,
+    this.openCheckout,
   });
 
   final QrTableMoneyHost host;
+  final Future<void> Function(String)? openCheckout;
   final QrBoardOrder? standaloneOrder;
   final String? tableKey;
   final String? tableLabel;
@@ -616,6 +618,16 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
 
   Future<void> _claimAndSettle(String orderUuid) async {
     if (_qrSettlementBlocked) return;
+    if (widget.openCheckout case final checkout?) {
+      setState(() => _acting = true);
+      try {
+        await checkout(orderUuid);
+        await _refresh();
+      } finally {
+        if (mounted) setState(() => _acting = false);
+      }
+      return;
+    }
     setState(() {
       _acting = true;
       _claimInFlight = true;

@@ -10,11 +10,13 @@ class QrQuickScreen extends StatefulWidget {
     required this.createController,
     required this.catalogue,
     this.onPay,
+    this.onRecoverPayment,
     this.arabic = false,
   });
   final Future<QrQuickController> Function() createController;
   final List<QuickProduct> Function() catalogue;
   final Future<void> Function(BuildContext, QrQuickOrder)? onPay;
+  final Future<void> Function()? onRecoverPayment;
   final bool arabic;
   @override
   State<QrQuickScreen> createState() => _QrQuickScreenState();
@@ -128,6 +130,13 @@ class _QrQuickScreenState extends State<QrQuickScreen>
       appBar: AppBar(
         title: Text(copy.title),
         actions: [
+          if (widget.onRecoverPayment != null)
+            IconButton(
+              key: const ValueKey('quick-payment-recovery'),
+              tooltip: arabic ? 'تحقق من نتيجة الدفع' : 'Check payment result',
+              onPressed: () => _child(widget.onRecoverPayment!),
+              icon: const Icon(Icons.receipt_long),
+            ),
           TextButton(
             onPressed: () => setState(() => arabic = !arabic),
             child: Text(arabic ? 'English' : 'العربية'),

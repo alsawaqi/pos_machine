@@ -41,12 +41,14 @@ class DiningTableQrSheet extends ConsumerStatefulWidget {
     required this.tableId,
     required this.tableLabel,
     required this.floorLabel,
+    this.openCheckout,
   });
 
   final PosController controller;
   final int tableId;
   final String tableLabel;
   final String floorLabel;
+  final Future<void> Function(String)? openCheckout;
 
   @override
   ConsumerState<DiningTableQrSheet> createState() => _DiningTableQrSheetState();
@@ -181,6 +183,7 @@ class _DiningTableQrSheetState extends ConsumerState<DiningTableQrSheet>
     final reference = row?.order?.tempReference ?? row?.order?.receiptNumber;
     return QrTableMoneyPanel(
       host: this,
+      openCheckout: widget.openCheckout,
       tableKey: row?.tableId.toString(),
       tableLabel: widget.tableLabel,
       forceRefresh: _feed.forceRefresh,

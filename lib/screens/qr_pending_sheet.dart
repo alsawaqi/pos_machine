@@ -12,8 +12,9 @@ import '../widgets/qr_table_money_panel.dart';
 /// Presentation host only. Tender, replay, release and exit protection all stay
 /// inside the existing money panel and settlement coordinator.
 class QrPendingSheet extends ConsumerStatefulWidget {
-  const QrPendingSheet({super.key, required this.order});
+  const QrPendingSheet({super.key, required this.order, this.openCheckout});
   final QrPendingOrder order;
+  final Future<void> Function(String)? openCheckout;
 
   @override
   ConsumerState<QrPendingSheet> createState() => _QrPendingSheetState();
@@ -88,6 +89,7 @@ class _QrPendingSheetState extends ConsumerState<QrPendingSheet>
     final readOnly = _feed.readOnly || _current?.canSettle != true;
     return QrTableMoneyPanel(
       host: this,
+      openCheckout: widget.openCheckout,
       standaloneOrder: order.boardOrder,
       forceRefresh: _feed.forceRefresh,
       builder: (context, detail, requestRouteExit, settlementInFlight) => Scaffold(
