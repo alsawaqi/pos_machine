@@ -398,6 +398,25 @@ class PosApiService {
 
   String get quickOrderBaseUrl => baseUrlGetter?.call() ?? _dio.options.baseUrl;
 
+  Future<Map<String, dynamic>> dineInDetail(int id) async =>
+      (await _send(() => _dio.get('/device/tables/$id/detail'))).dataMap;
+
+  Future<Map<String, dynamic>> dineInAppend(String uuid, Map<String, dynamic> payload) async =>
+      (await _send(() => _dio.post('/device/tables/${Uri.encodeComponent(uuid)}/round', data: payload))).dataMap;
+
+  Future<void> dineInReview(String uuid, int id, {required bool staff, required bool accept}) async {
+    final action = accept ? 'confirm' : 'reject';
+    final result = await _send(() => _dio.post(staff
+        ? '/device/tables/${Uri.encodeComponent(uuid)}/rounds/$id/$action'
+        : '/device/qr/$action-round', data: staff ? <String, dynamic>{} : {'round_id': id}));
+    if (staff && !const {'accepted', 'rejected', 'replayed'}.contains(result.dataMap['outcome'])) {
+      throw ApiException(message: result.dataMap['outcome']?.toString() ?? 'Round not resolved');
+    }
+  }
+
+  Future<void> dineInClear(int id) => clearQrTable(id);
+  Future<void> dineInReopen(String uuid) async { await reopenQrPayment(uuid); }
+
   Future<Map<String, dynamic>> checkoutClaim(Map<String, dynamic> payload) async =>
       (await _send(() => _dio.post('/device/qr/claim-settlement', data: payload))).dataMap;
 

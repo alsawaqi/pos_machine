@@ -1,0 +1,321 @@
+import 'package:flutter/foundation.dart';
+import '../qr_quick/qr_quick_models.dart';
+import 'dine_in_models.dart';
+import 'dine_in_store.dart';
+
+abstract interface class DineInGateway {
+  Future<DineInDetail> detail(int tableId);
+  Future<Map<String, dynamic>> append(DineInRequest request);
+  Future<void> review(
+    DineInDetail detail,
+    Map<String, dynamic> round,
+    bool accept,
+  );
+  Future<void> clear(int tableId);
+  Future<void> reopen(String uuid);
+}
+
+class DineInController extends ChangeNotifier {
+  DineInController(
+    this.gateway,
+    this.store,
+    this.tableId, {
+    this.staffId,
+    this.localDraftTables,
+    this.printAccepted,
+  });
+  final DineInGateway gateway;
+  final DineInStore store;
+  final int tableId;
+  final int? staffId;
+  final Set<int> Function()? localDraftTables;
+  final Future<bool> Function(DineInDetail, Map<String, dynamic>)?
+  printAccepted;
+  bool _localConflict(DineInDetail value) => value.coveredTableIds.any(
+    (id) => localDraftTables?.call().contains(id) == true,
+  );
+  bool get hasLocalConflict => detail != null && _localConflict(detail!);
+  DineInDetail? detail;
+  DineInRequest? pending;
+  bool ready = false, stale = true, busy = false;
+  bool _reading = false, _disposed = false, _foreground = true;
+  int _generation = 0;
+  String? notice;
+  bool get available =>
+      ready &&
+      !stale &&
+      !busy &&
+      _foreground &&
+      pending == null &&
+      !hasLocalConflict;
+  bool get canAdd => available && detail?.canAppend == true;
+  bool get canPay =>
+      available &&
+      detail?.qrBill == true &&
+      !detail!.pendingReview &&
+      const {
+        'open',
+        'held',
+        'awaiting_payment',
+      }.contains(detail?.bill?['status']);
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<void> start() async {
+    try {
+      pending = await store.load();
+      ready = true;
+      await refresh();
+    } catch (_) {
+      ready = false;
+      notice = 'storage';
+    }
+    _notify();
+  }
+
+  void setForeground(bool value) {
+    _foreground = value;
+    stale = true;
+    _generation++;
+    _notify();
+  }
+
+  Future<void> refresh() async {
+    if (!ready || busy || _reading || _disposed || !_foreground) return;
+    _reading = true;
+    final generation = _generation;
+    try {
+      final next = await gateway.detail(tableId);
+      if (next.tableId != tableId) throw const FormatException('Wrong table');
+      if (generation == _generation && !_disposed) {
+        detail = next;
+        stale = false;
+      }
+    } catch (_) {
+      if (generation == _generation) stale = true;
+    } finally {
+      _reading = false;
+      _notify();
+    }
+  }
+
+  Future<bool> add(
+    List<QrQuickLine> lines, {
+    String? expectedSeating,
+    String? expectedBill,
+  }) async {
+    if (!canAdd || lines.isEmpty) return false;
+    final before = detail!;
+    if (expectedSeating != null &&
+        (before.seatingUuid != expectedSeating ||
+            before.billUuid != expectedBill)) {
+      notice = 'changed';
+      _notify();
+      return false;
+    }
+    busy = true;
+    _generation++;
+    notice = null;
+    _notify();
+    try {
+      // Re-read immediately; never retarget an unsent draft to a new party.
+      final now = await gateway.detail(tableId);
+      if (!now.canAppend ||
+          _localConflict(now) ||
+          now.seatingUuid != before.seatingUuid ||
+          now.billUuid != before.billUuid) {
+        detail = now;
+        notice = 'changed';
+        return false;
+      }
+      final request = DineInRequest.create(now, lines, staffId);
+      try {
+        await store.save(request); // Must commit before POST.
+      } catch (_) {
+        // Another host may have saved an intent since this one opened.
+        // Re-read it; never let a stale in-memory empty journal enable payment.
+        try {
+          pending = await store.load();
+        } catch (_) {
+          ready = false;
+        }
+        if (pending == null) ready = false;
+        notice = 'storage';
+        return false;
+      }
+      pending = request;
+      return await _send(request, fresh: true);
+    } catch (_) {
+      notice = pending == null ? 'refresh' : 'uncertain';
+      return false;
+    } finally {
+      busy = false;
+      stale = true;
+      _notify();
+      await refresh();
+    }
+  }
+
+  Future<bool> retry() async {
+    if (!ready || busy || !_foreground || pending == null) return false;
+    busy = true;
+    _generation++;
+    notice = null;
+    _notify();
+    try {
+      final request = pending!;
+      // An old intent may not open a new seating after a clear/prune/reassignment.
+      final current = await gateway.detail(request.tableId);
+      if (_localConflict(current) ||
+          current.seatingUuid != request.seatingUuid ||
+          (request.billUuid != null && current.billUuid != request.billUuid)) {
+        notice = 'recovery';
+        return false;
+      }
+      return await _send(request, fresh: false);
+    } catch (_) {
+      notice = 'uncertain';
+      return false;
+    } finally {
+      busy = false;
+      stale = true;
+      _notify();
+      await refresh();
+    }
+  }
+
+  Future<bool> _send(DineInRequest request, {required bool fresh}) async {
+    try {
+      final result = await gateway.append(request);
+      final outcome = result['outcome'];
+      if (fresh && const {'bill_terminal', 'bill_unpaid'}.contains(outcome)) {
+        // These two business verdicts store no round. Only a NEW attempt may unlock.
+        await store.remove(request);
+        pending = null;
+        notice = outcome as String;
+        return false;
+      }
+      if (!const {
+            'appended',
+            'held',
+            'merged',
+            'replayed',
+            'seating_created',
+          }.contains(outcome) ||
+          (result['winner_table_session_uuid'] ??
+                  result['table_session_uuid']) !=
+              request.seatingUuid ||
+          result['seating_key'] != request.payload['seating_key'] ||
+          result['table_id'] != request.payload['table_id'] ||
+          result['order_uuid'] is! String ||
+          (request.billUuid != null &&
+              result['order_uuid'] != request.billUuid) ||
+          result['round_id'] is! int ||
+          (result['round_id'] as int) < 1 ||
+          result['round_no'] is! int ||
+          result['total_baisas'] is! int ||
+          !const {
+            'accepted',
+            'pending_confirmation',
+            'rejected',
+          }.contains(result['round_status'])) {
+        throw const FormatException('Uncertain round acknowledgement');
+      }
+      await store.remove(request);
+      pending = null;
+      notice = result['round_status'] == 'pending_confirmation'
+          ? 'held'
+          : 'added';
+      if (result['round_status'] == 'accepted') {
+        await _printAcceptedRound(request.tableId, result['round_id'] as int);
+      }
+      return true;
+    } catch (_) {
+      // Unknown errors, HTTP refusals and lost responses keep the immutable intent.
+      // Never give a retry a new identity, even after navigation or restart.
+      notice = 'uncertain';
+      return false;
+    }
+  }
+
+  Future<void> review(int roundId, bool accept) async {
+    if (!available) return;
+    final before = detail!;
+    await _action(() async {
+      final now = await gateway.detail(tableId);
+      if (_localConflict(now) ||
+          now.seatingUuid != before.seatingUuid ||
+          now.billUuid != before.billUuid) {
+        throw StateError('changed');
+      }
+      final round = now.rounds.where((r) => r['id'] == roundId).firstOrNull;
+      if (round == null || round['status'] != 'pending_confirmation') return;
+      await gateway.review(now, round, accept);
+      if (accept) await _printAcceptedRound(tableId, roundId);
+    });
+  }
+
+  Future<void> clear() async {
+    if (!available || detail?.occupied != true || detail?.bill != null) return;
+    await _action(() => gateway.clear(tableId));
+  }
+
+  Future<void> reopen() async {
+    if (!available || detail?.qrBill != true || detail?.billUuid == null) {
+      return;
+    }
+    await _action(() => gateway.reopen(detail!.billUuid!));
+  }
+
+  Future<void> retryPrint(int roundId) async {
+    if (!available || printAccepted == null) return;
+    await _action(() => _printAcceptedRound(tableId, roundId));
+  }
+
+  Future<void> _printAcceptedRound(int selectedTableId, int roundId) async {
+    if (printAccepted == null) return;
+    try {
+      final current = await gateway.detail(selectedTableId);
+      final round = current.rounds
+          .where((row) => row['id'] == roundId)
+          .firstOrNull;
+      if (round == null || current.billUuid == null) {
+        notice = 'print_failed';
+        return;
+      }
+      if (round['status'] != 'accepted' ||
+          round['kitchen_printed_at'] != null) {
+        return;
+      }
+      if (!await printAccepted!(current, round)) notice = 'print_failed';
+    } catch (_) {
+      notice = 'print_failed';
+    }
+  }
+
+  Future<void> _action(Future<void> Function() action) async {
+    busy = true;
+    _generation++;
+    notice = null;
+    _notify();
+    try {
+      await action();
+    } on QrQuickFailure catch (error) {
+      notice = error.message;
+    } catch (_) {
+      notice = 'refresh';
+    } finally {
+      busy = false;
+      stale = true;
+      _notify();
+      await refresh();
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+}

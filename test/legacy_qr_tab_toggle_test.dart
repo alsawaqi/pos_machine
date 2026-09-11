@@ -298,7 +298,7 @@ void main() {
     },
   );
 
-  testWidgets('actual Settings switch persists and invalidates its snapshot', (
+  testWidgets('Settings retires the legacy switch without rewriting its saved value', (
     tester,
   ) async {
     final preferences = await SharedPreferences.getInstance();
@@ -317,29 +317,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(toggleKey));
-    expect(tester.widget<SwitchListTile>(find.byKey(toggleKey)).value, isFalse);
-    expect(find.text('Show the old QR Tables tab'), findsOneWidget);
-    expect(
-      find.text(
-        'Fallback for one release. The floor plan is the table surface.',
-      ),
-      findsOneWidget,
-    );
-    await tester.tap(find.byKey(toggleKey));
-    await tester.pumpAndSettle();
-    expect(preferences.getBool('show_legacy_qr_tables_tab'), isTrue);
-    expect(tester.widget<SwitchListTile>(find.byKey(toggleKey)).value, isTrue);
+    await tester.ensureVisible(find.byKey(const ValueKey('settings-unified-dine-in')));
+    expect(find.byKey(toggleKey), findsNothing);
+    expect(find.text('Show the old QR Tables tab'), findsNothing);
+    expect(find.text('Table orders are in Dine-In'), findsOneWidget);
+    expect(preferences.getBool('show_legacy_qr_tables_tab'), isNull);
     final container = ProviderScope.containerOf(
       tester.element(find.byType(SettingsScreen)),
     );
-    expect(
-      container.read(settingsControllerProvider).showLegacyQrTablesTab,
-      isTrue,
-    );
-    await tester.tap(find.byKey(toggleKey));
-    await tester.pumpAndSettle();
-    expect(preferences.getBool('show_legacy_qr_tables_tab'), isFalse);
     expect(
       container.read(settingsControllerProvider).showLegacyQrTablesTab,
       isFalse,
@@ -349,7 +334,7 @@ void main() {
 
   for (final mode in ['off', 'shadow', 'live']) {
     for (final enabled in [false, true]) {
-      testWidgets('actual nav $mode toggle=$enabled retains the legacy route', (
+      testWidgets('actual nav $mode old toggle=$enabled exposes no separate QR Tables', (
         tester,
       ) async {
         tester.view.physicalSize = const Size(1600, 1000);
@@ -357,32 +342,22 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
         final harness = await _pumpPos(tester, mode: mode, toggle: enabled);
-        final visible = mode == 'off' || enabled;
         expect(find.byType(StaffPosScreen), findsOneWidget);
-        expect(find.text('QR Tables'), visible ? findsOneWidget : findsNothing);
+        expect(find.text('QR Tables'), findsNothing);
         expect(find.text('Offers'), findsOneWidget);
         expect(find.text('Messages'), findsOneWidget);
         expect(harness.gateway.calls, isEmpty);
-        if (visible) {
-          await tester.tap(find.text('QR Tables'));
-          await tester.pumpAndSettle();
-          expect(find.byType(QrTablesScreen), findsOneWidget);
-          expect(harness.gateway.calls, ['board']);
-          expect(find.text('Current Order'), findsNothing);
-          await tester.tap(find.byKey(const ValueKey('qr-board-back')));
-          await tester.pumpAndSettle();
-          expect(find.byType(QrTablesScreen), findsNothing);
-          expect(find.byType(StaffPosScreen), findsOneWidget);
-        }
+        expect(find.byType(QrTablesScreen), findsNothing);
+        expect(harness.preferences.getBool('show_legacy_qr_tables_tab'), enabled);
         debugPrint(
           'T7_LEGACY_TAB_MATRIX mode=$mode toggle=$enabled '
-          'visible=$visible legacy_route=${visible ? "opened" : "hidden"}',
+          'visible=false legacy_route=retired',
         );
         await _dispose(tester);
       });
     }
 
-    testWidgets('Settings return updates actual $mode navigation both ways', (
+    testWidgets('Settings return cannot restore QR Tables in $mode', (
       tester,
     ) async {
       tester.view.physicalSize = const Size(1600, 1000);
@@ -395,7 +370,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(SettingsScreen), findsOneWidget);
         await tester.scrollUntilVisible(
-          find.byKey(toggleKey),
+          find.byKey(const ValueKey('settings-unified-dine-in')),
           300,
           scrollable: find
               .descendant(
@@ -404,7 +379,8 @@ void main() {
               )
               .first,
         );
-        await tester.tap(find.byKey(toggleKey));
+        expect(find.byKey(toggleKey), findsNothing);
+        await harness.preferences.setBool('show_legacy_qr_tables_tab', enabled);
         await tester.pumpAndSettle();
         expect(
           harness.preferences.getBool('show_legacy_qr_tables_tab'),
@@ -414,13 +390,13 @@ void main() {
         await tester.pumpAndSettle();
         expect(
           find.text('QR Tables'),
-          mode == 'off' || enabled ? findsOneWidget : findsNothing,
+          findsNothing,
         );
       }
       expect(harness.gateway.calls, isEmpty);
       debugPrint(
         'T7_LEGACY_TAB_RETURN mode=$mode toggle=true,false '
-        'visible=${mode == "off" ? "true,true" : "true,false"}',
+        'visible=false,false',
       );
       await _dispose(tester);
     });

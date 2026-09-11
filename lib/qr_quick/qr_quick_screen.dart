@@ -4,6 +4,20 @@ import 'qr_quick_controller.dart';
 import 'qr_quick_copy.dart';
 import 'qr_quick_models.dart';
 
+/// Shared price-free catalogue picker. It never reads or modifies a cart.
+Future<(String, QrQuickLine)?> pickStaffRoundItem(BuildContext context,
+    List<QuickProduct> products, {required bool arabic}) async {
+  final copy = QuickCopy(arabic);
+  final product = await showDialog<QuickProduct>(context: context,
+    builder: (_) => Directionality(textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
+      child: _ProductPicker(products, copy)));
+  if (product == null || !context.mounted) return null;
+  final line = await showDialog<QrQuickLine>(context: context,
+    builder: (_) => Directionality(textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
+      child: _ProductOptions(product, copy)));
+  return line == null ? null : (copy.name(product.name, product.nameAr), line);
+}
+
 class QrQuickScreen extends StatefulWidget {
   const QrQuickScreen({
     super.key,

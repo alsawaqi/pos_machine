@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
+import '../models/qr_till_models.dart' show QrDeviceRound, QrRoundEnvelope;
 import '../models/remote_table_state.dart';
 import '../data/table_shadow_repository.dart';
 import '../data/table_sync_coordinator.dart';
@@ -51,7 +52,10 @@ import 'kitchen_production_screen.dart';
 import 'log_expense_screen.dart';
 import 'restock_request_screen.dart';
 import 'qr_tables_screen.dart';
-import 'dining_table_qr_sheet.dart';
+import '../dine_in/dine_in_screen.dart';
+import '../dine_in/dine_in_controller.dart';
+import '../dine_in/dine_in_gateway.dart';
+import '../dine_in/dine_in_store.dart';
 import 'stock_count_screen.dart';
 import 'waste_product_screen.dart';
 import 'settings_screen.dart';
@@ -204,7 +208,8 @@ bool customerOccupiesDiningTable({
   required String mode,
   required DiningTableSession? session,
   RemoteTableState? remote,
-}) => mode != 'off' && session == null &&
+}) => mode != 'off' &&
+    (session == null || remote?.billSource == 'qr_web') &&
     const {'open', 'billing'}.contains(remote?.seatingStatus);
 
 bool customerBillEntryBlocked({
@@ -227,12 +232,12 @@ Future<void> routeDiningTableTap({
   required Future<void> Function() openPaidDialog,
   required VoidCallback localOpened,
 }) async {
-  if (session?.status == DiningTableStatus.paid) {
-    await openPaidDialog();
-  } else if (customerOccupiesDiningTable(
+  if (customerOccupiesDiningTable(
     mode: mode, session: session, remote: remote,
   )) {
     await openCustomerBill();
+  } else if (session?.status == DiningTableStatus.paid) {
+    await openPaidDialog();
   } else {
     await controller.openDiningTable(tableId);
     localOpened();
@@ -2330,8 +2335,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Future<void> _openCustomerBill(String tableId, {String? tableLabel}) async {
     final id = int.tryParse(tableId);
-    if (!mounted || id == null || _customerBillRouteOpen ||
-        ref.read(tableSessionsModeProvider) == 'off') {
+    if (!mounted || id == null || _customerBillRouteOpen) {
       return;
     }
     // A snackbar lives above the local checkout's pointer barriers. It must
@@ -2347,16 +2351,44 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     final table = controller.diningTableDefinitionById(tableId);
-    final floor = controller.diningFloors
-        .where((floor) => floor.id == table?.floorId).firstOrNull;
     _customerBillRouteOpen = true;
     try {
       await Navigator.of(context).push<void>(MaterialPageRoute(
-        builder: (_) => DiningTableQrSheet(
-          openCheckout: _launchQrCheckout,
-          controller: controller, tableId: id,
-          tableLabel: tableLabel ?? table?.name ?? tableId,
-          floorLabel: floor?.label ?? '',
+        builder: (_) => DineInScreen(
+          label: tableLabel ?? table?.name ?? tableId,
+          arabic: ref.read(settingsControllerProvider).language == 'ar',
+          writesAllowed: ref.read(tableSessionsModeProvider) == 'live',
+          localDraftBlocked: _pendingTableIds.contains(tableId) ||
+              (controller.activeDiningTableId == tableId && controller.cart.isNotEmpty),
+          createController: () async {
+            final api = ref.read(apiServiceProvider);
+            final session = ref.read(sessionServiceProvider);
+            final gateway = ApiDineInGateway(api, () => quickDeviceScope(
+              api.quickOrderBaseUrl, session.companyId, session.branchId, session.kioskId));
+            return DineInController(gateway, await SqliteDineInStore.open(gateway.scope), id,
+              staffId: session.staff?.id,
+              printAccepted: (detail, round) async {
+                gateway.check();
+                if (!ref.read(settingsControllerProvider).printKitchenTickets) return true;
+                return ref.read(qrRoundAutoPrintControllerProvider).printConfirmedRound(
+                  QrRoundEnvelope(round: QrDeviceRound.fromJson(round), orderUuid: detail.billUuid!,
+                    tableLabel: detail.table['label'] as String,
+                    receiptNumber: detail.bill?['receipt_number'] as String?,
+                    tempReference: detail.reference, ticketKey: 'round:${round['id']}',
+                    printedAt: DateTime.tryParse(round['kitchen_printed_at']?.toString() ?? '')));
+              },
+              localDraftTables: () => {
+                for (final local in controller.diningTableSessions)
+                  if (local.status != DiningTableStatus.paid && (local.draft?.items.isNotEmpty ?? false)) ...{
+                    ?int.tryParse(local.tableId), ?int.tryParse(local.primaryTableId ?? ''),
+                    ...local.linkedTableIds.map(int.tryParse).whereType<int>(),
+                  },
+                if (controller.cart.isNotEmpty) ?int.tryParse(controller.activeDiningTableId ?? ''),
+                ..._pendingTableIds.map(int.tryParse).whereType<int>(),
+              });
+          },
+          catalogue: () => machineQuickCatalogue(ref.read(catalogProvider).asData?.value),
+          onPay: _launchQrCheckout,
         ),
       ));
     } finally {
@@ -2368,24 +2400,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Future<void> _openRemoteDiningTableActions(
     DiningTableDefinition table, {bool canAddItems = true}
   ) async {
-    if (_tableShadowMode == 'off') return;
-    final action = await showCustomerDiningTableActions(
-      context,
-      mode: canAddItems ? _tableShadowMode : 'off',
-      hasBill: _hasServerBillFor(table.id),
-    );
-    if (!mounted || ref.read(tableSessionsModeProvider) == 'off') return;
-    if (action == 'customer_bill') {
-      await _openCustomerBill(table.id);
-    } else if (action == 'add_items') {
-      if (ref.read(tableSessionsModeProvider) == 'shadow' &&
-          !await confirmSeparateLocalTable(context)) {
-        return;
-      }
-      if (!mounted || ref.read(tableSessionsModeProvider) == 'off') return;
-      await controller.openDiningTable(table.id);
-      if (mounted) setState(() => _showPaymentPage = false);
-    }
+    await _openCustomerBill(table.id);
   }
 
   String _formatOccupancyDuration(DateTime? value) =>
@@ -2705,7 +2720,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   pendingRounds: _tableShadow?.displayActivityBoard[int.tryParse(table.id)]?.pendingCount ?? 0,
                                   searchMatch: _tableShadowMode == 'live' &&
                                       _tableSearch.results.any((r) => r.tableId.toString() == table.id),
-                                  onLongPress: openActions,
+                                  onLongPress: openActions ?? () => unawaited(_openCustomerBill(table.id)),
                                   onActions: openActions,
                                   linkedToLabel: linkedToLabel,
                                   groupTotal: groupTotal,
@@ -5245,6 +5260,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           if ((await requests.load()).any((r) => r.orderUuid == orderUuid)) {
             throw StateError('Resolve the pending item addition before payment.');
           }
+          final tableRequests = await SqliteDineInStore.open(quickDeviceScope(
+            api.quickOrderBaseUrl, session.companyId, session.branchId, session.kioskId));
+          if (await tableRequests.load() != null) {
+            throw StateError('Resolve the saved table round before payment.');
+          }
         });
       final store = await SqliteCheckoutStore.open(gateway.scope);
       checkout = QrCheckoutController(gateway: gateway, store: store,
@@ -6482,10 +6502,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Widget _buildSecondaryNavGroup({required AlignmentGeometry alignment}) {
     final l10n = L10n.of(context);
-    final showLegacy = _tableShadowMode == 'off' ||
-        ref.read(settingsControllerProvider).showLegacyQrTablesTab;
     final navItems = _secondaryNavItems
-        .where((item) => item.title != 'QR Tables' || showLegacy).toList();
+        .where((item) => item.title != 'QR Tables').toList();
     // The stored _NavItemData titles stay English IDENTITY values (the switch
     // below compares them); only the rendered chip label is localized.
     String navChipTitle(String identity) => switch (identity) {

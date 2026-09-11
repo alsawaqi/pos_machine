@@ -333,10 +333,10 @@ void _registerFloorUiTests() {
       path: 'sheet', customer: true, shared: false),
     (name: 'occupied / none keeps local cart', session: _floorSession(DiningTableStatus.occupied), remote: null,
       path: 'local', customer: false, shared: false),
-    (name: 'occupied / live shows shared cart', session: _floorSession(DiningTableStatus.occupied), remote: _floorRemote(),
-      path: 'local', customer: false, shared: true),
-    (name: 'paid / live keeps paid dialog', session: _floorSession(DiningTableStatus.paid), remote: _floorRemote(),
-      path: 'paid', customer: false, shared: false),
+    (name: 'occupied / live opens shared bill without importing a cart', session: _floorSession(DiningTableStatus.occupied), remote: _floorRemote(),
+      path: 'sheet', customer: true, shared: true),
+    (name: 'old local paid / new live QR bill opens current bill', session: _floorSession(DiningTableStatus.paid), remote: _floorRemote(),
+      path: 'sheet', customer: true, shared: false),
   ];
   for (final mode in ['live', 'shadow']) {
     for (final row in rows) {
@@ -413,13 +413,13 @@ void _registerFloorUiTests() {
 
   for (final origin in ['station', 'staff_till', 'handheld']) {
     for (final status in ['open', 'billing']) {
-      test('customer occupancy accepts $origin / $status only without a local session', () {
+      test('customer occupancy accepts $origin / $status even with an older local session', () {
         final remote = _floorRemote(origin: origin, status: status);
         expect(customerOccupiesDiningTable(mode: 'live', session: null, remote: remote), true);
         expect(customerOccupiesDiningTable(mode: 'shadow', session: null, remote: remote), true);
         expect(customerOccupiesDiningTable(mode: 'off', session: null, remote: remote), false);
         expect(customerOccupiesDiningTable(mode: 'live',
-          session: _floorSession(DiningTableStatus.occupied), remote: remote), false);
+          session: _floorSession(DiningTableStatus.occupied), remote: remote), true);
       });
     }
   }
