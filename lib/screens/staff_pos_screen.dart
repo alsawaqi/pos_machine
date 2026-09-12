@@ -30,6 +30,7 @@ import '../models/qr_till_models.dart' show QrDeviceRound, QrRoundEnvelope;
 import '../models/remote_table_state.dart';
 import '../data/table_shadow_repository.dart';
 import '../data/table_sync_coordinator.dart';
+import '../data/table_replay_configuration.dart';
 import '../models/table_sync_models.dart';
 import '../services/kitchen_ticket.dart';
 import '../services/table_shadow_service.dart';
@@ -622,24 +623,44 @@ class TableKitchenBridge implements DiningTableSyncHooks {
       coordinator.onTablePaid(paid, snapshot);
 }
 
-/// The mid-service Live burst uses cashier-owned local carts only. All keys,
-/// pricing-free payloads and queued_offline decisions remain the coordinator's.
+/// Local drafts are not a branch catalogue. A Live transition may only replay
+/// tables present in the paired device's verified cached configuration.
 class TableModeTransition {
-  TableModeTransition(this.bridge);
+  TableModeTransition(this.bridge, {required this.loadConfiguration});
   final TableKitchenBridge bridge;
+  final Future<TableReplayConfiguration?> Function() loadConfiguration;
   Future<void> _tail = Future<void>.value();
 
-  Future<void> enterLive() {
+  Future<Set<String>> enterLive() {
     final next = _tail.then((_) async {
       final coordinator = bridge.coordinator;
-      if (!coordinator.live) return;
+      final skipped = <String>{};
+      if (!coordinator.live) return skipped;
       await coordinator.settled;
       final ids = (await coordinator.loadSessions())
-          .where((s) => s.status == DiningTableStatus.occupied)
+          .where(
+            (s) =>
+                s.status == DiningTableStatus.occupied &&
+                !(s.seatingKey?.isNotEmpty ?? false),
+          )
           .map((s) => s.tableId)
           .toList();
+      final configuration = await loadConfiguration();
+      if (configuration == null) return ids.toSet();
+      Future<bool> admitted(String id) async {
+        final current = await loadConfiguration();
+        return coordinator.live &&
+            current != null &&
+            current.scope == configuration.scope &&
+            current.tableIds.contains(id);
+      }
+
       for (final id in ids) {
-        if (!coordinator.live) return;
+        if (!coordinator.live) return skipped;
+        if (!await admitted(id)) {
+          skipped.add(id);
+          continue;
+        }
         // Re-read after each await: a cashier may have cleared/moved the table.
         final stored = (await coordinator.loadSessions())
             .where((s) => s.tableId == id)
@@ -651,12 +672,15 @@ class TableModeTransition {
         }
         final active = bridge.activeSession();
         final session = active?.tableId == id ? active! : stored;
-        if (!coordinator.live) return;
         // Finish open/identity adoption before capturing the round. An open
         // ACK may hydrate an older persisted draft, but not the active cart.
         coordinator.onTableOccupied(session);
         await coordinator.settled;
-        if (!coordinator.live) return;
+        if (!coordinator.live) return skipped;
+        if (!await admitted(id)) {
+          skipped.add(id);
+          continue;
+        }
         final current = (await coordinator.loadSessions())
             .where((s) => s.tableId == id)
             .firstOrNull;
@@ -669,8 +693,9 @@ class TableModeTransition {
         final latest = bridge.activeSession();
         await bridge.send(latest?.tableId == id ? latest! : current);
       }
+      return skipped;
     });
-    _tail = next.catchError((Object _) {});
+    _tail = next.then<void>((_) {}, onError: (Object _, StackTrace _) {});
     return next;
   }
 }
@@ -2216,7 +2241,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         : _showDineInFloorPlan
         ? _buildDineInFloorPlanSurface(height)
         : _buildCatalogSurface(height);
-    if (!state.degraded || controller.selectedOrderType != OrderType.dineIn) {
+    if (!state.hasWarning || controller.selectedOrderType != OrderType.dineIn) {
       return surface(contentHeight);
     }
     return Column(
@@ -2241,7 +2266,48 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (!mounted || ref.read(tableSessionsModeProvider) != 'live') return;
     await _ensureTableKitchen();
     if (!mounted || ref.read(tableSessionsModeProvider) != 'live') return;
-    await _tableModeTransition!.enterLive();
+    final scope = _tableReplayScope();
+    final skipped = await _tableModeTransition!.enterLive();
+    if (mounted &&
+        scope != null &&
+        _tableReplayScope() == scope &&
+        ref.read(tableSessionsModeProvider) == 'live' &&
+        skipped.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ref.read(l10nProvider).tableReplayUnverified(skipped.length),
+          ),
+        ),
+      );
+    }
+  }
+
+  String? _tableReplayScope() {
+    if (!mounted) return null;
+    final session = ref.read(sessionServiceProvider);
+    if (session.deviceToken?.isNotEmpty != true ||
+        session.companyId == null ||
+        session.branchId == null ||
+        session.kioskId?.isNotEmpty != true) {
+      return null;
+    }
+    final base = ref.read(settingsServiceProvider).effectiveBaseUrl;
+    return '$base|${session.companyId}|${session.branchId}|${session.kioskId}';
+  }
+
+  Future<TableReplayConfiguration?> _loadTableReplayConfiguration() async {
+    final scope = _tableReplayScope();
+    if (scope == null) return null;
+    final session = ref.read(sessionServiceProvider).snapshot();
+    final db = ref.read(appDatabaseProvider);
+    final configuration = await TableReplayConfiguration.read(
+      db,
+      scope: scope,
+      companyId: session.companyId,
+      branchId: session.branchId,
+    );
+    return _tableReplayScope() == scope ? configuration : null;
   }
 
   void _showTableActionFailure() {
@@ -2299,7 +2365,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             if (mounted) setState(() => _pendingTableIds = ids);
           })
           .listen((_) {});
-      _tableModeTransition = TableModeTransition(bridge);
+      _tableModeTransition = TableModeTransition(
+        bridge,
+        loadConfiguration: _loadTableReplayConfiguration,
+      );
       _tableReconciliation = TableReconciliationPresenter(
         show: (rows) async {
           if (!mounted) return false;
@@ -3210,6 +3279,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   customerReference: remote?.tempReference,
                                   remoteFailures:
                                       _remoteTables.meta.consecutiveFailures,
+                                  lastFeedOkAt: _remoteTables.meta.lastFeedOkAt,
                                   live: _tableShadowMode == 'live',
                                   sending: _pendingTableIds.contains(table.id),
                                   pendingRounds:
@@ -12129,6 +12199,7 @@ class _DiningTableCard extends StatelessWidget {
   final RemoteTableState? remote;
   final DateTime now;
   final int remoteFailures;
+  final DateTime? lastFeedOkAt;
   final DiningTableDefinition table;
   final DiningTableSession? session;
   final DiningTableStatus status;
@@ -12157,6 +12228,7 @@ class _DiningTableCard extends StatelessWidget {
     required this.onTap,
     this.remote,
     this.remoteFailures = 0,
+    this.lastFeedOkAt,
     this.onLongPress,
     this.onActions,
     this.linkedToLabel,
@@ -12521,6 +12593,7 @@ class _DiningTableCard extends StatelessWidget {
                         localReference: session?.orderReference,
                         now: now,
                         failures: remoteFailures,
+                        lastFeedOkAt: lastFeedOkAt,
                       ),
                     ],
                     if (live)
@@ -12565,17 +12638,25 @@ class DiningServerBadge extends StatelessWidget {
     required this.now,
     this.localReference,
     this.failures = 0,
+    this.lastFeedOkAt,
   });
   final RemoteTableState remote;
   final DiningTableStatus localStatus;
   final String? localReference;
   final DateTime now;
   final int failures;
+  final DateTime? lastFeedOkAt;
 
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
-    final seconds = math.max(0, now.difference(remote.fetchedAt).inSeconds);
+    // An empty successful feed validates the unchanged board too. Display age
+    // from that observation without rewriting the stored board timestamp.
+    final verifiedAt =
+        lastFeedOkAt != null && lastFeedOkAt!.isAfter(remote.fetchedAt)
+        ? lastFeedOkAt!
+        : remote.fetchedAt;
+    final seconds = math.max(0, now.difference(verifiedAt).inSeconds);
     final age = seconds < 60
         ? l10n.tableServerAgeSeconds(seconds)
         : l10n.tableServerAgeMinutes(seconds ~/ 60);
@@ -12644,6 +12725,7 @@ Widget buildDiningTableCardForTest({
   DiningTableSession? session,
   RemoteTableState? remote,
   int failures = 0,
+  DateTime? lastFeedOkAt,
   bool live = false,
   bool sending = false,
   bool searchMatch = false,
@@ -12660,6 +12742,7 @@ Widget buildDiningTableCardForTest({
   onTap: onTap,
   remote: remote,
   remoteFailures: failures,
+  lastFeedOkAt: lastFeedOkAt,
   live: live,
   sending: sending,
   searchMatch: searchMatch,

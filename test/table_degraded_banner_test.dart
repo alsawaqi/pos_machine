@@ -86,6 +86,56 @@ class DegradedHarness {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test(
+    'parked table refusals do not make a healthy connection offline',
+    () async {
+      final h = DegradedHarness();
+      await h.init();
+      final parked = h
+          .row('tbl:old:open', 600)
+          .copyWith(
+            attempts: 10,
+            serverRejections: OrderSyncRepository.maxServerRejections,
+          );
+      h.poll(success: DateTime.now());
+      h.outbox.pending.add([parked]);
+      await h.tick();
+      expect(h.state.degraded, false);
+      expect(h.state.since, isNull);
+      expect(h.state.queuedActions, 0);
+      expect(h.state.parkedActions, 1);
+      expect(h.state.hasWarning, true);
+      expect(h.state.connectionUnavailable, false);
+    },
+  );
+
+  test(
+    'parked evidence survives genuine disconnect and verified recovery',
+    () async {
+      final h = DegradedHarness();
+      await h.init();
+      final parked = h
+          .row('tbl:old:round', 600)
+          .copyWith(
+            attempts: 10,
+            serverRejections: OrderSyncRepository.maxServerRejections,
+          );
+      h.outbox.pending.add([parked]);
+      h.network.add(false);
+      await h.tick();
+      expect(h.state.degraded, true);
+      h.network.add(true);
+      h.poll(success: DateTime.now());
+      h.outbox.flushes.add(true);
+      await h.tick();
+      expect(h.state.degraded, false);
+      expect(parked.attempts, 10);
+      expect(h.state.parkedActions, 1);
+      expect(h.state.hasWarning, true);
+      expect(parked.serverRejections, OrderSyncRepository.maxServerRejections);
+    },
+  );
+
   for (final trigger in ['network', 'polls', 'old-row']) {
     for (final recoveryOrder in ['flush-first', 'poll-first']) {
       test(
@@ -129,26 +179,106 @@ void main() {
     }
   }
 
-  test('one failed poll, young rows and old sales do not trigger; queue counts tables', () async {
-    final h = DegradedHarness();
-    await h.init();
-    h.poll(failures: 1);
-    h.outbox.pending.add([
-      h.row('sale', 90),
-      h.row('tbl:1:open', 19),
-      h.row('tbl:2:round:1', 1),
-    ]);
-    await h.tick();
-    expect(h.state.degraded, false);
-    expect(h.state.queuedActions, 2);
-    h.mode = 'shadow';
-    h.container.invalidate(tableSessionsModeProvider);
-    h.network.add(false);
-    h.poll(failures: 9);
-    await h.tick();
-    expect(h.state.degraded, false);
-    expect(h.state.queuedActions, 0);
-  });
+  test(
+    'retryable age still degrades but is not labelled a lost connection',
+    () async {
+      final h = DegradedHarness();
+      await h.init();
+      h.outbox.pending.add([
+        h.row('tbl:parked', 600).copyWith(serverRejections: 5),
+        h.row('tbl:retryable', 21).copyWith(serverRejections: 4),
+        h.row('ordinary-sale', 600).copyWith(serverRejections: 5),
+      ]);
+      await h.tick();
+      expect(h.state.degraded, true);
+      expect(h.state.connectionUnavailable, false);
+      expect(h.state.queuedActions, 1);
+      expect(h.state.parkedActions, 1);
+    },
+  );
+
+  for (final locale in ['en', 'ar']) {
+    for (final kind in ['parked', 'pending', 'offline-and-parked']) {
+      testWidgets('separate $kind warning $locale preserves truthful copy', (
+        tester,
+      ) async {
+        final offline = kind == 'offline-and-parked';
+        final parked = kind != 'pending';
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: Locale(locale),
+            localizationsDelegates: L10n.localizationsDelegates,
+            supportedLocales: L10n.supportedLocales,
+            home: Scaffold(
+              body: TableDegradedBanner(
+                mode: 'live',
+                state: TableDegradedState(
+                  degraded: kind != 'parked',
+                  connectionUnavailable: offline,
+                  queuedActions: parked ? 0 : 2,
+                  parkedActions: parked ? 2 : 0,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('table-sync-attention-banner')),
+          parked ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.textContaining(
+            locale == 'en' ? 'Working offline' : 'العمل دون اتصال',
+          ),
+          offline ? findsOneWidget : findsNothing,
+        );
+        if (parked) {
+          expect(
+            find.textContaining(
+              locale == 'en'
+                  ? 'will not retry automatically'
+                  : 'لن تعاد محاولتها تلقائيًا',
+            ),
+            findsOneWidget,
+          );
+        } else {
+          expect(
+            find.textContaining(
+              locale == 'en'
+                  ? 'synchronization is pending'
+                  : 'مزامنة الطاولات قيد الانتظار',
+            ),
+            findsOneWidget,
+          );
+        }
+      });
+    }
+  }
+
+  test(
+    'one failed poll, young rows and old sales do not trigger; queue counts tables',
+    () async {
+      final h = DegradedHarness();
+      await h.init();
+      h.poll(failures: 1);
+      h.outbox.pending.add([
+        h.row('sale', 90),
+        h.row('tbl:1:open', 19),
+        h.row('tbl:2:round:1', 1),
+      ]);
+      await h.tick();
+      expect(h.state.degraded, false);
+      expect(h.state.queuedActions, 2);
+      h.mode = 'shadow';
+      h.container.invalidate(tableSessionsModeProvider);
+      h.network.add(false);
+      h.poll(failures: 9);
+      await h.tick();
+      expect(h.state.degraded, false);
+      expect(h.state.queuedActions, 0);
+    },
+  );
 
   for (final locale in ['en', 'ar']) {
     testWidgets(

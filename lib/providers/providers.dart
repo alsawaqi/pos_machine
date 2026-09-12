@@ -321,10 +321,15 @@ class TableDegradedState {
     this.degraded = false,
     this.since,
     this.queuedActions = 0,
-  });
+    this.parkedActions = 0,
+    bool? connectionUnavailable,
+  }) : connectionUnavailable = connectionUnavailable ?? degraded;
   final bool degraded;
   final DateTime? since;
   final int queuedActions;
+  final int parkedActions;
+  final bool connectionUnavailable;
+  bool get hasWarning => degraded || parkedActions > 0;
 }
 
 class TableDegradedController extends Notifier<TableDegradedState> {
@@ -365,11 +370,15 @@ class TableDegradedController extends Notifier<TableDegradedState> {
     final now = DateTime.now();
     final online = ref.read(connectivityProvider).asData?.value ?? false;
     final meta = ref.read(remoteBoardProvider).asData?.value.meta;
-    final oldRow = _pending.any(
+    final retryable = _pending
+        .where((row) => !OrderSyncRepository.isStuck(row))
+        .toList();
+    final oldRow = retryable.any(
       (row) => now.difference(row.createdAt) > const Duration(seconds: 20),
     );
-    final triggered =
-        !online || (meta?.consecutiveFailures ?? 0) >= 2 || oldRow;
+    final connectionUnavailable =
+        !online || (meta?.consecutiveFailures ?? 0) >= 2;
+    final triggered = connectionUnavailable || oldRow;
     final since = state.since ?? (triggered ? now : null);
     final flushRecovered =
         since != null &&
@@ -384,7 +393,9 @@ class TableDegradedController extends Notifier<TableDegradedState> {
     state = TableDegradedState(
       degraded: stillDegraded,
       since: stillDegraded ? since : null,
-      queuedActions: _pending.length,
+      queuedActions: retryable.length,
+      parkedActions: _pending.length - retryable.length,
+      connectionUnavailable: connectionUnavailable,
     );
   }
 }

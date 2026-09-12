@@ -74,6 +74,12 @@
       }
     }
   },
+  "tableSyncPendingBanner": "Table synchronization is pending. Shared table actions remain limited until synchronization recovers. Queued: {count} table actions.",
+  "@tableSyncPendingBanner": { "placeholders": { "count": { "type": "int" } } },
+  "tableParkedActionsBanner": "{count} table actions need review after server refusals. They are saved on this device and will not retry automatically. Review synchronization errors before retrying.",
+  "@tableParkedActionsBanner": { "placeholders": { "count": { "type": "int" } } },
+  "tableReplayUnverified": "Could not verify {count} saved table drafts against this branch's configuration. They were kept unchanged and were not sent. Review them before use.",
+  "@tableReplayUnverified": { "placeholders": { "count": { "type": "int" } } },
   "tableReconciledTitle": "Tables reconciled",
   "tableReconciledDismiss": "Done",
   "tableReconciledSettings": "Tables",

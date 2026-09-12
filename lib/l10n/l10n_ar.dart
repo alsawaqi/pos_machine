@@ -68,6 +68,21 @@ class L10nAr extends L10n {
   }
 
   @override
+  String tableSyncPendingBanner(int count) {
+    return 'مزامنة الطاولات قيد الانتظار. تبقى إجراءات الطاولات المشتركة محدودة حتى استعادة المزامنة. في الانتظار: $count إجراء للطاولات.';
+  }
+
+  @override
+  String tableParkedActionsBanner(int count) {
+    return 'تحتاج $count من إجراءات الطاولات إلى مراجعة بعد رفض الخادم. هي محفوظة على هذا الجهاز ولن تعاد محاولتها تلقائيًا. راجع أخطاء المزامنة قبل إعادة المحاولة.';
+  }
+
+  @override
+  String tableReplayUnverified(int count) {
+    return 'تعذر التحقق من $count مسودة محفوظة للطاولات وفق إعدادات هذا الفرع. بقيت دون تغيير ولم تُرسل. راجعها قبل الاستخدام.';
+  }
+
+  @override
   String get tableReconciledTitle => 'تمت مزامنة الطاولات';
 
   @override

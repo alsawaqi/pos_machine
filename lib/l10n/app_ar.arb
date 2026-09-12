@@ -74,6 +74,12 @@
       }
     }
   },
+  "tableSyncPendingBanner": "مزامنة الطاولات قيد الانتظار. تبقى إجراءات الطاولات المشتركة محدودة حتى استعادة المزامنة. في الانتظار: {count} إجراء للطاولات.",
+  "@tableSyncPendingBanner": { "placeholders": { "count": { "type": "int" } } },
+  "tableParkedActionsBanner": "تحتاج {count} من إجراءات الطاولات إلى مراجعة بعد رفض الخادم. هي محفوظة على هذا الجهاز ولن تعاد محاولتها تلقائيًا. راجع أخطاء المزامنة قبل إعادة المحاولة.",
+  "@tableParkedActionsBanner": { "placeholders": { "count": { "type": "int" } } },
+  "tableReplayUnverified": "تعذر التحقق من {count} مسودة محفوظة للطاولات وفق إعدادات هذا الفرع. بقيت دون تغيير ولم تُرسل. راجعها قبل الاستخدام.",
+  "@tableReplayUnverified": { "placeholders": { "count": { "type": "int" } } },
   "tableReconciledTitle": "تمت مزامنة الطاولات",
   "tableReconciledDismiss": "تم",
   "tableReconciledSettings": "الطاولات",

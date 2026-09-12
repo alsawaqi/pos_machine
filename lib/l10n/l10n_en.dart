@@ -67,6 +67,21 @@ class L10nEn extends L10n {
   }
 
   @override
+  String tableSyncPendingBanner(int count) {
+    return 'Table synchronization is pending. Shared table actions remain limited until synchronization recovers. Queued: $count table actions.';
+  }
+
+  @override
+  String tableParkedActionsBanner(int count) {
+    return '$count table actions need review after server refusals. They are saved on this device and will not retry automatically. Review synchronization errors before retrying.';
+  }
+
+  @override
+  String tableReplayUnverified(int count) {
+    return 'Could not verify $count saved table drafts against this branch\'s configuration. They were kept unchanged and were not sent. Review them before use.';
+  }
+
+  @override
   String get tableReconciledTitle => 'Tables reconciled';
 
   @override

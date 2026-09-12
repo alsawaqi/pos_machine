@@ -181,6 +181,24 @@ abstract class L10n {
   /// **'Working offline since {time} — Still works: open tables, add items, move, join, clear, kitchen ticket, cash, card, receipt. Not available: tables opened on other devices, customer phone orders and their confirmation, QR card settlement, cancelling QR orders. Queued: {count} table actions.'**
   String tableOfflineBanner(String time, int count);
 
+  /// No description provided for @tableSyncPendingBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Table synchronization is pending. Shared table actions remain limited until synchronization recovers. Queued: {count} table actions.'**
+  String tableSyncPendingBanner(int count);
+
+  /// No description provided for @tableParkedActionsBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} table actions need review after server refusals. They are saved on this device and will not retry automatically. Review synchronization errors before retrying.'**
+  String tableParkedActionsBanner(int count);
+
+  /// No description provided for @tableReplayUnverified.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not verify {count} saved table drafts against this branch\'s configuration. They were kept unchanged and were not sent. Review them before use.'**
+  String tableReplayUnverified(int count);
+
   /// No description provided for @tableReconciledTitle.
   ///
   /// In en, this message translates to:
