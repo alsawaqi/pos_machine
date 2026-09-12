@@ -19,6 +19,14 @@ String checkoutText(BuildContext context, String key) {
       'Manager approval is required.',
       'موافقة المشرف مطلوبة.',
     ),
+    'handover_failed': (
+      'Manager handover could not be saved. Stay on this screen and try again. Do not take payment.',
+      'تعذّر حفظ تسليم الحالة للمشرف. ابقَ في هذه الشاشة وحاول مجدداً. لا تأخذ دفعة.',
+    ),
+    'handover_scope': (
+      'Manager takeover does not clear or pay this bill. Its payment evidence remains saved for review.',
+      'تسليم الحالة للمشرف لا يلغي حجز الفاتورة ولا يسددها. تبقى أدلة الدفع محفوظة للمراجعة.',
+    ),
     'empty': ('No unresolved QR payment.', 'لا توجد دفعة QR معلّقة.'),
     'loading': ('Reserving this bill…', 'جارٍ حجز الفاتورة للدفع…'),
     'busy': (
@@ -174,8 +182,9 @@ class _QrCheckoutBoundaryState extends State<QrCheckoutBoundary> {
     if (_exiting || controller.busy) return;
     _exiting = true;
     try {
-      if (controller.phase == CheckoutPhase.ready ||
-          controller.attempt?.state == 'releasing') {
+      // Only a fresh Back/Cancel performs a cancellation. Leaving recovery is
+      // a handover, not an automatic replay of a possibly stale release.
+      if (controller.phase == CheckoutPhase.ready) {
         await controller.cancel();
       }
       var canLeave = controller.canLeave;
@@ -245,6 +254,14 @@ class _QrCheckoutBoundaryState extends State<QrCheckoutBoundary> {
                           '${checkoutText(context, 'receipt')}: ${controller.attempt?.receiptNumber ?? controller.reference}',
                         ),
                         Text(checkoutText(context, 'history_receipt')),
+                      ],
+                      if (controller.phase == CheckoutPhase.attention ||
+                          controller.phase == CheckoutPhase.pending) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          checkoutText(context, 'handover_scope'),
+                          textAlign: TextAlign.center,
+                        ),
                       ],
                       const SizedBox(height: 20),
                       if (controller.phase == CheckoutPhase.pending)

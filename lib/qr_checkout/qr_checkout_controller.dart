@@ -468,10 +468,18 @@ class QrCheckoutController extends ChangeNotifier {
         await _uncertain();
       }
       if (_attempt != null &&
-          const ['uncertain', 'refused'].contains(_attempt!.state)) {
+          (const ['uncertain', 'refused'].contains(_attempt!.state) ||
+              (_attempt!.state == 'releasing' && _attempt!.event == null))) {
+        // A failed release must not trap every other bill on this device.
+        // Retain the exact claim/capture evidence for manager review. This is
+        // NOT a release or payment resolution on the server. Never retire an
+        // immutable pay event merely because a release could not complete.
         await _save(_attempt!.copy(state: 'managed'));
       }
       return true;
+    } catch (_) {
+      notice = 'handover_failed';
+      return false;
     } finally {
       _busy = false;
       _changed();
