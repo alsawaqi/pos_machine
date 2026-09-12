@@ -19,7 +19,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show SystemSound, SystemSoundType;
+import '../order_attention/order_attention.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -949,9 +949,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     'Special': Icons.star_border_rounded,
   };
 
+  late final Object _attentionLease;
+
   @override
   void initState() {
     super.initState();
+    _attentionLease = enterStaffAttention();
     controller = PosController();
     _tableSearch = TableSearchController(
       (q) => ref.read(apiServiceProvider).searchTables(q),
@@ -977,35 +980,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         );
       }
     });
-    ref.listenManual(tableActivityNoticeProvider, (_, next) {
-      final notices = next.asData?.value;
-      if (notices == null || ref.read(tableSessionsModeProvider) != 'live') {
-        return;
-      }
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || ref.read(tableSessionsModeProvider) != 'live') return;
-        unawaited(
-          SystemSound.play(SystemSoundType.alert).catchError((Object _) {}),
-        );
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: TableActivityNoticeContent(
-              notices: notices,
-              onTap: (notice) {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                unawaited(
-                  _openCustomerBill(
-                    notice.tableId.toString(),
-                    tableLabel: notice.tableLabel,
-                  ),
-                );
-              },
-            ),
-            duration: const Duration(seconds: 8),
-          ),
-        );
-      });
-    });
+    // The app-wide attention listener owns both quick and table arrival alerts.
+    // The shadow feed still projects tables/printing but cannot ring twice.
     _qrRoundAutoPrintController = ref.read(qrRoundAutoPrintControllerProvider);
     controller.onOrderCompleted = _handleOrderCompleted;
     // Phase 3C — push advertising-slide play-time telemetry (best-effort).
@@ -2062,6 +2038,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   @override
   void dispose() {
     controller.removeListener(_onTableCartChanged);
+    leaveStaffAttention(_attentionLease);
     _tableKitchen?.detach();
     unawaited(_tableKitchenChanges?.cancel());
     _tableReconciliation?.dispose();

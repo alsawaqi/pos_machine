@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/sentry.dart';
+import 'order_attention/app_order_attention.dart';
 import 'l10n/l10n.dart';
 import 'providers/providers.dart';
 import 'services/session_service.dart';
@@ -151,6 +152,7 @@ class StaffApp extends ConsumerWidget {
       locale: locale,
       supportedLocales: L10n.supportedLocales,
       localizationsDelegates: L10n.localizationsDelegates,
+      builder: (context, child) => AppOrderAttention(child: child!),
       home: const _FullscreenShell(child: StaffStartupGate()),
     );
   }

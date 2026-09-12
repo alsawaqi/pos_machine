@@ -13,6 +13,12 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private var orderAttentionSound: OrderAttentionSound? = null
+
+    override fun onPause() {
+        orderAttentionSound?.stop()
+        super.onPause()
+    }
     private val softPosRuntimePermissions = arrayOf(
         Manifest.permission.CAMERA,
         Manifest.permission.ACCESS_FINE_LOCATION,
@@ -27,6 +33,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        orderAttentionSound?.stop()
+        orderAttentionSound = OrderAttentionSound(this, flutterEngine.dartExecutor.binaryMessenger)
         RearDisplayHost.attachFrontBinaryMessenger(flutterEngine.dartExecutor.binaryMessenger)
 
         MethodChannel(

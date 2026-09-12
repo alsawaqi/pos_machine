@@ -574,6 +574,9 @@ class PosApiService {
   Future<Map<String, dynamic>> fetchQuickInbox() async =>
       (await _send(() => _dio.get('/device/qr/pending-orders'))).dataMap;
 
+  Future<Map<String, dynamic>> fetchOrderAttention() async =>
+      (await _send(() => _dio.get('/device/order-attention'))).dataMap;
+
   Future<void> moveQuickInbox(String uuid) async {
     await moveQrPendingToCounter(uuid);
   }
