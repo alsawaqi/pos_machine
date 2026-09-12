@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../qr_checkout/qr_checkout_models.dart';
 import '../qr_quick/qr_quick_models.dart';
 
 Map<String, dynamic> tableMap(Object? value) {
@@ -73,8 +74,15 @@ class DineInDetail {
       seating?['status'] == 'open' &&
       (bill == null || bill?['status'] == 'open') &&
       (bill == null || bill?['charge'] == 'none');
-  // Staff-only bills still use their existing staff checkout, not a QR claim.
   bool get qrBill => bill?['source'] == 'qr_web';
+  bool get protectedCheckout =>
+      qrBill ||
+      (hasStaffTableCheckoutPolicy(bill) &&
+          bill?['order_type'] == 'dine_in' &&
+          primaryTableId != null &&
+          primaryTableId! > 0 &&
+          bill?['table_id'] == primaryTableId &&
+          seatingUuid?.isNotEmpty == true);
 }
 
 /// Immutable, price-free round intent. The selected table can be a joined member;

@@ -66,6 +66,7 @@ class ApiCheckoutGateway implements CheckoutGateway {
             'order_not_found',
             'device_not_attended',
             'qr_order_not_settleable',
+            'staff_bill_owner_required',
             'charge_already_claimed',
             'qr_charge_recovery_required',
             'order_not_bound_to_device_session',

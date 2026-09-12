@@ -4,6 +4,12 @@ import 'dart:math';
 Map<String, dynamic> checkoutMap(Object? value) =>
     Map<String, dynamic>.from(value as Map);
 
+/// Explicit server capability; source alone cannot authorize staff recovery.
+bool hasStaffTableCheckoutPolicy(Map<String, dynamic>? bill) =>
+    bill != null &&
+    const {'main_pos', 'handheld'}.contains(bill['source']) &&
+    bill['checkout_policy'] == 'staff_table_claim_v1';
+
 Object? _freeze(Object? value) => switch (value) {
   Map value => Map<String, dynamic>.unmodifiable(
     value.map((k, v) => MapEntry(k as String, _freeze(v))),
@@ -74,7 +80,11 @@ class CheckoutSnapshot {
           : frozenCheckoutMap(checkoutMap(data['customer'])) {
     final identity = checkoutMap(data['claim']);
     if (order['uuid'] != claim.uuid ||
-        order['source'] != 'qr_web' ||
+        !(order['source'] == 'qr_web' ||
+            (hasStaffTableCheckoutPolicy(order) &&
+                order['order_type'] == 'dine_in' &&
+                order['table_id'] is int &&
+                (order['table_id'] as int) > 0)) ||
         order['status'] != 'awaiting_payment' ||
         !((order['order_type'] == 'quick' && order['table_id'] == null) ||
             (order['order_type'] == 'dine_in' && order['table_id'] is int)) ||

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../qr_checkout/qr_checkout_models.dart';
 import 'package:crypto/crypto.dart';
 import '../bill_combine/combine_models.dart';
 import '../dine_in/dine_in_models.dart';
@@ -348,7 +349,7 @@ class RecoveryPreview {
       );
     }
     final bill = recoveryMap(proof['bill']);
-    if (bill['source'] != 'qr_web') {
+    if (bill['source'] != 'qr_web' && !hasStaffTableCheckoutPolicy(bill)) {
       throw StateError(
         'Shared staff-only checkout needs separate review. Keep the original local draft.',
       );

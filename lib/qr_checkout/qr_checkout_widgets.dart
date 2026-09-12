@@ -52,6 +52,10 @@ String checkoutText(BuildContext context, String key) {
       'Payment cancelled. Refresh the order before another attempt.',
       'تم إلغاء الدفع. حدّث الطلب قبل المحاولة مجدداً.',
     ),
+    'staff_bill_owner_required': (
+      'Recover the original table draft on its owning device first. No payment was started.',
+      'استعد مسودة الطاولة الأصلية على جهازها أولاً. لم تبدأ أي عملية دفع.',
+    ),
     'unavailable': (
       'Checkout is unavailable. No tender was started.',
       'الدفع غير متاح. لم يبدأ تحصيل دفعة.',

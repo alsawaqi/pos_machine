@@ -221,7 +221,7 @@ class RecoveryController extends ChangeNotifier {
       if (detail.tableId != current.local.tableId ||
           detail.seatingUuid != current.preview.proof['table_session_uuid'] ||
           detail.billUuid != current.local.uuid ||
-          !detail.qrBill ||
+          !detail.protectedCheckout ||
           detail.orphaned ||
           detail.coveredTableIds.length != 1 ||
           (detail.pendingReview && !ownSavedRound) ||

@@ -51,7 +51,7 @@ class DineInController extends ChangeNotifier {
   bool get canAdd => available && detail?.canAppend == true;
   bool get canPay =>
       available &&
-      detail?.qrBill == true &&
+      detail?.protectedCheckout == true &&
       !detail!.pendingReview &&
       const {
         'open',
@@ -262,7 +262,9 @@ class DineInController extends ChangeNotifier {
   }
 
   Future<void> reopen() async {
-    if (!available || detail?.qrBill != true || detail?.billUuid == null) {
+    if (!available ||
+        detail?.protectedCheckout != true ||
+        detail?.billUuid == null) {
       return;
     }
     await _action(() => gateway.reopen(detail!.billUuid!));

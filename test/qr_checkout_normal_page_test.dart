@@ -8,6 +8,8 @@ import 'package:pos_machine/qr_checkout/qr_checkout_controller.dart';
 import 'package:pos_machine/qr_checkout/qr_checkout_widgets.dart';
 import 'package:pos_machine/services/local_order_storage_service.dart';
 import 'qr_checkout_fakes.dart';
+import 'staff_table_checkout_test.dart'
+    show StaffCheckoutGateway, staffController;
 import 'qr_checkout_machine_harness.dart';
 import 'qr_quick_evidence.dart';
 import 'support/fake_order_storage.dart';
@@ -42,6 +44,54 @@ void main() {
           .setMockMethodCallHandler(channel, null);
     }
   });
+  for (final source in ['main_pos', 'handheld']) {
+    testWidgets(
+      '$source uses the normal till payment page without cart mutation',
+      (tester) async {
+        tester.view.physicalSize = const Size(1600, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await pumpCheckoutMachine(
+          tester,
+          mode: 'off',
+          toggle: false,
+          arabic: false,
+        );
+        final dynamic state = tester.state(find.byType(StaffPosScreen));
+        final before = jsonEncode(state.controller.snapshot().toMap());
+        final api = StaffCheckoutGateway(source);
+        final c = staffController(api, MemoryCheckoutStore());
+        await c.open('qr-bill');
+        final context = tester.element(find.byType(StaffPosScreen));
+        Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => QrCheckoutBoundary(
+              controller: c,
+              authorizeManager: () async => false,
+              paymentPage: (_, exit) =>
+                  state.buildQrPaymentPage(c, exit) as Widget,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        for (final label in ['Cash', 'Card', 'Bank POS', 'Gift']) {
+          expect(find.text(label), findsOneWidget);
+        }
+        expect(c.snapshot!.order['source'], source);
+        expect(find.text('Test Customer · 00000000'), findsOneWidget);
+        await tester.tap(find.text('Bank POS'));
+        await tester.pumpAndSettle();
+        expect(c.phase, CheckoutPhase.paid);
+        expect(api.pushes, hasLength(1));
+        expect(api.pushes.single['event_type'], 'order.pay');
+        expect(jsonEncode(state.controller.snapshot().toMap()), before);
+        expect(tester.takeException(), null);
+        await disposeCheckoutMachine(tester);
+        c.dispose();
+      },
+    );
+  }
   for (final arabic in [false, true]) {
     for (final method in ['cash', 'card', 'bank_pos', 'gift']) {
       testWidgets(

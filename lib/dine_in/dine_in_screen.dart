@@ -480,13 +480,13 @@ class _DineInScreenState extends State<DineInScreen>
                           : null,
                       child: Text(text('send')),
                     ),
-                    if (detail.qrBill && !detail.canAppend)
+                    if (detail.protectedCheckout && !detail.canAppend)
                       OutlinedButton(
                         key: const ValueKey('dine-reopen'),
                         onPressed: enabled && drafts.isEmpty ? c!.reopen : null,
                         child: Text(text('reopen')),
                       ),
-                    if (detail.qrBill)
+                    if (detail.protectedCheckout)
                       FilledButton(
                         key: const ValueKey('dine-pay'),
                         onPressed: enabled && c!.canPay && drafts.isEmpty
@@ -502,7 +502,8 @@ class _DineInScreenState extends State<DineInScreen>
                       ),
                   ],
                 ),
-                if (detail.bill != null && !detail.qrBill) note('staff_pay'),
+                if (detail.bill != null && !detail.protectedCheckout)
+                  note('staff_pay'),
               ],
             ],
           ),
