@@ -189,9 +189,23 @@ class CheckoutAttempt {
     Map<String, dynamic>? event,
     List<Map<String, dynamic>> captures = const [],
     this.receiptNumber,
+    this.tenderMayHaveStarted,
   }) : claim = claim == null ? null : frozenCheckoutMap(claim),
        event = event == null ? null : frozenCheckoutMap(event),
-       captures = List.unmodifiable(captures.map(frozenCheckoutMap));
+       captures = List.unmodifiable(captures.map(frozenCheckoutMap)) {
+    if (tenderMayHaveStarted == false &&
+        (event != null ||
+            captures.isNotEmpty ||
+            receiptNumber != null ||
+            const [
+              'capturing',
+              'pending',
+              'refused',
+              'paid',
+            ].contains(state))) {
+      throw const FormatException('Contradictory checkout tender evidence');
+    }
+  }
   final String id;
   final String orderUuid;
   final String state;
@@ -202,6 +216,11 @@ class CheckoutAttempt {
   final Map<String, dynamic>? event;
   final List<Map<String, dynamic>> captures;
   final String? receiptNumber;
+
+  /// Local evidence only, never authorization to clear a server reservation.
+  /// null: older journal, unknown. false: this attempt has not reached tender.
+  /// true: tender may have started; written BEFORE capture and never reset.
+  final bool? tenderMayHaveStarted;
   bool get terminal => const ['paid', 'released', 'managed'].contains(state);
   CheckoutAttempt copy({
     String? state,
@@ -211,6 +230,7 @@ class CheckoutAttempt {
     Map<String, dynamic>? event,
     List<Map<String, dynamic>>? captures,
     String? receiptNumber,
+    bool? tenderMayHaveStarted,
   }) => CheckoutAttempt(
     id: id,
     orderUuid: orderUuid,
@@ -222,6 +242,9 @@ class CheckoutAttempt {
     event: event ?? this.event,
     captures: captures ?? this.captures,
     receiptNumber: receiptNumber ?? this.receiptNumber,
+    tenderMayHaveStarted:
+        tenderMayHaveStarted ??
+        (state == 'capturing' ? true : this.tenderMayHaveStarted),
   );
   Map<String, dynamic> get json => {
     'id': id,
@@ -234,9 +257,15 @@ class CheckoutAttempt {
     'event': event,
     'captures': captures,
     'receipt_number': receiptNumber,
+    if (tenderMayHaveStarted != null)
+      'tender_may_have_started': tenderMayHaveStarted,
   };
   factory CheckoutAttempt.decode(String text) {
     final json = checkoutMap(jsonDecode(text));
+    if (json.containsKey('tender_may_have_started') &&
+        json['tender_may_have_started'] is! bool) {
+      throw const FormatException('Invalid checkout tender evidence');
+    }
     final state = json['state'] as String;
     if (!const [
       'claiming',
@@ -263,6 +292,7 @@ class CheckoutAttempt {
       event: json['event'] == null ? null : checkoutMap(json['event']),
       captures: (json['captures'] as List).map(checkoutMap).toList(),
       receiptNumber: json['receipt_number'] as String?,
+      tenderMayHaveStarted: json['tender_may_have_started'] as bool?,
     );
     if (attempt.id.isEmpty ||
         attempt.orderUuid.isEmpty ||

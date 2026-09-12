@@ -155,6 +155,7 @@ class QrCheckoutController extends ChangeNotifier {
           orderUuid: uuid,
           state: 'claiming',
           createdAt: now(),
+          tenderMayHaveStarted: false,
         );
         await store.create(attempt);
         _attempt = attempt;
@@ -281,7 +282,9 @@ class QrCheckoutController extends ChangeNotifier {
       }
       // The durable marker MUST precede any physical tender, including a
       // manual bank terminal. A crash from here blocks another tender.
-      await _save(_attempt!.copy(state: 'capturing'));
+      await _save(
+        _attempt!.copy(state: 'capturing', tenderMayHaveStarted: true),
+      );
       final tenders = <Map<String, dynamic>>[];
       // Irreversible integrated card legs last; every successful leg is saved.
       final ordered = [

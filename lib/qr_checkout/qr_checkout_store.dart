@@ -51,6 +51,12 @@ class SqliteCheckoutStore implements CheckoutStore {
 
   @override
   Future<void> create(CheckoutAttempt attempt) async {
+    // Only a brand-new intent can establish that tender has not started.
+    // Never retrofit this assertion onto an older reservation.
+    if (attempt.tenderMayHaveStarted == false &&
+        (attempt.state != 'claiming' || attempt.claim != null)) {
+      throw StateError('No-tender evidence requires a new checkout intent');
+    }
     await db.insert('qr_checkout_attempts', {
       'id': attempt.id,
       'scope': scope,
@@ -61,6 +67,12 @@ class SqliteCheckoutStore implements CheckoutStore {
 
   @override
   Future<void> replace(CheckoutAttempt previous, CheckoutAttempt next) async {
+    if ((next.tenderMayHaveStarted == false &&
+            previous.tenderMayHaveStarted != false) ||
+        (previous.tenderMayHaveStarted != null &&
+            next.tenderMayHaveStarted == null)) {
+      throw StateError('Cannot erase or invent checkout tender evidence');
+    }
     if (previous.id != next.id ||
         previous.orderUuid != next.orderUuid ||
         previous.terminal ||
