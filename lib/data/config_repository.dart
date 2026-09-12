@@ -120,6 +120,7 @@ class ConfigRepository {
         reportsPositions: c.meta.reportsPositions.value,
         kitchenPositions: c.meta.kitchenPositions.value,
         orderNumberingJson: c.meta.orderNumberingJson.value,
+        tableSessionsMode: c.meta.tableSessionsMode.value,
       );
       await _session.saveTerminalId(res.terminalId);
       await _session.saveTerminalPin(res.terminalPin);

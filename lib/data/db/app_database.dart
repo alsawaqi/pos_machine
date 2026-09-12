@@ -510,6 +510,7 @@ class AppDatabase extends _$AppDatabase {
     String? reportsPositions,
     String? kitchenPositions,
     String? orderNumberingJson,
+    String? tableSessionsMode,
   }) {
     return transaction(() async {
       // Upserts (changed rows only — untouched rows survive).
@@ -608,6 +609,9 @@ class AppDatabase extends _$AppDatabase {
         orderNumberingJson: orderNumberingJson == null
             ? const Value.absent()
             : Value(orderNumberingJson),
+        tableSessionsMode: tableSessionsMode == null
+            ? const Value.absent()
+            : Value(tableSessionsMode),
       ));
     });
   }
