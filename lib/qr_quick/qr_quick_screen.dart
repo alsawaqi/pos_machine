@@ -1,20 +1,49 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../order_workspace/current_order_workspace.dart';
 import 'qr_quick_controller.dart';
 import 'qr_quick_copy.dart';
 import 'qr_quick_models.dart';
 
 /// Shared price-free catalogue picker. It never reads or modifies a cart.
-Future<(String, QrQuickLine)?> pickStaffRoundItem(BuildContext context,
-    List<QuickProduct> products, {required bool arabic}) async {
+Future<(String, QrQuickLine)?> pickStaffRoundItem(
+  BuildContext context,
+  List<QuickProduct> products, {
+  required bool arabic,
+}) async {
   final copy = QuickCopy(arabic);
-  final product = await showDialog<QuickProduct>(context: context,
-    builder: (_) => Directionality(textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
-      child: _ProductPicker(products, copy)));
+  final product = await showDialog<QuickProduct>(
+    context: context,
+    builder: (_) => Directionality(
+      textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
+      child: _ProductPicker(products, copy),
+    ),
+  );
   if (product == null || !context.mounted) return null;
-  final line = await showDialog<QrQuickLine>(context: context,
-    builder: (_) => Directionality(textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
-      child: _ProductOptions(product, copy)));
+  final line = await showDialog<QrQuickLine>(
+    context: context,
+    builder: (_) => Directionality(
+      textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
+      child: _ProductOptions(product, copy),
+    ),
+  );
+  return line == null ? null : (copy.name(product.name, product.nameAr), line);
+}
+
+Future<(String, QrQuickLine)?> pickStaffRoundProduct(
+  BuildContext context,
+  QuickProduct product, {
+  required bool arabic,
+}) async {
+  if (!product.available) return null;
+  final copy = QuickCopy(arabic);
+  final line = await showDialog<QrQuickLine>(
+    context: context,
+    builder: (_) => Directionality(
+      textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
+      child: _ProductOptions(product, copy),
+    ),
+  );
   return line == null ? null : (copy.name(product.name, product.nameAr), line);
 }
 
@@ -26,12 +55,18 @@ class QrQuickScreen extends StatefulWidget {
     this.onPay,
     this.onRecoverPayment,
     this.arabic = false,
+    this.onOpen,
+    this.workspace,
+    this.workspaceUuid,
   });
   final Future<QrQuickController> Function() createController;
   final List<QuickProduct> Function() catalogue;
   final Future<void> Function(BuildContext, QrQuickOrder)? onPay;
   final Future<void> Function()? onRecoverPayment;
   final bool arabic;
+  final Future<void> Function(String uuid)? onOpen;
+  final CurrentOrderWorkspace? workspace;
+  final String? workspaceUuid;
   @override
   State<QrQuickScreen> createState() => _QrQuickScreenState();
 }
@@ -116,19 +151,21 @@ class _QrQuickScreenState extends State<QrQuickScreen>
     }
   }
 
-  Future<void> _open(String uuid) => _child(
-    () => Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => _QuickEditor(
-          controller: controller!,
-          uuid: uuid,
-          catalogue: widget.catalogue,
-          copy: copy,
-          onPay: widget.onPay == null ? null : () => _pay(uuid),
-        ),
-      ),
-    ),
-  );
+  Future<void> _open(String uuid) => widget.onOpen != null
+      ? _child(() => widget.onOpen!(uuid))
+      : _child(
+          () => Navigator.of(context).push<void>(
+            MaterialPageRoute(
+              builder: (_) => _QuickEditor(
+                controller: controller!,
+                uuid: uuid,
+                catalogue: widget.catalogue,
+                copy: copy,
+                onPay: widget.onPay == null ? null : () => _pay(uuid),
+              ),
+            ),
+          ),
+        );
   @override
   void dispose() {
     timer?.cancel();
@@ -138,135 +175,168 @@ class _QrQuickScreenState extends State<QrQuickScreen>
   }
 
   @override
-  Widget build(BuildContext context) => Directionality(
-    textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
-    child: Scaffold(
-      appBar: AppBar(
-        title: Text(copy.title),
-        actions: [
-          if (widget.onRecoverPayment != null)
+  Widget build(BuildContext context) {
+    if (widget.workspace != null) {
+      return controller == null
+          ? Scaffold(
+              appBar: AppBar(
+                leading: IconButton(
+                  onPressed: widget.workspace!.requestClose,
+                  icon: const Icon(Icons.arrow_back),
+                ),
+                title: Text(copy.pair('Current Order', 'الطلب الحالي')),
+              ),
+              body: Center(
+                child: failed
+                    ? Text(copy.message('storage'))
+                    : const CircularProgressIndicator(),
+              ),
+            )
+          : _QuickEditor(
+              controller: controller!,
+              uuid: widget.workspaceUuid!,
+              catalogue: widget.catalogue,
+              copy: copy,
+              onPay: widget.onPay == null
+                  ? null
+                  : () => _pay(widget.workspaceUuid!),
+              workspace: widget.workspace,
+            );
+    }
+    return Directionality(
+      textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(copy.title),
+          actions: [
+            if (widget.onRecoverPayment != null)
+              IconButton(
+                key: const ValueKey('quick-payment-recovery'),
+                tooltip: arabic
+                    ? 'تحقق من نتيجة الدفع'
+                    : 'Check payment result',
+                onPressed: () => _child(widget.onRecoverPayment!),
+                icon: const Icon(Icons.receipt_long),
+              ),
+            TextButton(
+              onPressed: () => setState(() => arabic = !arabic),
+              child: Text(arabic ? 'English' : 'العربية'),
+            ),
             IconButton(
-              key: const ValueKey('quick-payment-recovery'),
-              tooltip: arabic ? 'تحقق من نتيجة الدفع' : 'Check payment result',
-              onPressed: () => _child(widget.onRecoverPayment!),
-              icon: const Icon(Icons.receipt_long),
+              key: const ValueKey('quick-refresh'),
+              tooltip: copy.refresh,
+              onPressed: () => controller?.refresh(),
+              icon: const Icon(Icons.refresh),
             ),
-          TextButton(
-            onPressed: () => setState(() => arabic = !arabic),
-            child: Text(arabic ? 'English' : 'العربية'),
-          ),
-          IconButton(
-            key: const ValueKey('quick-refresh'),
-            tooltip: copy.refresh,
-            onPressed: () => controller?.refresh(),
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: failed
-          ? Center(child: Text(copy.message('storage')))
-          : controller == null
-          ? const Center(child: CircularProgressIndicator())
-          : AnimatedBuilder(
-              animation: controller!,
-              builder: (context, _) {
-                final c = controller!;
-                return ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    if (c.busy) const LinearProgressIndicator(),
-                    if (c.stale) _notice(copy.stale),
-                    if (c.notice != null) _notice(copy.message(c.notice!)),
-                    if (c.orders.isEmpty && c.pending.isEmpty && !c.stale)
-                      _notice(copy.empty),
-                    for (final request in c.pending.values.where(
-                      (r) => c.find(r.orderUuid) == null,
-                    ))
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(request.orderUuid),
-                              Text(copy.uncertain),
-                              TextButton(
-                                onPressed: c.busy
-                                    ? null
-                                    : () => c.retry(request.orderUuid),
-                                child: Text(copy.retry),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    for (final order in c.orders)
-                      Card(
-                        key: ValueKey('quick-order-${order.uuid}'),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                order.reference,
-                                style: Theme.of(context).textTheme.titleLarge,
-                              ),
-                              Text('${copy.total}: ${_money(order.total)}'),
-                              Text(
-                                '${order.ageSeconds ~/ 60} ${copy.pair('min', 'دقيقة')}${order.phoneTail.isEmpty ? '' : ' · •••• ${order.phoneTail}'}',
-                              ),
-                              Wrap(
-                                spacing: 8,
-                                children: [
-                                  Chip(
-                                    label: Text(
-                                      copy.state(order.charge, order.session),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (order.refusal != null)
-                                Text(copy.message(order.refusal!)),
-                              if (c.pending.containsKey(order.uuid))
+          ],
+        ),
+        body: failed
+            ? Center(child: Text(copy.message('storage')))
+            : controller == null
+            ? const Center(child: CircularProgressIndicator())
+            : AnimatedBuilder(
+                animation: controller!,
+                builder: (context, _) {
+                  final c = controller!;
+                  return ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      if (c.busy) const LinearProgressIndicator(),
+                      if (c.stale) _notice(copy.stale),
+                      if (c.notice != null) _notice(copy.message(c.notice!)),
+                      if (c.orders.isEmpty && c.pending.isEmpty && !c.stale)
+                        _notice(copy.empty),
+                      for (final request in c.pending.values.where(
+                        (r) => c.find(r.orderUuid) == null,
+                      ))
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(request.orderUuid),
                                 Text(copy.uncertain),
-                              Wrap(
-                                spacing: 8,
-                                children: [
-                                  FilledButton.tonal(
-                                    key: ValueKey('quick-review-${order.uuid}'),
-                                    onPressed: () => _open(order.uuid),
-                                    child: Text(
-                                      copy.pair('Open order', 'فتح الطلب'),
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: c.canAdd(order.uuid)
-                                        ? () => _open(order.uuid)
-                                        : null,
-                                    child: Text(copy.add),
-                                  ),
-                                  TextButton(
-                                    onPressed:
-                                        c.canPay(order.uuid) &&
-                                            widget.onPay != null
-                                        ? () => _pay(order.uuid)
-                                        : null,
-                                    child: Text(copy.pay),
-                                  ),
-                                ],
-                              ),
-                              if (widget.onPay == null) Text(copy.noPayment),
-                            ],
+                                TextButton(
+                                  onPressed: c.busy
+                                      ? null
+                                      : () => c.retry(request.orderUuid),
+                                  child: Text(copy.retry),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                );
-              },
-            ),
-    ),
-  );
+                      for (final order in c.orders)
+                        Card(
+                          key: ValueKey('quick-order-${order.uuid}'),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  order.reference,
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                                Text('${copy.total}: ${_money(order.total)}'),
+                                Text(
+                                  '${order.ageSeconds ~/ 60} ${copy.pair('min', 'دقيقة')}${order.phoneTail.isEmpty ? '' : ' · •••• ${order.phoneTail}'}',
+                                ),
+                                Wrap(
+                                  spacing: 8,
+                                  children: [
+                                    Chip(
+                                      label: Text(
+                                        copy.state(order.charge, order.session),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (order.refusal != null)
+                                  Text(copy.message(order.refusal!)),
+                                if (c.pending.containsKey(order.uuid))
+                                  Text(copy.uncertain),
+                                Wrap(
+                                  spacing: 8,
+                                  children: [
+                                    FilledButton.tonal(
+                                      key: ValueKey(
+                                        'quick-review-${order.uuid}',
+                                      ),
+                                      onPressed: () => _open(order.uuid),
+                                      child: Text(
+                                        copy.pair('Open order', 'فتح الطلب'),
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: c.canAdd(order.uuid)
+                                          ? () => _open(order.uuid)
+                                          : null,
+                                      child: Text(copy.add),
+                                    ),
+                                    TextButton(
+                                      onPressed:
+                                          c.canPay(order.uuid) &&
+                                              widget.onPay != null
+                                          ? () => _pay(order.uuid)
+                                          : null,
+                                      child: Text(copy.pay),
+                                    ),
+                                  ],
+                                ),
+                                if (widget.onPay == null) Text(copy.noPayment),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+      ),
+    );
+  }
 }
 
 String _money(int baisas) => '${(baisas / 1000).toStringAsFixed(3)} OMR';
@@ -282,12 +352,14 @@ class _QuickEditor extends StatefulWidget {
     required this.catalogue,
     required this.copy,
     this.onPay,
+    this.workspace,
   });
   final QrQuickController controller;
   final String uuid;
   final List<QuickProduct> Function() catalogue;
   final QuickCopy copy;
   final Future<void> Function()? onPay;
+  final CurrentOrderWorkspace? workspace;
   @override
   State<_QuickEditor> createState() => _QuickEditorState();
 }
@@ -295,9 +367,75 @@ class _QuickEditor extends StatefulWidget {
 class _QuickEditorState extends State<_QuickEditor> {
   final drafts = <(String, QrQuickLine)>[];
   bool closing = false;
+  bool childOpen = false;
   QuickCopy get copy => widget.copy;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_publish);
+    widget.workspace?.attach(
+      this,
+      pick: (product) => _pick(product),
+      leave: _leave,
+      pay: _pay,
+    );
+    _publish();
+  }
+
+  void _publish() => widget.workspace?.publish(
+    this,
+    order: widget.controller.find(widget.uuid)?.json,
+    stale: widget.controller.stale,
+    canAdd:
+        !childOpen &&
+        widget.controller.canAdd(widget.uuid) &&
+        drafts.length < 50,
+    canPay:
+        !childOpen &&
+        drafts.isEmpty &&
+        widget.controller.canPay(widget.uuid) &&
+        widget.onPay != null,
+  );
+
+  Future<void> _pay() async {
+    if (childOpen ||
+        drafts.isNotEmpty ||
+        !widget.controller.canPay(widget.uuid) ||
+        widget.onPay == null) {
+      return;
+    }
+    childOpen = true;
+    _publish();
+    try {
+      await widget.onPay?.call();
+    } finally {
+      childOpen = false;
+      if (mounted) _publish();
+    }
+  }
+
+  void _exit() {
+    if (widget.workspace != null) {
+      widget.workspace!.onExit();
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_publish);
+    widget.workspace?.detach(this);
+    super.dispose();
+  }
+
   Future<void> _leave() async {
-    if (closing || widget.controller.busy) return;
+    if (closing || childOpen || widget.controller.busy) return;
+    if (drafts.isEmpty) {
+      _exit();
+      return;
+    }
     closing = true;
     final discard = await showDialog<bool>(
       context: context,
@@ -327,20 +465,27 @@ class _QuickEditorState extends State<_QuickEditor> {
     if (discard == true && mounted) {
       setState(drafts.clear);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) Navigator.pop(context);
+        if (mounted) _exit();
       });
     }
   }
 
-  Future<void> _pick() async {
+  Future<void> _pick([QuickProduct? selected]) async {
+    if (childOpen ||
+        !widget.controller.canAdd(widget.uuid) ||
+        drafts.length >= 50) {
+      return;
+    }
     final products = widget.catalogue();
-    final product = await showDialog<QuickProduct>(
-      context: context,
-      builder: (context) => Directionality(
-        textDirection: copy.arabic ? TextDirection.rtl : TextDirection.ltr,
-        child: _ProductPicker(products, copy),
-      ),
-    );
+    final product =
+        selected ??
+        await showDialog<QuickProduct>(
+          context: context,
+          builder: (context) => Directionality(
+            textDirection: copy.arabic ? TextDirection.rtl : TextDirection.ltr,
+            child: _ProductPicker(products, copy),
+          ),
+        );
     if (product == null || !mounted) return;
     final line = await showDialog<QrQuickLine>(
       context: context,
@@ -353,6 +498,7 @@ class _QuickEditorState extends State<_QuickEditor> {
       setState(
         () => drafts.add((copy.name(product.name, product.nameAr), line)),
       );
+      _publish();
     }
   }
 
@@ -364,6 +510,7 @@ class _QuickEditorState extends State<_QuickEditor> {
     if (mounted && (ok || c.pending.containsKey(widget.uuid))) {
       setState(drafts.clear);
     }
+    if (mounted) _publish();
   }
 
   @override
@@ -374,14 +521,25 @@ class _QuickEditorState extends State<_QuickEditor> {
       final order = c.find(widget.uuid);
       final pending = c.pending[widget.uuid];
       return PopScope(
-        canPop: drafts.isEmpty && !c.busy,
+        canPop:
+            widget.workspace == null && drafts.isEmpty && !c.busy && !childOpen,
         onPopInvokedWithResult: (didPop, _) {
-          if (!didPop && drafts.isNotEmpty) unawaited(_leave());
+          if (!didPop) unawaited(_leave());
         },
         child: Directionality(
           textDirection: copy.arabic ? TextDirection.rtl : TextDirection.ltr,
           child: Scaffold(
             appBar: AppBar(
+              leading: widget.workspace == null
+                  ? null
+                  : IconButton(
+                      tooltip: copy.pair(
+                        'Back to QR Quick Orders',
+                        'العودة إلى طلبات QR السريعة',
+                      ),
+                      onPressed: _leave,
+                      icon: const Icon(Icons.arrow_back),
+                    ),
               title: Text(order?.reference ?? widget.uuid),
               actions: [
                 IconButton(
@@ -447,7 +605,10 @@ class _QuickEditorState extends State<_QuickEditor> {
                         ),
                         onPressed: c.busy
                             ? null
-                            : () => setState(() => drafts.removeAt(i)),
+                            : () {
+                                setState(() => drafts.removeAt(i));
+                                _publish();
+                              },
                         icon: const Icon(Icons.close),
                       ),
                     ),
@@ -482,8 +643,11 @@ class _QuickEditorState extends State<_QuickEditor> {
                   const SizedBox(height: 16),
                   FilledButton(
                     key: const ValueKey('quick-pay'),
-                    onPressed: c.canPay(widget.uuid) && drafts.isEmpty
-                        ? widget.onPay
+                    onPressed:
+                        c.canPay(widget.uuid) &&
+                            drafts.isEmpty &&
+                            widget.onPay != null
+                        ? _pay
                         : null,
                     child: Text(copy.pay),
                   ),

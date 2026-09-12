@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/l10n.dart';
+import '../order_workspace/server_workspace_display.dart';
 import '../models/pos_models.dart';
 import '../services/display_strings.dart';
 import '../services/sunmi_receipt_service.dart';
@@ -37,6 +38,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   static const Color _success = Color(0xFF2B8E64);
 
   OrderSnapshot order = OrderSnapshot.initial();
+  Map<String, dynamic>? _serverBill;
   bool _sendingCustomerDecision = false;
   late final ScrollController _orderItemsScrollController;
 
@@ -82,8 +84,16 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
         return;
       }
 
+      if (data['type'] == 'server_bill_snapshot') {
+        setState(() {
+          _serverBill = Map<String, dynamic>.from(data);
+          _sendingCustomerDecision = false;
+        });
+        return;
+      }
       if (data['type'] == 'order_snapshot') {
         setState(() {
+          _serverBill = null;
           order = OrderSnapshot.fromMap(Map<String, dynamic>.from(data));
           if (!order.showCharityRoundUpPrompt) {
             _sendingCustomerDecision = false;
@@ -169,8 +179,16 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   Widget build(BuildContext context) {
     // Phase 3 — run ad-first when an advertising loop is assigned to this
     // device; otherwise the original customer screen, untouched.
-    if (_adSlides.isNotEmpty) return _buildAdFirstScaffold();
-    return _buildLegacyScaffold();
+    final original = _adSlides.isNotEmpty
+        ? _buildAdFirstScaffold()
+        : _buildLegacyScaffold();
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ExcludeSemantics(excluding: _serverBill != null, child: original),
+        if (_serverBill != null) ServerWorkspaceDisplay(data: _serverBill!),
+      ],
+    );
   }
 
   Widget _buildLegacyScaffold() {
@@ -355,14 +373,16 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
   void _reportSlideDisplay(SliderSlide slide, int shownMs) {
     if (shownMs < 250) return;
     unawaited(
-      _rearDisplayChannel.invokeMethod<void>('customerEvent', <String, dynamic>{
-        'type': 'slider.display',
-        'slider_id': slide.sliderId,
-        'slider_item_id': slide.itemId,
-        'content_asset_id': slide.contentAssetId,
-        'advertiser_id': slide.advertiserId,
-        'duration_ms': shownMs,
-      }).catchError((_) {}),
+      _rearDisplayChannel
+          .invokeMethod<void>('customerEvent', <String, dynamic>{
+            'type': 'slider.display',
+            'slider_id': slide.sliderId,
+            'slider_item_id': slide.itemId,
+            'content_asset_id': slide.contentAssetId,
+            'advertiser_id': slide.advertiserId,
+            'duration_ms': shownMs,
+          })
+          .catchError((_) {}),
     );
   }
 
@@ -1162,9 +1182,7 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
           const SizedBox(width: 16),
           Expanded(
             child: Text(
-              _isPaid
-                  ? l10n.cdBannerThankYou
-                  : l10n.cdBannerReviewWhileCashier,
+              _isPaid ? l10n.cdBannerThankYou : l10n.cdBannerReviewWhileCashier,
               style: const TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
@@ -1710,8 +1728,8 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                     final tiles = [
                                       _CharityBreakdownTile(
                                         label: l10n.cdCharityTileOrderTotal,
-                                        caption: l10n
-                                            .cdCharityTileOrderTotalCaption,
+                                        caption:
+                                            l10n.cdCharityTileOrderTotalCaption,
                                         amount: _charityBaseAmount,
                                         icon: Icons.receipt_long_rounded,
                                         accent: const Color(0xFF0C6782),

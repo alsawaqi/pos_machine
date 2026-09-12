@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../order_workspace/current_order_workspace.dart';
 import '../qr_quick/qr_quick_models.dart';
 import '../qr_quick/qr_quick_screen.dart';
 import 'dine_in_controller.dart';
@@ -100,6 +101,7 @@ class DineInScreen extends StatefulWidget {
     this.arabic = false,
     this.writesAllowed = true,
     this.localDraftBlocked = false,
+    this.workspace,
     this.onCombine,
     this.onRecover,
     this.localDraftBlockedNow,
@@ -112,6 +114,7 @@ class DineInScreen extends StatefulWidget {
   final Future<void> Function()? onRecover;
   final bool Function()? localDraftBlockedNow;
   final bool arabic, writesAllowed, localDraftBlocked;
+  final CurrentOrderWorkspace? workspace;
   @override
   State<DineInScreen> createState() => _DineInScreenState();
 }
@@ -128,6 +131,12 @@ class _DineInScreenState extends State<DineInScreen>
   @override
   void initState() {
     super.initState();
+    widget.workspace?.attach(
+      this,
+      pick: (product) => _pick(product),
+      leave: _leave,
+      pay: _pay,
+    );
     WidgetsBinding.instance.addObserver(this);
     final state = WidgetsBinding.instance.lifecycleState;
     foreground = state == null || state == AppLifecycleState.resumed;
@@ -153,9 +162,38 @@ class _DineInScreenState extends State<DineInScreen>
 
   void _changed() {
     if (mounted) setState(() {});
+    _publish();
+  }
+
+  @override
+  void didUpdateWidget(covariant DineInScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.writesAllowed != widget.writesAllowed ||
+        oldWidget.localDraftBlocked != widget.localDraftBlocked) {
+      _publish();
+    }
+  }
+
+  void _publish() {
+    final c = controller;
+    final blocked =
+        widget.localDraftBlockedNow?.call() ?? widget.localDraftBlocked;
+    widget.workspace?.publish(
+      this,
+      order: c?.detail?.bill,
+      stale: c?.stale ?? true,
+      canAdd:
+          !blocked &&
+          !childOpen &&
+          widget.writesAllowed &&
+          c?.canAdd == true &&
+          drafts.length < 50,
+      canPay: !blocked && !childOpen && drafts.isEmpty && c?.canPay == true,
+    );
   }
 
   void _schedule() {
+    _publish();
     timer?.cancel();
     if (!foreground || childOpen || !mounted) return;
     timer = Timer(const Duration(seconds: 10), () async {
@@ -195,21 +233,28 @@ class _DineInScreenState extends State<DineInScreen>
     }
     setState(() => leaving = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) Navigator.pop(context);
+      if (!mounted) return;
+      if (widget.workspace != null) {
+        widget.workspace!.onExit();
+      } else {
+        Navigator.pop(context);
+      }
     });
   }
 
-  Future<void> _pick() async {
+  Future<void> _pick([QuickProduct? product]) async {
     final c = controller!;
     if (!c.canAdd || childOpen) return;
     final seating = c.detail!.seatingUuid, bill = c.detail!.billUuid;
     childOpen = true;
     _schedule();
-    final picked = await pickStaffRoundItem(
-      context,
-      widget.catalogue(),
-      arabic: widget.arabic,
-    );
+    final picked = product != null
+        ? await pickStaffRoundProduct(context, product, arabic: widget.arabic)
+        : await pickStaffRoundItem(
+            context,
+            widget.catalogue(),
+            arabic: widget.arabic,
+          );
     if (!mounted) return;
     childOpen = false;
     if (picked != null) {
@@ -257,6 +302,7 @@ class _DineInScreenState extends State<DineInScreen>
       expectedBill: draftBill,
     );
     if (mounted && (ok || c.pending != null)) setState(drafts.clear);
+    if (mounted) _publish();
   }
 
   Future<void> _pay() async {
@@ -280,6 +326,7 @@ class _DineInScreenState extends State<DineInScreen>
 
   @override
   void dispose() {
+    widget.workspace?.detach(this);
     timer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     controller?.removeListener(_changed);
@@ -300,7 +347,7 @@ class _DineInScreenState extends State<DineInScreen>
         widget.localDraftBlockedNow?.call() ?? widget.localDraftBlocked;
     final enabled = c?.available == true && !localBlocked && !childOpen;
     return PopScope(
-      canPop: leaving,
+      canPop: widget.workspace == null && leaving,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) unawaited(_leave());
       },
@@ -450,7 +497,10 @@ class _DineInScreenState extends State<DineInScreen>
                       key: ValueKey('dine-remove-$i'),
                       onPressed: c?.busy == true
                           ? null
-                          : () => setState(() => drafts.removeAt(i)),
+                          : () {
+                              setState(() => drafts.removeAt(i));
+                              _publish();
+                            },
                       icon: const Icon(Icons.close),
                     ),
                   ),

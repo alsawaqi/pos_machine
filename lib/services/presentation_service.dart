@@ -1,9 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../models/pos_models.dart';
+import '../order_workspace/current_order_workspace.dart';
 
 class PresentationService {
   PresentationService._();
+  @visibleForTesting
+  PresentationService.forTest();
   static final PresentationService instance = PresentationService._();
 
   static const MethodChannel _hostChannel = MethodChannel(
@@ -16,6 +19,51 @@ class PresentationService {
   final String _engineTag =
       'customer_display_${DateTime.now().microsecondsSinceEpoch}';
   int? _activeDisplayId;
+  Object? _billOwner;
+  Map<String, dynamic>? _billDisplay;
+  OrderSnapshot? _lastStaffOrder;
+
+  Future<void> showWorkspaceBill(
+    Object owner,
+    WorkspaceBill? bill, {
+    required bool stale,
+    bool arabic = false,
+  }) async {
+    _billOwner = owner;
+    _billDisplay =
+        bill?.display(stale: stale) ??
+        {
+          'type': 'server_bill_snapshot',
+          'reference': '',
+          'total_baisas': 0,
+          'status': 'unavailable',
+          'stale': true,
+          'items': <Map<String, dynamic>>[],
+        };
+    _billDisplay!['language'] = arabic ? 'ar' : 'en';
+    await _sendWorkspace();
+  }
+
+  Future<void> clearWorkspaceBill(Object owner) async {
+    if (!identical(_billOwner, owner)) return;
+    _billOwner = null;
+    _billDisplay = null;
+    try {
+      await sendOrder(_lastStaffOrder ?? OrderSnapshot.initial());
+    } catch (_) {
+      // Rear-screen hardware failure must never change the staff bill.
+    }
+  }
+
+  Future<void> _sendWorkspace() async {
+    if (!_supportsRearDisplay || _billDisplay == null) return;
+    try {
+      await _hostChannel.invokeMethod<void>('transferDataToRear', _billDisplay);
+    } catch (_) {
+      // The next display update/reconnect can retry this display-only data.
+    }
+  }
+
   // Phase 3 — the advertising loop last pushed to the customer screen, kept so
   // we can re-send it the moment a (re)opened display is ready (it runs its own
   // playback timer, independent of order updates).
@@ -172,6 +220,11 @@ class PresentationService {
   }
 
   Future<void> sendOrder(OrderSnapshot snapshot) async {
+    _lastStaffOrder = snapshot;
+    if (_billOwner != null) {
+      await _sendWorkspace();
+      return;
+    }
     if (!_supportsRearDisplay) return;
 
     await _hostChannel.invokeMethod<void>('transferDataToRear', {

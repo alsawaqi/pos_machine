@@ -19,6 +19,9 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import '../order_workspace/current_order_workspace.dart';
+import '../services/presentation_service.dart';
 import '../order_attention/order_attention.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -930,6 +933,113 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Map<String, dynamic>? _claimedTransferPendingLoad;
   bool _showPaymentPage = false;
   bool _normalQrCheckoutOpen = false;
+  CurrentOrderWorkspace? _workspace;
+  Widget Function(CurrentOrderWorkspace)? _workspaceEditor;
+
+  void _workspaceChanged() {
+    final workspace = _workspace;
+    if (workspace == null || !mounted) return;
+    void update() {
+      if (!mounted || !identical(workspace, _workspace)) return;
+      setState(() {});
+      if (!_normalQrCheckoutOpen) {
+        unawaited(
+          PresentationService.instance.showWorkspaceBill(
+            workspace,
+            workspace.bill,
+            stale: workspace.stale,
+            arabic: ref.read(settingsControllerProvider).language == 'ar',
+          ),
+        );
+      }
+    }
+
+    if (WidgetsBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => update());
+    } else {
+      update();
+    }
+  }
+
+  /// UI-only entry: all writes remain owned by the guarded bill editor.
+  void openServerWorkspace(
+    Widget Function(CurrentOrderWorkspace) editor, {
+    bool quick = false,
+  }) {
+    if (_workspace != null ||
+        _showPaymentPage ||
+        _normalQrCheckoutOpen ||
+        controller.isProcessingPayment ||
+        controller.hasRecordedSplitPayments ||
+        controller.showPaymentLaunchOverlay ||
+        controller.showCharityRoundUpPrompt) {
+      return;
+    }
+    late final CurrentOrderWorkspace workspace;
+    workspace = CurrentOrderWorkspace(
+      onExit: () {
+        if (!mounted || !identical(_workspace, workspace)) return;
+        workspace.removeListener(_workspaceChanged);
+        workspace.dispose();
+        unawaited(PresentationService.instance.clearWorkspaceBill(workspace));
+        setState(() {
+          _workspace = null;
+          _workspaceEditor = null;
+          _customerBillRouteOpen = false;
+        });
+        if (quick) unawaited(_openQuickOrders());
+      },
+    )..addListener(_workspaceChanged);
+    setState(() {
+      _workspace = workspace;
+      _workspaceEditor = editor;
+    });
+    _workspaceChanged();
+  }
+
+  Future<void> _openQuickOrders() async {
+    if (_workspace != null ||
+        _showPaymentPage ||
+        _normalQrCheckoutOpen ||
+        controller.isProcessingPayment ||
+        controller.hasRecordedSplitPayments) {
+      return;
+    }
+    final uuid = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (routeContext) => QrQuickOrdersScreen(
+          openCheckout: _launchQrCheckout,
+          onOpen: (uuid) async => Navigator.pop(routeContext, uuid),
+        ),
+      ),
+    );
+    if (!mounted || uuid == null) return;
+    openServerWorkspace(
+      (workspace) => QrQuickOrdersScreen(
+        workspace: workspace,
+        workspaceUuid: uuid,
+        openCheckout: _launchQrCheckout,
+      ),
+      quick: true,
+    );
+  }
+
+  void _catalogueProduct(Product product) {
+    final workspace = _workspace;
+    if (workspace != null) {
+      final available = machineQuickCatalogue(
+        ref.read(catalogProvider).asData?.value,
+      );
+      final picked = available
+          .where((p) => p.id.toString() == product.id)
+          .firstOrNull;
+      if (picked != null) unawaited(workspace.pick(picked));
+      return;
+    }
+    if (!controller.isUnorderable(product)) controller.addProduct(product);
+  }
+
   String _cashTenderInput = '';
   _StaffPopupMessage? _popupMessage;
   int _popupSeed = 0;
@@ -2063,6 +2173,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   @override
   void dispose() {
     controller.removeListener(_onTableCartChanged);
+    if (_workspace case final workspace?) {
+      workspace.removeListener(_workspaceChanged);
+      workspace.dispose();
+      unawaited(PresentationService.instance.clearWorkspaceBill(workspace));
+    }
     leaveStaffAttention(_attentionLease);
     _tableKitchen?.detach();
     unawaited(_tableKitchenChanges?.cancel());
@@ -2222,6 +2337,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   bool get _showDineInFloorPlan =>
+      _workspace == null &&
       controller.selectedOrderType == OrderType.dineIn &&
       !controller.isEditingDiningTable;
 
@@ -2589,7 +2705,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Future<void> _openCustomerBill(String tableId, {String? tableLabel}) async {
     final id = int.tryParse(tableId);
-    if (!mounted || id == null || _customerBillRouteOpen) {
+    if (!mounted ||
+        id == null ||
+        _customerBillRouteOpen ||
+        _workspace != null) {
       return;
     }
     // A snackbar lives above the local checkout's pointer barriers. It must
@@ -2605,93 +2724,82 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     final table = controller.diningTableDefinitionById(tableId);
-    _customerBillRouteOpen = true;
-    try {
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => DineInScreen(
-            label: tableLabel ?? table?.name ?? tableId,
-            arabic: ref.read(settingsControllerProvider).language == 'ar',
-            writesAllowed: ref.read(tableSessionsModeProvider) == 'live',
-            localDraftBlocked:
-                _pendingTableIds.contains(tableId) ||
-                (controller.activeDiningTableId == tableId &&
-                    controller.cart.isNotEmpty),
-            localDraftBlockedNow: () =>
-                controller.recoveryBlocked ||
-                _pendingTableIds.contains(tableId) ||
-                (controller.activeDiningTableId == tableId &&
-                    controller.cart.isNotEmpty),
-            createController: () async {
-              final api = ref.read(apiServiceProvider);
-              final session = ref.read(sessionServiceProvider);
-              final gateway = ApiDineInGateway(
-                api,
-                () => quickDeviceScope(
-                  api.quickOrderBaseUrl,
-                  session.companyId,
-                  session.branchId,
-                  session.kioskId,
-                ),
-                mutationGuard: controller.assertNoPendingCombine,
-              );
-              return DineInController(
-                gateway,
-                await SqliteDineInStore.open(gateway.scope),
-                id,
-                staffId: session.staff?.id,
-                printAccepted: (detail, round) async {
-                  gateway.check();
-                  if (!ref
-                      .read(settingsControllerProvider)
-                      .printKitchenTickets) {
-                    return true;
-                  }
-                  return ref
-                      .read(qrRoundAutoPrintControllerProvider)
-                      .printConfirmedRound(
-                        QrRoundEnvelope(
-                          round: QrDeviceRound.fromJson(round),
-                          orderUuid: detail.billUuid!,
-                          tableLabel: detail.table['label'] as String,
-                          receiptNumber:
-                              detail.bill?['receipt_number'] as String?,
-                          tempReference: detail.reference,
-                          ticketKey: 'round:${round['id']}',
-                          printedAt: DateTime.tryParse(
-                            round['kitchen_printed_at']?.toString() ?? '',
-                          ),
-                        ),
-                      );
-                },
-                localDraftTables: () => {
-                  for (final local in controller.diningTableSessions)
-                    if (local.status != DiningTableStatus.paid &&
-                        (local.draft?.items.isNotEmpty ?? false)) ...{
-                      ?int.tryParse(local.tableId),
-                      ?int.tryParse(local.primaryTableId ?? ''),
-                      ...local.linkedTableIds
-                          .map(int.tryParse)
-                          .whereType<int>(),
-                    },
-                  if (controller.cart.isNotEmpty)
-                    ?int.tryParse(controller.activeDiningTableId ?? ''),
-                  ..._pendingTableIds.map(int.tryParse).whereType<int>(),
-                },
-              );
+    openServerWorkspace(
+      (workspace) => DineInScreen(
+        workspace: workspace,
+        label: tableLabel ?? table?.name ?? tableId,
+        arabic: ref.read(settingsControllerProvider).language == 'ar',
+        writesAllowed: ref.read(tableSessionsModeProvider) == 'live',
+        localDraftBlocked:
+            _pendingTableIds.contains(tableId) ||
+            (controller.activeDiningTableId == tableId &&
+                controller.cart.isNotEmpty),
+        localDraftBlockedNow: () =>
+            controller.recoveryBlocked ||
+            _pendingTableIds.contains(tableId) ||
+            (controller.activeDiningTableId == tableId &&
+                controller.cart.isNotEmpty),
+        createController: () async {
+          final api = ref.read(apiServiceProvider);
+          final session = ref.read(sessionServiceProvider);
+          final gateway = ApiDineInGateway(
+            api,
+            () => quickDeviceScope(
+              api.quickOrderBaseUrl,
+              session.companyId,
+              session.branchId,
+              session.kioskId,
+            ),
+            mutationGuard: controller.assertNoPendingCombine,
+          );
+          return DineInController(
+            gateway,
+            await SqliteDineInStore.open(gateway.scope),
+            id,
+            staffId: session.staff?.id,
+            printAccepted: (detail, round) async {
+              gateway.check();
+              if (!ref.read(settingsControllerProvider).printKitchenTickets) {
+                return true;
+              }
+              return ref
+                  .read(qrRoundAutoPrintControllerProvider)
+                  .printConfirmedRound(
+                    QrRoundEnvelope(
+                      round: QrDeviceRound.fromJson(round),
+                      orderUuid: detail.billUuid!,
+                      tableLabel: detail.table['label'] as String,
+                      receiptNumber: detail.bill?['receipt_number'] as String?,
+                      tempReference: detail.reference,
+                      ticketKey: 'round:${round['id']}',
+                      printedAt: DateTime.tryParse(
+                        round['kitchen_printed_at']?.toString() ?? '',
+                      ),
+                    ),
+                  );
             },
-            catalogue: () =>
-                machineQuickCatalogue(ref.read(catalogProvider).asData?.value),
-            onPay: _launchQrCheckout,
-            onCombine: () => _openBillCombine(id),
-            onRecover: () => _openDraftRecovery(id),
-          ),
-        ),
-      );
-    } finally {
-      _customerBillRouteOpen = false;
-      if (mounted) setState(() {});
-    }
+            localDraftTables: () => {
+              for (final local in controller.diningTableSessions)
+                if (local.status != DiningTableStatus.paid &&
+                    (local.draft?.items.isNotEmpty ?? false)) ...{
+                  ?int.tryParse(local.tableId),
+                  ?int.tryParse(local.primaryTableId ?? ''),
+                  ...local.linkedTableIds.map(int.tryParse).whereType<int>(),
+                },
+              if (controller.cart.isNotEmpty)
+                ?int.tryParse(controller.activeDiningTableId ?? ''),
+              ..._pendingTableIds.map(int.tryParse).whereType<int>(),
+            },
+          );
+        },
+        catalogue: () =>
+            machineQuickCatalogue(ref.read(catalogProvider).asData?.value),
+        onPay: _launchQrCheckout,
+        onCombine: () => _openBillCombine(id),
+        onRecover: () => _openDraftRecovery(id),
+      ),
+    );
+    _customerBillRouteOpen = _workspace != null;
   }
 
   Future<void> _openRemoteDiningTableActions(
@@ -2975,7 +3083,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Widget _buildCatalogSurface(double contentHeight) {
     return Column(
       children: [
-        SizedBox(height: _topBarHeight, child: _buildTopBar()),
+        SizedBox(
+          height: _topBarHeight,
+          child: IgnorePointer(
+            ignoring: _workspace != null,
+            child: _buildTopBar(),
+          ),
+        ),
         const SizedBox(height: _panelGap),
         SizedBox(
           height: contentHeight,
@@ -5920,6 +6034,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
     _normalQrCheckoutOpen = true;
     QrCheckoutController? checkout;
+    VoidCallback? displayListener;
     try {
       final api = ref.read(apiServiceProvider);
       final session = ref.read(sessionServiceProvider);
@@ -6035,6 +6150,30 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       );
       if (!mounted) return;
       final payment = checkout;
+      final workspace = _workspace;
+      if (workspace != null) {
+        displayListener = () {
+          if (!mounted ||
+              !identical(_workspace, workspace) ||
+              payment.snapshot == null) {
+            return;
+          }
+          unawaited(
+            PresentationService.instance.showWorkspaceBill(
+              workspace,
+              WorkspaceBill({
+                ...payment.snapshot!.order,
+                if (payment.phase == CheckoutPhase.paid) 'status': 'paid',
+              }),
+              stale:
+                  payment.phase == CheckoutPhase.attention ||
+                  payment.phase == CheckoutPhase.pending,
+              arabic: ref.read(settingsControllerProvider).language == 'ar',
+            ),
+          );
+        };
+        payment.addListener(displayListener);
+      }
       unawaited(payment.open(uuid));
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
@@ -6055,6 +6194,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         );
       }
     } finally {
+      if (displayListener != null) checkout?.removeListener(displayListener);
       checkout?.dispose();
       _normalQrCheckoutOpen = false;
     }
@@ -7445,15 +7585,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     onTap: () {
                       switch (entry.value.title) {
                         case 'QR Quick Orders':
-                          unawaited(
-                            Navigator.of(context).push<void>(
-                              MaterialPageRoute(
-                                builder: (_) => QrQuickOrdersScreen(
-                                  openCheckout: _launchQrCheckout,
-                                ),
-                              ),
-                            ),
-                          );
+                          unawaited(_openQuickOrders());
                           break;
                         case 'QR Tables':
                           // QR orders remain server-owned. This route passes
@@ -8386,6 +8518,24 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Widget _buildCurrentOrderPanel() {
     final l10n = L10n.of(context);
+    if (_workspaceEditor != null) {
+      return _glassPanel(
+        tint: const Color(0xCCB9F1F4),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              l10n.posOrderPanelTitle,
+              key: const ValueKey('workspace-current-order'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Expanded(child: _workspaceEditor!(_workspace!)),
+          ],
+        ),
+      );
+    }
     return _glassPanel(
       tint: const Color(0xCCB9F1F4),
       padding: const EdgeInsets.all(16),
@@ -8802,13 +8952,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                             return _ProductListTile(
                               product: product,
                               onAdd: () {
-                                if (!controller.isUnorderable(product)) {
-                                  controller.addProduct(product);
-                                }
+                                _catalogueProduct(product);
                               },
                               outOfStock:
                                   controller.isOutOfStock(product) ||
-                                  controller.isAtShelfCap(product),
+                                  (_workspace == null &&
+                                      controller.isAtShelfCap(product)),
                               outsideHours: controller.isOutsideHours(product),
                               highlighted: pulseNonce > 0,
                               pulseNonce: pulseNonce,
@@ -8835,13 +8984,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           return _ProductTile(
                             product: product,
                             onAdd: () {
-                              if (!controller.isUnorderable(product)) {
-                                controller.addProduct(product);
-                              }
+                              _catalogueProduct(product);
                             },
                             outOfStock:
                                 controller.isOutOfStock(product) ||
-                                controller.isAtShelfCap(product),
+                                (_workspace == null &&
+                                    controller.isAtShelfCap(product)),
                             outsideHours: controller.isOutsideHours(product),
                             compact: compact,
                             highlighted: pulseNonce > 0,
@@ -8859,6 +9007,33 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Widget _buildBottomBar() {
     final l10n = L10n.of(context);
+    if (_workspace case final workspace?) {
+      return Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
+              key: const ValueKey('workspace-pay'),
+              onPressed: workspace.canPay ? workspace.requestPay : null,
+              icon: const Icon(Icons.payments_outlined),
+              label: Text(
+                '${QuickCopy(ref.read(settingsControllerProvider).language == 'ar').pay} · ${SunmiReceiptService.money((workspace.bill?.total ?? 0) / 1000)}',
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          OutlinedButton.icon(
+            key: const ValueKey('workspace-return'),
+            onPressed: workspace.requestClose,
+            icon: const Icon(Icons.arrow_back),
+            label: Text(
+              ref.read(settingsControllerProvider).language == 'ar'
+                  ? 'العودة إلى القائمة'
+                  : 'Back to list',
+            ),
+          ),
+        ],
+      );
+    }
     return Row(
       children: [
         SizedBox(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../order_workspace/current_order_workspace.dart';
 import '../services/local_order_storage_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/qr_pending_order.dart';
@@ -65,10 +66,22 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
 }
 
 class QrQuickOrdersScreen extends ConsumerWidget {
-  const QrQuickOrdersScreen({super.key, this.openCheckout});
+  const QrQuickOrdersScreen({
+    super.key,
+    this.openCheckout,
+    this.onOpen,
+    this.workspace,
+    this.workspaceUuid,
+  });
   final Future<void> Function(String?)? openCheckout;
+  final Future<void> Function(String)? onOpen;
+  final CurrentOrderWorkspace? workspace;
+  final String? workspaceUuid;
   @override
   Widget build(BuildContext context, WidgetRef ref) => QrQuickScreen(
+    onOpen: onOpen,
+    workspace: workspace,
+    workspaceUuid: workspaceUuid,
     arabic: Localizations.localeOf(context).languageCode == 'ar',
     createController: () async {
       final api = ref.read(apiServiceProvider);
