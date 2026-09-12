@@ -117,6 +117,15 @@ class OrderSyncRepository {
   }
 
   Future<List<OrderOutboxRow>> pendingRows() => _db.pendingOutbox();
+
+  /// Read-only combine admission: includes parked/GPS-blocked rows and waits
+  /// for existing preparation/ACK callbacks. Never flushes or deletes a row.
+  Future<void> assertIdleForCombine() async {
+    await _flushTail;
+    if ((await pendingRows()).isNotEmpty) {
+      throw StateError('Sync all pending orders and payments before combining.');
+    }
+  }
   Future<OrderOutboxRow?> rowForKey(String key) => _db.getOutbox(key);
 
   /// A historical local UUID remains the durable row key after rebinding.

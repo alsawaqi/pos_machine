@@ -1,4 +1,10 @@
 import 'dart:async';
+import '../bill_combine/combine_controller.dart';
+import '../bill_combine/combine_gateway.dart';
+import '../bill_combine/combine_local.dart';
+import '../bill_combine/combine_screen.dart';
+import '../bill_combine/combine_store.dart';
+import '../bill_combine/combine_models.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -2389,6 +2395,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           },
           catalogue: () => machineQuickCatalogue(ref.read(catalogProvider).asData?.value),
           onPay: _launchQrCheckout,
+          onCombine: () => _openBillCombine(id),
         ),
       ));
     } finally {
@@ -2401,6 +2408,48 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     DiningTableDefinition table, {bool canAddItems = true}
   ) async {
     await _openCustomerBill(table.id);
+  }
+
+  Future<void> _openBillCombine(int tableId) async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => CombineScreen(
+      arabic: ref.read(settingsControllerProvider).language == 'ar',
+      createController: () async {
+        final api = ref.read(apiServiceProvider), session = ref.read(sessionServiceProvider);
+        String scope() => quickDeviceScope(api.quickOrderBaseUrl, session.companyId, session.branchId, session.kioskId);
+        final gateway = ApiCombineGateway(api, scope);
+        final db = await LocalOrderStorageService.instance.database;
+        return CombineController(store: CombineStore(db, gateway.scope), gateway: gateway, tableId: tableId,
+          loadLocal: (id) async {
+            final local = await loadCombineLocal(db, id);
+            final inMemory = controller.diningSessionFor('$id');
+            if (inMemory?.draft != null && inMemory!.draft!.items.isNotEmpty) {
+              final saved = local.rows.where((r) => r['table'] == 'dining_tables').toList();
+              if (saved.length != 1 || combineJson(inMemory.draft!.toMap()) !=
+                  combineJson(jsonDecode(combineMap(saved.single['row'])['draft_json'] as String))) {
+                throw StateError('An in-memory table draft differs from storage. Keep it unchanged.');
+              }
+            }
+            return local;
+          },
+          checkIdle: () async {
+            gateway.check();
+            await controller.assertIdleForCombine();
+            if (!mounted || _showPaymentPage || _normalQrCheckoutOpen || _pendingTableIds.isNotEmpty ||
+                controller.showPaymentLaunchOverlay || controller.showCharityRoundUpPrompt ||
+                ref.read(qrSettlementCoordinatorProvider).pendingManagerRecoveries.isNotEmpty) {
+              throw StateError('Finish pending payment or table work before combining.');
+            }
+            await ref.read(orderSyncRepositoryProvider).assertIdleForCombine();
+            if (await (await SqliteCheckoutStore.open(gateway.scope)).active() != null ||
+                await (await SqliteDineInStore.open(gateway.scope)).load() != null ||
+                (await (await SqliteQrQuickStore.open(gateway.scope)).load()).isNotEmpty) {
+              throw StateError('Resolve saved payments and item additions first.');
+            }
+            gateway.check(); await controller.assertIdleForCombine();
+          });
+      })));
+    await controller.refreshHeldOrders();
+    await controller.refreshDiningTables();
   }
 
   String _formatOccupancyDuration(DateTime? value) =>
@@ -5251,6 +5300,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           session.companyId, session.branchId, session.kioskId),
         location: ref.read(qrLocationProvider).currentFix,
         legacyGuard: (orderUuid) async {
+          await controller.assertNoPendingCombine();
           if (ref.read(qrSettlementCoordinatorProvider).pendingManagerRecoveries.isNotEmpty ||
               await ref.read(orderSyncRepositoryProvider).hasUnresolvedStandaloneQrPay(orderUuid)) {
             throw StateError('An earlier QR settlement requires recovery.');

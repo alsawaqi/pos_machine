@@ -10,6 +10,8 @@ import 'package:pos_machine/state/pos_controller.dart';
 /// updates and an order.void is mirrored on the server uuid; void/refunded
 /// records stay locked; per-item cancel stays local-only.
 class _FakeStorage implements OrderStorageService {
+  @override
+  Future<void> assertNoPendingCombine() async {}
   bool updateCalled = false;
 
   @override

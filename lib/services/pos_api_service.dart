@@ -401,6 +401,22 @@ class PosApiService {
   Future<Map<String, dynamic>> dineInDetail(int id) async =>
       (await _send(() => _dio.get('/device/tables/$id/detail'))).dataMap;
 
+  Future<Map<String, dynamic>> combinePreview(int id, String sourceUuid) async =>
+      (await _send(() => _dio.get('/device/tables/$id/combine-preview',
+        queryParameters: {'source_order_uuid': sourceUuid}))).dataMap;
+
+  Future<Map<String, dynamic>> combineBill(int id, Map<String, dynamic> payload) async {
+    try {
+      return _interpret(await _dio.post('/device/tables/$id/combine', data: payload)).body;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 409 && e.response?.data is Map) {
+        return Map<String, dynamic>.from(e.response!.data as Map);
+      }
+      if (e.response != null) return _interpret(e.response!).body;
+      throw ApiException(message: 'Cannot reach the server. Retry the saved combine.', code: 'network', isNetwork: true);
+    }
+  }
+
   Future<Map<String, dynamic>> dineInAppend(String uuid, Map<String, dynamic> payload) async =>
       (await _send(() => _dio.post('/device/tables/${Uri.encodeComponent(uuid)}/round', data: payload))).dataMap;
 

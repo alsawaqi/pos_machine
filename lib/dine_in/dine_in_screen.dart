@@ -100,11 +100,13 @@ class DineInScreen extends StatefulWidget {
     this.arabic = false,
     this.writesAllowed = true,
     this.localDraftBlocked = false,
+    this.onCombine,
   });
   final Future<DineInController> Function() createController;
   final List<QuickProduct> Function() catalogue;
   final String label;
   final Future<void> Function(String) onPay;
+  final Future<void> Function()? onCombine;
   final bool arabic, writesAllowed, localDraftBlocked;
   @override
   State<DineInScreen> createState() => _DineInScreenState();
@@ -219,6 +221,29 @@ class _DineInScreenState extends State<DineInScreen>
     _schedule();
   }
 
+  Future<void> _combine() async {
+    if (childOpen ||
+        drafts.isNotEmpty ||
+        controller?.busy == true ||
+        controller?.pending != null) {
+      return;
+    }
+    childOpen = true;
+    controller?.setForeground(false);
+    _schedule();
+    try {
+      await widget.onCombine!();
+    } finally {
+      childOpen = false;
+      if (mounted) {
+        controller?.removeListener(_changed);
+        controller?.dispose();
+        controller = null;
+        await _start();
+      }
+    }
+  }
+
   Future<void> _send() async {
     final c = controller!;
     final ok = await c.add(
@@ -298,6 +323,22 @@ class _DineInScreenState extends State<DineInScreen>
               if (error != null) note(error!),
               if (c?.stale == true) note('refresh'),
               if (c?.notice != null) note(c!.notice!),
+              if (widget.onCombine != null)
+                OutlinedButton(
+                  key: const ValueKey('dine-combine'),
+                  onPressed:
+                      c?.busy == true ||
+                          c?.pending != null ||
+                          drafts.isNotEmpty ||
+                          childOpen
+                      ? null
+                      : _combine,
+                  child: Text(
+                    widget.arabic
+                        ? 'مراجعة دمج فاتورة محلية / استعادة'
+                        : 'Review local bill combine / recovery',
+                  ),
+                ),
               if (widget.localDraftBlocked || c?.hasLocalConflict == true)
                 note(
                   widget.arabic

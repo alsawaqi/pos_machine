@@ -15,6 +15,8 @@ const _androidOnly = TargetPlatformVariant(<TargetPlatform>{
 });
 
 class _FakeOrderStorageService implements OrderStorageService {
+  @override
+  Future<void> assertNoPendingCombine() async {}
   int _nextOrderNumber = 1450;
   int saveDiningTableSessionCalls = 0;
   final List<OrderHistoryRecord> _history = <OrderHistoryRecord>[];

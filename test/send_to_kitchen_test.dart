@@ -24,6 +24,8 @@ const b3Product = Product(
 );
 
 class B3Memory implements TableLedgerStore, OrderStorageService {
+  @override
+  Future<void> assertNoPendingCombine() async {}
   final tables = <String, DiningTableSession>{};
   final rounds = <String, LocalTableRound>{};
   final cancellations = <String, LocalLineCancellation>{};

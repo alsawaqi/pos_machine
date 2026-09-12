@@ -9,8 +9,10 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../models/pos_models.dart';
 import '../models/remote_table_state.dart';
 import '../models/table_sync_models.dart';
+import '../bill_combine/combine_store.dart';
 
 abstract class OrderStorageService {
+  Future<void> assertNoPendingCombine() async {}
   Future<int> fetchNextOrderNumber();
   Future<void> saveCompletedOrder(OrderSnapshot snapshot);
   Future<void> updateCompletedOrder(OrderHistoryRecord record);
@@ -47,6 +49,9 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore,
     _database = await _openDatabase();
     return _database!;
   }
+
+  @override
+  Future<void> assertNoPendingCombine() async => CombineStore.assertNonePending(await database);
 
   @override
   Future<int> fetchNextOrderNumber() async {
@@ -225,7 +230,7 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore,
 
     return openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE order_history (
@@ -267,6 +272,7 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore,
         await createRemoteTables(db);
         await createTableLedger(db);
         await createRemoteBillIdentity(db);
+        await CombineStore.createSchema(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -342,6 +348,9 @@ class LocalOrderStorageService implements OrderStorageService, RemoteTableStore,
         }
         if (oldVersion < 6) {
           await createTableLedger(db);
+        }
+        if (oldVersion < 8) {
+          await CombineStore.createSchema(db);
         }
         if (oldVersion < 7) {
           await createRemoteBillIdentity(db);

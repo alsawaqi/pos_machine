@@ -7,6 +7,8 @@ import 'package:pos_machine/state/pos_controller.dart';
 /// (pull a FREE neighbouring table into an occupied party so they share the
 /// party's ONE bill — never combining two separate running orders).
 class _FakeStorage implements OrderStorageService {
+  @override
+  Future<void> assertNoPendingCombine() async {}
   final Map<String, DiningTableSession> tables = {};
   final List<String> voided = [];
 

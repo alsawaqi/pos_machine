@@ -5,6 +5,8 @@ import 'package:pos_machine/services/local_order_storage_service.dart';
 /// sqflite-backed and its I/O cannot complete inside testWidgets' FakeAsync
 /// zone. Parked on [debugOrderStorageOverride] in setUp.
 class FakeOrderStorage implements OrderStorageService {
+  @override
+  Future<void> assertNoPendingCombine() async {}
   int _nextOrderNumber = 1450;
   final List<OrderHistoryRecord> history = <OrderHistoryRecord>[];
   final List<HeldOrderRecord> held = <HeldOrderRecord>[];

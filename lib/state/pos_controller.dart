@@ -61,6 +61,28 @@ class PosController extends ChangeNotifier
 
   String get activeDiningTableBillUuid => _activeServerOrderUuid ?? '';
 
+  Future<void> assertIdleForCombine() async {
+    if (_diningTablePersistTimer != null || cart.isNotEmpty || isProcessingPayment || hasRecordedSplitPayments) {
+      throw StateError('Finish the active cart and pending table work first.');
+    }
+    await _diningTablePersistQueue;
+    if (_diningTablePersistTimer != null || cart.isNotEmpty || isProcessingPayment || hasRecordedSplitPayments) {
+      throw StateError('Table work changed while checking.');
+    }
+  }
+
+  Future<bool> _combineMutationAllowed() async {
+    try { await _orderStorage.assertNoPendingCombine(); return true; }
+    catch (_) {
+      lastPaymentMessage = _l10n.localeName.startsWith('ar')
+          ? 'أكمل دمج الفواتير المعلق في قسم داخل المطعم أولاً.'
+          : 'Finish the pending bill combine in Dine-In first.';
+      displayNote = lastPaymentMessage; _notifySafely(); return false;
+    }
+  }
+
+  Future<void> assertNoPendingCombine() => _orderStorage.assertNoPendingCombine();
+
   /// Owner-approved T6 correction: this device's initial proposal/ACK may
   /// bind the current bill without reopening or reloading the cashier's cart.
   bool bindDiningTableBillIdentity({
@@ -2059,6 +2081,7 @@ class PosController extends ChangeNotifier
       _findDiningTableDefinitionById(id);
 
   Future<void> openDiningTable(String tableId) async {
+    if (!await _combineMutationAllowed() || isProcessingPayment) return;
     // Joined tables: tapping a linked seat opens the party's shared bill on
     // the group head, not the empty linked seat.
     final tapped = diningSessionFor(tableId);
@@ -2159,6 +2182,7 @@ class PosController extends ChangeNotifier
   }
 
   Future<void> clearActiveDiningTable() async {
+    if (!await _combineMutationAllowed() || isProcessingPayment) return;
     final tableId = activeDiningTableId;
     if (tableId == null) return;
 
@@ -2182,6 +2206,7 @@ class PosController extends ChangeNotifier
   }
 
   Future<void> clearDiningTableById(String tableId) async {
+    if (!await _combineMutationAllowed() || isProcessingPayment) return;
     // Resolve to the whole party (head + linked seats) so discarding any one
     // table frees the joined group together.
     final groupIds = _diningGroupIds(tableId);
@@ -2224,6 +2249,7 @@ class PosController extends ChangeNotifier
     String fromTableId,
     String toTableId,
   ) async {
+    if (!await _combineMutationAllowed() || isProcessingPayment) return lastPaymentMessage;
     if (activeDiningTableId != null || fromTableId == toTableId) return null;
     final source = diningSessionFor(fromTableId);
     final targetDef = _findDiningTableDefinitionById(toTableId);
@@ -2296,6 +2322,7 @@ class PosController extends ChangeNotifier
     String headTableId,
     String freeTableId,
   ) async {
+    if (!await _combineMutationAllowed() || isProcessingPayment) return lastPaymentMessage;
     if (activeDiningTableId != null) return null;
 
     final head = _diningGroupHeadId(headTableId);
@@ -2526,6 +2553,7 @@ class PosController extends ChangeNotifier
 
   Future<String?> holdCurrentOrder() async {
     if (_cart.isEmpty || isProcessingPayment) return null;
+    if (!await _combineMutationAllowed() || isProcessingPayment) return lastPaymentMessage;
 
     try {
       // Phase C2 — mint the server uuid at hold time (or keep the resumed
@@ -2581,6 +2609,7 @@ class PosController extends ChangeNotifier
 
   Future<String?> resumeHeldOrder(HeldOrderRecord record) async {
     if (isProcessingPayment) return null;
+    if (!await _combineMutationAllowed() || isProcessingPayment) return lastPaymentMessage;
 
     _dropCompForCartMutation();
     _cart
@@ -2628,6 +2657,7 @@ class PosController extends ChangeNotifier
   /// mirror leaves the branch's active list. The CALLER owns any
   /// confirmation / manager gate.
   Future<String> discardHeldOrder(HeldOrderRecord record) async {
+    if (!await _combineMutationAllowed()) return lastPaymentMessage;
     await _orderStorage.deleteHeldOrder(record.id);
     await refreshHeldOrders();
     final uuid = record.draft.serverOrderUuid;
@@ -2914,6 +2944,11 @@ class PosController extends ChangeNotifier
     isProcessingPayment = true;
     lastPaymentMessage = '';
 
+    if (!await _combineMutationAllowed()) {
+      isProcessingPayment = false;
+      return lastPaymentMessage;
+    }
+
     // P-F8 — merchant order numbering: allocate the official sequential
     // number ONCE per order (the first tender of a split wins), short-fused
     // so an offline/slow till never stalls the sale — the fallback is the
@@ -3150,6 +3185,11 @@ class PosController extends ChangeNotifier
     selectedPaymentMethod = 'Credit Card';
     isProcessingPayment = true;
     lastPaymentMessage = '';
+    if (!await _combineMutationAllowed()) {
+      isProcessingPayment = false;
+      _activePaymentBaseOverride = null;
+      return lastPaymentMessage;
+    }
 
     try {
       if (canOfferCharityRoundUp) {

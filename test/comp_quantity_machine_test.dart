@@ -19,6 +19,8 @@ const _table = DiningTableDefinition(
 
 class _FakeStorage implements OrderStorageService {
   @override
+  Future<void> assertNoPendingCombine() async {}
+  @override
   Future<int> fetchNextOrderNumber() async => 1;
   @override
   Future<void> saveCompletedOrder(OrderSnapshot snapshot) async {}

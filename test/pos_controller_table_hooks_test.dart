@@ -5,6 +5,8 @@ import 'package:pos_machine/services/local_order_storage_service.dart';
 import 'package:pos_machine/state/pos_controller.dart';
 
 class _FakeStorage implements OrderStorageService {
+  @override
+  Future<void> assertNoPendingCombine() async {}
   final Map<String, DiningTableSession> tables = {};
   final List<String> voided = [];
 
