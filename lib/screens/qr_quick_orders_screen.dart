@@ -12,6 +12,7 @@ import '../qr_quick/qr_quick_screen.dart';
 import '../qr_quick/qr_quick_store.dart';
 import '../services/config_mapper.dart';
 import 'qr_pending_sheet.dart';
+import 'workspace_void.dart';
 
 List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
   if (catalog == null) return [];
@@ -82,6 +83,7 @@ class QrQuickOrdersScreen extends ConsumerWidget {
     onOpen: onOpen,
     workspace: workspace,
     workspaceUuid: workspaceUuid,
+    onVoid: (uuid) => openMachineWorkspaceVoid(context, ref, uuid),
     arabic: Localizations.localeOf(context).languageCode == 'ar',
     createController: () async {
       final api = ref.read(apiServiceProvider);

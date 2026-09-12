@@ -102,6 +102,7 @@ class DineInScreen extends StatefulWidget {
     this.writesAllowed = true,
     this.localDraftBlocked = false,
     this.workspace,
+    this.onVoid,
     this.onCombine,
     this.onRecover,
     this.localDraftBlockedNow,
@@ -115,6 +116,7 @@ class DineInScreen extends StatefulWidget {
   final bool Function()? localDraftBlockedNow;
   final bool arabic, writesAllowed, localDraftBlocked;
   final CurrentOrderWorkspace? workspace;
+  final Future<bool> Function(String uuid)? onVoid;
   @override
   State<DineInScreen> createState() => _DineInScreenState();
 }
@@ -242,6 +244,42 @@ class _DineInScreenState extends State<DineInScreen>
     });
   }
 
+  bool get _canVoid =>
+      widget.workspace != null &&
+      widget.onVoid != null &&
+      !childOpen &&
+      !leaving &&
+      drafts.isEmpty &&
+      !widget.localDraftBlocked &&
+      widget.localDraftBlockedNow?.call() != true &&
+      widget.writesAllowed &&
+      controller?.available == true &&
+      controller?.detail?.billUuid != null &&
+      const {
+        'open',
+        'held',
+        'awaiting_payment',
+      }.contains(controller?.detail?.bill?['status']);
+
+  Future<void> _void() async {
+    if (!_canVoid) return;
+    final c = controller!;
+    final uuid = c.detail!.billUuid!;
+    childOpen = true;
+    c.setForeground(false);
+    _schedule();
+    try {
+      if (await widget.onVoid!(uuid) && mounted) widget.workspace!.onExit();
+    } finally {
+      if (mounted) {
+        childOpen = false;
+        c.setForeground(foreground);
+        await c.refresh();
+        if (mounted) _schedule();
+      }
+    }
+  }
+
   Future<void> _pick([QuickProduct? product]) async {
     final c = controller!;
     if (!c.canAdd || childOpen) return;
@@ -362,6 +400,13 @@ class _DineInScreenState extends State<DineInScreen>
             ),
             title: Text('${text('title')} · ${widget.label}'),
             actions: [
+              if (widget.workspace != null && widget.onVoid != null)
+                TextButton.icon(
+                  key: const ValueKey('workspace-void'),
+                  onPressed: _canVoid ? _void : null,
+                  icon: const Icon(Icons.delete_outline),
+                  label: Text(widget.arabic ? 'إلغاء الفاتورة' : 'Void bill'),
+                ),
               IconButton(
                 key: const ValueKey('dine-refresh'),
                 onPressed: c?.busy == true ? null : () => c?.refresh(),

@@ -60,6 +60,7 @@ import '../qr_checkout/qr_checkout_store.dart';
 import '../qr_checkout/qr_checkout_widgets.dart';
 import '../services/mosambee_payment_service.dart' show MosambeeFailurePhase;
 import 'qr_quick_orders_screen.dart';
+import 'workspace_void.dart';
 import '../widgets/qr_round_print_status_indicator.dart';
 import '../widgets/sent_line_cancel_dialog.dart';
 import '../widgets/table_degraded_banner.dart';
@@ -2795,6 +2796,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         catalogue: () =>
             machineQuickCatalogue(ref.read(catalogProvider).asData?.value),
         onPay: _launchQrCheckout,
+        onVoid: (uuid) => openMachineWorkspaceVoid(context, ref, uuid),
         onCombine: () => _openBillCombine(id),
         onRecover: () => _openDraftRecovery(id),
       ),

@@ -58,6 +58,7 @@ class QrQuickScreen extends StatefulWidget {
     this.onOpen,
     this.workspace,
     this.workspaceUuid,
+    this.onVoid,
   });
   final Future<QrQuickController> Function() createController;
   final List<QuickProduct> Function() catalogue;
@@ -67,6 +68,7 @@ class QrQuickScreen extends StatefulWidget {
   final Future<void> Function(String uuid)? onOpen;
   final CurrentOrderWorkspace? workspace;
   final String? workspaceUuid;
+  final Future<bool> Function(String uuid)? onVoid;
   @override
   State<QrQuickScreen> createState() => _QrQuickScreenState();
 }
@@ -201,6 +203,7 @@ class _QrQuickScreenState extends State<QrQuickScreen>
                   ? null
                   : () => _pay(widget.workspaceUuid!),
               workspace: widget.workspace,
+              onVoid: widget.onVoid,
             );
     }
     return Directionality(
@@ -353,6 +356,7 @@ class _QuickEditor extends StatefulWidget {
     required this.copy,
     this.onPay,
     this.workspace,
+    this.onVoid,
   });
   final QrQuickController controller;
   final String uuid;
@@ -360,6 +364,7 @@ class _QuickEditor extends StatefulWidget {
   final QuickCopy copy;
   final Future<void> Function()? onPay;
   final CurrentOrderWorkspace? workspace;
+  final Future<bool> Function(String uuid)? onVoid;
   @override
   State<_QuickEditor> createState() => _QuickEditorState();
 }
@@ -412,6 +417,38 @@ class _QuickEditorState extends State<_QuickEditor> {
     } finally {
       childOpen = false;
       if (mounted) _publish();
+    }
+  }
+
+  bool get _canVoid =>
+      widget.workspace != null &&
+      widget.onVoid != null &&
+      !childOpen &&
+      !closing &&
+      drafts.isEmpty &&
+      widget.controller.ready &&
+      !widget.controller.stale &&
+      !widget.controller.busy &&
+      !widget.controller.pending.containsKey(widget.uuid) &&
+      const {
+        'open',
+        'held',
+        'awaiting_payment',
+      }.contains(widget.controller.find(widget.uuid)?.json['status']);
+
+  Future<void> _void() async {
+    if (!_canVoid) return;
+    setState(() => childOpen = true);
+    _publish();
+    try {
+      if (await widget.onVoid!(widget.uuid) && mounted) _exit();
+    } finally {
+      if (mounted) {
+        setState(() => childOpen = false);
+        widget.controller.invalidate();
+        await widget.controller.refresh();
+        if (mounted) _publish();
+      }
     }
   }
 
@@ -542,6 +579,13 @@ class _QuickEditorState extends State<_QuickEditor> {
                     ),
               title: Text(order?.reference ?? widget.uuid),
               actions: [
+                if (widget.workspace != null && widget.onVoid != null)
+                  TextButton.icon(
+                    key: const ValueKey('workspace-void'),
+                    onPressed: _canVoid ? _void : null,
+                    icon: const Icon(Icons.delete_outline),
+                    label: Text(copy.pair('Void bill', 'إلغاء الفاتورة')),
+                  ),
                 IconButton(
                   onPressed: c.busy ? null : c.refresh,
                   icon: const Icon(Icons.refresh),

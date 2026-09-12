@@ -565,6 +565,23 @@ class PosApiService {
     await _send(() => _dio.post('/device/qr/release-charge', data: payload));
   }
 
+  Future<Map<String, dynamic>> workspaceVoidPreview(String uuid) async =>
+      (await _send(
+        () => _dio.get(
+          '/device/qr/orders/${Uri.encodeComponent(uuid)}/void-preview',
+        ),
+      )).dataMap;
+
+  Future<Map<String, dynamic>> workspaceVoid(
+    String uuid,
+    Map<String, dynamic> payload,
+  ) async => (await _send(
+    () => _dio.post(
+      '/device/qr/orders/${Uri.encodeComponent(uuid)}/void',
+      data: payload,
+    ),
+  )).dataMap;
+
   Future<List<Map<String, dynamic>>> checkoutPush(
     Map<String, dynamic> event,
   ) async => ((await pushSync([event]))['results'] as List)
