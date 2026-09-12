@@ -4,6 +4,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:pos_machine/bill_combine/combine_controller.dart';
 import 'package:pos_machine/bill_combine/combine_models.dart';
 import 'package:pos_machine/bill_combine/combine_store.dart';
+import 'package:pos_machine/draft_recovery/recovery_store.dart';
 
 const sourceId = '11111111-1111-4111-8111-111111111111';
 const targetId = '22222222-2222-4222-8222-222222222222';
@@ -122,6 +123,7 @@ void main() {
     );
     await db.insert('held_orders', {'uuid': sourceId, 'draft': 'original'});
     await CombineStore.createSchema(db);
+    await RecoveryStore.createSchema(db);
     store = CombineStore(db, 'device-scope');
     gateway = Gateway();
     controller = create();

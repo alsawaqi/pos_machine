@@ -4,13 +4,14 @@ import 'dine_in_models.dart';
 import 'dine_in_controller.dart';
 
 class ApiDineInGateway implements DineInGateway {
-  ApiDineInGateway(this.api, this.currentScope)
+  ApiDineInGateway(this.api, this.currentScope, {this.mutationGuard})
     : scope = currentScope(),
       token = api.tokenGetter();
   final PosApiService api;
   final String Function() currentScope;
   final String scope;
   final String? token;
+  final Future<void> Function()? mutationGuard;
   void check() {
     if (token == null ||
         token!.isEmpty ||
@@ -20,9 +21,11 @@ class ApiDineInGateway implements DineInGateway {
     }
   }
 
-  Future<T> _call<T>(Future<T> Function() action) async {
+  Future<T> _call<T>(Future<T> Function() action, {bool writes = false}) async {
     check();
     try {
+      if (writes) await mutationGuard?.call();
+      check();
       final result = await action();
       check();
       return result;
@@ -35,8 +38,10 @@ class ApiDineInGateway implements DineInGateway {
   Future<DineInDetail> detail(int tableId) =>
       _call(() async => DineInDetail(await api.dineInDetail(tableId)));
   @override
-  Future<Map<String, dynamic>> append(DineInRequest request) =>
-      _call(() => api.dineInAppend(request.seatingUuid, request.payload));
+  Future<Map<String, dynamic>> append(DineInRequest request) => _call(
+    () => api.dineInAppend(request.seatingUuid, request.payload),
+    writes: true,
+  );
   @override
   Future<void> review(
     DineInDetail detail,
@@ -49,9 +54,12 @@ class ApiDineInGateway implements DineInGateway {
       staff: round['entered_by'] == 'staff',
       accept: accept,
     ),
+    writes: true,
   );
   @override
-  Future<void> clear(int tableId) => _call(() => api.dineInClear(tableId));
+  Future<void> clear(int tableId) =>
+      _call(() => api.dineInClear(tableId), writes: true);
   @override
-  Future<void> reopen(String uuid) => _call(() => api.dineInReopen(uuid));
+  Future<void> reopen(String uuid) =>
+      _call(() => api.dineInReopen(uuid), writes: true);
 }

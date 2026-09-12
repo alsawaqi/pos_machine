@@ -53,6 +53,7 @@ class PosController extends ChangeNotifier
   DateTime Function() clock = DateTime.now;
 
   DiningTableSyncHooks? diningTableSyncHooks;
+
   /// T6 owner-approved eligibility seam; no change to card charge arithmetic.
   bool Function()? isLiveSharedTable;
   Future<bool> Function(OrderSnapshot)? onDiningTableFinalRound;
@@ -61,27 +62,98 @@ class PosController extends ChangeNotifier
 
   String get activeDiningTableBillUuid => _activeServerOrderUuid ?? '';
 
+  DraftRecoveryGuard? get _recoveryGuard => _orderStorage is DraftRecoveryGuard
+      ? _orderStorage as DraftRecoveryGuard
+      : null;
+  bool get recoveryBlocked => _recoveryGuard?.recoveryBlocked.value ?? false;
+  bool _cartMutationAllowed() {
+    if (!recoveryBlocked) return true;
+    lastPaymentMessage = _l10n.localeName.startsWith('ar')
+        ? 'أكمل استعادة مسودة الفاتورة المحفوظة في قسم داخل المطعم أولاً.'
+        : 'Finish the saved bill draft recovery in Dine-In first.';
+    displayNote = lastPaymentMessage;
+    _notifySafely();
+    return false;
+  }
+
+  Future<bool> _draftAllowed({
+    String? uuid,
+    String? tableId,
+    String? reference,
+    String? occupiedAt,
+    String? seatingKey,
+  }) async {
+    try {
+      await _recoveryGuard?.assertDraftNotRetired(
+        uuid: uuid,
+        tableId: tableId,
+        reference: reference,
+        occupiedAt: occupiedAt,
+        seatingKey: seatingKey,
+      );
+      return true;
+    } catch (_) {
+      lastPaymentMessage =
+          'This local bill was archived. Use its canonical Dine-In bill.';
+      displayNote = lastPaymentMessage;
+      _notifySafely();
+      return false;
+    }
+  }
+
+  void forgetRecoveredOccupancy(
+    String tableId,
+    String reference,
+    String? occupiedAt,
+  ) {
+    if (occupiedAt != null &&
+        _diningHookOccupancies[tableId] ==
+            '$reference|${DateTime.parse(occupiedAt)}') {
+      _diningHookOccupancies.remove(tableId);
+    }
+  }
+
   Future<void> assertIdleForCombine() async {
-    if (_diningTablePersistTimer != null || cart.isNotEmpty || isProcessingPayment || hasRecordedSplitPayments) {
+    if (_diningTablePersistTimer != null ||
+        cart.isNotEmpty ||
+        isProcessingPayment ||
+        hasRecordedSplitPayments) {
       throw StateError('Finish the active cart and pending table work first.');
     }
     await _diningTablePersistQueue;
-    if (_diningTablePersistTimer != null || cart.isNotEmpty || isProcessingPayment || hasRecordedSplitPayments) {
+    if (_diningTablePersistTimer != null ||
+        cart.isNotEmpty ||
+        isProcessingPayment ||
+        hasRecordedSplitPayments) {
       throw StateError('Table work changed while checking.');
     }
   }
 
   Future<bool> _combineMutationAllowed() async {
-    try { await _orderStorage.assertNoPendingCombine(); return true; }
-    catch (_) {
+    if (!_cartMutationAllowed()) return false;
+    try {
+      await _orderStorage.assertNoPendingCombine();
+      return await _draftAllowed(
+        uuid: _activeServerOrderUuid,
+        tableId: activeDiningTableId,
+        reference: currentOrderReference,
+        occupiedAt: diningSessionFor(
+          activeDiningTableId ?? '',
+        )?.occupiedAt?.toIso8601String(),
+        seatingKey: _activeDiningTableSeatingKey,
+      );
+    } catch (_) {
       lastPaymentMessage = _l10n.localeName.startsWith('ar')
           ? 'أكمل دمج الفواتير المعلق في قسم داخل المطعم أولاً.'
           : 'Finish the pending bill combine in Dine-In first.';
-      displayNote = lastPaymentMessage; _notifySafely(); return false;
+      displayNote = lastPaymentMessage;
+      _notifySafely();
+      return false;
     }
   }
 
-  Future<void> assertNoPendingCombine() => _orderStorage.assertNoPendingCombine();
+  Future<void> assertNoPendingCombine() =>
+      _orderStorage.assertNoPendingCombine();
 
   /// Owner-approved T6 correction: this device's initial proposal/ACK may
   /// bind the current bill without reopening or reloading the cashier's cart.
@@ -93,13 +165,15 @@ class PosController extends ChangeNotifier
     required String expectedOrderUuid,
     required String orderUuid,
   }) {
-    if (!live || selectedOrderType != OrderType.dineIn ||
+    if (!live ||
+        selectedOrderType != OrderType.dineIn ||
         activeDiningTableId != tableId ||
-        currentOrderReference != orderReference || orderUuid.isEmpty) {
+        currentOrderReference != orderReference ||
+        orderUuid.isEmpty) {
       return false;
     }
-    final currentSeating = _activeDiningTableSeatingKey ??
-        diningSessionFor(tableId)?.seatingKey;
+    final currentSeating =
+        _activeDiningTableSeatingKey ?? diningSessionFor(tableId)?.seatingKey;
     if (currentSeating != null && currentSeating != seatingKey) return false;
     final active = _activeServerOrderUuid ?? '';
     if (active == orderUuid) {
@@ -544,6 +618,7 @@ class PosController extends ChangeNotifier
   }
 
   void setSelectedEarnRules(List<int> ruleIds) {
+    if (!_cartMutationAllowed()) return;
     selectedEarnRuleIds = List<int>.from(ruleIds);
     _broadcast();
   }
@@ -714,6 +789,7 @@ class PosController extends ChangeNotifier
            LocalOrderStorageService.instance,
        _priceOrder = priceOrderOverride ?? pricing.priceOrder {
     _paymentBridge.setLaunchStateListener(_handlePaymentLaunchState);
+    _recoveryGuard?.recoveryBlocked.addListener(_notifySafely);
   }
 
   Future<void> init() async {
@@ -886,6 +962,7 @@ class PosController extends ChangeNotifier
 
   /// Pick a delivery provider — re-prices the menu + cart to that provider.
   void selectDeliveryProvider(int providerId) {
+    if (!_cartMutationAllowed()) return;
     selectedDeliveryProviderId = providerId;
     _applyDeliveryPricing();
     _broadcast();
@@ -1264,6 +1341,7 @@ class PosController extends ChangeNotifier
   /// at the bundle price (removing a piece breaks the bundle — items then
   /// charge normally).
   void addBundle(Offer offer, List<Product> picks) {
+    if (!_cartMutationAllowed()) return;
     // P-G7 — no promotions on delivery-provider orders: the bundle price
     // comes from the offer engine, which is delivery-gated, so the items
     // would silently charge full price. Refuse instead.
@@ -1306,6 +1384,7 @@ class PosController extends ChangeNotifier
   /// the payment page opens (time windows re-checked then). Rules that
   /// require manager approval never auto-apply — nobody approved them.
   void maybeAutoApplyOrderDiscount() {
+    if (!_cartMutationAllowed()) return;
     if (_autoOrderDiscountSuppressed) return;
     if (discount.isActive || _cart.isEmpty) return;
     final now = clock();
@@ -1401,6 +1480,7 @@ class PosController extends ChangeNotifier
   /// P-F5 — toggle a line gift (the screen owns the manager gate). Refused
   /// while a FULL-ORDER comp is applied — the order is already written off.
   bool toggleGiftItem(CartItem item) {
+    if (!_cartMutationAllowed()) return false;
     // P-G7 — no gift write-offs on delivery-provider orders (the provider
     // pays the punched total; nothing is collected at the till anyway).
     if (selectedOrderType == OrderType.delivery && !item.gifted) {
@@ -1437,6 +1517,7 @@ class PosController extends ChangeNotifier
   /// The CALLER is responsible for manager authorization + cap validation
   /// against the picked reason's maxAmount.
   void applyComp(AppliedComp comp) {
+    if (!_cartMutationAllowed()) return;
     // P-G7 — delivery-provider orders are exempt from EVERYTHING: a comp
     // would shrink the punched total the provider settles against.
     if (selectedOrderType == OrderType.delivery) return;
@@ -1461,6 +1542,7 @@ class PosController extends ChangeNotifier
   }
 
   void removeComp() {
+    if (!_cartMutationAllowed()) return;
     if (appliedComp == null) return;
     appliedComp = null;
     _resetCharityRoundUp();
@@ -1571,7 +1653,8 @@ class PosController extends ChangeNotifier
 
   bool get canOfferCharityRoundUp =>
       !(selectedOrderType == OrderType.dineIn &&
-          activeDiningTableId != null && (isLiveSharedTable?.call() ?? false)) &&
+          activeDiningTableId != null &&
+          (isLiveSharedTable?.call() ?? false)) &&
       // P-G7 — no round-up on delivery orders (no till money at all).
       selectedOrderType != OrderType.delivery &&
       // CARD legs only. The round-up must ride the card charge (the bank
@@ -1750,6 +1833,7 @@ class PosController extends ChangeNotifier
   }
 
   Future<void> selectOrderType(OrderType orderType) async {
+    if (!_cartMutationAllowed()) return;
     if (selectedOrderType == orderType) {
       if (orderType == OrderType.dineIn && activeDiningTableId == null) {
         displayNote = _l10n.ctrlMsgChooseTableDineIn;
@@ -1820,11 +1904,13 @@ class PosController extends ChangeNotifier
   }
 
   void selectPaymentMethod(String paymentMethod) {
+    if (!_cartMutationAllowed()) return;
     selectedPaymentMethod = paymentMethod;
     _broadcast();
   }
 
   void setCustomerReferenceNumber(String value) {
+    if (!_cartMutationAllowed()) return;
     customerReferenceNumber = value.replaceAll(RegExp(r'\D'), '').trim();
     // Typing a raw number detaches any searched customer (they diverge).
     selectedCustomer = null;
@@ -1849,6 +1935,7 @@ class PosController extends ChangeNotifier
   }
 
   void setVehiclePlateNumber(String value) {
+    if (!_cartMutationAllowed()) return;
     // Plates are alphanumeric; store the canonical uppercased form (the server
     // matches plates uppercased).
     vehiclePlateNumber = value.trim().toUpperCase();
@@ -1887,6 +1974,7 @@ class PosController extends ChangeNotifier
   int loyaltyRedeemStamps = 0;
 
   void applyDiscount(DiscountConfiguration configuration) {
+    if (!_cartMutationAllowed()) return;
     // P-G7 — delivery-provider orders take no discounts.
     if (selectedOrderType == OrderType.delivery) return;
     discount = configuration;
@@ -1909,6 +1997,7 @@ class PosController extends ChangeNotifier
     int points = 0,
     int stamps = 0,
   }) {
+    if (!_cartMutationAllowed()) return;
     // P-G7 — no loyalty on delivery-provider orders.
     if (selectedOrderType == OrderType.delivery) return;
     discount = DiscountConfiguration(
@@ -1924,6 +2013,7 @@ class PosController extends ChangeNotifier
   }
 
   void clearDiscount() {
+    if (!_cartMutationAllowed()) return;
     discount = const DiscountConfiguration();
     loyaltyRedeemRuleId = null;
     loyaltyRedeemPoints = 0;
@@ -1945,6 +2035,7 @@ class PosController extends ChangeNotifier
   }
 
   void setSplitCount(int count) {
+    if (!_cartMutationAllowed()) return;
     if (hasRecordedSplitPayments) return;
     splitCount = count < 1 ? 1 : count;
     _splitPayments.clear();
@@ -1960,6 +2051,7 @@ class PosController extends ChangeNotifier
   /// baisa). Returns false when the plan is rejected — the caller must NOT
   /// present the split as active in that case.
   bool setSplitPlan(List<double> amounts) {
+    if (!_cartMutationAllowed()) return false;
     if (hasRecordedSplitPayments) return false;
     final shares = pricing.validateSplitPlan([
       for (final amount in amounts) pricing.omrToBaisas(amount),
@@ -1977,6 +2069,7 @@ class PosController extends ChangeNotifier
   }
 
   void clearSplit() {
+    if (!_cartMutationAllowed()) return;
     if (hasRecordedSplitPayments) return;
     splitCount = 1;
     _splitPayments.clear();
@@ -1986,6 +2079,7 @@ class PosController extends ChangeNotifier
   }
 
   void addProduct(Product product) {
+    if (!_cartMutationAllowed()) return;
     // #3 — a finite-shelf product (unit/cooked) can't be sold past the
     // produced/allocated count; once the cart holds the whole shelf, stop.
     if (isAtShelfCap(product)) {
@@ -2010,6 +2104,7 @@ class PosController extends ChangeNotifier
   }
 
   void incrementCartItem(CartItem item) {
+    if (!_cartMutationAllowed()) return;
     final index = _cart.indexOf(item);
     if (index == -1) return;
 
@@ -2025,6 +2120,7 @@ class PosController extends ChangeNotifier
   }
 
   void removeCartItem(CartItem item) {
+    if (!_cartMutationAllowed()) return;
     final removed = _cart.remove(item);
     if (!removed) return;
     _dropCompForCartMutation();
@@ -2032,6 +2128,7 @@ class PosController extends ChangeNotifier
   }
 
   void decreaseCartItem(CartItem item) {
+    if (!_cartMutationAllowed()) return;
     final index = _cart.indexOf(item);
     if (index == -1) return;
 
@@ -2049,6 +2146,7 @@ class PosController extends ChangeNotifier
     required List<CartItemModifier> modifiers,
     required String notes,
   }) {
+    if (!_cartMutationAllowed()) return;
     final index = _cart.indexOf(item);
     if (index == -1) return;
 
@@ -2106,6 +2204,18 @@ class PosController extends ChangeNotifier
         _cart.isNotEmpty &&
         (session == null || session.status == DiningTableStatus.available);
 
+    if (session != null &&
+        !await _draftAllowed(
+          uuid: session.serverOrderUuid ?? session.draft?.serverOrderUuid,
+          tableId: tableId,
+          reference: session.orderReference,
+          occupiedAt: session.occupiedAt?.toIso8601String(),
+          seatingKey: session.seatingKey,
+        )) {
+      return;
+    }
+    if (!_cartMutationAllowed()) return;
+
     selectedOrderType = OrderType.dineIn;
     activeDiningTableId = tableId;
     _activeDiningTableSeatingKey = session?.seatingKey;
@@ -2134,7 +2244,8 @@ class PosController extends ChangeNotifier
           : session.draft!.orderReference;
       selectedCategory = session.draft!.selectedCategory;
       _activeServerOrderUuid = session.draft!.serverOrderUuid.isEmpty
-          ? null : session.draft!.serverOrderUuid;
+          ? null
+          : session.draft!.serverOrderUuid;
       customerReferenceNumber = session.draft!.customerReferenceNumber;
       discount = session.draft!.discount;
       splitCount = session.draft!.splitCount;
@@ -2166,6 +2277,7 @@ class PosController extends ChangeNotifier
   }
 
   Future<void> returnToDiningFloorPlan() async {
+    if (!await _combineMutationAllowed()) return;
     if (selectedOrderType != OrderType.dineIn) return;
 
     final leavingTableId = activeDiningTableId;
@@ -2249,7 +2361,9 @@ class PosController extends ChangeNotifier
     String fromTableId,
     String toTableId,
   ) async {
-    if (!await _combineMutationAllowed() || isProcessingPayment) return lastPaymentMessage;
+    if (!await _combineMutationAllowed() || isProcessingPayment) {
+      return lastPaymentMessage;
+    }
     if (activeDiningTableId != null || fromTableId == toTableId) return null;
     final source = diningSessionFor(fromTableId);
     final targetDef = _findDiningTableDefinitionById(toTableId);
@@ -2286,16 +2400,19 @@ class PosController extends ChangeNotifier
     await _orderStorage.saveDiningTableSession(moved);
     await _orderStorage.clearDiningTable(fromTableId);
     _diningHookOccupancies.remove(fromTableId);
-    diningTableSyncHooks?.onTableTransferred(fromTableId, moved.copyWith(
-      seatingKey: source.seatingKey,
-      seatingUuid: source.seatingUuid,
-      seatingState: source.seatingState,
-      serverOrderUuid: source.serverOrderUuid,
-      tempReference: source.tempReference,
-      winnerSeatingUuid: source.winnerSeatingUuid,
-      lastVerdict: source.lastVerdict,
-      lastVerdictAt: source.lastVerdictAt,
-    ));
+    diningTableSyncHooks?.onTableTransferred(
+      fromTableId,
+      moved.copyWith(
+        seatingKey: source.seatingKey,
+        seatingUuid: source.seatingUuid,
+        seatingState: source.seatingState,
+        serverOrderUuid: source.serverOrderUuid,
+        tempReference: source.tempReference,
+        winnerSeatingUuid: source.winnerSeatingUuid,
+        lastVerdict: source.lastVerdict,
+        lastVerdictAt: source.lastVerdictAt,
+      ),
+    );
     diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
       ..removeWhere(
         (s) => s.tableId == fromTableId || s.tableId == targetDef.id,
@@ -2322,7 +2439,9 @@ class PosController extends ChangeNotifier
     String headTableId,
     String freeTableId,
   ) async {
-    if (!await _combineMutationAllowed() || isProcessingPayment) return lastPaymentMessage;
+    if (!await _combineMutationAllowed() || isProcessingPayment) {
+      return lastPaymentMessage;
+    }
     if (activeDiningTableId != null) return null;
 
     final head = _diningGroupHeadId(headTableId);
@@ -2500,6 +2619,7 @@ class PosController extends ChangeNotifier
   /// Null when there is nothing transferable. The uuid is KEPT on a failed
   /// push so a retry converges on the same pos_orders row.
   OrderSessionDraft? prepareTransferDraft() {
+    if (!_cartMutationAllowed()) return null;
     if (_cart.isEmpty || isProcessingPayment) return null;
     return createDraft(serverOrderUuid: _activeServerOrderUuid ??= uuidV4());
   }
@@ -2510,6 +2630,7 @@ class PosController extends ChangeNotifier
   /// when a tender raced the push ACK: the cart is left untouched so the
   /// running payment keeps its lines and the screen surfaces the conflict.
   Future<bool> completeTransfer() async {
+    if (!await _combineMutationAllowed()) return false;
     if (isProcessingPayment) return false;
     if (activeDiningTableId != null) {
       // The bill left this device with the order — free the whole party
@@ -2534,6 +2655,7 @@ class PosController extends ChangeNotifier
     required OrderType orderType,
     required List<CartItem> items,
   }) {
+    if (!_cartMutationAllowed()) return false;
     if (isProcessingPayment || hasRecordedSplitPayments) return false;
 
     // Canonical reset FIRST so nothing from the previous cart (customer,
@@ -2553,7 +2675,9 @@ class PosController extends ChangeNotifier
 
   Future<String?> holdCurrentOrder() async {
     if (_cart.isEmpty || isProcessingPayment) return null;
-    if (!await _combineMutationAllowed() || isProcessingPayment) return lastPaymentMessage;
+    if (!await _combineMutationAllowed() || isProcessingPayment) {
+      return lastPaymentMessage;
+    }
 
     try {
       // Phase C2 — mint the server uuid at hold time (or keep the resumed
@@ -2609,7 +2733,17 @@ class PosController extends ChangeNotifier
 
   Future<String?> resumeHeldOrder(HeldOrderRecord record) async {
     if (isProcessingPayment) return null;
-    if (!await _combineMutationAllowed() || isProcessingPayment) return lastPaymentMessage;
+    if (!await _combineMutationAllowed() || isProcessingPayment) {
+      return lastPaymentMessage;
+    }
+    if (!await _draftAllowed(
+          uuid: record.draft.serverOrderUuid,
+          tableId: record.draft.diningTableId,
+          reference: record.orderReference,
+        ) ||
+        !_cartMutationAllowed()) {
+      return lastPaymentMessage;
+    }
 
     _dropCompForCartMutation();
     _cart
@@ -2658,6 +2792,14 @@ class PosController extends ChangeNotifier
   /// confirmation / manager gate.
   Future<String> discardHeldOrder(HeldOrderRecord record) async {
     if (!await _combineMutationAllowed()) return lastPaymentMessage;
+    if (!await _draftAllowed(
+          uuid: record.draft.serverOrderUuid,
+          tableId: record.draft.diningTableId,
+          reference: record.orderReference,
+        ) ||
+        !_cartMutationAllowed()) {
+      return lastPaymentMessage;
+    }
     await _orderStorage.deleteHeldOrder(record.id);
     await refreshHeldOrders();
     final uuid = record.draft.serverOrderUuid;
@@ -2879,6 +3021,7 @@ class PosController extends ChangeNotifier
     }
     final trimmedReference = reference.trim();
     if (trimmedReference.isEmpty) return null;
+    if (!await _combineMutationAllowed()) return lastPaymentMessage;
 
     // Freeze the provider NOW — a config refresh during the allocation
     // await below can drop selectedDeliveryProviderId (provider deleted
@@ -3417,7 +3560,8 @@ class PosController extends ChangeNotifier
       );
       if (!ok) _reportPrintFailure('receipt');
     }
-    final tableRoundHandled = isDineInPayment &&
+    final tableRoundHandled =
+        isDineInPayment &&
         await (onDiningTableFinalRound?.call(completedSnapshot) ??
             Future<bool>.value(false));
     if (printKitchenTickets && !tableRoundHandled) {
@@ -3452,6 +3596,7 @@ class PosController extends ChangeNotifier
   }
 
   void clearForNextOrder() {
+    if (!_cartMutationAllowed()) return;
     _resetForNextOrder(advanceOrderNumber: false);
   }
 
@@ -3485,6 +3630,7 @@ class PosController extends ChangeNotifier
 
   @override
   void dispose() {
+    _recoveryGuard?.recoveryBlocked.removeListener(_notifySafely);
     _isDisposed = true;
     _rearDisplaySyncTimer?.cancel();
     _rearDisplaySyncPending = false;
@@ -3493,6 +3639,10 @@ class PosController extends ChangeNotifier
   }
 
   void _broadcast() {
+    if (recoveryBlocked) {
+      _notifySafely();
+      return;
+    }
     _invalidatePriceCache();
     _syncActiveDiningTableInMemory();
     _scheduleActiveDiningTablePersistence();
@@ -3849,6 +3999,7 @@ class PosController extends ChangeNotifier
     isLoadingStorage = true;
     _notifySafely();
     try {
+      await _recoveryGuard?.refreshRecoveryGuard();
       currentOrderNumber = await _orderStorage.fetchNextOrderNumber();
       _nextOrderNumberSeed = currentOrderNumber + 1;
       currentOrderReference = '';
@@ -3948,6 +4099,7 @@ class PosController extends ChangeNotifier
   }
 
   Future<void> _persistActiveDiningTableSession() async {
+    if (!await _combineMutationAllowed()) return;
     if (selectedOrderType != OrderType.dineIn || activeDiningTableId == null) {
       return;
     }

@@ -3,6 +3,7 @@ import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// CORE-001 Step 2 §4.4 — the controller may expose many pricing-derived
 /// getters during one frame, but the pure pricing core must run only once for
@@ -19,6 +20,7 @@ void main() {
     now = DateTime.utc(2026, 8, 17, 8);
     priceOrderCalls = 0;
     controller = PosController(
+      orderStorage: FakeOrderStorage(),
       priceOrderOverride: (input) {
         priceOrderCalls++;
         return pricing.priceOrder(input);

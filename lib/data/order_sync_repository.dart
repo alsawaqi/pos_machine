@@ -11,18 +11,16 @@ import '../services/order_sync_payload.dart';
 import '../services/pos_api_service.dart';
 import 'db/app_database.dart';
 
-enum OrderSyncAttentionReason {
-  serverRejected,
-  awaitingGps,
-}
+enum OrderSyncAttentionReason { serverRejected, awaitingGps }
 
 enum StandaloneQrPayState { processed, refused, pending }
 
-typedef OutboxAckListener = FutureOr<void> Function(
-  OrderOutboxRow row,
-  List<Map<String, dynamic>> events,
-  List<Map<String, dynamic>> results,
-);
+typedef OutboxAckListener =
+    FutureOr<void> Function(
+      OrderOutboxRow row,
+      List<Map<String, dynamic>> events,
+      List<Map<String, dynamic>> results,
+    );
 
 class StandaloneQrPayResult {
   const StandaloneQrPayResult({
@@ -50,7 +48,7 @@ class OrderSyncAttention {
 /// and re-pushed until the server ACKs it. Idempotent on client_event_id, so a
 /// replay after a 4-hour outage settles exactly once (no double sale / charge).
 class OrderSyncRepository {
-  OrderSyncRepository(this._api, this._db);
+  OrderSyncRepository(this._api, this._db, {this.mutationGuard});
 
   /// Only explicit, deterministic server refusals count toward parking.
   /// Offline / transport failures remain retry-forever.
@@ -59,17 +57,34 @@ class OrderSyncRepository {
 
   final PosApiService _api;
   final AppDatabase _db;
+
+  /// Rechecked inside the serialized queue before any outbox mutation or push.
+  /// Reads stay available while a durable draft recovery blocks new work.
+  final Future<void> Function()? mutationGuard;
   Future<void> _flushTail = Future<void>.value();
+  final Object _ackMutationScopeKey = Object();
   final List<OutboxAckListener> _ackListeners = [];
   final _flushCompletions = StreamController<bool>.broadcast();
 
   Stream<bool> get flushCompletions => _flushCompletions.stream;
 
-  void addAckListener(OutboxAckListener listener) => _ackListeners.add(listener);
+  void addAckListener(OutboxAckListener listener) =>
+      _ackListeners.add(listener);
   void removeAckListener(OutboxAckListener listener) =>
       _ackListeners.remove(listener);
 
   Future<void> dispose() => _flushCompletions.close();
+
+  Future<T> _serialize<T>(Future<T> Function() operation) {
+    final run = _flushTail.then((_) => operation());
+    _flushTail = run.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return run;
+  }
+
+  Future<T> _prepare<T>(Future<T> Function() operation) => _serialize(() async {
+    await mutationGuard?.call();
+    return operation();
+  });
 
   /// A generic durable single-event row. An existing key is immutable: retries
   /// retain the first event ID/payload, including rows already acknowledged.
@@ -82,18 +97,20 @@ class OrderSyncRepository {
   }) async {
     // Serialize preparation with pushes: a local kitchen print and its
     // evidence must finish before any pass can see this newly durable row.
-    final preparation = _flushTail.then((_) async {
+    await _prepare(() async {
       if (await _db.getOutbox(key) != null) return;
       await _db.transaction(() async {
         final at = createdAt ?? DateTime.now();
         for (final entry in {key: event, ...followingEvents}.entries) {
           if (await _db.getOutbox(entry.key) != null) continue;
-          await _db.enqueueOutbox(OrderOutboxCompanion(
-            orderUuid: Value(entry.key),
-            eventsJson: Value(jsonEncode([entry.value])),
-            orderNumber: const Value(0),
-            createdAt: Value(at),
-          ));
+          await _db.enqueueOutbox(
+            OrderOutboxCompanion(
+              orderUuid: Value(entry.key),
+              eventsJson: Value(jsonEncode([entry.value])),
+              orderNumber: const Value(0),
+              createdAt: Value(at),
+            ),
+          );
         }
       });
       if (beforeFlush != null) {
@@ -102,17 +119,14 @@ class OrderSyncRepository {
             prepared['event_type'] != event['event_type']) {
           throw StateError('Event preparation cannot change its identity.');
         }
-        await (_db.update(_db.orderOutbox)
-              ..where((table) => table.orderUuid.equals(key) &
-                  table.syncedAt.isNull()))
-            .write(OrderOutboxCompanion(
-              eventsJson: Value(jsonEncode([prepared])),
-            ));
+        await (_db.update(_db.orderOutbox)..where(
+              (table) => table.orderUuid.equals(key) & table.syncedAt.isNull(),
+            ))
+            .write(
+              OrderOutboxCompanion(eventsJson: Value(jsonEncode([prepared]))),
+            );
       }
     });
-    _flushTail = preparation.then<void>((_) {},
-        onError: (Object _, StackTrace _) {});
-    await preparation;
     await flush();
   }
 
@@ -123,9 +137,28 @@ class OrderSyncRepository {
   Future<void> assertIdleForCombine() async {
     await _flushTail;
     if ((await pendingRows()).isNotEmpty) {
-      throw StateError('Sync all pending orders and payments before combining.');
+      throw StateError(
+        'Sync all pending orders and payments before combining.',
+      );
     }
   }
+
+  /// Reserve the preparation/flush queue while creating a recovery journal.
+  /// Existing preparations and ACK listeners finish first; every pending row,
+  /// including parked/GPS-blocked work, refuses admission without changing it.
+  /// The callback must only do short local admission work: no network or calls
+  /// back into this repository's queued mutation methods. It must durably set
+  /// the state checked by [mutationGuard] before returning.
+  Future<void> admitDraftRecovery(Future<void> Function() operation) =>
+      _serialize(() async {
+        if ((await pendingRows()).isNotEmpty) {
+          throw StateError(
+            'Sync all pending orders and payments before recovering a draft.',
+          );
+        }
+        await operation();
+      });
+
   Future<OrderOutboxRow?> rowForKey(String key) => _db.getOutbox(key);
 
   /// A historical local UUID remains the durable row key after rebinding.
@@ -163,8 +196,27 @@ class OrderSyncRepository {
     String seatingKey,
     String oldUuid,
     String newUuid,
+  ) {
+    // A table ACK can rebind a later payment during its current flush. Only
+    // that awaited listener scope may reuse the queue slot; other callers
+    // serialize normally, even while a listener is suspended.
+    final scope = Zone.current[_ackMutationScopeKey];
+    if (scope is _OutboxAckMutationScope && scope.active) {
+      return _rewritePendingOrderUuid(seatingKey, oldUuid, newUuid);
+    }
+    return _prepare(
+      () => _rewritePendingOrderUuid(seatingKey, oldUuid, newUuid),
+    );
+  }
+
+  Future<void> _rewritePendingOrderUuid(
+    String seatingKey,
+    String oldUuid,
+    String newUuid,
   ) async {
-    if (seatingKey.isEmpty || oldUuid.isEmpty || oldUuid == newUuid ||
+    if (seatingKey.isEmpty ||
+        oldUuid.isEmpty ||
+        oldUuid == newUuid ||
         newUuid.isEmpty) {
       return;
     }
@@ -176,7 +228,9 @@ class OrderSyncRepository {
             .whereType<Map>()
             .map((event) => event.cast<String, dynamic>())
             .toList();
-        if (events.length != 1) continue; // Never rewrite legacy create batches.
+        if (events.length != 1) {
+          continue; // Never rewrite legacy create batches.
+        }
         var changed = false;
         for (final event in events) {
           if (event['event_type'] != 'order.pay' &&
@@ -190,12 +244,14 @@ class OrderSyncRepository {
           }
         }
         if (changed) {
-          await (_db.update(_db.orderOutbox)
-                ..where((table) => table.orderUuid.equals(row.orderUuid) &
-                    table.syncedAt.isNull()))
-              .write(OrderOutboxCompanion(
-                eventsJson: Value(jsonEncode(events)),
-              ));
+          await (_db.update(_db.orderOutbox)..where(
+                (table) =>
+                    table.orderUuid.equals(row.orderUuid) &
+                    table.syncedAt.isNull(),
+              ))
+              .write(
+                OrderOutboxCompanion(eventsJson: Value(jsonEncode(events))),
+              );
         }
       }
     });
@@ -217,42 +273,47 @@ class OrderSyncRepository {
     CardCharge? cardCharge,
     List<int> loyaltyRuleIds = const <int>[],
   }) async {
-    final payload = buildOrderSyncPayload(
-      snapshot,
-      lat: lat,
-      lng: lng,
-      staffId: staffId,
-      tableId: tableId,
-      joinedTableIds: joinedTableIds,
-      customerId: customerId,
-      plateNumber: plateNumber,
-      deliveryProviderName: deliveryProviderName,
-      cardCharge: cardCharge,
-      loyaltyRuleIds: loyaltyRuleIds,
-    );
+    final enqueued = await _prepare(() async {
+      final payload = buildOrderSyncPayload(
+        snapshot,
+        lat: lat,
+        lng: lng,
+        staffId: staffId,
+        tableId: tableId,
+        joinedTableIds: joinedTableIds,
+        customerId: customerId,
+        plateNumber: plateNumber,
+        deliveryProviderName: deliveryProviderName,
+        cardCharge: cardCharge,
+        loyaltyRuleIds: loyaltyRuleIds,
+      );
 
-    // A snapshot with no pushable lines (e.g. only non-catalog demo products)
-    // has nothing to persist server-side — skip it rather than queue a payload
-    // the server will reject for an empty `lines`.
-    final createPayload =
-        payload.events.first['payload'] as Map<String, dynamic>;
-    final order = createPayload['order'] as Map<String, dynamic>;
-    if ((order['lines'] as List).isEmpty) {
-      return;
-    }
+      // A snapshot with no pushable lines (e.g. only non-catalog demo products)
+      // has nothing to persist server-side — skip it rather than queue a payload
+      // the server will reject for an empty `lines`.
+      final createPayload =
+          payload.events.first['payload'] as Map<String, dynamic>;
+      final order = createPayload['order'] as Map<String, dynamic>;
+      if ((order['lines'] as List).isEmpty) {
+        return false;
+      }
 
-    await _db.enqueueOutbox(OrderOutboxCompanion(
-      orderUuid: Value(payload.orderUuid),
-      eventsJson: Value(jsonEncode(payload.events)),
-      orderNumber: Value(snapshot.orderNumber),
-      createdAt: Value(DateTime.now()),
-    ));
-    sentryBreadcrumb('sync', 'order enqueued', data: {
-      'order': payload.orderUuid,
-      'events': payload.events.length,
+      await _db.enqueueOutbox(
+        OrderOutboxCompanion(
+          orderUuid: Value(payload.orderUuid),
+          eventsJson: Value(jsonEncode(payload.events)),
+          orderNumber: Value(snapshot.orderNumber),
+          createdAt: Value(DateTime.now()),
+        ),
+      );
+      sentryBreadcrumb(
+        'sync',
+        'order enqueued',
+        data: {'order': payload.orderUuid, 'events': payload.events.length},
+      );
+      return true;
     });
-
-    await flush();
+    if (enqueued) await flush();
   }
 
   /// Enqueue an `order.void` for an already-pushed order (a full cancellation),
@@ -269,24 +330,28 @@ class OrderSyncRepository {
     int? staffId,
     String? authorizedBy,
   }) async {
-    if (orderUuid.isEmpty) return;
+    final enqueued = await _prepare(() async {
+      if (orderUuid.isEmpty) return false;
 
-    final event = buildOrderVoidEvent(
-      orderUuid: orderUuid,
-      reason: reason,
-      voidReasonId: voidReasonId,
-      staffId: staffId,
-      authorizedBy: authorizedBy,
-    );
+      final event = buildOrderVoidEvent(
+        orderUuid: orderUuid,
+        reason: reason,
+        voidReasonId: voidReasonId,
+        staffId: staffId,
+        authorizedBy: authorizedBy,
+      );
 
-    await _db.enqueueOutbox(OrderOutboxCompanion(
-      orderUuid: Value('$orderUuid:void'),
-      eventsJson: Value(jsonEncode([event])),
-      orderNumber: Value(orderNumber ?? 0),
-      createdAt: Value(DateTime.now()),
-    ));
-
-    await flush();
+      await _db.enqueueOutbox(
+        OrderOutboxCompanion(
+          orderUuid: Value('$orderUuid:void'),
+          eventsJson: Value(jsonEncode([event])),
+          orderNumber: Value(orderNumber ?? 0),
+          createdAt: Value(DateTime.now()),
+        ),
+      );
+      return true;
+    });
+    if (enqueued) await flush();
   }
 
   /// QR-002 S2 — queue exactly one standalone `order.pay` for a server-owned
@@ -304,33 +369,40 @@ class OrderSyncRepository {
     String Function()? newUuid,
   }) async {
     final key = '$orderUuid:pay';
-    final existing = await _db.getOutbox(key);
-    if (existing != null) {
-      final explicitlyRetired = existing.syncedAt != null &&
-          (existing.lastError ?? '').startsWith(_retiredQrPayMarker);
-      if (!explicitlyRetired) return _standaloneQrResult(existing);
-    }
+    final existingResult = await _prepare<StandaloneQrPayResult?>(() async {
+      final existing = await _db.getOutbox(key);
+      if (existing != null) {
+        final explicitlyRetired =
+            existing.syncedAt != null &&
+            (existing.lastError ?? '').startsWith(_retiredQrPayMarker);
+        if (!explicitlyRetired) return _standaloneQrResult(existing);
+      }
 
-    final event = buildStandaloneQrPayEvent(
-      orderUuid: orderUuid,
-      frozenAmountBaisas: frozenAmountBaisas,
-      method: method,
-      cardCharge: cardCharge,
-      lat: lat,
-      lng: lng,
-      paidAt: paidAt,
-      newUuid: newUuid,
-    );
-    await _db.enqueueOutbox(OrderOutboxCompanion(
-      orderUuid: Value(key),
-      eventsJson: Value(jsonEncode(<Map<String, dynamic>>[event])),
-      orderNumber: const Value(0),
-      createdAt: Value(paidAt ?? DateTime.now()),
-      attempts: const Value(0),
-      serverRejections: const Value(0),
-      lastError: const Value(null),
-      syncedAt: const Value(null),
-    ));
+      final event = buildStandaloneQrPayEvent(
+        orderUuid: orderUuid,
+        frozenAmountBaisas: frozenAmountBaisas,
+        method: method,
+        cardCharge: cardCharge,
+        lat: lat,
+        lng: lng,
+        paidAt: paidAt,
+        newUuid: newUuid,
+      );
+      await _db.enqueueOutbox(
+        OrderOutboxCompanion(
+          orderUuid: Value(key),
+          eventsJson: Value(jsonEncode(<Map<String, dynamic>>[event])),
+          orderNumber: const Value(0),
+          createdAt: Value(paidAt ?? DateTime.now()),
+          attempts: const Value(0),
+          serverRejections: const Value(0),
+          lastError: const Value(null),
+          syncedAt: const Value(null),
+        ),
+      );
+      return null;
+    });
+    if (existingResult != null) return existingResult;
 
     await flush();
     final row = await _db.getOutbox(key);
@@ -352,7 +424,7 @@ class OrderSyncRepository {
   Future<void> retireStandaloneQrPay(
     String orderUuid, {
     required String reason,
-  }) async {
+  }) => _prepare(() async {
     final key = '$orderUuid:pay';
     final row = await _db.getOutbox(key);
     if (row == null || row.syncedAt != null || row.serverRejections == 0) {
@@ -360,12 +432,8 @@ class OrderSyncRepository {
         'Only an affirmatively refused QR payment can be retired.',
       );
     }
-    await _db.retireOutbox(
-      key,
-      '$_retiredQrPayMarker$reason',
-      DateTime.now(),
-    );
-  }
+    await _db.retireOutbox(key, '$_retiredQrPayMarker$reason', DateTime.now());
+  });
 
   StandaloneQrPayResult _standaloneQrResult(OrderOutboxRow row) {
     final decoded = jsonDecode(row.eventsJson) as List;
@@ -373,8 +441,8 @@ class OrderSyncRepository {
     final state = row.syncedAt != null
         ? StandaloneQrPayState.processed
         : row.serverRejections > 0
-            ? StandaloneQrPayState.refused
-            : StandaloneQrPayState.pending;
+        ? StandaloneQrPayState.refused
+        : StandaloneQrPayState.pending;
     return StandaloneQrPayResult(
       state: state,
       outboxKey: row.orderUuid,
@@ -397,27 +465,31 @@ class OrderSyncRepository {
     int? tableId,
     List<int> joinedTableIds = const <int>[],
   }) async {
-    final event = buildOrderHoldEvent(
-      draft,
-      orderUuid: draft.serverOrderUuid,
-      staffId: staffId,
-      tableId: tableId,
-      joinedTableIds: joinedTableIds,
-    );
-    if (event == null) return;
+    final enqueued = await _prepare(() async {
+      final event = buildOrderHoldEvent(
+        draft,
+        orderUuid: draft.serverOrderUuid,
+        staffId: staffId,
+        tableId: tableId,
+        joinedTableIds: joinedTableIds,
+      );
+      if (event == null) return false;
 
-    await _db.enqueueOutbox(OrderOutboxCompanion(
-      orderUuid: Value('${draft.serverOrderUuid}:hold'),
-      eventsJson: Value(jsonEncode([event])),
-      orderNumber: Value(draft.orderNumber ?? 0),
-      createdAt: Value(DateTime.now()),
-      attempts: const Value(0),
-      serverRejections: const Value(0),
-      lastError: const Value(null),
-      syncedAt: const Value(null),
-    ));
-
-    await flush();
+      await _db.enqueueOutbox(
+        OrderOutboxCompanion(
+          orderUuid: Value('${draft.serverOrderUuid}:hold'),
+          eventsJson: Value(jsonEncode([event])),
+          orderNumber: Value(draft.orderNumber ?? 0),
+          createdAt: Value(DateTime.now()),
+          attempts: const Value(0),
+          serverRejections: const Value(0),
+          lastError: const Value(null),
+          syncedAt: const Value(null),
+        ),
+      );
+      return true;
+    });
+    if (enqueued) await flush();
   }
 
   /// Push every pending order. Best-effort and safe to call repeatedly: a
@@ -428,12 +500,7 @@ class OrderSyncRepository {
     // Multiple triggers can overlap (startup, reconnect, and a newly-enqueued
     // sale). Queue each pass so rejection counters cannot race or page twice.
     // A pass requested mid-flush still runs afterwards and sees any new rows.
-    final run = _flushTail.then((_) => _flushOnce());
-    _flushTail = run.then<void>(
-      (_) {},
-      onError: (Object _, StackTrace _) {},
-    );
-    return run;
+    return _prepare(_flushOnce);
   }
 
   Future<int> _flushOnce() async {
@@ -462,7 +529,11 @@ class OrderSyncRepository {
             .toList();
       } catch (e) {
         successful = false;
-        await _db.markOutboxAttempt(row.orderUuid, row.attempts + 1, 'corrupt outbox payload: $e');
+        await _db.markOutboxAttempt(
+          row.orderUuid,
+          row.attempts + 1,
+          'corrupt outbox payload: $e',
+        );
         continue;
       }
 
@@ -470,8 +541,9 @@ class OrderSyncRepository {
           DateTime.now().difference(row.createdAt).inSeconds > 300) {
         var changed = false;
         for (final event in events) {
-          if (!(event['event_type']?.toString() ?? '')
-              .startsWith('table.session.')) {
+          if (!(event['event_type']?.toString() ?? '').startsWith(
+            'table.session.',
+          )) {
             continue;
           }
           final payload = event['payload'];
@@ -481,12 +553,14 @@ class OrderSyncRepository {
           }
         }
         if (changed) {
-          await (_db.update(_db.orderOutbox)
-                ..where((table) => table.orderUuid.equals(row.orderUuid) &
-                    table.syncedAt.isNull()))
-              .write(OrderOutboxCompanion(
-                eventsJson: Value(jsonEncode(events)),
-              ));
+          await (_db.update(_db.orderOutbox)..where(
+                (table) =>
+                    table.orderUuid.equals(row.orderUuid) &
+                    table.syncedAt.isNull(),
+              ))
+              .write(
+                OrderOutboxCompanion(eventsJson: Value(jsonEncode(events))),
+              );
         }
       }
 
@@ -519,14 +593,24 @@ class OrderSyncRepository {
 
         // Every event must have settled `processed` (a duplicate re-push echoes
         // the original processed state, which is also success).
-        final allProcessed = results.isNotEmpty &&
+        final allProcessed =
+            results.isNotEmpty &&
             results.every((r) => r['status'] == 'processed');
-        final qrPaymentConfirmed = !row.orderUuid.endsWith(':pay') ||
+        final qrPaymentConfirmed =
+            !row.orderUuid.endsWith(':pay') ||
             _isMatchingPaidQrAck(events, results);
 
         if (allProcessed && qrPaymentConfirmed) {
           for (final listener in List<OutboxAckListener>.of(_ackListeners)) {
-            await listener(row, events, results);
+            final scope = _OutboxAckMutationScope();
+            try {
+              await runZoned(
+                () async => listener(row, events, results),
+                zoneValues: {_ackMutationScopeKey: scope},
+              );
+            } finally {
+              scope.active = false;
+            }
           }
           await _db.markOutboxSynced(row.orderUuid, DateTime.now());
           synced++;
@@ -565,8 +649,9 @@ class OrderSyncRepository {
   Future<({double lat, double lng})?> _acquireFreshFix() async {
     try {
       final position = await Geolocator.getCurrentPosition(
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       ).timeout(const Duration(seconds: 5));
       return (lat: position.latitude, lng: position.longitude);
     } catch (_) {
@@ -621,9 +706,8 @@ class OrderSyncRepository {
 
   Stream<List<OrderOutboxRow>> watchPending() => _db.watchPendingOutbox();
 
-  Stream<List<OrderOutboxRow>> watchStuck() => watchPending().map(
-        (rows) => rows.where(isStuck).toList(growable: false),
-      );
+  Stream<List<OrderOutboxRow>> watchStuck() =>
+      watchPending().map((rows) => rows.where(isStuck).toList(growable: false));
 
   /// Revenue that requires an operator's attention: either a deterministically
   /// rejected batch parked at the cap, or a fenced sale that cannot leave the
@@ -656,7 +740,7 @@ class OrderSyncRepository {
   /// GPS-held rows remain pending and [flush] retries them without changing
   /// their rejection counters when no valid fix is available.
   Future<int> retryAttention() async {
-    await _db.resetStuckOutbox(maxServerRejections);
+    await _prepare(() => _db.resetStuckOutbox(maxServerRejections));
     return flush();
   }
 
@@ -686,10 +770,7 @@ class OrderSyncRepository {
     }
   }
 
-  Future<void> _recordServerRejection(
-    OrderOutboxRow row,
-    String error,
-  ) async {
+  Future<void> _recordServerRejection(OrderOutboxRow row, String error) async {
     // A deterministic refusal after a QR tender must not be retried silently:
     // staff may already have returned cash or escalated a charged card. Park it
     // immediately. Transport/no-ACK failures still replay the same event UUID.
@@ -706,10 +787,7 @@ class OrderSyncRepository {
     sentryBreadcrumb(
       'sync',
       'push rejected',
-      data: {
-        'order': row.orderUuid,
-        'server_rejections': rejections,
-      },
+      data: {'order': row.orderUuid, 'server_rejections': rejections},
       level: SentryLevel.warning,
     );
 
@@ -766,4 +844,8 @@ class OrderSyncRepository {
         rawResult is Map &&
         rawResult['status'] == 'paid';
   }
+}
+
+class _OutboxAckMutationScope {
+  bool active = true;
 }

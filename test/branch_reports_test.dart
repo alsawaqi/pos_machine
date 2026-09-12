@@ -10,6 +10,7 @@ import 'package:pos_machine/screens/branch_reports_screen.dart';
 import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/services/pos_api_service.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// P-F6 — the branch Reports dashboard: model decode, the
 /// reports_positions access policy wiring, and the screen rendering a
@@ -110,7 +111,7 @@ void main() {
     });
     expect(parsed.meta.reportsPositions.value, '["manager","supervisor"]');
 
-    final controller = PosController();
+    final controller = PosController(orderStorage: FakeOrderStorage());
     addTearDown(controller.dispose);
     controller.applyCatalog(
       categories: const ['X'],

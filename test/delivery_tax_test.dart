@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// P-F1 — delivery-provider orders carry NO tax at all (merchant policy: the
 /// provider's listed price is final). Other order types tax normally. The
@@ -12,7 +13,7 @@ void main() {
   const latte = Product(id: '1', name: 'Latte', category: 'Coffee', price: 2.0);
 
   PosController build() {
-    final c = PosController();
+    final c = PosController(orderStorage: FakeOrderStorage());
     c.applyCatalog(
       categories: const ['Coffee'],
       products: const [latte],

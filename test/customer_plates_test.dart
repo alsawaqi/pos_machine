@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// P-F2 — customer vehicle plates on the device: the search/show payloads
 /// carry plates[], the config bundle caches them per customer (offline), and
@@ -44,7 +45,7 @@ void main() {
   });
 
   test('offline cached search matches by plate', () {
-    final controller = PosController();
+    final controller = PosController(orderStorage: FakeOrderStorage());
     addTearDown(controller.dispose);
     controller.cachedCustomers = const [
       CustomerRef(id: 1, name: 'Ali', phone: '96915872', plates: ['1234AB']),

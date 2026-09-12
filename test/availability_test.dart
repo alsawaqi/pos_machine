@@ -4,6 +4,7 @@ import 'package:pos_machine/data/db/app_database.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// Phase 7 device sold-out: stock_mode + recipe + per-branch ingredient balances
 /// survive parse → catalog, and isOutOfStock blocks unit products at 0 and
@@ -62,7 +63,7 @@ void main() {
 
   group('PosController.isOutOfStock', () {
     PosController make(Map<int, double> balances) {
-      final c = PosController();
+      final c = PosController(orderStorage: FakeOrderStorage());
       c.applyCatalog(
         categories: const ['X'],
         products: const [],
@@ -273,7 +274,7 @@ void main() {
 
   group('PosController.isUnorderable', () {
     test('composes sold-out OR outside-hours under the injected clock', () {
-      final c = PosController();
+      final c = PosController(orderStorage: FakeOrderStorage());
       addTearDown(c.dispose);
       c.applyCatalog(
         categories: const ['X'],
@@ -314,7 +315,7 @@ void main() {
     });
 
     test('hasTimeWindowedProducts gates the minute tick', () {
-      final c = PosController();
+      final c = PosController(orderStorage: FakeOrderStorage());
       addTearDown(c.dispose);
       c.applyCatalog(
         categories: const ['X'],
@@ -357,7 +358,7 @@ void main() {
   // the cart can't exceed it, and a sale decrements it (no unlimited resale).
   group('#3 finite shelf cap + sale decrement', () {
     PosController withProducts(List<Product> products) {
-      final c = PosController();
+      final c = PosController(orderStorage: FakeOrderStorage());
       c.applyCatalog(
         categories: const ['X'],
         products: products,

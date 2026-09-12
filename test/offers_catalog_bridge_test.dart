@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// P-F9 regression — applyCatalog and the offers slice.
 ///
@@ -23,7 +24,7 @@ void main() {
   ];
 
   test('applyCatalog forwards offers into availableOffers', () {
-    final c = PosController();
+    final c = PosController(orderStorage: FakeOrderStorage());
     c.applyCatalog(
       categories: const [],
       products: const [],
@@ -37,7 +38,7 @@ void main() {
 
   test('re-applying WITHOUT offers wipes availableOffers (P-F1 bug class)',
       () {
-    final c = PosController();
+    final c = PosController(orderStorage: FakeOrderStorage());
     c.applyCatalog(
       categories: const [],
       products: const [],

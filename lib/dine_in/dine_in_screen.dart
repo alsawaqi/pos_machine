@@ -101,12 +101,16 @@ class DineInScreen extends StatefulWidget {
     this.writesAllowed = true,
     this.localDraftBlocked = false,
     this.onCombine,
+    this.onRecover,
+    this.localDraftBlockedNow,
   });
   final Future<DineInController> Function() createController;
   final List<QuickProduct> Function() catalogue;
   final String label;
   final Future<void> Function(String) onPay;
   final Future<void> Function()? onCombine;
+  final Future<void> Function()? onRecover;
+  final bool Function()? localDraftBlockedNow;
   final bool arabic, writesAllowed, localDraftBlocked;
   @override
   State<DineInScreen> createState() => _DineInScreenState();
@@ -221,7 +225,8 @@ class _DineInScreenState extends State<DineInScreen>
     _schedule();
   }
 
-  Future<void> _combine() async {
+  Future<void> _combine() => _openLocalAction(widget.onCombine!);
+  Future<void> _openLocalAction(Future<void> Function() action) async {
     if (childOpen ||
         drafts.isNotEmpty ||
         controller?.busy == true ||
@@ -232,7 +237,7 @@ class _DineInScreenState extends State<DineInScreen>
     controller?.setForeground(false);
     _schedule();
     try {
-      await widget.onCombine!();
+      await action();
     } finally {
       childOpen = false;
       if (mounted) {
@@ -291,8 +296,9 @@ class _DineInScreenState extends State<DineInScreen>
   @override
   Widget build(BuildContext context) {
     final c = controller, detail = c?.detail;
-    final enabled =
-        c?.available == true && !widget.localDraftBlocked && !childOpen;
+    final localBlocked =
+        widget.localDraftBlockedNow?.call() ?? widget.localDraftBlocked;
+    final enabled = c?.available == true && !localBlocked && !childOpen;
     return PopScope(
       canPop: leaving,
       onPopInvokedWithResult: (didPop, _) {
@@ -339,7 +345,23 @@ class _DineInScreenState extends State<DineInScreen>
                         : 'Review local bill combine / recovery',
                   ),
                 ),
-              if (widget.localDraftBlocked || c?.hasLocalConflict == true)
+              if (widget.onRecover != null)
+                OutlinedButton(
+                  key: const ValueKey('dine-recover-draft'),
+                  onPressed:
+                      c?.busy == true ||
+                          c?.pending != null ||
+                          drafts.isNotEmpty ||
+                          childOpen
+                      ? null
+                      : () => _openLocalAction(widget.onRecover!),
+                  child: Text(
+                    widget.arabic
+                        ? 'استعادة مسودة هذه الفاتورة'
+                        : 'Recover this bill draft',
+                  ),
+                ),
+              if (localBlocked || c?.hasLocalConflict == true)
                 note(
                   widget.arabic
                       ? 'يوجد طلب محلي غير مرسل. عالجه أولاً دون إنشاء فاتورة ثانية.'

@@ -37,15 +37,18 @@ import '../services/shift_service.dart';
 
 // --- async-initialized singletons (overridden in main()) -------------------
 final sharedPreferencesProvider = Provider<SharedPreferences>(
-  (ref) => throw UnimplementedError('Override sharedPreferencesProvider in main()'),
+  (ref) =>
+      throw UnimplementedError('Override sharedPreferencesProvider in main()'),
 );
 
 final sessionServiceProvider = Provider<SessionService>(
-  (ref) => throw UnimplementedError('Override sessionServiceProvider in main()'),
+  (ref) =>
+      throw UnimplementedError('Override sessionServiceProvider in main()'),
 );
 
-final secureStorageProvider =
-    Provider<FlutterSecureStorage>((ref) => const FlutterSecureStorage());
+final secureStorageProvider = Provider<FlutterSecureStorage>(
+  (ref) => const FlutterSecureStorage(),
+);
 
 /// Injectable build-mode seam. Release locks are exercised under flutter test
 /// by overriding this provider; production defaults to the const build mode.
@@ -224,14 +227,12 @@ class SessionController extends Notifier<SessionState> {
 
 /// Runs once for each signed-in staff session. Auto-dispose matters: logging
 /// out and back in as the same staff member must perform a fresh server probe.
-final shiftReconciliationProvider =
-    FutureProvider.autoDispose.family<OpenShiftData?, int>(
-  (ref, staffId) =>
-      ref.read(sessionControllerProvider.notifier).reconcileShiftForStaff(
-            staffId,
-            isActive: () => ref.mounted,
-          ),
-);
+final shiftReconciliationProvider = FutureProvider.autoDispose
+    .family<OpenShiftData?, int>(
+      (ref, staffId) => ref
+          .read(sessionControllerProvider.notifier)
+          .reconcileShiftForStaff(staffId, isActive: () => ref.mounted),
+    );
 
 // --- API + config ----------------------------------------------------------
 final apiServiceProvider = Provider<PosApiService>((ref) {
@@ -239,6 +240,9 @@ final apiServiceProvider = Provider<PosApiService>((ref) {
   final settings = ref.read(settingsServiceProvider);
   return PosApiService(
     tokenGetter: () => session.deviceToken,
+    orderMutationGuard: () =>
+        (debugOrderStorageOverride ?? LocalOrderStorageService.instance)
+            .assertNoPendingCombine(),
     // Resolve the debug override or release-locked URL per request.
     baseUrlGetter: () => settings.effectiveBaseUrl,
     onUnauthorized: () {
@@ -274,6 +278,9 @@ final orderSyncRepositoryProvider = Provider<OrderSyncRepository>((ref) {
   final repository = OrderSyncRepository(
     ref.read(apiServiceProvider),
     ref.read(appDatabaseProvider),
+    mutationGuard: () =>
+        (debugOrderStorageOverride ?? LocalOrderStorageService.instance)
+            .assertNoPendingCombine(),
   );
   ref.onDispose(repository.dispose);
   return repository;
@@ -289,6 +296,7 @@ final tableSyncCoordinatorProvider = Provider<TableSyncCoordinator>((ref) {
     outbox: ref.read(orderSyncRepositoryProvider),
     store: ref.read(tableLedgerStoreProvider),
     loadSessions: LocalOrderStorageService.instance.loadDiningTableSessions,
+    guardSession: LocalOrderStorageService.instance.guardTableSession,
     mode: () => ref.read(tableSessionsModeProvider),
     degraded: () => ref.read(degradedStateProvider).degraded,
     staffId: () => ref.read(sessionServiceProvider).staff?.id,
@@ -304,13 +312,15 @@ final tableSyncCoordinatorProvider = Provider<TableSyncCoordinator>((ref) {
   return coordinator;
 });
 
-final tableSyncVerdictsProvider =
-    StreamProvider<List<TableSyncVerdict>>((ref) =>
-      ref.watch(tableSyncCoordinatorProvider).verdicts);
+final tableSyncVerdictsProvider = StreamProvider<List<TableSyncVerdict>>(
+  (ref) => ref.watch(tableSyncCoordinatorProvider).verdicts,
+);
 
 class TableDegradedState {
   const TableDegradedState({
-    this.degraded = false, this.since, this.queuedActions = 0,
+    this.degraded = false,
+    this.since,
+    this.queuedActions = 0,
   });
   final bool degraded;
   final DateTime? since;
@@ -335,7 +345,10 @@ class TableDegradedController extends Notifier<TableDegradedState> {
     ref.listen(connectivityProvider, (_, _) => _evaluate());
     ref.listen(remoteBoardProvider, (_, _) => _evaluate());
     ref.listen(tableSessionsModeProvider, (_, _) => _evaluate());
-    final timer = Timer.periodic(const Duration(seconds: 5), (_) => _evaluate());
+    final timer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _evaluate(),
+    );
     ref.onDispose(() {
       timer.cancel();
       unawaited(pending.cancel());
@@ -352,19 +365,25 @@ class TableDegradedController extends Notifier<TableDegradedState> {
     final now = DateTime.now();
     final online = ref.read(connectivityProvider).asData?.value ?? false;
     final meta = ref.read(remoteBoardProvider).asData?.value.meta;
-    final oldRow = _pending.any((row) =>
-        now.difference(row.createdAt) > const Duration(seconds: 20));
-    final triggered = !online || (meta?.consecutiveFailures ?? 0) >= 2 || oldRow;
+    final oldRow = _pending.any(
+      (row) => now.difference(row.createdAt) > const Duration(seconds: 20),
+    );
+    final triggered =
+        !online || (meta?.consecutiveFailures ?? 0) >= 2 || oldRow;
     final since = state.since ?? (triggered ? now : null);
-    final flushRecovered = since != null &&
+    final flushRecovered =
+        since != null &&
         _lastSuccessfulFlush != null &&
         !_lastSuccessfulFlush!.isBefore(since);
-    final feedRecovered = since != null && meta?.lastFeedOkAt != null &&
+    final feedRecovered =
+        since != null &&
+        meta?.lastFeedOkAt != null &&
         !meta!.lastFeedOkAt!.isBefore(since);
-    final stillDegraded = triggered ||
-        (state.degraded && !(flushRecovered && feedRecovered));
+    final stillDegraded =
+        triggered || (state.degraded && !(flushRecovered && feedRecovered));
     state = TableDegradedState(
-      degraded: stillDegraded, since: stillDegraded ? since : null,
+      degraded: stillDegraded,
+      since: stillDegraded ? since : null,
       queuedActions: _pending.length,
     );
   }
@@ -412,11 +431,13 @@ final tableShadowRepositoryProvider = Provider<TableShadowRepository>((ref) {
     final baseUrl = ref.read(settingsServiceProvider).effectiveBaseUrl;
     repository.configure(
       mode: ref.read(tableSessionsModeProvider),
-      scope: '$baseUrl|${session.companyId}|${session.branchId}|${session.kioskId}',
+      scope:
+          '$baseUrl|${session.companyId}|${session.branchId}|${session.kioskId}',
       sessionEpoch: session.deviceToken,
       authenticated: session.isConfigured,
     );
   }
+
   ref.listen(tableSessionsModeProvider, (_, _) => configure());
   ref.listen(sessionControllerProvider, (_, _) => configure());
   ref.listen(settingsControllerProvider, (_, _) => configure());
@@ -458,8 +479,8 @@ class QrRoundPrintNoticeController extends Notifier<QrRoundPrintNotice?> {
 
 final qrRoundPrintNoticeProvider =
     NotifierProvider<QrRoundPrintNoticeController, QrRoundPrintNotice?>(
-  QrRoundPrintNoticeController.new,
-);
+      QrRoundPrintNoticeController.new,
+    );
 
 class QrRoundPrintPollingStatusController extends Notifier<bool> {
   @override
@@ -470,8 +491,8 @@ class QrRoundPrintPollingStatusController extends Notifier<bool> {
 
 final qrRoundPrintPollingUnavailableProvider =
     NotifierProvider<QrRoundPrintPollingStatusController, bool>(
-  QrRoundPrintPollingStatusController.new,
-);
+      QrRoundPrintPollingStatusController.new,
+    );
 
 final qrRoundAutoPrintControllerProvider = Provider<QrRoundAutoPrintController>(
   (ref) {
@@ -501,9 +522,7 @@ final qrLocationProvider = Provider<QrLocationGateway>(
 );
 
 final qrSettlementOutboxProvider = Provider<QrSettlementOutbox>(
-  (ref) => OrderSyncQrSettlementOutbox(
-    ref.read(orderSyncRepositoryProvider),
-  ),
+  (ref) => OrderSyncQrSettlementOutbox(ref.read(orderSyncRepositoryProvider)),
 );
 
 final qrSettlementCoordinatorProvider = Provider<QrSettlementFlow>(
@@ -569,8 +588,9 @@ final liveSyncProvider = Provider<LiveSyncService>((ref) {
   Timer? debounce;
 
   final service = LiveSyncService(
-    endpointGetter: () =>
-        WebsocketEndpoint.fromJson(ref.read(sessionServiceProvider).websocketConfig),
+    endpointGetter: () => WebsocketEndpoint.fromJson(
+      ref.read(sessionServiceProvider).websocketConfig,
+    ),
     apiBaseUrlGetter: () => ref.read(settingsServiceProvider).effectiveBaseUrl,
     channelGetter: () {
       final session = ref.read(sessionServiceProvider);
@@ -580,11 +600,9 @@ final liveSyncProvider = Provider<LiveSyncService>((ref) {
         companyId: session.companyId,
       );
     },
-    authorize: ({required socketId, required channelName}) =>
-        ref.read(apiServiceProvider).authorizeBroadcast(
-              socketId: socketId,
-              channelName: channelName,
-            ),
+    authorize: ({required socketId, required channelName}) => ref
+        .read(apiServiceProvider)
+        .authorizeBroadcast(socketId: socketId, channelName: channelName),
     onLiveEvent: (eventType) {
       // Trailing-edge debounce: a completion burst (create+pay+donation, plus
       // our own echo) coalesces into ONE delta sync. Marketing-slider edits use
@@ -644,7 +662,8 @@ final geofenceProvider = StreamProvider<GeofenceStatus>((ref) async* {
     return;
   }
   final radius =
-      (branch.geofenceRadiusM ?? GeofenceService.defaultRadiusM.toInt()).toDouble();
+      (branch.geofenceRadiusM ?? GeofenceService.defaultRadiusM.toInt())
+          .toDouble();
 
   if (!await Geolocator.isLocationServiceEnabled()) {
     yield GeofenceStatus(FenceState.noPermission, radiusM: radius);

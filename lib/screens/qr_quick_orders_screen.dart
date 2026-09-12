@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/local_order_storage_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/qr_pending_order.dart';
 import '../models/pos_models.dart' show Product;
@@ -80,6 +81,9 @@ class QrQuickOrdersScreen extends ConsumerWidget {
           session.branchId,
           session.kioskId,
         ),
+        mutationGuard: () =>
+            (debugOrderStorageOverride ?? LocalOrderStorageService.instance)
+                .assertNoPendingCombine(),
       );
       final store = await SqliteQrQuickStore.open(gateway.scope);
       return QrQuickController(gateway, store);
@@ -90,10 +94,10 @@ class QrQuickOrdersScreen extends ConsumerWidget {
     onPay: (context, order) => openCheckout != null
         ? openCheckout!(order.uuid)
         : Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) =>
-            QrPendingSheet(order: QrPendingOrder.fromJson(order.json)),
-      ),
-    ),
+            MaterialPageRoute(
+              builder: (_) =>
+                  QrPendingSheet(order: QrPendingOrder.fromJson(order.json)),
+            ),
+          ),
   );
 }

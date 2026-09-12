@@ -3,6 +3,7 @@ import 'package:pos_machine/data/db/app_database.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// P-F4 — order-scope auto_apply discounts + the custom-discount reason.
 /// An order-scope rule flagged auto_apply self-applies to every qualifying
@@ -35,7 +36,7 @@ void main() {
       );
 
   PosController build(List<MerchantDiscount> discounts) {
-    final c = PosController();
+    final c = PosController(orderStorage: FakeOrderStorage());
     c.applyCatalog(
       categories: const ['Coffee'],
       products: const [latte],

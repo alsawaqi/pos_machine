@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
+import '../draft_recovery/recovery_store.dart';
 import 'combine_models.dart';
 
 class CombineStore {
@@ -121,6 +122,7 @@ class CombineStore {
 
   Future<void> create(CombineAttempt attempt) => db.transaction((txn) async {
     await assertNonePending(txn);
+    await RecoveryStore.assertNonePending(txn);
     await verifyLocal(attempt.local, executor: txn);
     await txn.insert('bill_combine_journal', {
       'id': attempt.id,

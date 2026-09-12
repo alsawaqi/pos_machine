@@ -39,6 +39,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
     required this.markPrinted,
     this.bindBillIdentity,
     this.stockModeForProduct,
+    this.guardSession,
     DateTime Function()? clock,
     String Function()? newUuid,
   }) : clock = clock ?? DateTime.now,
@@ -62,6 +63,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
   String? Function(int productId)? stockModeForProduct;
   final DateTime Function() clock;
   final String Function() newUuid;
+  final Future<void> Function(DiningTableSession)? guardSession;
 
   Future<bool> Function(DiningTableSession, List<Map<String, dynamic>>)?
   printRound;
@@ -82,8 +84,28 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
   Future<void> get settled => _tail;
   DiningTableSession? cachedSession(String tableId) => _sessions[tableId];
 
+  /// Called after durable archive. Never evicts a newer occupied generation.
+  void forgetRecoveredSession({
+    required String tableId,
+    required String uuid,
+    String? occupiedAt,
+    String? seatingKey,
+  }) {
+    final current = _sessions[tableId];
+    if (current != null &&
+        (current.serverOrderUuid == uuid ||
+            current.draft?.serverOrderUuid == uuid ||
+            (occupiedAt != null &&
+                current.occupiedAt?.toIso8601String() == occupiedAt) ||
+            (seatingKey != null && current.seatingKey == seatingKey))) {
+      _sessions.remove(tableId);
+      _changed();
+    }
+  }
+
   Future<void> hydrate() async {
     for (final session in await loadSessions()) {
+      await guardSession?.call(session);
       _sessions.putIfAbsent(session.tableId, () => session);
     }
     // The outbox is durable first. Recover a ledger write interrupted between
@@ -203,12 +225,14 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
   }
 
   Future<DiningTableSession> _remember(DiningTableSession session) async {
+    await guardSession?.call(session);
     var remembered = _copyIdentity(session, _sessions[session.tableId]);
     for (final stored in await loadSessions()) {
       if (stored.tableId == session.tableId && stored.seatingKey != null) {
         remembered = _copyIdentity(remembered, stored);
       }
     }
+    await guardSession?.call(remembered);
     _sessions[session.tableId] = remembered;
     return remembered;
   }
@@ -225,6 +249,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
   };
 
   Future<void> _saveIdentity(DiningTableSession s) async {
+    await guardSession?.call(s);
     _sessions[s.tableId] = s;
     // Never recreate a cleared row or overwrite a later occupancy's identity.
     final current = (await loadSessions())
@@ -453,9 +478,9 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
 
   Future<LocalTableRound?> _sendRound(DiningTableSession source) async {
     final session = await _ensure(source);
-    final lines = (await delta(session))
-        .where((line) => (line['qty'] as int) > 0)
-        .toList();
+    final lines = (await delta(
+      session,
+    )).where((line) => (line['qty'] as int) > 0).toList();
     if (lines.isEmpty) return null;
     final requestId = newUuid();
     final at = clock().toUtc();
@@ -523,9 +548,9 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
         };
       },
     );
-    return (await store.readLocalTableRounds(seatingKey: session.seatingKey))
-            .where((r) => r.clientRequestId == requestId)
-            .firstOrNull ??
+    return (await store.readLocalTableRounds(
+          seatingKey: session.seatingKey,
+        )).where((r) => r.clientRequestId == requestId).firstOrNull ??
         round;
   }
 

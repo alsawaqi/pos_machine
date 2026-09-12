@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// The charity round-up may only be OFFERED on a CARD leg.
 ///
@@ -17,7 +18,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   PosController seeded() {
-    final c = PosController();
+    final c = PosController(orderStorage: FakeOrderStorage());
     c.applyCatalog(
       categories: const ['Coffee'],
       products: const [

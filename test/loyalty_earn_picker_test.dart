@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// P-F3 — the earn-program choice: when the merchant runs several active
 /// loyalty rules, the cashier/customer may pick which one(s) THIS order earns
@@ -29,7 +30,7 @@ void main() {
   );
 
   PosController build() {
-    final c = PosController();
+    final c = PosController(orderStorage: FakeOrderStorage());
     c.applyCatalog(
       categories: const ['X'],
       products: const [],

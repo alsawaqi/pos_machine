@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/services/order_sync_payload.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// P-G7 — no-tender delivery-provider orders on the device.
 ///
@@ -88,7 +89,7 @@ void main() {
 
   group('PosController — delivery exemptions', () {
     PosController seeded() {
-      final c = PosController();
+      final c = PosController(orderStorage: FakeOrderStorage());
       c.applyCatalog(
         categories: const ['Coffee'],
         products: const [

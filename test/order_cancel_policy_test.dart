@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/data/db/app_database.dart';
 import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// v2 #14 — the order-cancel position policy: parsed from /device/config
 /// `settings.order_cancel_positions`, cached on SyncMeta, decoded into the
@@ -47,7 +48,7 @@ void main() {
 
   group('PosController.positionCanCancelOrders', () {
     test('honours the configured positions, case-insensitively', () {
-      final c = PosController();
+      final c = PosController(orderStorage: FakeOrderStorage());
       c.applyCatalog(
         categories: const [],
         products: const [],
@@ -64,7 +65,7 @@ void main() {
     });
 
     test('defaults to managers-only when the policy is empty', () {
-      final c = PosController();
+      final c = PosController(orderStorage: FakeOrderStorage());
       c.applyCatalog(
         categories: const [],
         products: const [],

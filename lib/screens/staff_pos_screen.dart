@@ -5,6 +5,14 @@ import '../bill_combine/combine_local.dart';
 import '../bill_combine/combine_screen.dart';
 import '../bill_combine/combine_store.dart';
 import '../bill_combine/combine_models.dart';
+import '../draft_recovery/recovery_admission.dart';
+import '../draft_recovery/recovery_controller.dart';
+import '../draft_recovery/recovery_gateway.dart';
+import '../draft_recovery/recovery_local.dart';
+import '../draft_recovery/recovery_models.dart';
+import '../draft_recovery/recovery_screen.dart';
+import '../draft_recovery/recovery_store.dart';
+import '../draft_recovery/recovery_preparation_gate.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -214,7 +222,8 @@ bool customerOccupiesDiningTable({
   required String mode,
   required DiningTableSession? session,
   RemoteTableState? remote,
-}) => mode != 'off' &&
+}) =>
+    mode != 'off' &&
     (session == null || remote?.billSource == 'qr_web') &&
     const {'open', 'billing'}.contains(remote?.seatingStatus);
 
@@ -224,8 +233,12 @@ bool customerBillEntryBlocked({
   required bool charityPrompt,
   required bool paymentLaunchOverlay,
   required bool recordedSplitWithCart,
-}) => localCheckoutOpen || processingPayment || charityPrompt ||
-    paymentLaunchOverlay || recordedSplitWithCart;
+}) =>
+    localCheckoutOpen ||
+    processingPayment ||
+    charityPrompt ||
+    paymentLaunchOverlay ||
+    recordedSplitWithCart;
 
 /// Shared production tap seam. Only the legacy local branch opens the cart.
 Future<void> routeDiningTableTap({
@@ -239,7 +252,9 @@ Future<void> routeDiningTableTap({
   required VoidCallback localOpened,
 }) async {
   if (customerOccupiesDiningTable(
-    mode: mode, session: session, remote: remote,
+    mode: mode,
+    session: session,
+    remote: remote,
   )) {
     await openCustomerBill();
   } else if (session?.status == DiningTableStatus.paid) {
@@ -252,7 +267,9 @@ Future<void> routeDiningTableTap({
 
 class TableActivityNoticeContent extends StatelessWidget {
   const TableActivityNoticeContent({
-    super.key, required this.notices, required this.onTap,
+    super.key,
+    required this.notices,
+    required this.onTap,
   });
   final List<TableActivityNotice> notices;
   final ValueChanged<TableActivityNotice> onTap;
@@ -276,39 +293,46 @@ class TableActivityNoticeContent extends StatelessWidget {
 }
 
 Future<String?> showCustomerDiningTableActions(
-  BuildContext context, {required String mode, required bool hasBill}
-) {
+  BuildContext context, {
+  required String mode,
+  required bool hasBill,
+}) {
   final l10n = L10n.of(context);
   return showModalBottomSheet<String>(
     context: context,
     builder: (context) => SafeArea(
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        if (hasBill)
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (hasBill)
+            ListTile(
+              key: const ValueKey('table-action-customer-bill'),
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: Text(l10n.tableCustomerBillTitle),
+              onTap: () => Navigator.pop(context, 'customer_bill'),
+            ),
+          if (mode != 'off')
+            ListTile(
+              key: const ValueKey('table-action-add-items'),
+              leading: const Icon(Icons.add),
+              title: Text(
+                mode == 'live' ? l10n.tableAddItems : l10n.tableSeparateLocal,
+              ),
+              onTap: () => Navigator.pop(context, 'add_items'),
+            ),
           ListTile(
-            key: const ValueKey('table-action-customer-bill'),
-            leading: const Icon(Icons.receipt_long_outlined),
-            title: Text(l10n.tableCustomerBillTitle),
-            onTap: () => Navigator.pop(context, 'customer_bill'),
+            title: Text(l10n.commonCancel),
+            onTap: () => Navigator.pop(context),
           ),
-        if (mode != 'off')
-          ListTile(
-            key: const ValueKey('table-action-add-items'),
-            leading: const Icon(Icons.add),
-            title: Text(mode == 'live'
-                ? l10n.tableAddItems : l10n.tableSeparateLocal),
-            onTap: () => Navigator.pop(context, 'add_items'),
-          ),
-        ListTile(
-          title: Text(l10n.commonCancel),
-          onTap: () => Navigator.pop(context),
-        ),
-      ]),
+        ],
+      ),
     ),
   );
 }
 
 bool tableBillNeedsSheet(String mode, RemoteTableState? bill) =>
-    mode == 'live' && bill?.billOrderUuid != null &&
+    mode == 'live' &&
+    bill?.billOrderUuid != null &&
     (bill?.billSource == 'qr_web' ||
         (const {'main_pos', 'handheld'}.contains(bill?.billSource) &&
             (bill?.billCustomerRounds ?? 0) > 0));
@@ -328,7 +352,9 @@ class TableCartPayRouter {
   }) {
     final row = board.tables[tableId];
     final boardAt = board.meta.boardFetchedAt ?? row?.fetchedAt;
-    if (_tableId == tableId && _contextKey == contextKey && _readAt != null &&
+    if (_tableId == tableId &&
+        _contextKey == contextKey &&
+        _readAt != null &&
         (boardAt == null || !boardAt.isAfter(_readAt!))) {
       return _row;
     }
@@ -361,7 +387,9 @@ class TableCartPayRouter {
       try {
         final rows = await fetchBoard();
         final raw = rows.where((row) => row['table_id'] == tableId).firstOrNull;
-        final fresh = raw == null ? null : RemoteTableState.fromBoard(raw, readAt);
+        final fresh = raw == null
+            ? null
+            : RemoteTableState.fromBoard(raw, readAt);
         if (!isCurrent()) return;
         bill = fresh;
         _contextKey = contextKey;
@@ -369,13 +397,15 @@ class TableCartPayRouter {
         _readAt = readAt;
         _row = fresh;
         bill = known(
-          tableId: tableId, contextKey: contextKey,
+          tableId: tableId,
+          contextKey: contextKey,
           board: latestBoard?.call() ?? board,
         );
       } catch (_) {
         // Offline/read failure uses the last known identity, never a price.
         bill = known(
-          tableId: tableId, contextKey: contextKey,
+          tableId: tableId,
+          contextKey: contextKey,
           board: latestBoard?.call() ?? board,
         );
       }
@@ -398,9 +428,8 @@ Widget buildTableCartPayButtonForTest({
   required bool busy,
   required bool settleBill,
   required VoidCallback onTap,
-}) => _PayButton(
-  total: total, busy: busy, settleBill: settleBill, onTap: onTap,
-);
+}) =>
+    _PayButton(total: total, busy: busy, settleBill: settleBill, onTap: onTap);
 
 class StaffPosScreen extends ConsumerStatefulWidget {
   const StaffPosScreen({super.key});
@@ -434,13 +463,17 @@ class TableKitchenBridge implements DiningTableSyncHooks {
     controller.onDiningTableFinalRound = (snapshot) async {
       if (!coordinator.live) return false;
       final session = activeSession();
-      if (session == null) throw StateError('Missing Live table at final round.');
+      if (session == null) {
+        throw StateError('Missing Live table at final round.');
+      }
       await send(session);
       return true;
     };
     coordinator.printRound = _print;
     coordinator.stockModeForProduct = (id) => controller.allProducts
-        .where((product) => product.id == id.toString()).firstOrNull?.stockMode;
+        .where((product) => product.id == id.toString())
+        .firstOrNull
+        ?.stockMode;
     coordinator.bindBillIdentity = (session, oldUuid, newUuid) {
       controller.bindDiningTableBillIdentity(
         live: coordinator.live,
@@ -465,9 +498,11 @@ class TableKitchenBridge implements DiningTableSyncHooks {
     if (id == null) return null;
     final session = controller.diningSessionFor(id);
     if (session == null) return null;
-    return session.copyWith(draft: controller.createDraft(
-      serverOrderUuid: controller.activeDiningTableBillUuid,
-    ));
+    return session.copyWith(
+      draft: controller.createDraft(
+        serverOrderUuid: controller.activeDiningTableBillUuid,
+      ),
+    );
   }
 
   String _localKey(DiningTableSession s) =>
@@ -481,9 +516,9 @@ class TableKitchenBridge implements DiningTableSyncHooks {
     );
   }
 
-  List<CartItem> _localOnly(DiningTableSession s) =>
-      (s.draft?.items ?? []).where((i) => buildTableRoundLines([i]).isEmpty)
-          .toList();
+  List<CartItem> _localOnly(DiningTableSession s) => (s.draft?.items ?? [])
+      .where((i) => buildTableRoundLines([i]).isEmpty)
+      .toList();
 
   bool hasLocalOnlyDelta(DiningTableSession s) {
     final printed = _localPrinted(s);
@@ -491,7 +526,8 @@ class TableKitchenBridge implements DiningTableSyncHooks {
   }
 
   Future<bool> _print(
-    DiningTableSession session, List<Map<String, dynamic>> items,
+    DiningTableSession session,
+    List<Map<String, dynamic>> items,
   ) async {
     if (!controller.printKitchenTickets) return false;
     final printed = _localPrinted(session);
@@ -509,16 +545,21 @@ class TableKitchenBridge implements DiningTableSyncHooks {
     final temp = session.tempReference?.trim() ?? '';
     var ok = false;
     try {
-      ok = await printer(KitchenTicketData(
-        orderLabel: temp.isEmpty ? session.orderReference : temp,
-        orderTypeLabel: localizedOrderType(l10n(), OrderType.dineIn),
-        tableLabel: controller.diningTableDefinitions
-            .where((t) => t.id == session.tableId).firstOrNull?.name ??
-            session.tableId,
-        time: coordinator.clock().toUtc(),
-        isHold: false,
-        items: [...items, ...localItems],
-      ));
+      ok = await printer(
+        KitchenTicketData(
+          orderLabel: temp.isEmpty ? session.orderReference : temp,
+          orderTypeLabel: localizedOrderType(l10n(), OrderType.dineIn),
+          tableLabel:
+              controller.diningTableDefinitions
+                  .where((t) => t.id == session.tableId)
+                  .firstOrNull
+                  ?.name ??
+              session.tableId,
+          time: coordinator.clock().toUtc(),
+          isHold: false,
+          items: [...items, ...localItems],
+        ),
+      );
     } catch (_) {
       ok = false;
     }
@@ -528,7 +569,8 @@ class TableKitchenBridge implements DiningTableSyncHooks {
     }
     for (final item in _localOnly(session)) {
       printed[item.mergeSignature] = math.max(
-        printed[item.mergeSignature] ?? 0, item.qty,
+        printed[item.mergeSignature] ?? 0,
+        item.qty,
       );
     }
     await preferences.setString(_localKey(session), jsonEncode(printed));
@@ -539,7 +581,9 @@ class TableKitchenBridge implements DiningTableSyncHooks {
     final operation = _tail.then((_) async {
       if (!coordinator.live) return;
       final round = await coordinator.sendRound(session);
-      if (round == null && hasLocalOnlyDelta(session)) await _print(session, []);
+      if (round == null && hasLocalOnlyDelta(session)) {
+        await _print(session, []);
+      }
     });
     _tail = operation.then<void>((_) {}, onError: (Object _, StackTrace _) {});
     return operation;
@@ -558,6 +602,7 @@ class TableKitchenBridge implements DiningTableSyncHooks {
     final session = activeSession() ?? coordinator.cachedSession(tableId);
     if (session != null) unawaited(send(session).catchError((Object _) {}));
   }
+
   @override
   void onTableTransferred(String fromId, DiningTableSession moved) =>
       coordinator.onTableTransferred(fromId, moved);
@@ -571,6 +616,7 @@ class TableKitchenBridge implements DiningTableSyncHooks {
     if (head?.status == DiningTableStatus.paid) return;
     coordinator.onTablesCleared(ids, head);
   }
+
   @override
   void onTablePaid(DiningTableSession paid, OrderSnapshot snapshot) =>
       coordinator.onTablePaid(paid, snapshot);
@@ -590,13 +636,16 @@ class TableModeTransition {
       await coordinator.settled;
       final ids = (await coordinator.loadSessions())
           .where((s) => s.status == DiningTableStatus.occupied)
-          .map((s) => s.tableId).toList();
+          .map((s) => s.tableId)
+          .toList();
       for (final id in ids) {
         if (!coordinator.live) return;
         // Re-read after each await: a cashier may have cleared/moved the table.
         final stored = (await coordinator.loadSessions())
-            .where((s) => s.tableId == id).firstOrNull;
-        if (stored == null || stored.status != DiningTableStatus.occupied ||
+            .where((s) => s.tableId == id)
+            .firstOrNull;
+        if (stored == null ||
+            stored.status != DiningTableStatus.occupied ||
             (stored.seatingKey?.isNotEmpty ?? false)) {
           continue;
         }
@@ -609,8 +658,10 @@ class TableModeTransition {
         await coordinator.settled;
         if (!coordinator.live) return;
         final current = (await coordinator.loadSessions())
-            .where((s) => s.tableId == id).firstOrNull;
-        if (current == null || current.status != DiningTableStatus.occupied ||
+            .where((s) => s.tableId == id)
+            .firstOrNull;
+        if (current == null ||
+            current.status != DiningTableStatus.occupied ||
             current.orderReference != stored.orderReference ||
             current.occupiedAt != stored.occupiedAt) {
           continue;
@@ -636,11 +687,17 @@ class TableSearchController extends ChangeNotifier {
   List<TableSearchResult> results = const [];
   static bool eligible(String text) {
     final q = text.trim();
-    return q.length >= 2 && q.length <= 32 &&
+    return q.length >= 2 &&
+        q.length <= 32 &&
         (q.toLowerCase().startsWith('t-') || RegExp(r'^\d{4,}$').hasMatch(q));
   }
-  void update(String query, {required bool enabled, required bool degraded,
-    String scope = ''}) {
+
+  void update(
+    String query, {
+    required bool enabled,
+    required bool degraded,
+    String scope = '',
+  }) {
     final q = query.trim();
     final key = '$scope|$enabled|$degraded|$q';
     if (_disposed || key == _key) return;
@@ -666,6 +723,7 @@ class TableSearchController extends ChangeNotifier {
       notifyListeners();
     });
   }
+
   @override
   void dispose() {
     _disposed = true;
@@ -678,7 +736,8 @@ class TableSearchController extends ChangeNotifier {
 List<DiningTableDefinition> tableSearchMatches({
   required List<DiningTableDefinition> local,
   required List<DiningTableDefinition> definitions,
-  required String floorId, required List<TableSearchResult> results,
+  required String floorId,
+  required List<TableSearchResult> results,
 }) {
   final ids = {for (final row in results) row.tableId.toString()};
   return {
@@ -689,10 +748,14 @@ List<DiningTableDefinition> tableSearchMatches({
 }
 
 String tableActivityMessage(L10n l10n, TableActivityNotice notice) {
-  final label = notice.reference == null ? notice.tableLabel
+  final label = notice.reference == null
+      ? notice.tableLabel
       : '${notice.tableLabel} · ${notice.reference}';
   return switch (notice.kind) {
-    TableActivityKind.pending => l10n.tableCustomerPending(label, notice.itemCount!),
+    TableActivityKind.pending => l10n.tableCustomerPending(
+      label,
+      notice.itemCount!,
+    ),
     TableActivityKind.kitchen => l10n.tableCustomerKitchen(label),
     TableActivityKind.bill => l10n.tableCustomerBill(label),
   };
@@ -704,9 +767,13 @@ class TableSearchSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
-    final text = search.offline ? l10n.tableSearchOffline
-        : search.failed ? l10n.tableSearchFailed
-        : search.searching ? l10n.tableSearchSearching : null;
+    final text = search.offline
+        ? l10n.tableSearchOffline
+        : search.failed
+        ? l10n.tableSearchFailed
+        : search.searching
+        ? l10n.tableSearchSearching
+        : null;
     if (text != null) return Text(text);
     if (search.results.isEmpty) return const SizedBox.shrink();
     return SizedBox(
@@ -714,24 +781,32 @@ class TableSearchSummary extends StatelessWidget {
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
-          for (final result in search.results) Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5FC),
-                border: Border.all(color: const Color(0xFF356BDD)),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Text(l10n.tableSearchMatch(
-                  result.label, result.reference ?? '—',
-                  result.totalBaisas == null ? '—' :
-                      (result.totalBaisas! / 1000).toStringAsFixed(3),
-                )),
+          for (final result in search.results)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5FC),
+                  border: Border.all(color: const Color(0xFF356BDD)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child: Text(
+                    l10n.tableSearchMatch(
+                      result.label,
+                      result.reference ?? '—',
+                      result.totalBaisas == null
+                          ? '—'
+                          : (result.totalBaisas! / 1000).toStringAsFixed(3),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -739,8 +814,13 @@ class TableSearchSummary extends StatelessWidget {
 }
 
 class DiningTableActivityBadge extends StatelessWidget {
-  const DiningTableActivityBadge({super.key, required this.mode,
-    this.sending = false, this.pendingRounds = 0, this.needsReview = 0});
+  const DiningTableActivityBadge({
+    super.key,
+    required this.mode,
+    this.sending = false,
+    this.pendingRounds = 0,
+    this.needsReview = 0,
+  });
   final String mode;
   final bool sending;
   final int pendingRounds, needsReview;
@@ -754,22 +834,29 @@ class DiningTableActivityBadge extends StatelessWidget {
       if (pendingRounds > 0) l10n.tablePendingBell(pendingRounds),
     ];
     if (parts.isEmpty) return const SizedBox.shrink();
-    return IgnorePointer(child: Text(parts.join(' · '),
-      key: const ValueKey('table-activity-badge'),
-      textAlign: TextAlign.center,
-      style: const TextStyle(fontSize: 11, color: Color(0xFF755411))));
+    return IgnorePointer(
+      child: Text(
+        parts.join(' · '),
+        key: const ValueKey('table-activity-badge'),
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 11, color: Color(0xFF755411)),
+      ),
+    );
   }
 }
 
-Future<String?> showTableSearchKeyboard(BuildContext context, {
-  required String initialValue, required ValueChanged<String> onChanged,
+Future<String?> showTableSearchKeyboard(
+  BuildContext context, {
+  required String initialValue,
+  required ValueChanged<String> onChanged,
 }) => showDialog<String>(
   context: context,
   builder: (_) => _InAppKeyboardDialog(
     title: L10n.of(context).posSearchTablesTitle,
     initialValue: initialValue,
     hintText: L10n.of(context).posSearchTablesHint,
-    tableSearch: true, onChanged: onChanged,
+    tableSearch: true,
+    onChanged: onChanged,
   ),
 );
 
@@ -793,6 +880,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Map<String, int> _tableUnsent = {};
   Map<String, DateTime> _tableSentAt = {};
   bool _tableSendBusy = false;
+  final _orderPreparations = RecoveryPreparationGate();
   int _tableSentRefresh = 0;
   late final PosController controller;
   late final TextEditingController _customerNumberController;
@@ -868,48 +956,67 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _tableSearch = TableSearchController(
       (q) => ref.read(apiServiceProvider).searchTables(q),
     )..addListener(_onTableSearchChanged);
-    ref.listenManual(sessionControllerProvider, (_, _) => _scheduleTableSearch());
-    ref.listenManual(settingsControllerProvider, (_, _) => _scheduleTableSearch());
+    ref.listenManual(
+      sessionControllerProvider,
+      (_, _) => _scheduleTableSearch(),
+    );
+    ref.listenManual(
+      settingsControllerProvider,
+      (_, _) => _scheduleTableSearch(),
+    );
     controller.isLiveSharedTable = () =>
         ref.read(tableSessionsModeProvider) == 'live';
     controller.addListener(_onTableCartChanged);
     ref.listenManual(tableSessionsModeProvider, (previous, next) {
       _scheduleTableSearch();
       if (previous != 'live' && next == 'live') {
-        unawaited(_enterLiveTables().catchError((Object _) {
-          if (mounted) _showTableActionFailure();
-        }));
+        unawaited(
+          _enterLiveTables().catchError((Object _) {
+            if (mounted) _showTableActionFailure();
+          }),
+        );
       }
     });
     ref.listenManual(tableActivityNoticeProvider, (_, next) {
       final notices = next.asData?.value;
-      if (notices == null || ref.read(tableSessionsModeProvider) != 'live') return;
+      if (notices == null || ref.read(tableSessionsModeProvider) != 'live') {
+        return;
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || ref.read(tableSessionsModeProvider) != 'live') return;
-        unawaited(SystemSound.play(SystemSoundType.alert).catchError((Object _) {}));
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: TableActivityNoticeContent(
-            notices: notices,
-            onTap: (notice) {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              unawaited(_openCustomerBill(
-                notice.tableId.toString(), tableLabel: notice.tableLabel,
-              ));
-            },
+        unawaited(
+          SystemSound.play(SystemSoundType.alert).catchError((Object _) {}),
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: TableActivityNoticeContent(
+              notices: notices,
+              onTap: (notice) {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                unawaited(
+                  _openCustomerBill(
+                    notice.tableId.toString(),
+                    tableLabel: notice.tableLabel,
+                  ),
+                );
+              },
+            ),
+            duration: const Duration(seconds: 8),
           ),
-          duration: const Duration(seconds: 8),
-        ));
+        );
       });
     });
     _qrRoundAutoPrintController = ref.read(qrRoundAutoPrintControllerProvider);
     controller.onOrderCompleted = _handleOrderCompleted;
     // Phase 3C — push advertising-slide play-time telemetry (best-effort).
     controller.onSliderDisplay = (event) => unawaited(
-          ref.read(orderSyncRepositoryProvider).pushSliderDisplay(
-                // Phase 1A — fold in anonymous audience counts (no-op when off).
-                ref.read(audienceServiceProvider).enrich(event),
-              ),
-        );
+      ref
+          .read(orderSyncRepositoryProvider)
+          .pushSliderDisplay(
+            // Phase 1A — fold in anonymous audience counts (no-op when off).
+            ref.read(audienceServiceProvider).enrich(event),
+          ),
+    );
     // #3 — persist the local shelf-stock decrement to Drift so the produced
     // count survives a restart (until the next config sync reconciles).
     controller.onShelfStockConsumed = (sold) =>
@@ -919,8 +1026,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.onCompClearedAfterCartEdit = _handleCompClearedAfterCartEdit;
     // P-F8 — merchant order numbering: the controller asks for the next
     // sequential number at payment time through this bridge.
-    controller.allocateReceiptNumber =
-        () => ref.read(apiServiceProvider).allocateOrderNumber();
+    controller.allocateReceiptNumber = () =>
+        ref.read(apiServiceProvider).allocateOrderNumber();
     // Phase G4 — printing is fail-safe (never blocks a sale); this surfaces
     // a throttled staff alert when real hardware fails (paper out / cover).
     controller.onPrintFailed = _handlePrintFailed;
@@ -966,17 +1073,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       if (next == null || !mounted) return;
       final arabic = ref.read(settingsControllerProvider).language == 'ar';
       final message = switch (next.kind) {
-        QrRoundPrintNoticeKind.expiredUnprinted => arabic
-            ? 'انتهت صلاحية ${next.count} جولة غير مطبوعة أثناء توقف الجهاز.'
-            : '${next.count} unprinted QR round(s) expired while this device was offline.',
-        QrRoundPrintNoticeKind.printerFailed => arabic
-            ? 'تعذرت طباعة جولة QR. افحص الطابعة؛ سيعيد الجهاز المحاولة بأمان.'
-            : 'A QR kitchen round did not print. Check the printer; this device will retry safely.',
+        QrRoundPrintNoticeKind.expiredUnprinted =>
+          arabic
+              ? 'انتهت صلاحية ${next.count} جولة غير مطبوعة أثناء توقف الجهاز.'
+              : '${next.count} unprinted QR round(s) expired while this device was offline.',
+        QrRoundPrintNoticeKind.printerFailed =>
+          arabic
+              ? 'تعذرت طباعة جولة QR. افحص الطابعة؛ سيعيد الجهاز المحاولة بأمان.'
+              : 'A QR kitchen round did not print. Check the printer; this device will retry safely.',
         QrRoundPrintNoticeKind.positionReset =>
-            qrRoundPrintPositionResetMessage(arabic: arabic),
-        QrRoundPrintNoticeKind.heldForReview => arabic
-            ? 'جولة المطبخ معلقة للمراجعة.'
-            : 'Kitchen round held for review.',
+          qrRoundPrintPositionResetMessage(arabic: arabic),
+        QrRoundPrintNoticeKind.heldForReview =>
+          arabic
+              ? 'جولة المطبخ معلقة للمراجعة.'
+              : 'Kitchen round held for review.',
       };
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -1000,7 +1110,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       // Pre-warm a Mosambee login session so the first card payment is fast.
       controller.prewarmCardPayment();
       // Flush any orders queued in a previous session (e.g. completed offline).
-      unawaited(ref.read(orderSyncRepositoryProvider).flush().catchError((_) => 0));
+      unawaited(
+        ref.read(orderSyncRepositoryProvider).flush().catchError((_) => 0),
+      );
       // Phase C3 — subscribe to the branch Reverb channel for live config push.
       ref.read(liveSyncProvider).start();
       // Phase 1A — start anonymous audience measurement when the gate allows
@@ -1033,93 +1145,84 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       // sent by another terminal shows up (badge on the Transfer card)
       // within seconds. Silent when offline.
       unawaited(_refreshTransferInbox());
-      _transferPollTimer = Timer.periodic(
-        const Duration(seconds: 10),
-        (_) {
-          _retryPendingClaimedTransfer();
-          unawaited(_refreshTransferInbox());
-        },
-      );
+      _transferPollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+        _retryPendingClaimedTransfer();
+        unawaited(_refreshTransferInbox());
+      });
     });
 
     // Bridge: feed the branch catalog (from the Drift cache, refreshed from
     // pos_api) into the existing controller. fireImmediately covers the case
     // where the cache is already populated before this screen mounts.
-    _catalogSub = ref.listenManual(
-      catalogProvider,
-      (previous, next) {
-        final catalog = next.asData?.value;
-        if (catalog != null) {
-          controller.applyCatalog(
-            categories: catalog.categories,
-            categoryNamesAr: catalog.categoryNamesAr,
-            products: catalog.products,
-            floors: catalog.floors,
-            tables: catalog.tables,
-            taxes: catalog.taxes,
-            addonGroups: catalog.addonGroups,
-            deliveryProviders: catalog.deliveryProviders,
-            expenseCategories: catalog.expenseCategories,
-            ingredientBalances: catalog.ingredientBalances,
-            discounts: catalog.discounts,
-            // P-G6 sweep fix — offers were never bridged here, so every
-            // catalog emission WIPED controller.availableOffers (the
-            // Offers sheet only worked until the first re-emission).
-            offers: catalog.offers,
-            loyaltyRules: catalog.loyaltyRules,
-            customers: catalog.customers,
-            cancelOrderPositions: catalog.cancelOrderPositions,
-            reportsPositions: catalog.reportsPositions,
-            kitchenPositions: catalog.kitchenPositions,
-            orderNumbering: catalog.orderNumbering,
-            receiptTemplate: catalog.receiptTemplate,
-            voidReasons: catalog.voidReasons,
-            compReasons: catalog.compReasons,
-            categoryAddonGroupIds: catalog.categoryAddonGroupIds,
-            staffMessages: catalog.staffMessages,
-            adSlides: catalog.adSlides,
-            branchId: ref.read(sessionControllerProvider).branchId,
-          );
-          // P-G6 — pop a notice when a NEW announcement lands for the
-          // signed-in staff member (delta sync or live push). The first
-          // emission (previous == null) is the initial cache load — silent.
-          _maybeAnnounceNewMessages(
-            previous?.asData?.value,
-            catalog,
-          );
-        }
-      },
-      fireImmediately: true,
-    );
+    _catalogSub = ref.listenManual(catalogProvider, (previous, next) {
+      final catalog = next.asData?.value;
+      if (catalog != null) {
+        controller.applyCatalog(
+          categories: catalog.categories,
+          categoryNamesAr: catalog.categoryNamesAr,
+          products: catalog.products,
+          floors: catalog.floors,
+          tables: catalog.tables,
+          taxes: catalog.taxes,
+          addonGroups: catalog.addonGroups,
+          deliveryProviders: catalog.deliveryProviders,
+          expenseCategories: catalog.expenseCategories,
+          ingredientBalances: catalog.ingredientBalances,
+          discounts: catalog.discounts,
+          // P-G6 sweep fix — offers were never bridged here, so every
+          // catalog emission WIPED controller.availableOffers (the
+          // Offers sheet only worked until the first re-emission).
+          offers: catalog.offers,
+          loyaltyRules: catalog.loyaltyRules,
+          customers: catalog.customers,
+          cancelOrderPositions: catalog.cancelOrderPositions,
+          reportsPositions: catalog.reportsPositions,
+          kitchenPositions: catalog.kitchenPositions,
+          orderNumbering: catalog.orderNumbering,
+          receiptTemplate: catalog.receiptTemplate,
+          voidReasons: catalog.voidReasons,
+          compReasons: catalog.compReasons,
+          categoryAddonGroupIds: catalog.categoryAddonGroupIds,
+          staffMessages: catalog.staffMessages,
+          adSlides: catalog.adSlides,
+          branchId: ref.read(sessionControllerProvider).branchId,
+        );
+        // P-G6 — pop a notice when a NEW announcement lands for the
+        // signed-in staff member (delta sync or live push). The first
+        // emission (previous == null) is the initial cache load — silent.
+        _maybeAnnounceNewMessages(previous?.asData?.value, catalog);
+      }
+    }, fireImmediately: true);
 
     // Back online → refresh the cached config (best effort).
-    _connectivitySub = ref.listenManual(
-      connectivityProvider,
-      (previous, next) {
-        if (next.asData?.value == true) {
-          unawaited(
-            ref.read(configRepositoryProvider).syncConfig().catchError((_) {}),
-          );
-          // Back online → push any orders queued while offline.
-          unawaited(
-            ref.read(orderSyncRepositoryProvider).flush().catchError((_) => 0),
-          );
-          // P-G6 — re-send read receipts that failed while offline.
-          final staffId = ref.read(sessionServiceProvider).staff?.id;
-          if (staffId != null) {
-            _flushMessageReceipts(staffId);
-          }
+    _connectivitySub = ref.listenManual(connectivityProvider, (previous, next) {
+      if (next.asData?.value == true) {
+        unawaited(
+          ref.read(configRepositoryProvider).syncConfig().catchError((_) {}),
+        );
+        // Back online → push any orders queued while offline.
+        unawaited(
+          ref.read(orderSyncRepositoryProvider).flush().catchError((_) => 0),
+        );
+        // P-G6 — re-send read receipts that failed while offline.
+        final staffId = ref.read(sessionServiceProvider).staff?.id;
+        if (staffId != null) {
+          _flushMessageReceipts(staffId);
         }
-      },
-    );
+      }
+    });
   }
 
   /// Push a finalized order to pos_api. Captures the device GPS (required at a
   /// geofenced branch — the server fails closed without it) + the staff id,
   /// then enqueues to the durable outbox, which persists the order before any
   /// network I/O and retries it on the next reconnect.
-  Future<void> _handleOrderCompleted(OrderSnapshot snapshot) async {
-    final sharedTable = ref.read(tableSessionsModeProvider) == 'live' &&
+  Future<void> _handleOrderCompleted(OrderSnapshot snapshot) =>
+      _orderPreparations.run(() => _prepareCompletedOrder(snapshot));
+
+  Future<void> _prepareCompletedOrder(OrderSnapshot snapshot) async {
+    final sharedTable =
+        ref.read(tableSessionsModeProvider) == 'live' &&
         snapshot.diningTableId.isNotEmpty;
     final sharedContext = sharedTable ? Completer<TablePaymentContext>() : null;
     if (sharedContext != null) {
@@ -1148,8 +1251,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     double? lng;
     try {
       final pos = await Geolocator.getCurrentPosition(
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       ).timeout(const Duration(seconds: 5));
       lat = pos.latitude;
       lng = pos.longitude;
@@ -1165,9 +1269,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
 
     if (sharedContext != null) {
-      sharedContext.complete(TablePaymentContext(
-        lat: lat, lng: lng, cardCharge: cardCharge,
-      ));
+      sharedContext.complete(
+        TablePaymentContext(lat: lat, lng: lng, cardCharge: cardCharge),
+      );
       return; // B2 onTablePaid emits pay only; no customer/create/donation path.
     }
     if (!mounted) return;
@@ -1182,8 +1286,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       customerId = searchedCustomer.id;
     } else if (phone.isNotEmpty) {
       try {
-        customerId = await ref.read(apiServiceProvider).saveCustomer(
-              name: phone, // no separate name field at the POS; phone is the key
+        customerId = await ref
+            .read(apiServiceProvider)
+            .saveCustomer(
+              name:
+                  phone, // no separate name field at the POS; phone is the key
               phone: phone,
               plateNumber: plate.isEmpty ? null : plate,
             );
@@ -1198,11 +1305,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // nothing (no spend ⇒ no points; the server also guards this).
     final loyaltyRuleIds =
         customerId != null && snapshot.paymentMethod != 'Gift'
-            ? controller.effectiveEarnRuleIds
-            : const <int>[];
+        ? controller.effectiveEarnRuleIds
+        : const <int>[];
 
     try {
-      await ref.read(orderSyncRepositoryProvider).enqueue(
+      await ref
+          .read(orderSyncRepositoryProvider)
+          .enqueue(
             snapshot,
             lat: lat,
             lng: lng,
@@ -1224,10 +1333,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// Phase C2 — mirror a held order to pos_api via the durable outbox (an
   /// order.hold). Fire-and-forget: the local hold already succeeded, and the
   /// outbox persists + retries the mirror independently of the network.
-  Future<void> _handleOrderHeld(OrderSessionDraft draft) async {
+  Future<void> _handleOrderHeld(OrderSessionDraft draft) =>
+      _orderPreparations.run(() => _prepareHeldOrder(draft));
+
+  Future<void> _prepareHeldOrder(OrderSessionDraft draft) async {
     final staffId = ref.read(sessionServiceProvider).staff?.id;
     try {
-      await ref.read(orderSyncRepositoryProvider).enqueueHold(
+      await ref
+          .read(orderSyncRepositoryProvider)
+          .enqueueHold(
             draft,
             staffId: staffId,
             tableId: int.tryParse(draft.diningTableId),
@@ -1245,8 +1359,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// Silent on failure — offline just keeps the last known list.
   Future<void> _refreshTransferInbox() async {
     try {
-      final rows =
-          await ref.read(apiServiceProvider).fetchIncomingTransfers();
+      final rows = await ref.read(apiServiceProvider).fetchIncomingTransfers();
       if (!mounted) return;
       setState(() => _incomingTransfers = rows);
     } catch (_) {
@@ -1302,7 +1415,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// Send leg: park the current cart on the server addressed to [device].
   /// Pushed ONLINE with an inline ACK (a transfer targets a live colleague's
   /// terminal); the cart clears only after the server confirms.
-  Future<void> _sendTransferTo(Map<String, dynamic> device) async {
+  Future<void> _sendTransferTo(Map<String, dynamic> device) =>
+      _orderPreparations.run(() => _prepareTransferTo(device));
+
+  Future<void> _prepareTransferTo(Map<String, dynamic> device) async {
+    await controller.assertNoPendingCombine();
+    if (!mounted) return;
     final l10n = L10n.of(context);
 
     // Money state that doesn't survive the hop (the receiving cart rebuilds
@@ -1357,14 +1475,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // ACK): a tender started mid-push would race completeTransfer's reset —
     // the resumed payment would then snapshot an emptied cart while the
     // server keeps the order claimable on the target device.
-    unawaited(showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const PopScope(
-        canPop: false,
-        child: Center(child: CircularProgressIndicator()),
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const PopScope(
+          canPop: false,
+          child: Center(child: CircularProgressIndicator()),
+        ),
       ),
-    ));
+    );
 
     Map<String, dynamic> data;
     try {
@@ -1436,7 +1556,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// Receive leg: claim [transfer] (server-atomic — a double-grab 409s) and
   /// hydrate the cart from the returned snapshot. Payment then finalises the
   /// SAME server order uuid.
-  Future<void> _receiveTransfer(Map<String, dynamic> transfer) async {
+  Future<void> _receiveTransfer(Map<String, dynamic> transfer) =>
+      _orderPreparations.run(() => _prepareReceiveTransfer(transfer));
+
+  Future<void> _prepareReceiveTransfer(Map<String, dynamic> transfer) async {
+    await controller.assertNoPendingCombine();
+    if (!mounted) return;
     final l10n = L10n.of(context);
 
     // Fail closed BEFORE taking server-side ownership: mid-tender (or between
@@ -1544,50 +1669,58 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// success.
   bool _hydrateFromTransfer(Map<String, dynamic> order) {
     final items = <CartItem>[];
-    for (final raw in ((order['items'] as List?) ?? const []).whereType<Map>()) {
+    for (final raw
+        in ((order['items'] as List?) ?? const []).whereType<Map>()) {
       final m = raw.cast<String, dynamic>();
       final productId = (m['product_id'] as num?)?.toInt();
 
       final modifiers = <CartItemModifier>[];
       for (final a in ((m['addons'] as List?) ?? const []).whereType<Map>()) {
         final am = a.cast<String, dynamic>();
-        modifiers.add(CartItemModifier(
-          id: '${(am['add_on_id'] as num?)?.toInt() ?? ''}',
-          group: '',
-          label: (am['add_on_name'] ?? '').toString(),
-          price: ((am['price_delta_baisas'] as num?)?.toInt() ?? 0) / 1000.0,
-        ));
+        modifiers.add(
+          CartItemModifier(
+            id: '${(am['add_on_id'] as num?)?.toInt() ?? ''}',
+            group: '',
+            label: (am['add_on_name'] ?? '').toString(),
+            price: ((am['price_delta_baisas'] as num?)?.toInt() ?? 0) / 1000.0,
+          ),
+        );
       }
 
       final unitPrice =
           ((m['unit_price_baisas'] as num?)?.toInt() ?? 0) / 1000.0;
       final addonTotal = modifiers.fold(0.0, (sum, mo) => sum + mo.price);
-      final basePrice =
-          double.parse((unitPrice - addonTotal).toStringAsFixed(3));
+      final basePrice = double.parse(
+        (unitPrice - addonTotal).toStringAsFixed(3),
+      );
 
-      final catalog =
-          productId != null ? controller.productById(productId) : null;
-      items.add(CartItem(
-        product: Product(
-          id: '${productId ?? ''}',
-          name: catalog?.name ?? (m['product_name'] ?? '').toString(),
-          nameAr: catalog?.nameAr ?? '',
-          category: catalog?.category ?? '',
-          categoryId: catalog?.categoryId,
-          price: basePrice,
-          imageAsset: catalog?.imageAsset,
-          addonGroupIds: catalog?.addonGroupIds ?? const <int>[],
+      final catalog = productId != null
+          ? controller.productById(productId)
+          : null;
+      items.add(
+        CartItem(
+          product: Product(
+            id: '${productId ?? ''}',
+            name: catalog?.name ?? (m['product_name'] ?? '').toString(),
+            nameAr: catalog?.nameAr ?? '',
+            category: catalog?.category ?? '',
+            categoryId: catalog?.categoryId,
+            price: basePrice,
+            imageAsset: catalog?.imageAsset,
+            addonGroupIds: catalog?.addonGroupIds ?? const <int>[],
+          ),
+          qty: ((m['qty'] as num?) ?? 1).round(),
+          modifiers: modifiers,
+          notes: (m['notes'] ?? '').toString(),
         ),
-        qty: ((m['qty'] as num?) ?? 1).round(),
-        modifiers: modifiers,
-        notes: (m['notes'] ?? '').toString(),
-      ));
+      );
     }
 
     return controller.receiveTransferredOrder(
       orderUuid: (order['uuid'] ?? '').toString(),
-      orderType:
-          OrderTypeLabel.fromStorage((order['order_type'] ?? '').toString()),
+      orderType: OrderTypeLabel.fromStorage(
+        (order['order_type'] ?? '').toString(),
+      ),
       items: items,
     );
   }
@@ -1628,18 +1761,24 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }) {
     final staffId = ref.read(sessionServiceProvider).staff?.id;
     unawaited(
-      ref
-          .read(orderSyncRepositoryProvider)
-          .resolveTableBillUuid(orderUuid)
-          .then((billUuid) => ref.read(orderSyncRepositoryProvider).enqueueVoid(
-            billUuid,
-            orderNumber: orderNumber,
-            reason: reason,
-            voidReasonId: voidReasonId,
-            staffId: staffId,
-            authorizedBy: 'Manager',
-          ))
-          .catchError((_) {}),
+      _orderPreparations.run(
+        () => ref
+            .read(orderSyncRepositoryProvider)
+            .resolveTableBillUuid(orderUuid)
+            .then(
+              (billUuid) => ref
+                  .read(orderSyncRepositoryProvider)
+                  .enqueueVoid(
+                    billUuid,
+                    orderNumber: orderNumber,
+                    reason: reason,
+                    voidReasonId: voidReasonId,
+                    staffId: staffId,
+                    authorizedBy: 'Manager',
+                  ),
+            )
+            .catchError((_) {}),
+      ),
     );
   }
 
@@ -1729,10 +1868,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               compQty: qty,
             );
             return pricing.baisasToOmr(
-              amountBaisas.clamp(
-                0,
-                pricing.omrToBaisas(controller.subtotal),
-              ),
+              amountBaisas.clamp(0, pricing.omrToBaisas(controller.subtotal)),
             );
           }
 
@@ -1797,8 +1933,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                         ),
                         IconButton(
                           key: const ValueKey('comp-qty-increment'),
-                          onPressed: selection.qty ==
-                                  cart[selection.lineIndex!].qty
+                          onPressed:
+                              selection.qty == cart[selection.lineIndex!].qty
                               ? null
                               : () => setDialogState(
                                   () => selection.changeQty(1, cart),
@@ -1817,7 +1953,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     children: [
                       for (final r in controller.compReasons)
                         ChoiceChip(
-                          label: Text(_reasonDisplayName(r.name, r.nameAr, isAr)),
+                          label: Text(
+                            _reasonDisplayName(r.name, r.nameAr, isAr),
+                          ),
                           selected: reason?.id == r.id,
                           onSelected: (selected) => setDialogState(
                             () => reason = selected ? r : null,
@@ -1835,7 +1973,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       padding: const EdgeInsets.only(top: 6),
                       child: Text(
                         l10n.posCompExceedsCapMessage(
-                          _reasonDisplayName(reason!.name, reason!.nameAr, isAr),
+                          _reasonDisplayName(
+                            reason!.name,
+                            reason!.nameAr,
+                            isAr,
+                          ),
                           SunmiReceiptService.money(cap),
                         ),
                         style: const TextStyle(color: Color(0xFFB84524)),
@@ -1862,12 +2004,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
     if (!mounted || applied != true || reason == null) return;
 
-    controller.applyComp(AppliedComp(
-      reasonId: reason!.id,
-      reasonName: reason!.name,
-      lineIndex: selection.lineIndex,
-      qty: selection.normalizedQty(controller.cart),
-    ));
+    controller.applyComp(
+      AppliedComp(
+        reasonId: reason!.id,
+        reasonName: reason!.name,
+        lineIndex: selection.lineIndex,
+        qty: selection.normalizedQty(controller.cart),
+      ),
+    );
     _showPopupMessage(
       title: l10n.posCompAppliedTitle,
       message: l10n.posCompAppliedMessage(
@@ -1946,24 +2090,29 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final qrRoundPrintPollingUnavailable =
-        ref.watch(qrRoundPrintPollingUnavailableProvider);
+    final qrRoundPrintPollingUnavailable = ref.watch(
+      qrRoundPrintPollingUnavailableProvider,
+    );
     _tableShadowMode = ref.watch(tableSessionsModeProvider);
     final tableDegraded = _tableShadowMode == 'live'
-        ? ref.watch(degradedStateProvider) : const TableDegradedState();
+        ? ref.watch(degradedStateProvider)
+        : const TableDegradedState();
     if (_tableShadowMode == 'live') {
       ref.listen(degradedStateProvider, (_, _) => _scheduleTableSearch());
     }
     _remoteTables = _tableShadowMode == 'off'
         ? const RemoteTableSnapshot()
-        : ref.watch(remoteBoardProvider).asData?.value ?? const RemoteTableSnapshot();
+        : ref.watch(remoteBoardProvider).asData?.value ??
+              const RemoteTableSnapshot();
     if (_tableShadowMode != 'off') {
       _tableShadow = ref.read(tableShadowRepositoryProvider);
       _tableShadow!.localTables = () => [
         for (final table in controller.diningTableDefinitions)
           LocalTableShadowView(
             tableId: table.id,
-            status: controller.diningSessionFor(table.id)?.status.storageValue ?? 'available',
+            status:
+                controller.diningSessionFor(table.id)?.status.storageValue ??
+                'available',
             reference: controller.diningSessionFor(table.id)?.orderReference,
           ),
       ];
@@ -1974,7 +2123,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       animation: controller,
       builder: (context, _) {
         _tableShadow?.setFloorPlanVisible(
-          _tableShadowMode != 'off' && _showDineInFloorPlan && !_showPaymentPage &&
+          _tableShadowMode != 'off' &&
+              _showDineInFloorPlan &&
+              !_showPaymentPage &&
               (ModalRoute.of(context)?.isCurrent ?? true),
         );
         return Scaffold(
@@ -2025,7 +2176,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           child: SizedBox(
                             width: _designWidth,
                             height: _designHeight,
-                            child: _buildTableAwareSurface(contentHeight, tableDegraded),
+                            child: _buildTableAwareSurface(
+                              contentHeight,
+                              tableDegraded,
+                            ),
                           ),
                         ),
                       ),
@@ -2071,11 +2225,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   bool get _isEditingDiningTable => controller.isEditingDiningTable;
 
-  bool get _liveTable => ref.read(tableSessionsModeProvider) == 'live' &&
+  bool get _liveTable =>
+      ref.read(tableSessionsModeProvider) == 'live' &&
       controller.selectedOrderType == OrderType.dineIn &&
       controller.activeDiningTableId != null;
 
-  Widget _buildTableAwareSurface(double contentHeight, TableDegradedState state) {
+  Widget _buildTableAwareSurface(
+    double contentHeight,
+    TableDegradedState state,
+  ) {
     Widget surface(double height) => _showPaymentPage
         ? _buildPaymentPageSurface()
         : _showDineInFloorPlan
@@ -2084,12 +2242,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (!state.degraded || controller.selectedOrderType != OrderType.dineIn) {
       return surface(contentHeight);
     }
-    return Column(children: [
-      TableDegradedBanner(mode: _tableShadowMode, state: state),
-      Expanded(child: LayoutBuilder(builder: (context, constraints) =>
-        surface(constraints.maxHeight - _topBarHeight -
-            _bottomBarHeight - (_panelGap * 2)))),
-    ]);
+    return Column(
+      children: [
+        TableDegradedBanner(mode: _tableShadowMode, state: state),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) => surface(
+              constraints.maxHeight -
+                  _topBarHeight -
+                  _bottomBarHeight -
+                  (_panelGap * 2),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Future<void> _enterLiveTables() async {
@@ -2125,26 +2292,36 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           _tablePaymentContexts.remove(snapshot.serverOrderUuid)?.future ??
           Future.value(const TablePaymentContext());
       _tableKitchen = bridge..attach();
-      _tablePendingChanges = ref.read(orderSyncRepositoryProvider).watchPending()
+      _tablePendingChanges = ref
+          .read(orderSyncRepositoryProvider)
+          .watchPending()
           .map((rows) {
             final ids = <String>{};
             for (final row in rows) {
-              final events = (jsonDecode(row.eventsJson) as List).whereType<Map>();
+              final events = (jsonDecode(row.eventsJson) as List)
+                  .whereType<Map>();
               for (final event in events) {
                 final payload = event['payload'] as Map? ?? {};
-                if (row.orderUuid.startsWith('tbl:') && payload['table_id'] != null) {
+                if (row.orderUuid.startsWith('tbl:') &&
+                    payload['table_id'] != null) {
                   ids.add(payload['table_id'].toString());
                 } else {
                   for (final table in controller.diningTableSessions) {
-                    final bill = coordinator.cachedSession(table.tableId)?.serverOrderUuid
-                        ?? table.serverOrderUuid;
-                    if (bill != null && bill == payload['order_uuid']) ids.add(table.tableId);
+                    final bill =
+                        coordinator
+                            .cachedSession(table.tableId)
+                            ?.serverOrderUuid ??
+                        table.serverOrderUuid;
+                    if (bill != null && bill == payload['order_uuid']) {
+                      ids.add(table.tableId);
+                    }
                   }
                 }
               }
             }
             if (mounted) setState(() => _pendingTableIds = ids);
-          }).listen((_) {});
+          })
+          .listen((_) {});
       _tableModeTransition = TableModeTransition(bridge);
       _tableReconciliation = TableReconciliationPresenter(
         show: (rows) async {
@@ -2159,9 +2336,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         markSeen: coordinator.markVerdictsSeen,
       );
       _tableVerdicts = coordinator.verdicts.listen((rows) {
-        unawaited(_tableReconciliation!.present(rows).catchError((Object _) {
-          if (mounted) _showTableActionFailure();
-        }));
+        unawaited(
+          _tableReconciliation!.present(rows).catchError((Object _) {
+            if (mounted) _showTableActionFailure();
+          }),
+        );
       });
       _tableKitchenChanges = coordinator.changes.listen((_) {
         unawaited(_refreshTableSentState().catchError((Object _) {}));
@@ -2196,20 +2375,27 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     await bridge.coordinator.settled;
     final delta = await bridge.coordinator.delta(session);
     final seat = bridge.coordinator.cachedSession(session.tableId)?.seatingKey;
-    final rounds = seat == null ? <LocalTableRound>[] :
-        await bridge.coordinator.store.readLocalTableRounds(seatingKey: seat);
-    if (!mounted || refresh != _tableSentRefresh ||
+    final rounds = seat == null
+        ? <LocalTableRound>[]
+        : await bridge.coordinator.store.readLocalTableRounds(seatingKey: seat);
+    if (!mounted ||
+        refresh != _tableSentRefresh ||
         controller.activeDiningTableId != session.tableId ||
         controller.currentOrderReference != session.orderReference) {
       return;
     }
     setState(() {
       _tableUnsent = {
-        for (final line in delta) tableLineFingerprint(line): line['qty'] as int,
+        for (final line in delta)
+          tableLineFingerprint(line): line['qty'] as int,
       };
       _tableSentAt = {
         for (final round in rounds)
-          if (!{'bill_terminal', 'bill_unpaid', 'failed'}.contains(round.status))
+          if (!{
+            'bill_terminal',
+            'bill_unpaid',
+            'failed',
+          }.contains(round.status))
             for (final line in round.lines)
               tableLineFingerprint(line): round.submittedAt.toLocal(),
       };
@@ -2258,29 +2444,37 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     await bridge.coordinator.settled;
     final fingerprint = tableLineFingerprint(wire.single);
     final delta = await bridge.coordinator.delta(session);
-    final unsent = delta.where((l) => tableLineFingerprint(l) == fingerprint)
-        .firstOrNull?['qty'] as int? ?? 0;
+    final unsent =
+        delta
+                .where((l) => tableLineFingerprint(l) == fingerprint)
+                .firstOrNull?['qty']
+            as int? ??
+        0;
     final sentReduction = math.max(0, reduction - math.max(0, unsent)).toInt();
     if (sentReduction == 0) return true;
     if (!mounted) return false;
     final approval = await requestSentLineCancellation(
       context,
-      authorizeManager: () => _authorizeManager(
-        subtitle: L10n.of(context).tableCancelSentApproval,
-      ),
+      authorizeManager: () =>
+          _authorizeManager(subtitle: L10n.of(context).tableCancelSentApproval),
     );
-    if (!mounted || approval == null ||
+    if (!mounted ||
+        approval == null ||
         controller.activeDiningTableId != session.tableId ||
         controller.currentOrderReference != session.orderReference) {
       return false;
     }
     await bridge.coordinator.cancelLine(
-      session, line: wire.single, qty: sentReduction,
-      prepared: approval.prepared, authorizedBy: 'Manager',
+      session,
+      line: wire.single,
+      qty: sentReduction,
+      prepared: approval.prepared,
+      authorizedBy: 'Manager',
       reason: approval.reason,
     );
     bridge.coordinator.clearApproval = TableVoidApproval(
-      authorizedBy: 'Manager', reason: approval.reason ?? 'staff_close',
+      authorizedBy: 'Manager',
+      reason: approval.reason ?? 'staff_close',
     );
     return true; // Never undo a local edit in response to a business verdict.
   }
@@ -2291,8 +2485,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     try {
       if (!await _approveSentReduction(item, remove ? item.qty : 1)) return;
       if (!mounted) return;
-      if (remove) { controller.removeCartItem(item); }
-      else { controller.decreaseCartItem(item); }
+      if (remove) {
+        controller.removeCartItem(item);
+      } else {
+        controller.decreaseCartItem(item);
+      }
       await _refreshTableSentState();
     } catch (_) {
       if (mounted) {
@@ -2312,20 +2509,24 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await coordinator.settled;
       final source = controller.diningSessionFor(tableId);
       final headId = source?.primaryTableId ?? tableId;
-      final session = coordinator.cachedSession(headId) ??
+      final session =
+          coordinator.cachedSession(headId) ??
           controller.diningSessionFor(headId);
-      final rounds = session?.seatingKey == null ? <LocalTableRound>[] :
-          await coordinator.store.readLocalTableRounds(
-            seatingKey: session!.seatingKey,
-          );
+      final rounds = session?.seatingKey == null
+          ? <LocalTableRound>[]
+          : await coordinator.store.readLocalTableRounds(
+              seatingKey: session!.seatingKey,
+            );
       if (rounds.isNotEmpty && source?.status != DiningTableStatus.paid) {
-        if (!mounted || !await _authorizeManager(
-          subtitle: L10n.of(context).tableCancelSentApproval,
-        )) {
+        if (!mounted ||
+            !await _authorizeManager(
+              subtitle: L10n.of(context).tableCancelSentApproval,
+            )) {
           return false;
         }
         coordinator.clearApproval = const TableVoidApproval(
-          authorizedBy: 'Manager', reason: 'staff_close',
+          authorizedBy: 'Manager',
+          reason: 'staff_close',
         );
       }
     }
@@ -2336,7 +2537,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   String get _activeDiningTableLabel =>
       controller.activeDiningTableDefinition?.name ?? '';
 
-  bool _hasServerBillFor(String tableId) => _tableShadowMode != 'off' &&
+  bool _hasServerBillFor(String tableId) =>
+      _tableShadowMode != 'off' &&
       _remoteTables.tables[int.tryParse(tableId)]?.billOrderUuid != null;
 
   Future<void> _openCustomerBill(String tableId, {String? tableLabel}) async {
@@ -2359,45 +2561,87 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final table = controller.diningTableDefinitionById(tableId);
     _customerBillRouteOpen = true;
     try {
-      await Navigator.of(context).push<void>(MaterialPageRoute(
-        builder: (_) => DineInScreen(
-          label: tableLabel ?? table?.name ?? tableId,
-          arabic: ref.read(settingsControllerProvider).language == 'ar',
-          writesAllowed: ref.read(tableSessionsModeProvider) == 'live',
-          localDraftBlocked: _pendingTableIds.contains(tableId) ||
-              (controller.activeDiningTableId == tableId && controller.cart.isNotEmpty),
-          createController: () async {
-            final api = ref.read(apiServiceProvider);
-            final session = ref.read(sessionServiceProvider);
-            final gateway = ApiDineInGateway(api, () => quickDeviceScope(
-              api.quickOrderBaseUrl, session.companyId, session.branchId, session.kioskId));
-            return DineInController(gateway, await SqliteDineInStore.open(gateway.scope), id,
-              staffId: session.staff?.id,
-              printAccepted: (detail, round) async {
-                gateway.check();
-                if (!ref.read(settingsControllerProvider).printKitchenTickets) return true;
-                return ref.read(qrRoundAutoPrintControllerProvider).printConfirmedRound(
-                  QrRoundEnvelope(round: QrDeviceRound.fromJson(round), orderUuid: detail.billUuid!,
-                    tableLabel: detail.table['label'] as String,
-                    receiptNumber: detail.bill?['receipt_number'] as String?,
-                    tempReference: detail.reference, ticketKey: 'round:${round['id']}',
-                    printedAt: DateTime.tryParse(round['kitchen_printed_at']?.toString() ?? '')));
-              },
-              localDraftTables: () => {
-                for (final local in controller.diningTableSessions)
-                  if (local.status != DiningTableStatus.paid && (local.draft?.items.isNotEmpty ?? false)) ...{
-                    ?int.tryParse(local.tableId), ?int.tryParse(local.primaryTableId ?? ''),
-                    ...local.linkedTableIds.map(int.tryParse).whereType<int>(),
-                  },
-                if (controller.cart.isNotEmpty) ?int.tryParse(controller.activeDiningTableId ?? ''),
-                ..._pendingTableIds.map(int.tryParse).whereType<int>(),
-              });
-          },
-          catalogue: () => machineQuickCatalogue(ref.read(catalogProvider).asData?.value),
-          onPay: _launchQrCheckout,
-          onCombine: () => _openBillCombine(id),
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => DineInScreen(
+            label: tableLabel ?? table?.name ?? tableId,
+            arabic: ref.read(settingsControllerProvider).language == 'ar',
+            writesAllowed: ref.read(tableSessionsModeProvider) == 'live',
+            localDraftBlocked:
+                _pendingTableIds.contains(tableId) ||
+                (controller.activeDiningTableId == tableId &&
+                    controller.cart.isNotEmpty),
+            localDraftBlockedNow: () =>
+                controller.recoveryBlocked ||
+                _pendingTableIds.contains(tableId) ||
+                (controller.activeDiningTableId == tableId &&
+                    controller.cart.isNotEmpty),
+            createController: () async {
+              final api = ref.read(apiServiceProvider);
+              final session = ref.read(sessionServiceProvider);
+              final gateway = ApiDineInGateway(
+                api,
+                () => quickDeviceScope(
+                  api.quickOrderBaseUrl,
+                  session.companyId,
+                  session.branchId,
+                  session.kioskId,
+                ),
+                mutationGuard: controller.assertNoPendingCombine,
+              );
+              return DineInController(
+                gateway,
+                await SqliteDineInStore.open(gateway.scope),
+                id,
+                staffId: session.staff?.id,
+                printAccepted: (detail, round) async {
+                  gateway.check();
+                  if (!ref
+                      .read(settingsControllerProvider)
+                      .printKitchenTickets) {
+                    return true;
+                  }
+                  return ref
+                      .read(qrRoundAutoPrintControllerProvider)
+                      .printConfirmedRound(
+                        QrRoundEnvelope(
+                          round: QrDeviceRound.fromJson(round),
+                          orderUuid: detail.billUuid!,
+                          tableLabel: detail.table['label'] as String,
+                          receiptNumber:
+                              detail.bill?['receipt_number'] as String?,
+                          tempReference: detail.reference,
+                          ticketKey: 'round:${round['id']}',
+                          printedAt: DateTime.tryParse(
+                            round['kitchen_printed_at']?.toString() ?? '',
+                          ),
+                        ),
+                      );
+                },
+                localDraftTables: () => {
+                  for (final local in controller.diningTableSessions)
+                    if (local.status != DiningTableStatus.paid &&
+                        (local.draft?.items.isNotEmpty ?? false)) ...{
+                      ?int.tryParse(local.tableId),
+                      ?int.tryParse(local.primaryTableId ?? ''),
+                      ...local.linkedTableIds
+                          .map(int.tryParse)
+                          .whereType<int>(),
+                    },
+                  if (controller.cart.isNotEmpty)
+                    ?int.tryParse(controller.activeDiningTableId ?? ''),
+                  ..._pendingTableIds.map(int.tryParse).whereType<int>(),
+                },
+              );
+            },
+            catalogue: () =>
+                machineQuickCatalogue(ref.read(catalogProvider).asData?.value),
+            onPay: _launchQrCheckout,
+            onCombine: () => _openBillCombine(id),
+            onRecover: () => _openDraftRecovery(id),
+          ),
         ),
-      ));
+      );
     } finally {
       _customerBillRouteOpen = false;
       if (mounted) setState(() {});
@@ -2405,49 +2649,253 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openRemoteDiningTableActions(
-    DiningTableDefinition table, {bool canAddItems = true}
-  ) async {
+    DiningTableDefinition table, {
+    bool canAddItems = true,
+  }) async {
     await _openCustomerBill(table.id);
   }
 
   Future<void> _openBillCombine(int tableId) async {
-    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => CombineScreen(
-      arabic: ref.read(settingsControllerProvider).language == 'ar',
-      createController: () async {
-        final api = ref.read(apiServiceProvider), session = ref.read(sessionServiceProvider);
-        String scope() => quickDeviceScope(api.quickOrderBaseUrl, session.companyId, session.branchId, session.kioskId);
-        final gateway = ApiCombineGateway(api, scope);
-        final db = await LocalOrderStorageService.instance.database;
-        return CombineController(store: CombineStore(db, gateway.scope), gateway: gateway, tableId: tableId,
-          loadLocal: (id) async {
-            final local = await loadCombineLocal(db, id);
-            final inMemory = controller.diningSessionFor('$id');
-            if (inMemory?.draft != null && inMemory!.draft!.items.isNotEmpty) {
-              final saved = local.rows.where((r) => r['table'] == 'dining_tables').toList();
-              if (saved.length != 1 || combineJson(inMemory.draft!.toMap()) !=
-                  combineJson(jsonDecode(combineMap(saved.single['row'])['draft_json'] as String))) {
-                throw StateError('An in-memory table draft differs from storage. Keep it unchanged.');
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => CombineScreen(
+          arabic: ref.read(settingsControllerProvider).language == 'ar',
+          createController: () async {
+            final api = ref.read(apiServiceProvider),
+                session = ref.read(sessionServiceProvider);
+            String scope() => quickDeviceScope(
+              api.quickOrderBaseUrl,
+              session.companyId,
+              session.branchId,
+              session.kioskId,
+            );
+            final gateway = ApiCombineGateway(api, scope);
+            final db = await LocalOrderStorageService.instance.database;
+            return CombineController(
+              store: CombineStore(db, gateway.scope),
+              gateway: gateway,
+              tableId: tableId,
+              loadLocal: (id) async {
+                final local = await loadCombineLocal(db, id);
+                final inMemory = controller.diningSessionFor('$id');
+                if (inMemory?.draft != null &&
+                    inMemory!.draft!.items.isNotEmpty) {
+                  final saved = local.rows
+                      .where((r) => r['table'] == 'dining_tables')
+                      .toList();
+                  if (saved.length != 1 ||
+                      combineJson(inMemory.draft!.toMap()) !=
+                          combineJson(
+                            jsonDecode(
+                              combineMap(saved.single['row'])['draft_json']
+                                  as String,
+                            ),
+                          )) {
+                    throw StateError(
+                      'An in-memory table draft differs from storage. Keep it unchanged.',
+                    );
+                  }
+                }
+                return local;
+              },
+              checkIdle: () async {
+                gateway.check();
+                await LocalOrderStorageService.instance.assertRecoveryIdle();
+                await controller.assertIdleForCombine();
+                if (!mounted ||
+                    _showPaymentPage ||
+                    _normalQrCheckoutOpen ||
+                    _pendingTableIds.isNotEmpty ||
+                    controller.showPaymentLaunchOverlay ||
+                    controller.showCharityRoundUpPrompt ||
+                    ref
+                        .read(qrSettlementCoordinatorProvider)
+                        .pendingManagerRecoveries
+                        .isNotEmpty) {
+                  throw StateError(
+                    'Finish pending payment or table work before combining.',
+                  );
+                }
+                await ref
+                    .read(orderSyncRepositoryProvider)
+                    .assertIdleForCombine();
+                if (await (await SqliteCheckoutStore.open(
+                          gateway.scope,
+                        )).active() !=
+                        null ||
+                    await (await SqliteDineInStore.open(
+                          gateway.scope,
+                        )).load() !=
+                        null ||
+                    (await (await SqliteQrQuickStore.open(
+                      gateway.scope,
+                    )).load()).isNotEmpty) {
+                  throw StateError(
+                    'Resolve saved payments and item additions first.',
+                  );
+                }
+                gateway.check();
+                await controller.assertIdleForCombine();
+              },
+            );
+          },
+        ),
+      ),
+    );
+    await controller.refreshHeldOrders();
+    await controller.refreshDiningTables();
+  }
+
+  Future<void> _openDraftRecovery(int tableId) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => RecoveryScreen(
+          arabic: ref.read(settingsControllerProvider).language == 'ar',
+          createController: () async {
+            final api = ref.read(apiServiceProvider),
+                session = ref.read(sessionServiceProvider);
+            String scope() => quickDeviceScope(
+              api.quickOrderBaseUrl,
+              session.companyId,
+              session.branchId,
+              session.kioskId,
+            );
+            final storage = LocalOrderStorageService.instance;
+            final db = await storage.database;
+            final store = RecoveryStore(
+              db,
+              scope(),
+              onChanged: storage.refreshRecoveryGuard,
+            );
+            final gateway = ApiRecoveryGateway(api, scope, store);
+            final outbox = ref.read(orderSyncRepositoryProvider);
+            final coordinator = ref.read(tableSyncCoordinatorProvider);
+            final checkout = await SqliteCheckoutStore.open(gateway.scope);
+            final rounds = await SqliteDineInStore.open(gateway.scope);
+            final quick = await SqliteQrQuickStore.open(gateway.scope);
+            Future<void> idle({bool insideAdmission = false}) async {
+              gateway.check();
+              _orderPreparations.assertIdle();
+              if (ref.read(tableSessionsModeProvider) != 'live') {
+                throw StateError(
+                  'Return to Live table mode to recover this saved draft.',
+                );
+              }
+              await controller.assertIdleForCombine();
+              if (!mounted ||
+                  _showPaymentPage ||
+                  _normalQrCheckoutOpen ||
+                  _tableSendBusy ||
+                  controller.showPaymentLaunchOverlay ||
+                  controller.showCharityRoundUpPrompt ||
+                  _claimedTransferPendingLoad != null ||
+                  ref
+                      .read(qrSettlementCoordinatorProvider)
+                      .pendingManagerRecoveries
+                      .isNotEmpty) {
+                throw StateError(
+                  'Finish pending payment or table work before recovery.',
+                );
+              }
+              // These callbacks may prepare an outbox event. Never wait for them
+              // from inside the outbox admission slot (which they may need).
+              if (!insideAdmission) {
+                await _tableKitchenInit;
+                await _tableKitchen?.settled;
+                await coordinator.settled;
+                await outbox.assertIdleForCombine();
+              }
+              await RecoveryStore.assertNoCombine(db);
+              await assertRecoveryJournalsIdle(
+                checkout: checkout.db,
+                dineIn: rounds.db,
+                quick: quick.database,
+              );
+              gateway.check();
+              await controller.assertIdleForCombine();
+              _orderPreparations.assertIdle();
+              if (ref.read(tableSessionsModeProvider) != 'live') {
+                throw StateError(
+                  'Table mode changed. The recovery copy remains saved.',
+                );
               }
             }
-            return local;
+
+            return RecoveryController(
+              store: store,
+              gateway: gateway,
+              dineIn: gateway,
+              tableId: tableId,
+              staffId: session.staff?.id,
+              loadLocal: (id) async {
+                final local = await loadRecoveryLocal(
+                  db,
+                  id,
+                  outboxRow: outbox.rowForKey,
+                );
+                final inMemory = controller.diningSessionFor('$id');
+                if (inMemory?.draft != null &&
+                    inMemory!.draft!.items.isNotEmpty) {
+                  final saved = local.rows
+                      .where((r) => r['table'] == 'dining_tables')
+                      .toList();
+                  if (saved.length != 1 ||
+                      recoveryJson(inMemory.draft!.toMap()) !=
+                          recoveryJson(
+                            jsonDecode(
+                              recoveryMap(saved.single['row'])['draft_json']
+                                  as String,
+                            ),
+                          )) {
+                    throw StateError(
+                      'An in-memory table draft differs from storage. Keep it unchanged.',
+                    );
+                  }
+                }
+                return local;
+              },
+              checkIdle: idle,
+              admit: (operation) async {
+                // Stop synchronous cart edits before the final asynchronous check.
+                storage.beginRecoveryAdmission();
+                try {
+                  await idle();
+                  await outbox.admitDraftRecovery(() async {
+                    await idle(insideAdmission: true);
+                    await operation();
+                  });
+                } finally {
+                  await storage.endRecoveryAdmission();
+                }
+              },
+              onRetired: (local) async {
+                for (final record in local.rows.where(
+                  (r) => r['table'] == 'dining_tables',
+                )) {
+                  final row = recoveryMap(record['row']);
+                  coordinator.forgetRecoveredSession(
+                    tableId: '${local.tableId}',
+                    uuid: local.uuid,
+                    occupiedAt: row['occupied_at'] as String?,
+                    seatingKey: row['seating_key'] as String?,
+                  );
+                  controller.forgetRecoveredOccupancy(
+                    '${local.tableId}',
+                    recoveryMap(
+                          jsonDecode(row['draft_json'] as String),
+                        )['orderReference']
+                        as String,
+                    row['occupied_at'] as String?,
+                  );
+                }
+                await controller.refreshHeldOrders();
+                await controller.refreshDiningTables();
+              },
+            );
           },
-          checkIdle: () async {
-            gateway.check();
-            await controller.assertIdleForCombine();
-            if (!mounted || _showPaymentPage || _normalQrCheckoutOpen || _pendingTableIds.isNotEmpty ||
-                controller.showPaymentLaunchOverlay || controller.showCharityRoundUpPrompt ||
-                ref.read(qrSettlementCoordinatorProvider).pendingManagerRecoveries.isNotEmpty) {
-              throw StateError('Finish pending payment or table work before combining.');
-            }
-            await ref.read(orderSyncRepositoryProvider).assertIdleForCombine();
-            if (await (await SqliteCheckoutStore.open(gateway.scope)).active() != null ||
-                await (await SqliteDineInStore.open(gateway.scope)).load() != null ||
-                (await (await SqliteQrQuickStore.open(gateway.scope)).load()).isNotEmpty) {
-              throw StateError('Resolve saved payments and item additions first.');
-            }
-            gateway.check(); await controller.assertIdleForCombine();
-          });
-      })));
+        ),
+      ),
+    );
     await controller.refreshHeldOrders();
     await controller.refreshDiningTables();
   }
@@ -2468,10 +2916,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   void _updateTableSearch([String? draft]) {
     final live = ref.read(tableSessionsModeProvider) == 'live';
     final session = ref.read(sessionServiceProvider);
-    _tableSearch.update(draft ?? controller.diningTableSearchQuery,
+    _tableSearch.update(
+      draft ?? controller.diningTableSearchQuery,
       enabled: live,
       degraded: live && ref.read(degradedStateProvider).degraded,
-      scope: '${ref.read(settingsServiceProvider).effectiveBaseUrl}|'
+      scope:
+          '${ref.read(settingsServiceProvider).effectiveBaseUrl}|'
           '${session.companyId}|${session.branchId}|${session.kioskId}',
     );
   }
@@ -2512,11 +2962,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Widget _buildDineInFloorPlanSurface(double _) => _buildDineInFloorPlanPanel();
 
   Widget _buildDineInFloorPlanPanel() {
-    final tables = _tableShadowMode != 'live' ? controller.visibleDiningTables :
-        tableSearchMatches(local: controller.visibleDiningTables,
-          definitions: controller.diningTableDefinitions,
-          floorId: controller.selectedDiningFloorId,
-          results: _tableSearch.results);
+    final tables = _tableShadowMode != 'live'
+        ? controller.visibleDiningTables
+        : tableSearchMatches(
+            local: controller.visibleDiningTables,
+            definitions: controller.diningTableDefinitions,
+            floorId: controller.selectedDiningFloorId,
+            results: _tableSearch.results,
+          );
 
     return Container(
       decoration: BoxDecoration(
@@ -2659,7 +3112,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               ],
             ),
           ),
-          if (_tableShadowMode == 'live') TableSearchSummary(search: _tableSearch),
+          if (_tableShadowMode == 'live')
+            TableSearchSummary(search: _tableSearch),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(30, 30, 30, 26),
@@ -2707,23 +3161,29 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 final status =
                                     session?.status ??
                                     DiningTableStatus.available;
-                                final remote = _remoteTables.tables[int.tryParse(table.id)];
-                                final customerOccupied = customerOccupiesDiningTable(
-                                  mode: _tableShadowMode, session: session, remote: remote,
-                                );
+                                final remote = _remoteTables
+                                    .tables[int.tryParse(table.id)];
+                                final customerOccupied =
+                                    customerOccupiesDiningTable(
+                                      mode: _tableShadowMode,
+                                      session: session,
+                                      remote: remote,
+                                    );
 
                                 // Joined tables — a linked seat shows a
                                 // "Joined → head" badge + the shared bill total
                                 // and routes everything to the head; a head
                                 // shows how many seats are joined under it.
                                 final bool isLinkedSeat =
-                                    session != null && session.isLinkedSecondary;
+                                    session != null &&
+                                    session.isLinkedSecondary;
                                 String? linkedToLabel;
                                 double? groupTotal;
                                 int linkedCount = 0;
                                 if (isLinkedSeat) {
                                   final headId = session.primaryTableId!;
-                                  linkedToLabel = controller
+                                  linkedToLabel =
+                                      controller
                                           .diningTableDefinitionById(headId)
                                           ?.name ??
                                       headId;
@@ -2739,21 +3199,29 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 // Move / Join via a visible actions button (and
                                 // still on long-press). A linked seat has no
                                 // actions of its own; manage it from the head.
-                                final openActions =
-                                    customerOccupied
-                                        ? () => unawaited(_openRemoteDiningTableActions(table))
-                                        : isLinkedSeat && _hasServerBillFor(table.id) &&
-                                            status != DiningTableStatus.paid
-                                        ? () => unawaited(_openRemoteDiningTableActions(
-                                            table, canAddItems: false,
-                                          ))
-                                        : status == DiningTableStatus.occupied &&
-                                            session != null &&
-                                            !isLinkedSeat
-                                        ? () => unawaited(
-                                            _openDiningTableActionsSheet(
-                                                table, session))
-                                        : null;
+                                final openActions = customerOccupied
+                                    ? () => unawaited(
+                                        _openRemoteDiningTableActions(table),
+                                      )
+                                    : isLinkedSeat &&
+                                          _hasServerBillFor(table.id) &&
+                                          status != DiningTableStatus.paid
+                                    ? () => unawaited(
+                                        _openRemoteDiningTableActions(
+                                          table,
+                                          canAddItems: false,
+                                        ),
+                                      )
+                                    : status == DiningTableStatus.occupied &&
+                                          session != null &&
+                                          !isLinkedSeat
+                                    ? () => unawaited(
+                                        _openDiningTableActionsSheet(
+                                          table,
+                                          session,
+                                        ),
+                                      )
+                                    : null;
                                 return _DiningTableCard(
                                   table: table,
                                   session: session,
@@ -2763,26 +3231,51 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   remote: remote,
                                   customerOccupied: customerOccupied,
                                   customerReference: remote?.tempReference,
-                                  remoteFailures: _remoteTables.meta.consecutiveFailures,
+                                  remoteFailures:
+                                      _remoteTables.meta.consecutiveFailures,
                                   live: _tableShadowMode == 'live',
                                   sending: _pendingTableIds.contains(table.id),
-                                  pendingRounds: _tableShadow?.displayActivityBoard[int.tryParse(table.id)]?.pendingCount ?? 0,
-                                  searchMatch: _tableShadowMode == 'live' &&
-                                      _tableSearch.results.any((r) => r.tableId.toString() == table.id),
-                                  onLongPress: openActions ?? () => unawaited(_openCustomerBill(table.id)),
+                                  pendingRounds:
+                                      _tableShadow
+                                          ?.displayActivityBoard[int.tryParse(
+                                            table.id,
+                                          )]
+                                          ?.pendingCount ??
+                                      0,
+                                  searchMatch:
+                                      _tableShadowMode == 'live' &&
+                                      _tableSearch.results.any(
+                                        (r) => r.tableId.toString() == table.id,
+                                      ),
+                                  onLongPress:
+                                      openActions ??
+                                      () => unawaited(
+                                        _openCustomerBill(table.id),
+                                      ),
                                   onActions: openActions,
                                   linkedToLabel: linkedToLabel,
                                   groupTotal: groupTotal,
                                   linkedCount: linkedCount,
                                   onTap: () async {
                                     await routeDiningTableTap(
-                                      tableId: table.id, mode: _tableShadowMode,
-                                      session: session, remote: remote,
+                                      tableId: table.id,
+                                      mode: _tableShadowMode,
+                                      session: session,
+                                      remote: remote,
                                       controller: controller,
-                                      openCustomerBill: () => _openCustomerBill(table.id),
-                                      openPaidDialog: () => _openPaidDiningTableDialog(table, session!),
+                                      openCustomerBill: () =>
+                                          _openCustomerBill(table.id),
+                                      openPaidDialog: () =>
+                                          _openPaidDiningTableDialog(
+                                            table,
+                                            session!,
+                                          ),
                                       localOpened: () {
-                                        if (mounted) setState(() => _showPaymentPage = false);
+                                        if (mounted) {
+                                          setState(
+                                            () => _showPaymentPage = false,
+                                          );
+                                        }
                                       },
                                     );
                                   },
@@ -2802,13 +3295,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   String get _tablePayContext {
     final session = ref.read(sessionServiceProvider);
-    final local = controller.diningSessionFor(controller.activeDiningTableId ?? '');
+    final local = controller.diningSessionFor(
+      controller.activeDiningTableId ?? '',
+    );
     return jsonEncode([
       ref.read(settingsServiceProvider).effectiveBaseUrl,
-      session.companyId, session.branchId, session.kioskId, session.deviceToken,
-      session.staff?.id, session.openShift?.uuid,
-      controller.activeDiningTableId, local?.orderReference,
-      local?.occupiedAt?.toIso8601String(), local?.seatingKey,
+      session.companyId,
+      session.branchId,
+      session.kioskId,
+      session.deviceToken,
+      session.staff?.id,
+      session.openShift?.uuid,
+      controller.activeDiningTableId,
+      local?.orderReference,
+      local?.occupiedAt?.toIso8601String(),
+      local?.seatingKey,
       controller.activeDiningTableBillUuid,
     ]);
   }
@@ -2817,7 +3318,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final id = int.tryParse(controller.activeDiningTableId ?? '');
     if (id == null || _tableShadowMode == 'off') return null;
     return _tableCartPay.known(
-      tableId: id, contextKey: _tablePayContext, board: _remoteTables,
+      tableId: id,
+      contextKey: _tablePayContext,
+      board: _remoteTables,
     );
   }
 
@@ -2829,19 +3332,28 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     final contextKey = _tablePayContext;
-    bool current() => mounted && (ModalRoute.of(context)?.isCurrent ?? false) &&
-        !_showPaymentPage && !_customerBillRouteOpen &&
-        !controller.isProcessingPayment && !controller.showCharityRoundUpPrompt &&
+    bool current() =>
+        mounted &&
+        (ModalRoute.of(context)?.isCurrent ?? false) &&
+        !_showPaymentPage &&
+        !_customerBillRouteOpen &&
+        !controller.isProcessingPayment &&
+        !controller.showCharityRoundUpPrompt &&
         !controller.showPaymentLaunchOverlay &&
         !(controller.hasRecordedSplitPayments && controller.cart.isNotEmpty) &&
         ref.read(tableSessionsModeProvider) == mode &&
         _tablePayContext == contextKey;
     await _tableCartPay.route(
-      mode: mode, tableId: tableId, contextKey: contextKey, board: _remoteTables,
+      mode: mode,
+      tableId: tableId,
+      contextKey: contextKey,
+      board: _remoteTables,
       latestBoard: () => _remoteTables,
       fetchBoard: ref.read(apiServiceProvider).fetchTableBoard,
       isCurrent: current,
-      changed: () { if (mounted) setState(() {}); },
+      changed: () {
+        if (mounted) setState(() {});
+      },
       openSheet: () => _openCustomerBill(tableId.toString()),
       openLocal: () => _openLocalPaymentPage(stillCurrent: current),
     );
@@ -2850,7 +3362,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Future<void> _openLocalPaymentPage({bool Function()? stillCurrent}) async {
     if (_liveTable) await _ensureTableKitchen();
     if (stillCurrent != null && !stillCurrent()) return;
-    if (stillCurrent != null && tableBillNeedsSheet(_tableShadowMode, _cartBill)) {
+    if (stillCurrent != null &&
+        tableBillNeedsSheet(_tableShadowMode, _cartBill)) {
       await _openCustomerBill(controller.activeDiningTableId!);
       return;
     }
@@ -2883,19 +3396,30 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (mode != 'live' || tableId == null) return true;
     final contextKey = _tablePayContext;
     var allowed = false;
-    bool current() => mounted && (ModalRoute.of(context)?.isCurrent ?? false) &&
-        _showPaymentPage && !_customerBillRouteOpen &&
-        !controller.isProcessingPayment && !controller.showCharityRoundUpPrompt &&
+    bool current() =>
+        mounted &&
+        (ModalRoute.of(context)?.isCurrent ?? false) &&
+        _showPaymentPage &&
+        !_customerBillRouteOpen &&
+        !controller.isProcessingPayment &&
+        !controller.showCharityRoundUpPrompt &&
         !controller.showPaymentLaunchOverlay &&
         ref.read(tableSessionsModeProvider) == mode &&
         _tablePayContext == contextKey;
     await _tableCartPay.route(
-      mode: mode, tableId: tableId, contextKey: contextKey, board: _remoteTables,
+      mode: mode,
+      tableId: tableId,
+      contextKey: contextKey,
+      board: _remoteTables,
       latestBoard: () => _remoteTables,
       fetchBoard: ref.read(apiServiceProvider).fetchTableBoard,
       isCurrent: current,
-      changed: () { if (mounted) setState(() {}); },
-      openLocal: () async { allowed = true; },
+      changed: () {
+        if (mounted) setState(() {});
+      },
+      openLocal: () async {
+        allowed = true;
+      },
       openSheet: () async {
         if (controller.hasRecordedSplitPayments && controller.cart.isNotEmpty) {
           return;
@@ -3070,9 +3594,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(l10n.posPayGiftConfirmTitle),
-        content: Text(l10n.posPayGiftConfirmMessage(
-          SunmiReceiptService.money(controller.activePaymentBaseTotal),
-        )),
+        content: Text(
+          l10n.posPayGiftConfirmMessage(
+            SunmiReceiptService.money(controller.activePaymentBaseTotal),
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -3211,53 +3737,53 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           title: l10n.posHeldOrdersTitle,
           subtitle: l10n.posHeldOrdersSubtitle,
           child: _HeldOrdersPanel(
-              records: controller.heldOrders,
-              onResume: (record) async {
-                final message = await controller.resumeHeldOrder(record);
-                if (!context.mounted) return;
-                Navigator.of(context).pop(true);
-                if (message != null && mounted) {
-                  _showPopupMessage(
-                    title: l10n.posHeldResumedTitle,
-                    message: message,
-                    tone: FeedbackTone.success,
-                  );
-                }
-              },
-              onDiscard: (record) async {
-                // Phase C2 — confirm, then delete locally + void the server
-                // mirror so it leaves every terminal's held list.
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (dialogContext) => AlertDialog(
-                    title: Text(l10n.posHeldDiscardConfirmTitle),
-                    content: Text(
-                      l10n.posHeldDiscardConfirmMessage(record.orderReference),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(false),
-                        child: Text(l10n.posHeldKeepButton),
-                      ),
-                      FilledButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(true),
-                        child: Text(l10n.posHeldDiscardButton),
-                      ),
-                    ],
-                  ),
+            records: controller.heldOrders,
+            onResume: (record) async {
+              final message = await controller.resumeHeldOrder(record);
+              if (!context.mounted) return;
+              Navigator.of(context).pop(true);
+              if (message != null && mounted) {
+                _showPopupMessage(
+                  title: l10n.posHeldResumedTitle,
+                  message: message,
+                  tone: FeedbackTone.success,
                 );
-                if (confirmed != true || !context.mounted) return;
-                final message = await controller.discardHeldOrder(record);
-                if (!context.mounted) return;
-                Navigator.of(context).pop(false);
-                if (mounted) {
-                  _showPopupMessage(
-                    title: l10n.posHeldDiscardedTitle,
-                    message: message,
-                    tone: FeedbackTone.warning,
-                  );
-                }
-              },
+              }
+            },
+            onDiscard: (record) async {
+              // Phase C2 — confirm, then delete locally + void the server
+              // mirror so it leaves every terminal's held list.
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  title: Text(l10n.posHeldDiscardConfirmTitle),
+                  content: Text(
+                    l10n.posHeldDiscardConfirmMessage(record.orderReference),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(false),
+                      child: Text(l10n.posHeldKeepButton),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(true),
+                      child: Text(l10n.posHeldDiscardButton),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed != true || !context.mounted) return;
+              final message = await controller.discardHeldOrder(record);
+              if (!context.mounted) return;
+              Navigator.of(context).pop(false);
+              if (mounted) {
+                _showPopupMessage(
+                  title: l10n.posHeldDiscardedTitle,
+                  message: message,
+                  tone: FeedbackTone.warning,
+                );
+              }
+            },
           ),
         );
       },
@@ -3292,7 +3818,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // to the device-local store offline. This is what lets a freshly-paired or
     // second device at the branch see prior orders rung on other devices.
     try {
-      final serverOrders = await ref.read(apiServiceProvider).fetchBranchOrders();
+      final serverOrders = await ref
+          .read(apiServiceProvider)
+          .fetchBranchOrders();
       controller.applyServerOrderHistory(serverOrders);
     } catch (_) {
       await controller.refreshOrderHistory();
@@ -3326,8 +3854,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 );
               }
             },
-            onPrintKitchen: (record) =>
-                _handleKitchenTicketReprint(record),
+            onPrintKitchen: (record) => _handleKitchenTicketReprint(record),
             onCancel: (record) => _handleOrderCancellationRequest(
               historyDialogContext: context,
               record: record,
@@ -3405,20 +3932,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final l10n = L10n.of(context);
     final (title, message, tone) = switch (jobKind) {
       'kitchen' => (
-          l10n.posPrintFailedKitchenTitle,
-          l10n.posPrintFailedKitchenBody,
-          FeedbackTone.warning,
-        ),
+        l10n.posPrintFailedKitchenTitle,
+        l10n.posPrintFailedKitchenBody,
+        FeedbackTone.warning,
+      ),
       'shift' => (
-          l10n.posPrintFailedShiftTitle,
-          l10n.posPrintFailedShiftBody,
-          FeedbackTone.error,
-        ),
+        l10n.posPrintFailedShiftTitle,
+        l10n.posPrintFailedShiftBody,
+        FeedbackTone.error,
+      ),
       _ => (
-          l10n.posPrintFailedReceiptTitle,
-          l10n.posPrintFailedReceiptBody,
-          FeedbackTone.error,
-        ),
+        l10n.posPrintFailedReceiptTitle,
+        l10n.posPrintFailedReceiptBody,
+        FeedbackTone.error,
+      ),
     };
     _showPopupMessage(title: title, message: message, tone: tone);
   }
@@ -3647,7 +4174,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
     final picked = await showDialog<List<int>>(
       context: context,
-      builder: (_) => _EarnProgramPickerDialog(rules: rules, customer: customer),
+      builder: (_) =>
+          _EarnProgramPickerDialog(rules: rules, customer: customer),
     );
     if (!mounted || picked == null) return;
     controller.setSelectedEarnRules(picked);
@@ -3692,16 +4220,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // otherwise keep the search/cache copy we already hold.
     var profile = customer;
     try {
-      final fresh =
-          await ref.read(apiServiceProvider).fetchCustomerDetails(profile.id);
+      final fresh = await ref
+          .read(apiServiceProvider)
+          .fetchCustomerDetails(profile.id);
       if (fresh != null) profile = fresh;
     } catch (_) {}
     if (!mounted) return;
 
     // Viewing details attaches the customer (loyalty earn rides the order).
     controller.attachCustomer(profile);
-    setState(() =>
-        _customerNumberController.text = controller.customerReferenceNumber);
+    setState(
+      () => _customerNumberController.text = controller.customerReferenceNumber,
+    );
 
     final action = await showDialog<String>(
       context: context,
@@ -3809,7 +4339,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _showPopupMessage(
       title: l10n.posCustomerAttachedTitle,
       message: l10n.posCustomerAttachedSummary(
-          picked.name, _loyaltySummary(l10n, picked)),
+        picked.name,
+        _loyaltySummary(l10n, picked),
+      ),
       tone: FeedbackTone.success,
     );
     await _maybePickEarnPrograms();
@@ -3834,8 +4366,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
     if (!mounted || result == null) return;
     controller.attachCustomer(result);
-    setState(() => _customerNumberController.text =
-        controller.customerReferenceNumber);
+    setState(
+      () => _customerNumberController.text = controller.customerReferenceNumber,
+    );
     final pts = controller.activeEarnRule != null
         ? result.pointsForRule(controller.activeEarnRule!.id)
         : 0;
@@ -3903,12 +4436,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
 
     controller.attachCustomer(match);
-    setState(() =>
-        _customerNumberController.text = controller.customerReferenceNumber);
+    setState(
+      () => _customerNumberController.text = controller.customerReferenceNumber,
+    );
     _showPopupMessage(
       title: l10n.posCustomerAttachedTitle,
-      message:
-          l10n.posCustomerAttachedSummary(match.name, _loyaltySummary(l10n, match)),
+      message: l10n.posCustomerAttachedSummary(
+        match.name,
+        _loyaltySummary(l10n, match),
+      ),
       tone: FeedbackTone.success,
     );
     await _maybePickEarnPrograms();
@@ -3979,9 +4515,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Future<void> _openDiningSearchKeyboard() async {
     if (ref.read(tableSessionsModeProvider) == 'live') {
-      final value = await showTableSearchKeyboard(context,
+      final value = await showTableSearchKeyboard(
+        context,
         initialValue: controller.diningTableSearchQuery,
-        onChanged: _updateTableSearch);
+        onChanged: _updateTableSearch,
+      );
       if (!mounted) return;
       if (value != null) controller.setDiningTableSearchQuery(value);
       _updateTableSearch();
@@ -4095,8 +4633,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (targets.isEmpty) {
       _showPopupMessage(
         title: merge ? l10n.posDiningActionMerge : l10n.posDiningActionMove,
-        message:
-            merge ? l10n.posDiningNoMergeTargets : l10n.posDiningNoFreeTables,
+        message: merge
+            ? l10n.posDiningNoMergeTargets
+            : l10n.posDiningNoFreeTables,
         tone: FeedbackTone.warning,
       );
       return;
@@ -4136,12 +4675,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(l10n.posDiningMergeConfirmTitle),
-          content: Text(l10n.posDiningMergeConfirmBody(
-            source.name,
-            SunmiReceiptService.money(sourceSession.total),
-            targetDef.name,
-            SunmiReceiptService.money(targetSession?.total ?? 0),
-          )),
+          content: Text(
+            l10n.posDiningMergeConfirmBody(
+              source.name,
+              SunmiReceiptService.money(sourceSession.total),
+              targetDef.name,
+              SunmiReceiptService.money(targetSession?.total ?? 0),
+            ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -4170,7 +4711,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     _showPopupMessage(
-      title: merge ? l10n.posDiningTablesMergedTitle : l10n.posDiningTableMovedTitle,
+      title: merge
+          ? l10n.posDiningTablesMergedTitle
+          : l10n.posDiningTableMovedTitle,
       message: message,
       tone: FeedbackTone.success,
     );
@@ -4221,7 +4764,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 const SizedBox(height: 10),
                 Text(
                   l10n.posDiningTicketPaidMessage(
-                      '${session.orderNumber ?? snapshot?.orderNumber ?? '-'}'),
+                    '${session.orderNumber ?? snapshot?.orderNumber ?? '-'}',
+                  ),
                   style: TextStyle(
                     fontSize: 15,
                     height: 1.45,
@@ -4277,8 +4821,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                           if (!mounted) return;
                           _showPopupMessage(
                             title: l10n.posDiningTableClearedTitle(table.name),
-                            message:
-                                l10n.posDiningTableClearedMessage(table.name),
+                            message: l10n.posDiningTableClearedMessage(
+                              table.name,
+                            ),
                             tone: FeedbackTone.success,
                           );
                         },
@@ -4315,72 +4860,80 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
     final action =
         await showModalBottomSheet<({String type, MerchantDiscount? rule})>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 16, 8),
-              child: Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: Text(
-                  l10n.posDiscountSheetTitle,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w800, fontSize: 16),
+          context: context,
+          builder: (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 16, 8),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(
+                      l10n.posDiscountSheetTitle,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                if (redeem != null)
+                  ListTile(
+                    leading: const Icon(Icons.card_giftcard_rounded),
+                    title: Text(l10n.posDiscountRedeemPointsOption),
+                    subtitle: Text(
+                      l10n.posDiscountRedeemPointsSubtitle(
+                        redeem.points,
+                        redeem.rule.name,
+                      ),
+                    ),
+                    onTap: () =>
+                        Navigator.pop(ctx, (type: 'redeem', rule: null)),
+                  ),
+                if (redeemStamp != null)
+                  ListTile(
+                    leading: const Icon(Icons.workspace_premium_rounded),
+                    title: Text(l10n.posDiscountRedeemStampOption),
+                    subtitle: Text(
+                      l10n.posDiscountStampRewardSubtitle(
+                        redeemStamp.stamps,
+                        SunmiReceiptService.money(redeemStamp.valueOmr),
+                        redeemStamp.rule.name,
+                      ),
+                    ),
+                    onTap: () =>
+                        Navigator.pop(ctx, (type: 'redeem_stamp', rule: null)),
+                  ),
+                for (final d in applicable)
+                  ListTile(
+                    leading: const Icon(Icons.local_offer_outlined),
+                    title: Text(d.name),
+                    subtitle: Text(
+                      _discountSubtitle(l10n, d) +
+                          (d.requiresManagerApproval
+                              ? '  ·  ${l10n.posDiscountManagerApprovalTag}'
+                              : ''),
+                    ),
+                    onTap: () => Navigator.pop(ctx, (type: 'rule', rule: d)),
+                  ),
+                const Divider(height: 0),
+                ListTile(
+                  leading: const Icon(Icons.tune),
+                  title: Text(l10n.posDiscountCustomAmountOption),
+                  onTap: () => Navigator.pop(ctx, (type: 'custom', rule: null)),
+                ),
+                if (controller.discount.isActive)
+                  ListTile(
+                    leading: const Icon(Icons.delete_outline),
+                    title: Text(l10n.posDiscountRemoveOption),
+                    onTap: () =>
+                        Navigator.pop(ctx, (type: 'remove', rule: null)),
+                  ),
+              ],
             ),
-            if (redeem != null)
-              ListTile(
-                leading: const Icon(Icons.card_giftcard_rounded),
-                title: Text(l10n.posDiscountRedeemPointsOption),
-                subtitle: Text(
-                  l10n.posDiscountRedeemPointsSubtitle(
-                      redeem.points, redeem.rule.name),
-                ),
-                onTap: () => Navigator.pop(ctx, (type: 'redeem', rule: null)),
-              ),
-            if (redeemStamp != null)
-              ListTile(
-                leading: const Icon(Icons.workspace_premium_rounded),
-                title: Text(l10n.posDiscountRedeemStampOption),
-                subtitle: Text(
-                  l10n.posDiscountStampRewardSubtitle(
-                      redeemStamp.stamps,
-                      SunmiReceiptService.money(redeemStamp.valueOmr),
-                      redeemStamp.rule.name),
-                ),
-                onTap: () => Navigator.pop(ctx, (type: 'redeem_stamp', rule: null)),
-              ),
-            for (final d in applicable)
-              ListTile(
-                leading: const Icon(Icons.local_offer_outlined),
-                title: Text(d.name),
-                subtitle: Text(
-                  _discountSubtitle(l10n, d) +
-                      (d.requiresManagerApproval
-                          ? '  ·  ${l10n.posDiscountManagerApprovalTag}'
-                          : ''),
-                ),
-                onTap: () => Navigator.pop(ctx, (type: 'rule', rule: d)),
-              ),
-            const Divider(height: 0),
-            ListTile(
-              leading: const Icon(Icons.tune),
-              title: Text(l10n.posDiscountCustomAmountOption),
-              onTap: () => Navigator.pop(ctx, (type: 'custom', rule: null)),
-            ),
-            if (controller.discount.isActive)
-              ListTile(
-                leading: const Icon(Icons.delete_outline),
-                title: Text(l10n.posDiscountRemoveOption),
-                onTap: () => Navigator.pop(ctx, (type: 'remove', rule: null)),
-              ),
-          ],
-        ),
-      ),
-    );
+          ),
+        );
 
     if (!mounted || action == null) return;
     switch (action.type) {
@@ -4404,15 +4957,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   /// The redeemable spend-based rule for the attached customer (enough points
   /// for at least one redemption block), or null.
-  ({LoyaltyRule rule, CustomerSearchResult customer, int points})? _redeemable() {
+  ({LoyaltyRule rule, CustomerSearchResult customer, int points})?
+  _redeemable() {
     final c = controller.selectedCustomer;
     if (c == null) return null;
     for (final r in controller.loyaltyRules) {
       if (!r.isActive || !r.isSpendBased) continue;
       if (r.redemptionPoints <= 0 || r.redemptionValue <= 0) continue;
       final pts = c.pointsForRule(r.id);
-      final minNeeded =
-          r.minRedemptionPoints > 0 ? r.minRedemptionPoints : r.redemptionPoints;
+      final minNeeded = r.minRedemptionPoints > 0
+          ? r.minRedemptionPoints
+          : r.redemptionPoints;
       if (pts >= minNeeded && pts >= r.redemptionPoints) {
         return (rule: r, customer: c, points: pts);
       }
@@ -4422,8 +4977,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   /// The redeemable visit_based (stamp-card) rule for the attached customer:
   /// enough stamps for one reward, with a resolvable OMR value, or null.
-  ({LoyaltyRule rule, CustomerSearchResult customer, int stamps, double valueOmr})?
-      _redeemableStamp() {
+  ({
+    LoyaltyRule rule,
+    CustomerSearchResult customer,
+    int stamps,
+    double valueOmr,
+  })?
+  _redeemableStamp() {
     final c = controller.selectedCustomer;
     if (c == null) return null;
     final subtotal = controller.rawSubtotal;
@@ -4470,9 +5030,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         title: Text(l10n.posDiscountRedeemStampOption),
         content: Text(
           l10n.posDiscountStampRewardSubtitle(
-              redeem.stamps,
-              SunmiReceiptService.money(redeem.valueOmr),
-              redeem.rule.name),
+            redeem.stamps,
+            SunmiReceiptService.money(redeem.valueOmr),
+            redeem.rule.name,
+          ),
         ),
         actions: [
           TextButton(
@@ -4497,7 +5058,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _showPopupMessage(
       title: l10n.posLoyaltyRewardRedeemedTitle,
       message: l10n.posLoyaltyStampRedeemedMessage(
-          redeem.stamps, SunmiReceiptService.money(redeem.valueOmr)),
+        redeem.stamps,
+        SunmiReceiptService.money(redeem.valueOmr),
+      ),
       tone: FeedbackTone.success,
     );
   }
@@ -4565,17 +5128,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _showPopupMessage(
       title: l10n.posLoyaltyPointsRedeemedTitle,
       message: l10n.posLoyaltyPointsRedeemedMessage(
-          blocks * rule.redemptionPoints,
-          SunmiReceiptService.money(blocks * rule.redemptionValue)),
+        blocks * rule.redemptionPoints,
+        SunmiReceiptService.money(blocks * rule.redemptionValue),
+      ),
       tone: FeedbackTone.success,
     );
   }
 
   String _discountSubtitle(L10n l10n, MerchantDiscount d) =>
       d.amountType == 'percent'
-          ? l10n.posDiscountPercentOff((d.percent ?? 0).toStringAsFixed(0))
-          : l10n.posDiscountAmountOff(
-              SunmiReceiptService.money(d.fixedAmount ?? 0));
+      ? l10n.posDiscountPercentOff((d.percent ?? 0).toStringAsFixed(0))
+      : l10n.posDiscountAmountOff(
+          SunmiReceiptService.money(d.fixedAmount ?? 0),
+        );
 
   Future<void> _applyMerchantDiscount(MerchantDiscount d) async {
     final l10n = L10n.of(context);
@@ -4618,7 +5183,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       _showPopupMessage(
         title: l10n.posDiscountAppliedTitle,
         message: l10n.posDiscountAppliedMessage(
-            value.label.isEmpty ? l10n.posDiscountDefaultLabel : value.label),
+          value.label.isEmpty ? l10n.posDiscountDefaultLabel : value.label,
+        ),
         tone: FeedbackTone.success,
       );
     } else {
@@ -4669,8 +5235,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       if (applied) {
         _showPopupMessage(
           title: l10n.posSplitReadyTitle,
-          message: l10n.posSplitCustomReadyMessage(result.splitCount,
-              SunmiReceiptService.money(controller.activePaymentBaseTotal)),
+          message: l10n.posSplitCustomReadyMessage(
+            result.splitCount,
+            SunmiReceiptService.money(controller.activePaymentBaseTotal),
+          ),
           tone: FeedbackTone.success,
         );
       } else {
@@ -4684,8 +5252,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       controller.setSplitCount(result.splitCount);
       _showPopupMessage(
         title: l10n.posSplitReadyTitle,
-        message: l10n.posSplitReadyMessage(result.splitCount,
-            SunmiReceiptService.money(controller.activePaymentBaseTotal)),
+        message: l10n.posSplitReadyMessage(
+          result.splitCount,
+          SunmiReceiptService.money(controller.activePaymentBaseTotal),
+        ),
         tone: FeedbackTone.success,
       );
     }
@@ -4776,15 +5346,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               if (option.isDefault) option.id.toString(),
           },
           options: group.options
-              .map((option) => _ModifierOptionDefinition(
-                    id: option.id.toString(),
-                    label: option.label,
-                    labelAr: option.labelAr ?? '',
-                    price: option.priceDelta,
-                    // P-G3 — grey the option when its linked product is
-                    // sold out at this branch.
-                    soldOut: controller.isAddonOptionUnavailable(option),
-                  ))
+              .map(
+                (option) => _ModifierOptionDefinition(
+                  id: option.id.toString(),
+                  label: option.label,
+                  labelAr: option.labelAr ?? '',
+                  price: option.priceDelta,
+                  // P-G3 — grey the option when its linked product is
+                  // sold out at this branch.
+                  soldOut: controller.isAddonOptionUnavailable(option),
+                ),
+              )
               .toList(),
         );
       }).toList();
@@ -4809,12 +5381,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
     if (_liveTable) {
       final before = buildTableRoundLines([item]);
-      final after = buildTableRoundLines([CartItem(
-        product: item.product, qty: item.qty,
-        modifiers: result.modifiers, notes: result.notes,
-      )]);
-      final changed = before.isNotEmpty && after.isNotEmpty &&
-          tableLineFingerprint(before.single) != tableLineFingerprint(after.single);
+      final after = buildTableRoundLines([
+        CartItem(
+          product: item.product,
+          qty: item.qty,
+          modifiers: result.modifiers,
+          notes: result.notes,
+        ),
+      ]);
+      final changed =
+          before.isNotEmpty &&
+          after.isNotEmpty &&
+          tableLineFingerprint(before.single) !=
+              tableLineFingerprint(after.single);
       if (changed && !await _approveSentReduction(item, item.qty)) return;
     }
     controller.updateCartItemCustomization(
@@ -5286,8 +5865,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _launchQrCheckout(String? uuid) async {
-    if (_normalQrCheckoutOpen || controller.isProcessingPayment ||
-        controller.hasRecordedSplitPayments || controller.showPaymentLaunchOverlay) {
+    if (_normalQrCheckoutOpen ||
+        controller.isProcessingPayment ||
+        controller.hasRecordedSplitPayments ||
+        controller.showPaymentLaunchOverlay) {
       return;
     }
     _normalQrCheckoutOpen = true;
@@ -5295,64 +5876,136 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     try {
       final api = ref.read(apiServiceProvider);
       final session = ref.read(sessionServiceProvider);
-      final gateway = ApiCheckoutGateway(api: api,
-        currentScope: () => quickDeviceScope(api.quickOrderBaseUrl,
-          session.companyId, session.branchId, session.kioskId),
+      final gateway = ApiCheckoutGateway(
+        api: api,
+        mutationGuard: controller.assertNoPendingCombine,
+        currentScope: () => quickDeviceScope(
+          api.quickOrderBaseUrl,
+          session.companyId,
+          session.branchId,
+          session.kioskId,
+        ),
         location: ref.read(qrLocationProvider).currentFix,
         legacyGuard: (orderUuid) async {
           await controller.assertNoPendingCombine();
-          if (ref.read(qrSettlementCoordinatorProvider).pendingManagerRecoveries.isNotEmpty ||
-              await ref.read(orderSyncRepositoryProvider).hasUnresolvedStandaloneQrPay(orderUuid)) {
+          if (ref
+                  .read(qrSettlementCoordinatorProvider)
+                  .pendingManagerRecoveries
+                  .isNotEmpty ||
+              await ref
+                  .read(orderSyncRepositoryProvider)
+                  .hasUnresolvedStandaloneQrPay(orderUuid)) {
             throw StateError('An earlier QR settlement requires recovery.');
           }
-          final requests = await SqliteQrQuickStore.open(quickDeviceScope(
-            api.quickOrderBaseUrl, session.companyId, session.branchId, session.kioskId));
+          final requests = await SqliteQrQuickStore.open(
+            quickDeviceScope(
+              api.quickOrderBaseUrl,
+              session.companyId,
+              session.branchId,
+              session.kioskId,
+            ),
+          );
           if ((await requests.load()).any((r) => r.orderUuid == orderUuid)) {
-            throw StateError('Resolve the pending item addition before payment.');
+            throw StateError(
+              'Resolve the pending item addition before payment.',
+            );
           }
-          final tableRequests = await SqliteDineInStore.open(quickDeviceScope(
-            api.quickOrderBaseUrl, session.companyId, session.branchId, session.kioskId));
+          final tableRequests = await SqliteDineInStore.open(
+            quickDeviceScope(
+              api.quickOrderBaseUrl,
+              session.companyId,
+              session.branchId,
+              session.kioskId,
+            ),
+          );
           if (await tableRequests.load() != null) {
             throw StateError('Resolve the saved table round before payment.');
           }
-        });
-      final store = await SqliteCheckoutStore.open(gateway.scope);
-      checkout = QrCheckoutController(gateway: gateway, store: store,
-        authorizeGift: () async {
-          if (!mounted || !await _authorizeManager(subtitle: L10n.of(context).posPayGiftManagerApprovalMessage)) return false;
-          if (!mounted) return false;
-          return await showDialog<bool>(context: context, builder: (dialog) => AlertDialog(
-            title: Text(L10n.of(context).posPayGiftConfirmTitle),
-            content: Text(L10n.of(context).posPayGiftConfirmMessage(SunmiReceiptService.money(checkout!.total / 1000))),
-            actions: [TextButton(onPressed: () => Navigator.pop(dialog, false), child: Text(L10n.of(context).commonCancel)),
-              FilledButton(onPressed: () => Navigator.pop(dialog, true), child: Text(L10n.of(context).posPaymentGift))])) ?? false;
         },
-        captureBank: (amount) { gateway.checkScope(); return confirmCheckoutBank(context, amount); },
+      );
+      final store = await SqliteCheckoutStore.open(gateway.scope);
+      checkout = QrCheckoutController(
+        gateway: gateway,
+        store: store,
+        authorizeGift: () async {
+          if (!mounted ||
+              !await _authorizeManager(
+                subtitle: L10n.of(context).posPayGiftManagerApprovalMessage,
+              )) {
+            return false;
+          }
+          if (!mounted) return false;
+          return await showDialog<bool>(
+                context: context,
+                builder: (dialog) => AlertDialog(
+                  title: Text(L10n.of(context).posPayGiftConfirmTitle),
+                  content: Text(
+                    L10n.of(context).posPayGiftConfirmMessage(
+                      SunmiReceiptService.money(checkout!.total / 1000),
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialog, false),
+                      child: Text(L10n.of(context).commonCancel),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(dialog, true),
+                      child: Text(L10n.of(context).posPaymentGift),
+                    ),
+                  ],
+                ),
+              ) ??
+              false;
+        },
+        captureBank: (amount) {
+          gateway.checkScope();
+          return confirmCheckoutBank(context, amount);
+        },
         captureCard: (amount) async {
           gateway.checkScope();
-          final result = await ref.read(qrCardTerminalProvider).captureBaisas(amount);
-          final state = result.isSuccess && !result.isCanceled ? CheckoutCaptureState.approved :
-              result.isCanceled && !result.isSuccess ? CheckoutCaptureState.cancelled :
-              result.failurePhase == MosambeeFailurePhase.preDispatch ? CheckoutCaptureState.notDispatched :
-              CheckoutCaptureState.uncertain;
-          return CheckoutCapture(state, evidence: {
-            if (result.softposReference != null) 'softpos_reference': result.softposReference,
-            if (result.softposAuthCode != null) 'softpos_auth_code': result.softposAuthCode,
-            'bank_response': result.payload,
-          });
-        });
+          final result = await ref
+              .read(qrCardTerminalProvider)
+              .captureBaisas(amount);
+          final state = result.isSuccess && !result.isCanceled
+              ? CheckoutCaptureState.approved
+              : result.isCanceled && !result.isSuccess
+              ? CheckoutCaptureState.cancelled
+              : result.failurePhase == MosambeeFailurePhase.preDispatch
+              ? CheckoutCaptureState.notDispatched
+              : CheckoutCaptureState.uncertain;
+          return CheckoutCapture(
+            state,
+            evidence: {
+              if (result.softposReference != null)
+                'softpos_reference': result.softposReference,
+              if (result.softposAuthCode != null)
+                'softpos_auth_code': result.softposAuthCode,
+              'bank_response': result.payload,
+            },
+          );
+        },
+      );
       if (!mounted) return;
       final payment = checkout;
       unawaited(payment.open(uuid));
-      await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => QrCheckoutBoundary(
-        controller: payment,
-        authorizeManager: () => _authorizeManager(subtitle: checkoutText(context, 'manager')),
-        paymentPage: (_, exit) => buildQrPaymentPage(payment, exit),
-      )));
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => QrCheckoutBoundary(
+            controller: payment,
+            authorizeManager: () =>
+                _authorizeManager(subtitle: checkoutText(context, 'manager')),
+            paymentPage: (_, exit) => buildQrPaymentPage(payment, exit),
+          ),
+        ),
+      );
     } catch (_) {
       if (mounted) {
-        _showPopupMessage(title: checkoutText(context, 'title'),
-        message: checkoutText(context, 'unavailable'), tone: FeedbackTone.warning);
+        _showPopupMessage(
+          title: checkoutText(context, 'title'),
+          message: checkoutText(context, 'unavailable'),
+          tone: FeedbackTone.warning,
+        );
       }
     } finally {
       checkout?.dispose();
@@ -5361,21 +6014,44 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   /// Reuses the normal payment layout without handing a QR bill to the cart.
-  Widget buildQrPaymentPage(QrCheckoutController payment, VoidCallback exit) => Scaffold(
-    resizeToAvoidBottomInset: false,
-    body: SafeArea(child: ColoredBox(color: const Color(0xFFEAF3F5),
-      child: Center(child: FittedBox(fit: BoxFit.contain,
-        child: SizedBox(width: _designWidth, height: _designHeight,
-          child: Padding(padding: const EdgeInsets.all(24),
-            child: _buildPaymentPageSurface(qr: payment, exit: exit))))))));
+  Widget buildQrPaymentPage(QrCheckoutController payment, VoidCallback exit) =>
+      Scaffold(
+        resizeToAvoidBottomInset: false,
+        body: SafeArea(
+          child: ColoredBox(
+            color: const Color(0xFFEAF3F5),
+            child: Center(
+              child: FittedBox(
+                fit: BoxFit.contain,
+                child: SizedBox(
+                  width: _designWidth,
+                  height: _designHeight,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: _buildPaymentPageSurface(qr: payment, exit: exit),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
 
   Future<void> _payQr(QrCheckoutController qr, String method) async {
     if (!qr.ready) return;
     if (method == 'cash' && qr.cashBaisas < qr.total) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(checkoutText(context, 'amount_error'))));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(checkoutText(context, 'amount_error'))),
+      );
       return;
     }
-    await qr.pay([CheckoutTender(method, qr.total, change: method == 'cash' ? qr.changeBaisas : 0)]);
+    await qr.pay([
+      CheckoutTender(
+        method,
+        qr.total,
+        change: method == 'cash' ? qr.changeBaisas : 0,
+      ),
+    ]);
   }
 
   Future<void> _splitQr(QrCheckoutController qr) async {
@@ -5384,12 +6060,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (plan != null && qr.ready) await qr.pay(plan);
   }
 
-  Widget _buildPaymentPageSurface({QrCheckoutController? qr, VoidCallback? exit}) {
+  Widget _buildPaymentPageSurface({
+    QrCheckoutController? qr,
+    VoidCallback? exit,
+  }) {
     return Column(
       children: [
-        SizedBox(height: _paymentHeaderHeight, child: _buildPaymentHeader(qr: qr, exit: exit)),
+        SizedBox(
+          height: _paymentHeaderHeight,
+          child: _buildPaymentHeader(qr: qr, exit: exit),
+        ),
         const SizedBox(height: _panelGap),
-        Expanded(child: _buildPaymentBody(qr: qr, exit: exit)),
+        Expanded(
+          child: _buildPaymentBody(qr: qr, exit: exit),
+        ),
       ],
     );
   }
@@ -5425,7 +6109,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             child: Text(
               (qr?.reference ?? controller.currentOrderReference).isEmpty
                   ? l10n.posPaymentNewOrder
-                  : l10n.posPaymentOrderRef(qr?.reference ?? controller.currentOrderReference),
+                  : l10n.posPaymentOrderRef(
+                      qr?.reference ?? controller.currentOrderReference,
+                    ),
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
@@ -5477,9 +6163,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(width: 330, child: qr == null ? _buildPaymentOrderPanel() : _buildQrPaymentOrderPanel(qr)),
+          SizedBox(
+            width: 330,
+            child: qr == null
+                ? _buildPaymentOrderPanel()
+                : _buildQrPaymentOrderPanel(qr),
+          ),
           const SizedBox(width: 18),
-          Expanded(child: _buildPaymentConsole(qr: qr, exit: exit)),
+          Expanded(
+            child: _buildPaymentConsole(qr: qr, exit: exit),
+          ),
         ],
       ),
     );
@@ -5488,36 +6181,87 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Widget _buildQrPaymentOrderPanel(QrCheckoutController qr) {
     final order = qr.snapshot!;
     final l10n = L10n.of(context);
-    return _glassPanel(tint: Colors.white.withValues(alpha: 0.72),
+    return _glassPanel(
+      tint: Colors.white.withValues(alpha: 0.72),
       padding: const EdgeInsets.all(18),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(l10n.posPaymentOrderItems, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 18),
-        Expanded(child: ListView.separated(itemCount: order.lines.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 12),
-          itemBuilder: (_, index) {
-            final line = order.lines[index];
-            return _glassPanel(padding: const EdgeInsets.all(14), child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${line['qty']} × ${line['product_name']}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                Text(SunmiReceiptService.money((line['line_total_baisas'] as int) / 1000)),
-                for (final addon in (line['addons'] as List? ?? const [])) Text(checkoutMap(addon)['add_on_name']?.toString() ?? ''),
-                if (line['notes'] != null) Text(line['notes'].toString()),
-                if (line['status'] != 'open') Text(line['status']?.toString() ?? ''),
-              ]));
-          })),
-        const SizedBox(height: 16),
-        if (order.customerLabel.isNotEmpty) Text(order.customerLabel, key: const ValueKey('qr-checkout-customer')),
-        if (order.order['plate_number'] != null) Text(order.order['plate_number'].toString()),
-        const SizedBox(height: 16),
-        _paymentTotalRow(l10n.posPaymentSubtotal, (order.order['subtotal_baisas'] as int) / 1000),
-        _paymentTotalRow(l10n.posPaymentDiscountFallback, -(order.order['discount_total_baisas'] as int) / 1000),
-        _paymentTotalRow(checkoutText(context, 'comp'), -(order.order['comp_total_baisas'] as int) / 1000),
-        _paymentTotalRow(checkoutText(context, 'tax'), (order.order['tax_total_baisas'] as int) / 1000),
-        const Divider(),
-        Text(SunmiReceiptService.money(order.total / 1000), key: const ValueKey('qr-checkout-total'),
-          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-      ]));
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            l10n.posPaymentOrderItems,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 18),
+          Expanded(
+            child: ListView.separated(
+              itemCount: order.lines.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              itemBuilder: (_, index) {
+                final line = order.lines[index];
+                return _glassPanel(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${line['qty']} × ${line['product_name']}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Text(
+                        SunmiReceiptService.money(
+                          (line['line_total_baisas'] as int) / 1000,
+                        ),
+                      ),
+                      for (final addon in (line['addons'] as List? ?? const []))
+                        Text(
+                          checkoutMap(addon)['add_on_name']?.toString() ?? '',
+                        ),
+                      if (line['notes'] != null) Text(line['notes'].toString()),
+                      if (line['status'] != 'open')
+                        Text(line['status']?.toString() ?? ''),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (order.customerLabel.isNotEmpty)
+            Text(
+              order.customerLabel,
+              key: const ValueKey('qr-checkout-customer'),
+            ),
+          if (order.order['plate_number'] != null)
+            Text(order.order['plate_number'].toString()),
+          const SizedBox(height: 16),
+          _paymentTotalRow(
+            l10n.posPaymentSubtotal,
+            (order.order['subtotal_baisas'] as int) / 1000,
+          ),
+          _paymentTotalRow(
+            l10n.posPaymentDiscountFallback,
+            -(order.order['discount_total_baisas'] as int) / 1000,
+          ),
+          _paymentTotalRow(
+            checkoutText(context, 'comp'),
+            -(order.order['comp_total_baisas'] as int) / 1000,
+          ),
+          _paymentTotalRow(
+            checkoutText(context, 'tax'),
+            (order.order['tax_total_baisas'] as int) / 1000,
+          ),
+          const Divider(),
+          Text(
+            SunmiReceiptService.money(order.total / 1000),
+            key: const ValueKey('qr-checkout-total'),
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildPaymentOrderPanel() {
@@ -5659,28 +6403,28 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     required String tooltip,
     required VoidCallback onTap,
     Key? key,
-  }) =>
-      Tooltip(
-        message: tooltip,
-        child: Material(
-          color: const Color(0xFFEDF4F7),
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            key: key,
-            borderRadius: BorderRadius.circular(12),
-            onTap: onTap,
-            child: SizedBox(
-              width: 34,
-              height: 34,
-              child: Icon(icon, size: 18, color: const Color(0xFF3D5563)),
-            ),
-          ),
+  }) => Tooltip(
+    message: tooltip,
+    child: Material(
+      color: const Color(0xFFEDF4F7),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        key: key,
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: SizedBox(
+          width: 34,
+          height: 34,
+          child: Icon(icon, size: 18, color: const Color(0xFF3D5563)),
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _buildCustomerReferenceField() {
     final l10n = L10n.of(context);
-    final hasValue = _customerNumberController.text.isNotEmpty ||
+    final hasValue =
+        _customerNumberController.text.isNotEmpty ||
         controller.selectedCustomer != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -5790,8 +6534,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.directions_car_outlined,
-                    color: Color(0xFF70818E)),
+                const Icon(
+                  Icons.directions_car_outlined,
+                  color: Color(0xFF70818E),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -5853,8 +6599,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.delivery_dining_outlined,
-                    color: Color(0xFF70818E)),
+                const Icon(
+                  Icons.delivery_dining_outlined,
+                  color: Color(0xFF70818E),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -5882,73 +6630,83 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Widget _buildPaymentConsole({QrCheckoutController? qr, VoidCallback? exit}) {
     final l10n = L10n.of(context);
-    final quickAmounts = qr == null ? _quickCashAmounts() :
-        (<int>{(qr.total / 1000).ceil(), (qr.total / 1000).ceil() + 1, 5, 10}.toList()..sort());
+    final quickAmounts = qr == null
+        ? _quickCashAmounts()
+        : (<int>{
+            (qr.total / 1000).ceil(),
+            (qr.total / 1000).ceil() + 1,
+            5,
+            10,
+          }.toList()..sort());
     final qrMixed = qr != null && qr.cashBaisas > 0 && qr.cashBaisas < qr.total;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (qr != null) Padding(padding: const EdgeInsets.only(bottom: 16),
-          child: Text(checkoutText(context, 'frozen'))),
+        if (qr != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Text(checkoutText(context, 'frozen')),
+          ),
         if (qr == null)
-        Row(
-          children: [
-            // Device↔device order transfer (replaced the Loyalty shortcut —
-            // loyalty redemption stays reachable from the customer panel).
-            // The count is the incoming inbox waiting to be received.
-            Expanded(
-              child: _PaymentTopActionCard(
-                icon: Icons.swap_horiz_rounded,
-                title: _incomingTransfers.isEmpty
-                    ? l10n.posPaymentTransfer
-                    : '${l10n.posPaymentTransfer} (${_incomingTransfers.length})',
-                accent: const Color(0xFF0FA3B1),
-                onTap: () {
-                  unawaited(_openTransferDialog());
-                },
-              ),
-            ),
-            SizedBox(width: 16),
-            if (!_liveTable) Expanded(
-              child: _PaymentTopActionCard(
-                icon: Icons.percent_rounded,
-                title: l10n.posPaymentAddDiscount,
-                accent: const Color(0xFFFF8A2B),
-                onTap: () {
-                  unawaited(_openDiscountDialog());
-                },
-              ),
-            ),
-            SizedBox(width: 16),
-            Expanded(
-              child: _PaymentTopActionCard(
-                icon: Icons.call_split_rounded,
-                title: l10n.posPaymentSplitBill,
-                onTap: () {
-                  unawaited(_openSplitBillDialog());
-                },
-              ),
-            ),
-            // Phase B — manager comp (write-off a line / the whole order).
-            // Shown only when the company configured comp reasons.
-            if (!_liveTable && controller.compReasons.isNotEmpty) ...[
-              const SizedBox(width: 16),
+          Row(
+            children: [
+              // Device↔device order transfer (replaced the Loyalty shortcut —
+              // loyalty redemption stays reachable from the customer panel).
+              // The count is the incoming inbox waiting to be received.
               Expanded(
                 child: _PaymentTopActionCard(
-                  icon: Icons.volunteer_activism_rounded,
-                  title: controller.appliedComp == null
-                      ? l10n.posPaymentComp
-                      : l10n.posPaymentCompApplied,
-                  accent: const Color(0xFF7C5CCB),
+                  icon: Icons.swap_horiz_rounded,
+                  title: _incomingTransfers.isEmpty
+                      ? l10n.posPaymentTransfer
+                      : '${l10n.posPaymentTransfer} (${_incomingTransfers.length})',
+                  accent: const Color(0xFF0FA3B1),
                   onTap: () {
-                    unawaited(_openCompDialog());
+                    unawaited(_openTransferDialog());
                   },
                 ),
               ),
+              SizedBox(width: 16),
+              if (!_liveTable)
+                Expanded(
+                  child: _PaymentTopActionCard(
+                    icon: Icons.percent_rounded,
+                    title: l10n.posPaymentAddDiscount,
+                    accent: const Color(0xFFFF8A2B),
+                    onTap: () {
+                      unawaited(_openDiscountDialog());
+                    },
+                  ),
+                ),
+              SizedBox(width: 16),
+              Expanded(
+                child: _PaymentTopActionCard(
+                  icon: Icons.call_split_rounded,
+                  title: l10n.posPaymentSplitBill,
+                  onTap: () {
+                    unawaited(_openSplitBillDialog());
+                  },
+                ),
+              ),
+              // Phase B — manager comp (write-off a line / the whole order).
+              // Shown only when the company configured comp reasons.
+              if (!_liveTable && controller.compReasons.isNotEmpty) ...[
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _PaymentTopActionCard(
+                    icon: Icons.volunteer_activism_rounded,
+                    title: controller.appliedComp == null
+                        ? l10n.posPaymentComp
+                        : l10n.posPaymentCompApplied,
+                    accent: const Color(0xFF7C5CCB),
+                    onTap: () {
+                      unawaited(_openCompDialog());
+                    },
+                  ),
+                ),
+              ],
             ],
-          ],
-        ),
+          ),
         const SizedBox(height: 20),
         Expanded(
           child: Align(
@@ -5990,7 +6748,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                     const Spacer(),
                                     Text(
                                       SunmiReceiptService.money(
-                                        qr == null ? _tenderedCashAmount : qr.cashBaisas / 1000,
+                                        qr == null
+                                            ? _tenderedCashAmount
+                                            : qr.cashBaisas / 1000,
                                       ),
                                       key: const ValueKey('tendered-amount'),
                                       style: const TextStyle(
@@ -6010,7 +6770,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 Row(
                                   children: [
                                     Text(
-                                      (qr == null ? _showMixedCardBalance : qrMixed)
+                                      (qr == null
+                                              ? _showMixedCardBalance
+                                              : qrMixed)
                                           ? l10n.posPaymentCardBalance
                                           : l10n.posPaymentChange,
                                       style: const TextStyle(
@@ -6022,14 +6784,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                     const Spacer(),
                                     Text(
                                       SunmiReceiptService.money(
-                                        qr == null ? (_showMixedCardBalance ? _mixedCardBalance : _cashChangeAmount) :
-                                            (qrMixed ? (qr.total - qr.cashBaisas) / 1000 : qr.changeBaisas / 1000),
+                                        qr == null
+                                            ? (_showMixedCardBalance
+                                                  ? _mixedCardBalance
+                                                  : _cashChangeAmount)
+                                            : (qrMixed
+                                                  ? (qr.total - qr.cashBaisas) /
+                                                        1000
+                                                  : qr.changeBaisas / 1000),
                                       ),
                                       key: const ValueKey('change-amount'),
                                       style: TextStyle(
                                         fontSize: 20,
                                         fontWeight: FontWeight.w900,
-                                        color: (qr == null ? _showMixedCardBalance : qrMixed)
+                                        color:
+                                            (qr == null
+                                                ? _showMixedCardBalance
+                                                : qrMixed)
                                             ? const Color(0xFF1B6F37)
                                             : const Color(0xFF1FA153),
                                       ),
@@ -6052,8 +6823,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                       ),
                                       child: _QuickCashButton(
                                         label: l10n.posPaymentQuickCash(amount),
-                                        onTap: () =>
-                                            qr == null ? _setQuickCashAmount(amount) : qr.cashAmount(amount * 1000),
+                                        onTap: () => qr == null
+                                            ? _setQuickCashAmount(amount)
+                                            : qr.cashAmount(amount * 1000),
                                       ),
                                     ),
                                   ),
@@ -6161,7 +6933,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                               'payment-key-backspace',
                                             ),
                                             icon: Icons.backspace_outlined,
-                                            onTap: qr == null ? _backspaceCashKey : () => qr.cashKey('back'),
+                                            onTap: qr == null
+                                                ? _backspaceCashKey
+                                                : () => qr.cashKey('back'),
                                           ),
                                         ),
                                       ],
@@ -6183,8 +6957,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                         // the provider pays later, minus commission. Proceed
                         // collects the provider's order number (+ optional
                         // contacts) and completes as pending verification.
-                        children: qr == null && controller.selectedOrderType ==
-                                OrderType.delivery
+                        children:
+                            qr == null &&
+                                controller.selectedOrderType ==
+                                    OrderType.delivery
                             ? [
                                 Expanded(
                                   child: _PaymentMethodActionButton(
@@ -6212,92 +6988,115 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 ),
                               ]
                             : [
-                          // Expanded (not square AspectRatio): the fixed
-                          // 1600x900 canvas leaves this column 592px, so two
-                          // 236px squares can never fit — share the height.
-                          Expanded(
-                            child: _PaymentMethodActionButton(
-                              label: l10n.posPaymentCash,
-                              icon: Icons.payments_outlined,
-                              gradient: const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [Color(0xFF1DB14A), Color(0xFF17A243)],
-                              ),
-                              onTap: qr == null ? _submitCashPayment : () => _payQr(qr, 'cash'),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Expanded(
-                            child: _PaymentMethodActionButton(
-                              label: l10n.posPaymentCard,
-                              icon: Icons.credit_card_rounded,
-                              gradient: const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [Color(0xFF2A8B42), Color(0xFF1F7236)],
-                              ),
-                              onTap: qr == null ? _submitCardPayment : () => _payQr(qr, 'card'),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          // P-F5 — record a payment taken on the bank's own
-                          // standalone terminal (no integration; NOT card
-                          // money for the commission split).
-                          SizedBox(
-                            height: 64,
-                            child: _PaymentMethodActionButton(
-                              label: l10n.posPaymentBankPos,
-                              icon: Icons.account_balance_rounded,
-                              gradient: const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [Color(0xFF2E5E8C), Color(0xFF234A72)],
-                              ),
-                              onTap: qr == null ? _submitBankPosPayment : () => _payQr(qr, 'bank_pos'),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          // Phase D4 — gift the whole order (manager-gated;
-                          // §6.8 "zero charged… inventory still deducts").
-                          if (qr != null || !_liveTable) SizedBox(
-                            height: 64,
-                            child: _PaymentMethodActionButton(
-                              label: l10n.posPaymentGift,
-                              icon: Icons.card_giftcard_rounded,
-                              gradient: const LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [Color(0xFF8E5BA6), Color(0xFF6E4385)],
-                              ),
-                              onTap: qr == null ? _submitGiftPayment : () => _payQr(qr, 'gift'),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          SizedBox(
-                            height: 86,
-                            child: Row(
-                              children: [
+                                // Expanded (not square AspectRatio): the fixed
+                                // 1600x900 canvas leaves this column 592px, so two
+                                // 236px squares can never fit — share the height.
                                 Expanded(
-                                  child: _PaymentBottomActionButton(
-                                    label: l10n.commonCancel,
-                                    icon: Icons.close_rounded,
-                                    onTap: exit ?? _closePaymentPage,
+                                  child: _PaymentMethodActionButton(
+                                    label: l10n.posPaymentCash,
+                                    icon: Icons.payments_outlined,
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        Color(0xFF1DB14A),
+                                        Color(0xFF17A243),
+                                      ],
+                                    ),
+                                    onTap: qr == null
+                                        ? _submitCashPayment
+                                        : () => _payQr(qr, 'cash'),
                                   ),
                                 ),
-                                const SizedBox(width: 14),
+                                const SizedBox(height: 14),
                                 Expanded(
-                                  child: _PaymentBottomActionButton(
-                                    label: l10n.posPaymentSplitPayment,
-                                    icon: Icons.call_split_rounded,
-                                    filled: true,
-                                    onTap: qr == null ? _submitMixedPayment : () => _splitQr(qr),
+                                  child: _PaymentMethodActionButton(
+                                    label: l10n.posPaymentCard,
+                                    icon: Icons.credit_card_rounded,
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        Color(0xFF2A8B42),
+                                        Color(0xFF1F7236),
+                                      ],
+                                    ),
+                                    onTap: qr == null
+                                        ? _submitCardPayment
+                                        : () => _payQr(qr, 'card'),
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                // P-F5 — record a payment taken on the bank's own
+                                // standalone terminal (no integration; NOT card
+                                // money for the commission split).
+                                SizedBox(
+                                  height: 64,
+                                  child: _PaymentMethodActionButton(
+                                    label: l10n.posPaymentBankPos,
+                                    icon: Icons.account_balance_rounded,
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        Color(0xFF2E5E8C),
+                                        Color(0xFF234A72),
+                                      ],
+                                    ),
+                                    onTap: qr == null
+                                        ? _submitBankPosPayment
+                                        : () => _payQr(qr, 'bank_pos'),
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                // Phase D4 — gift the whole order (manager-gated;
+                                // §6.8 "zero charged… inventory still deducts").
+                                if (qr != null || !_liveTable)
+                                  SizedBox(
+                                    height: 64,
+                                    child: _PaymentMethodActionButton(
+                                      label: l10n.posPaymentGift,
+                                      icon: Icons.card_giftcard_rounded,
+                                      gradient: const LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Color(0xFF8E5BA6),
+                                          Color(0xFF6E4385),
+                                        ],
+                                      ),
+                                      onTap: qr == null
+                                          ? _submitGiftPayment
+                                          : () => _payQr(qr, 'gift'),
+                                    ),
+                                  ),
+                                const SizedBox(height: 14),
+                                SizedBox(
+                                  height: 86,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: _PaymentBottomActionButton(
+                                          label: l10n.commonCancel,
+                                          icon: Icons.close_rounded,
+                                          onTap: exit ?? _closePaymentPage,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 14),
+                                      Expanded(
+                                        child: _PaymentBottomActionButton(
+                                          label: l10n.posPaymentSplitPayment,
+                                          icon: Icons.call_split_rounded,
+                                          filled: true,
+                                          onTap: qr == null
+                                              ? _submitMixedPayment
+                                              : () => _splitQr(qr),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
-                            ),
-                          ),
-                        ],
                       ),
                     ),
                   ],
@@ -6325,11 +7124,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
     final result =
         await showDialog<({String reference, String customer, String driver})>(
-      context: context,
-      builder: (_) => _DeliveryProceedDialog(
-        initialCustomer: _customerNumberController.text,
-      ),
-    );
+          context: context,
+          builder: (_) => _DeliveryProceedDialog(
+            initialCustomer: _customerNumberController.text,
+          ),
+        );
     if (!mounted || result == null) return;
 
     _customerNumberController.text = result.customer;
@@ -6380,12 +7179,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  Widget _buildPaymentKeyCell(String keyLabel, {Key? buttonKey, QrCheckoutController? qr}) {
+  Widget _buildPaymentKeyCell(
+    String keyLabel, {
+    Key? buttonKey,
+    QrCheckoutController? qr,
+  }) {
     return Expanded(
       child: _PaymentKeyButton(
         buttonKey: buttonKey ?? ValueKey('payment-key-$keyLabel'),
         label: keyLabel,
-        onTap: () => qr == null ? _appendCashKey(keyLabel) : qr.cashKey(keyLabel),
+        onTap: () =>
+            qr == null ? _appendCashKey(keyLabel) : qr.cashKey(keyLabel),
       ),
     );
   }
@@ -6553,7 +7357,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Widget _buildSecondaryNavGroup({required AlignmentGeometry alignment}) {
     final l10n = L10n.of(context);
     final navItems = _secondaryNavItems
-        .where((item) => item.title != 'QR Tables').toList();
+        .where((item) => item.title != 'QR Tables')
+        .toList();
     // The stored _NavItemData titles stay English IDENTITY values (the switch
     // below compares them); only the rendered chip label is localized.
     String navChipTitle(String identity) => switch (identity) {
@@ -6563,7 +7368,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       'Messages' => l10n.posNavMessages,
       'Report' => l10n.posNavReport,
       'History' => l10n.posNavHistory,
-      'QR Quick Orders' => QuickCopy(Localizations.localeOf(context).languageCode == 'ar').title,
+      'QR Quick Orders' => QuickCopy(
+        Localizations.localeOf(context).languageCode == 'ar',
+      ).title,
       _ => identity,
     };
     return Align(
@@ -6591,9 +7398,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     onTap: () {
                       switch (entry.value.title) {
                         case 'QR Quick Orders':
-                          unawaited(Navigator.of(context).push<void>(
-                            MaterialPageRoute(builder: (_) => QrQuickOrdersScreen(openCheckout: _launchQrCheckout)),
-                          ));
+                          unawaited(
+                            Navigator.of(context).push<void>(
+                              MaterialPageRoute(
+                                builder: (_) => QrQuickOrdersScreen(
+                                  openCheckout: _launchQrCheckout,
+                                ),
+                              ),
+                            ),
+                          );
                           break;
                         case 'QR Tables':
                           // QR orders remain server-owned. This route passes
@@ -6609,8 +7422,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   ),
                                   tables:
                                       List<DiningTableDefinition>.unmodifiable(
-                                    controller.diningTableDefinitions,
-                                  ),
+                                        controller.diningTableDefinitions,
+                                      ),
                                 ),
                               ),
                             ),
@@ -6790,8 +7603,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// but the next cashier cannot inherit it: they must resume as its owner,
   /// settle it, or open their own float after settlement.
   Future<void> _openStaffMenu() async {
-    final hasOpenShift =
-        ref.read(sessionControllerProvider).openShift != null;
+    final hasOpenShift = ref.read(sessionControllerProvider).openShift != null;
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) {
@@ -6845,14 +7657,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Future<void> _closeShiftThenLogout() async {
     await runShiftClosePreflight(context, ref);
     if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ShiftCloseScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const ShiftCloseScreen()));
     if (!mounted) return;
     // The close screen pops without a result — the shift being GONE is the
     // success signal (an X-out keeps it open).
-    final stillOpen =
-        ref.read(sessionControllerProvider).openShift != null;
+    final stillOpen = ref.read(sessionControllerProvider).openShift != null;
     if (stillOpen) return;
     await ref.read(sessionControllerProvider.notifier).logoutStaff();
   }
@@ -6874,21 +7685,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         // logout sheet) — the next staff member opens their own shift.
         await _closeShiftThenLogout();
       case 'log_expense':
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const LogExpenseScreen()),
-        );
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const LogExpenseScreen()));
       case 'restock_request':
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const RestockRequestScreen()),
-        );
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const RestockRequestScreen()));
       case 'stock_count':
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const StockCountScreen()),
-        );
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const StockCountScreen()));
       case 'waste_product':
-        await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const WasteProductScreen()),
-        );
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const WasteProductScreen()));
       case 'shift_summary':
         await _reprintLastShiftSummary();
     }
@@ -6932,11 +7743,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   void _flushMessageReceipts(int staffId) {
     final pending = controller.pendingMessageReceiptIds(staffId);
     if (pending.isEmpty) return;
-    unawaited(ref
-        .read(apiServiceProvider)
-        .markMessagesRead(staffId: staffId, messageIds: pending)
-        .then((_) => controller.markMessageReceiptsAcked(staffId, pending))
-        .catchError((_) {}));
+    unawaited(
+      ref
+          .read(apiServiceProvider)
+          .markMessagesRead(staffId: staffId, messageIds: pending)
+          .then((_) => controller.markMessageReceiptsAcked(staffId, pending))
+          .catchError((_) {}),
+    );
   }
 
   /// P-G6 — the staff announcements sheet. Opening it marks the visible
@@ -7063,13 +7876,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     };
 
     String typeLabel(String type) => switch (type) {
-          'bogo' => l10n.posOfferTypeBogo,
-          'bundle' => l10n.posOfferTypeBundle,
-          'multi_buy' => l10n.posOfferTypeMultiBuy,
-          'cheapest_free' => l10n.posOfferTypeCheapestFree,
-          'spend_get' => l10n.posOfferTypeSpendGet,
-          _ => type,
-        };
+      'bogo' => l10n.posOfferTypeBogo,
+      'bundle' => l10n.posOfferTypeBundle,
+      'multi_buy' => l10n.posOfferTypeMultiBuy,
+      'cheapest_free' => l10n.posOfferTypeCheapestFree,
+      'spend_get' => l10n.posOfferTypeSpendGet,
+      _ => type,
+    };
 
     final picked = await showModalBottomSheet<Offer>(
       context: context,
@@ -7090,13 +7903,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   trailing: offer.isBundle
                       ? const Icon(Icons.add_circle_outline_rounded)
                       : appliedById.containsKey(offer.id)
-                          ? Chip(
-                              label: Text(l10n.posOffersAppliedTimes(
-                                appliedById[offer.id]!.applications,
-                              )),
-                              visualDensity: VisualDensity.compact,
-                            )
-                          : null,
+                      ? Chip(
+                          label: Text(
+                            l10n.posOffersAppliedTimes(
+                              appliedById[offer.id]!.applications,
+                            ),
+                          ),
+                          visualDensity: VisualDensity.compact,
+                        )
+                      : null,
                   onTap: offer.isBundle
                       ? () => Navigator.pop(ctx, offer)
                       : null,
@@ -7145,58 +7960,60 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 .map((e) => (e as num?)?.toInt())
                 .whereType<int>()
                 .toList();
-            final pickedCount =
-                counts[g].values.fold(0, (s, v) => s + v);
+            final pickedCount = counts[g].values.fold(0, (s, v) => s + v);
             if (pickedCount != need) allSatisfied = false;
-            final label = isAr &&
-                    (group['label_ar']?.toString().trim().isNotEmpty ??
-                        false)
+            final label =
+                isAr &&
+                    (group['label_ar']?.toString().trim().isNotEmpty ?? false)
                 ? group['label_ar'].toString()
                 : (group['label']?.toString() ?? '');
-            sections.add(Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 12, bottom: 6),
-                  child: Text(
-                    '$label — ${l10n.posOffersBundleNeed(need)}'
-                    '  ($pickedCount/$need)',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13.5,
+            sections.add(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12, bottom: 6),
+                    child: Text(
+                      '$label — ${l10n.posOffersBundleNeed(need)}'
+                      '  ($pickedCount/$need)',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13.5,
+                      ),
                     ),
                   ),
-                ),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final id in ids)
-                      if (productById[id] != null)
-                        FilterChip(
-                          label: Text(
-                            counts[g][id] != null && counts[g][id]! > 0
-                                ? '${productById[id]!.displayName(isAr)} ×${counts[g][id]}'
-                                : productById[id]!.displayName(isAr),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final id in ids)
+                        if (productById[id] != null)
+                          FilterChip(
+                            label: Text(
+                              counts[g][id] != null && counts[g][id]! > 0
+                                  ? '${productById[id]!.displayName(isAr)} ×${counts[g][id]}'
+                                  : productById[id]!.displayName(isAr),
+                            ),
+                            selected: (counts[g][id] ?? 0) > 0,
+                            onSelected: (_) => setDialogState(() {
+                              final current = counts[g][id] ?? 0;
+                              final total = counts[g].values.fold(
+                                0,
+                                (s, v) => s + v,
+                              );
+                              if (current > 0 && total >= need) {
+                                // Tapping a selected chip at capacity clears it.
+                                counts[g].remove(id);
+                              } else if (total < need) {
+                                counts[g][id] = current + 1;
+                              }
+                            }),
                           ),
-                          selected: (counts[g][id] ?? 0) > 0,
-                          onSelected: (_) => setDialogState(() {
-                            final current = counts[g][id] ?? 0;
-                            final total = counts[g]
-                                .values
-                                .fold(0, (s, v) => s + v);
-                            if (current > 0 && total >= need) {
-                              // Tapping a selected chip at capacity clears it.
-                              counts[g].remove(id);
-                            } else if (total < need) {
-                              counts[g][id] = current + 1;
-                            }
-                          }),
-                        ),
-                  ],
-                ),
-              ],
-            ));
+                    ],
+                  ),
+                ],
+              ),
+            );
           }
           return AlertDialog(
             title: Text(offer.displayName(isAr)),
@@ -7226,8 +8043,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 child: Text(l10n.commonCancel),
               ),
               FilledButton(
-                onPressed:
-                    allSatisfied ? () => Navigator.pop(ctx, true) : null,
+                onPressed: allSatisfied ? () => Navigator.pop(ctx, true) : null,
                 child: Text(l10n.posOffersBundleAdd),
               ),
             ],
@@ -7348,8 +8164,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       if (pin == null || pin.isEmpty || !mounted) return;
 
       try {
-        final verified =
-            await ref.read(apiServiceProvider).verifyKitchenPin(pin);
+        final verified = await ref
+            .read(apiServiceProvider)
+            .verifyKitchenPin(pin);
         if (!mounted) return;
         if (verified == null) {
           _showPopupMessage(
@@ -7595,12 +8412,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          if (_isEditingDiningTable && _tableShadowMode != 'off' &&
+          if (_isEditingDiningTable &&
+              _tableShadowMode != 'off' &&
               (_cartBill?.billSource == 'qr_web' ||
                   tableBillNeedsSheet(_tableShadowMode, _cartBill)))
             TextButton.icon(
               key: const ValueKey('cart-customer-bill'),
-              onPressed: () => _openCustomerBill(controller.activeDiningTableId!),
+              onPressed: () =>
+                  _openCustomerBill(controller.activeDiningTableId!),
               icon: const Icon(Icons.receipt_long_outlined),
               label: Text(l10n.tableCustomerBillTitle),
             ),
@@ -7648,7 +8467,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 ? unawaited(_reduceTableItem(item))
                                 : controller.decreaseCartItem(item),
                             onDelete: () => _liveTable
-                                ? unawaited(_reduceTableItem(item, remove: true))
+                                ? unawaited(
+                                    _reduceTableItem(item, remove: true),
+                                  )
                                 : controller.removeCartItem(item),
                             onCustomize: () {
                               unawaited(_openCustomizeDialog(item));
@@ -7671,7 +8492,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             FilledButton.icon(
               key: const ValueKey('table-send-to-kitchen'),
               onPressed: !_tableSendBusy && _hasTableUnsent
-                  ? _sendTableRound : null,
+                  ? _sendTableRound
+                  : null,
               icon: const Icon(Icons.soup_kitchen_outlined),
               label: Text(l10n.tableSendToKitchen),
             ),
@@ -7762,7 +8584,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   onTap: _isEditingDiningTable
                       ? () {
                           if (_liveTable) {
-                            unawaited(_clearSharedTable(controller.activeDiningTableId!));
+                            unawaited(
+                              _clearSharedTable(
+                                controller.activeDiningTableId!,
+                              ),
+                            );
                           } else {
                             unawaited(controller.clearActiveDiningTable());
                           }
@@ -7933,8 +8759,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   controller.addProduct(product);
                                 }
                               },
-                              outOfStock: controller.isOutOfStock(product) ||
-                                controller.isAtShelfCap(product),
+                              outOfStock:
+                                  controller.isOutOfStock(product) ||
+                                  controller.isAtShelfCap(product),
                               outsideHours: controller.isOutsideHours(product),
                               highlighted: pulseNonce > 0,
                               pulseNonce: pulseNonce,
@@ -7965,7 +8792,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 controller.addProduct(product);
                               }
                             },
-                            outOfStock: controller.isOutOfStock(product) ||
+                            outOfStock:
+                                controller.isOutOfStock(product) ||
                                 controller.isAtShelfCap(product),
                             outsideHours: controller.isOutsideHours(product),
                             compact: compact,
@@ -8040,15 +8868,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                if (!_liveTable) Expanded(
-                  child: _FooterActionCard(
-                    icon: Icons.loyalty_outlined,
-                    title: l10n.posNavLoyalty,
-                    onTap: () {
-                      unawaited(_openLoyaltyRedeem());
-                    },
+                if (!_liveTable)
+                  Expanded(
+                    child: _FooterActionCard(
+                      icon: Icons.loyalty_outlined,
+                      title: l10n.posNavLoyalty,
+                      onTap: () {
+                        unawaited(_openLoyaltyRedeem());
+                      },
+                    ),
                   ),
-                ),
                 const SizedBox(width: 12),
                 // Device↔device transfer must be reachable with an EMPTY cart
                 // too (the payment console needs items), or this terminal
@@ -8601,64 +9430,69 @@ class _OrderItemCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 if (sentAt != null)
-                  Row(children: [
-                    const Icon(Icons.check_circle_outline, size: 14),
-                    const SizedBox(width: 4),
-                    Text(l10n.tableSentAt(
-                      '${sentAt!.hour.toString().padLeft(2, '0')}:'
-                      '${sentAt!.minute.toString().padLeft(2, '0')}',
-                    )),
-                  ]),
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle_outline, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        l10n.tableSentAt(
+                          '${sentAt!.hour.toString().padLeft(2, '0')}:'
+                          '${sentAt!.minute.toString().padLeft(2, '0')}',
+                        ),
+                      ),
+                    ],
+                  ),
                 Row(
                   children: [
                     const Spacer(),
                     // P-F5 — gift this line (purple when active).
-                    if (allowGift) InkWell(
-                      onTap: onGift,
-                      borderRadius: BorderRadius.circular(18),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: item.gifted
-                              ? const Color(0xFFEFE3F6)
-                              : const Color(0xFFF2F8F9),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: item.gifted
-                                ? const Color(0xFFD4B8E4)
-                                : Colors.white.withValues(alpha: 0.86),
+                    if (allowGift)
+                      InkWell(
+                        onTap: onGift,
+                        borderRadius: BorderRadius.circular(18),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
                           ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.card_giftcard_rounded,
-                              size: 15,
+                          decoration: BoxDecoration(
+                            color: item.gifted
+                                ? const Color(0xFFEFE3F6)
+                                : const Color(0xFFF2F8F9),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
                               color: item.gifted
-                                  ? const Color(0xFF6E4385)
-                                  : const Color(0xFF2F3E46),
+                                  ? const Color(0xFFD4B8E4)
+                                  : Colors.white.withValues(alpha: 0.86),
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              item.gifted
-                                  ? l10n.posCartGifted
-                                  : l10n.posCartGift,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.card_giftcard_rounded,
+                                size: 15,
                                 color: item.gifted
                                     ? const Color(0xFF6E4385)
-                                    : const Color(0xFF28363E),
+                                    : const Color(0xFF2F3E46),
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 4),
+                              Text(
+                                item.gifted
+                                    ? l10n.posCartGifted
+                                    : l10n.posCartGift,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: item.gifted
+                                      ? const Color(0xFF6E4385)
+                                      : const Color(0xFF28363E),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
                     const SizedBox(width: 6),
                     InkWell(
                       onTap: onCustomize,
@@ -9361,15 +10195,15 @@ class _CustomizationOptionTile extends StatelessWidget {
           color: option.soldOut
               ? const Color(0xFFF4F6F8)
               : selected
-                  ? const Color(0xFFF1FBF4)
-                  : Colors.white,
+              ? const Color(0xFFF1FBF4)
+              : Colors.white,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: option.soldOut
                 ? const Color(0xFFE0E7EB)
                 : selected
-                    ? const Color(0xFF2C9255)
-                    : const Color(0xFFDCE6EA),
+                ? const Color(0xFF2C9255)
+                : const Color(0xFFDCE6EA),
             width: selected ? 1.8 : 1.1,
           ),
           boxShadow: const [
@@ -9402,8 +10236,8 @@ class _CustomizationOptionTile extends StatelessWidget {
                         color: option.soldOut
                             ? const Color(0xFF9AA8B1)
                             : selected
-                                ? const Color(0xFF175E36)
-                                : const Color(0xFF2C3C45),
+                            ? const Color(0xFF175E36)
+                            : const Color(0xFF2C3C45),
                       ),
                     ),
                   ),
@@ -9445,8 +10279,8 @@ class _CustomizationOptionTile extends StatelessWidget {
                             color: option.soldOut
                                 ? const Color(0xFF9AA8B1)
                                 : selected
-                                    ? const Color(0xFF175E36)
-                                    : const Color(0xFF364852),
+                                ? const Color(0xFF175E36)
+                                : const Color(0xFF364852),
                           ),
                         ),
                         if (option.soldOut) ...[
@@ -10227,7 +11061,10 @@ class _ProductListTile extends StatelessWidget {
                           ),
                         ),
                         const Spacer(),
-                        _FilledMiniAction(label: l10n.posProductAdd, onTap: onAdd),
+                        _FilledMiniAction(
+                          label: l10n.posProductAdd,
+                          onTap: onAdd,
+                        ),
                       ],
                     ),
                   ],
@@ -10688,44 +11525,46 @@ class _PaymentMethodActionButton extends StatelessWidget {
           border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
           boxShadow: _softShadow,
         ),
-        child: LayoutBuilder(builder: (context, constraints) {
-          // The stacked icon+label content is ~96px tall — slim buttons
-          // (the 64px Gift pill) lay out horizontally instead so the
-          // content always fits the given height.
-          final compact = constraints.maxHeight < 110;
-          if (compact) {
-            return Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // The stacked icon+label content is ~96px tall — slim buttons
+            // (the 64px Gift pill) lay out horizontally instead so the
+            // content always fits the given height.
+            final compact = constraints.maxHeight < 110;
+            if (compact) {
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 26, color: Colors.white),
+                  const SizedBox(width: 10),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              );
+            }
+            return Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 26, color: Colors.white),
-                const SizedBox(width: 10),
+                Icon(icon, size: 42, color: Colors.white),
+                const SizedBox(height: 18),
                 Text(
                   label,
                   style: const TextStyle(
-                    fontSize: 18,
+                    fontSize: 24,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
                   ),
                 ),
               ],
             );
-          }
-          return Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 42, color: Colors.white),
-              const SizedBox(height: 18),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          );
-        }),
+          },
+        ),
       ),
     );
   }
@@ -11034,8 +11873,10 @@ class _PayButton extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    busy ? l10n.posPayBtnProcessing
-                        : settleBill ? l10n.tableSettleBill
+                    busy
+                        ? l10n.posPayBtnProcessing
+                        : settleBill
+                        ? l10n.tableSettleBill
                         : l10n.posPayBtnProcessToPay,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -11049,7 +11890,8 @@ class _PayButton extends StatelessWidget {
                   Text(
                     busy
                         ? l10n.posPayBtnCompletingOrder
-                        : settleBill ? l10n.tableCustomerBillTitle
+                        : settleBill
+                        ? l10n.tableCustomerBillTitle
                         : l10n.posPayBtnPayAmount(
                             SunmiReceiptService.money(total),
                           ),
@@ -11343,7 +12185,9 @@ class _DiningTableCard extends StatelessWidget {
     this.linkedToLabel,
     this.groupTotal,
     this.linkedCount = 0,
-    this.live = false, this.sending = false, this.searchMatch = false,
+    this.live = false,
+    this.sending = false,
+    this.searchMatch = false,
     this.pendingRounds = 0,
     this.customerOccupied = false,
     this.customerReference,
@@ -11352,7 +12196,9 @@ class _DiningTableCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
-    final displayStatus = customerOccupied ? DiningTableStatus.occupied : status;
+    final displayStatus = customerOccupied
+        ? DiningTableStatus.occupied
+        : status;
     final statusColor = switch (displayStatus) {
       DiningTableStatus.available => const Color(0xFF218947),
       DiningTableStatus.occupied => const Color(0xFFC9470F),
@@ -11374,9 +12220,12 @@ class _DiningTableCard extends StatelessWidget {
       ],
       DiningTableStatus.paid => const [Color(0xFFF2FBF3), Color(0xFFEAF7EC)],
     };
-    final hasTicket = customerOccupied ||
+    final hasTicket =
+        customerOccupied ||
         (status != DiningTableStatus.available && session != null);
-    final greyed = !customerOccupied && remote?.origin == 'station' &&
+    final greyed =
+        !customerOccupied &&
+        remote?.origin == 'station' &&
         const {'open', 'billing'}.contains(remote?.seatingStatus) &&
         status == DiningTableStatus.available;
 
@@ -11386,7 +12235,9 @@ class _DiningTableCard extends StatelessWidget {
     final cardShape = _diningCardShape(
       table.shape,
       BorderSide(
-        color: searchMatch ? const Color(0xFF356BDD) : displayStatus == DiningTableStatus.available
+        color: searchMatch
+            ? const Color(0xFF356BDD)
+            : displayStatus == DiningTableStatus.available
             ? const Color(0xFFE8EEF0)
             : statusColor.withValues(alpha: 0.2),
         width: 2,
@@ -11406,8 +12257,13 @@ class _DiningTableCard extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: greyed
-                ? [for (final color in background)
-                    Color.alphaBlend(const Color(0xFF808080).withValues(alpha: 0.08), color)]
+                ? [
+                    for (final color in background)
+                      Color.alphaBlend(
+                        const Color(0xFF808080).withValues(alpha: 0.08),
+                        color,
+                      ),
+                  ]
                 : background,
           ),
           shape: cardShape,
@@ -11466,9 +12322,7 @@ class _DiningTableCard extends StatelessWidget {
                             ? l10n.posDiningTicketNumber(
                                 '${session!.orderNumber ?? '-'}',
                               )
-                            : l10n.posDiningRefNumber(
-                                session!.orderReference,
-                              ),
+                            : l10n.posDiningRefNumber(session!.orderReference),
                         style: const TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w900,
@@ -11483,7 +12337,8 @@ class _DiningTableCard extends StatelessWidget {
             // Move/Merge actions sheet (it was a decorative dot; long-press
             // was the only — and invisible — way in). Its own InkWell wins
             // the gesture arena over the card's onTap.
-            if (displayStatus == DiningTableStatus.occupied && onActions != null)
+            if (displayStatus == DiningTableStatus.occupied &&
+                onActions != null)
               Positioned(
                 top: 10,
                 right: 10,
@@ -11494,8 +12349,9 @@ class _DiningTableCard extends StatelessWidget {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color:
-                              const Color(0xFFFF7A1A).withValues(alpha: 0.42),
+                          color: const Color(
+                            0xFFFF7A1A,
+                          ).withValues(alpha: 0.42),
                           blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
@@ -11683,21 +12539,28 @@ class _DiningTableCard extends StatelessWidget {
                     if (remote != null) ...[
                       const SizedBox(height: 5),
                       DiningServerBadge(
-                        remote: remote!, localStatus: status,
+                        remote: remote!,
+                        localStatus: status,
                         localReference: session?.orderReference,
-                        now: now, failures: remoteFailures,
+                        now: now,
+                        failures: remoteFailures,
                       ),
                     ],
-                    if (live) DiningTableActivityBadge(
-                      mode: 'live', sending: sending,
-                      pendingRounds: pendingRounds,
-                      needsReview: remote?.needsReviewCount ?? 0,
-                    )
+                    if (live)
+                      DiningTableActivityBadge(
+                        mode: 'live',
+                        sending: sending,
+                        pendingRounds: pendingRounds,
+                        needsReview: remote?.needsReviewCount ?? 0,
+                      )
                     else if (pendingRounds > 0 && remote != null)
                       Text(
                         l10n.tablePendingBell(pendingRounds),
                         key: const ValueKey('customer-table-pending'),
-                        style: const TextStyle(fontSize: 11, color: Color(0xFF755411)),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF755411),
+                        ),
                       ),
                   ],
                 ),
@@ -11715,7 +12578,6 @@ class _DiningTableCard extends StatelessWidget {
         : card;
   }
 }
-
 
 /// Pure informational projection; it has no callbacks or controller dependency.
 class DiningServerBadge extends StatelessWidget {
@@ -11741,7 +12603,8 @@ class DiningServerBadge extends StatelessWidget {
         ? l10n.tableServerAgeSeconds(seconds)
         : l10n.tableServerAgeMinutes(seconds ~/ 60);
     final stale = seconds > 60 || failures > 0;
-    final qrParty = remote.origin == 'station' &&
+    final qrParty =
+        remote.origin == 'station' &&
         const {'open', 'billing'}.contains(remote.seatingStatus) &&
         localStatus == DiningTableStatus.available;
     final payment = remote.awaitingPayment || remote.chargeClaimLive;
@@ -11754,7 +12617,9 @@ class DiningServerBadge extends StatelessWidget {
         : qrParty
         ? l10n.tableServerQr(remote.reference ?? '—', age)
         : l10n.tableServerOccupied(age);
-    if (!stale && !payment && remote.occupied &&
+    if (!stale &&
+        !payment &&
+        remote.occupied &&
         localStatus == DiningTableStatus.occupied &&
         remote.reference != localReference) {
       label += l10n.tableServerReferenceDiffers;
@@ -11777,9 +12642,15 @@ class DiningServerBadge extends StatelessWidget {
             border: !stale && qrParty ? Border.all(color: color) : null,
             borderRadius: BorderRadius.circular(5),
           ),
-          child: Text(label, maxLines: 1,
-            style: TextStyle(fontSize: 11, color: color,
-              fontStyle: stale ? FontStyle.italic : FontStyle.normal)),
+          child: Text(
+            label,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 11,
+              color: color,
+              fontStyle: stale ? FontStyle.italic : FontStyle.normal,
+            ),
+          ),
         ),
       ),
     );
@@ -11796,16 +12667,28 @@ Widget buildDiningTableCardForTest({
   DiningTableSession? session,
   RemoteTableState? remote,
   int failures = 0,
-  bool live = false, bool sending = false, bool searchMatch = false,
+  bool live = false,
+  bool sending = false,
+  bool searchMatch = false,
   int pendingRounds = 0,
   bool customerOccupied = false,
   String? customerReference,
   VoidCallback? onLongPress,
 }) => _DiningTableCard(
-  table: table, session: session, status: status, clock: clock,
-  now: clock.value, onTap: onTap, remote: remote, remoteFailures: failures,
-  live: live, sending: sending, searchMatch: searchMatch, pendingRounds: pendingRounds,
-  customerOccupied: customerOccupied, customerReference: customerReference,
+  table: table,
+  session: session,
+  status: status,
+  clock: clock,
+  now: clock.value,
+  onTap: onTap,
+  remote: remote,
+  remoteFailures: failures,
+  live: live,
+  sending: sending,
+  searchMatch: searchMatch,
+  pendingRounds: pendingRounds,
+  customerOccupied: customerOccupied,
+  customerReference: customerReference,
   onLongPress: onLongPress,
 );
 
@@ -11984,21 +12867,27 @@ class _MidShiftReportDialog extends StatelessWidget {
   }
 
   String _tenderLabel(L10n l10n, String method) => switch (method) {
-        'cash' => l10n.displayMethodCash,
-        'card' => l10n.displayMethodCard,
-        'gift' => l10n.displayMethodGift,
-        _ => method,
-      };
+    'cash' => l10n.displayMethodCash,
+    'card' => l10n.displayMethodCard,
+    'gift' => l10n.displayMethodGift,
+    _ => method,
+  };
 
-  Widget _row(String label, String value,
-      {bool bold = false, Color color = Colors.white}) {
+  Widget _row(
+    String label,
+    String value, {
+    bool bold = false,
+    Color color = Colors.white,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: const TextStyle(color: Colors.white60, fontSize: 14)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white60, fontSize: 14),
+          ),
           Text(
             value,
             style: TextStyle(
@@ -12044,8 +12933,7 @@ class _MidShiftReportDialog extends StatelessWidget {
               Text(
                 l10n.posMidShiftThisDeviceOnly,
                 textAlign: TextAlign.center,
-                style:
-                    const TextStyle(color: Color(0xFFE0A93B), fontSize: 12),
+                style: const TextStyle(color: Color(0xFFE0A93B), fontSize: 12),
               ),
               const Divider(color: Colors.white24, height: 24),
               _row(l10n.posMidShiftOrders, '${s.orderCount}'),
@@ -12054,7 +12942,8 @@ class _MidShiftReportDialog extends StatelessWidget {
                 _row(l10n.posMidShiftDiscounts, '-${_money(s.discountBaisas)}'),
               if (s.compBaisas > 0)
                 _row(l10n.posMidShiftComps, '-${_money(s.compBaisas)}'),
-              if (s.taxBaisas > 0) _row(l10n.posMidShiftTax, _money(s.taxBaisas)),
+              if (s.taxBaisas > 0)
+                _row(l10n.posMidShiftTax, _money(s.taxBaisas)),
               _row(l10n.posMidShiftTotal, _money(s.grandBaisas), bold: true),
               if (s.tenders.isNotEmpty) ...[
                 const Divider(color: Colors.white24, height: 24),
@@ -12081,8 +12970,10 @@ class _MidShiftReportDialog extends StatelessWidget {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: onPrint,
-                      icon: const Icon(Icons.print_outlined,
-                          color: Colors.white70),
+                      icon: const Icon(
+                        Icons.print_outlined,
+                        color: Colors.white70,
+                      ),
                       label: Text(
                         l10n.commonPrint,
                         style: const TextStyle(color: Colors.white),
@@ -12501,7 +13392,8 @@ class _OrderHistoryCard extends StatelessWidget {
     final snapshot = record.snapshot;
     // P-F1 — paid server-history records ARE cancellable (full-order void,
     // mirrored to pos_api); only genuinely terminal states stay locked.
-    final canCancel = !snapshot.isFullyCanceled &&
+    final canCancel =
+        !snapshot.isFullyCanceled &&
         !record.isServerTerminal &&
         (!record.fromServer || snapshot.serverOrderUuid.isNotEmpty);
 
@@ -12604,7 +13496,9 @@ class _OrderHistoryCard extends StatelessWidget {
                           (item['qty'] as num?)?.toInt() ?? 1,
                           // Phase C4 — prefer the snapshot's Arabic name when
                           // the UI locale is Arabic ('name' stays the identity).
-                          isAr && (item['nameAr']?.toString().isNotEmpty ?? false)
+                          isAr &&
+                                  (item['nameAr']?.toString().isNotEmpty ??
+                                      false)
                               ? item['nameAr'].toString()
                               : item['name']?.toString() ?? '',
                         ),
@@ -12870,21 +13764,22 @@ class _CustomerDetailsDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
     final activeRules = rules.where((r) => r.isActive).toList();
-    final hasRedeemables =
-        customer.loyalty.any((b) => b.points > 0 || b.stamps > 0);
+    final hasRedeemables = customer.loyalty.any(
+      (b) => b.points > 0 || b.stamps > 0,
+    );
 
     Widget sectionLabel(String text) => Padding(
-          padding: const EdgeInsets.only(top: 16, bottom: 8),
-          child: Text(
-            text,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.8,
-              color: Color(0xFF6B7E8A),
-            ),
-          ),
-        );
+      padding: const EdgeInsets.only(top: 16, bottom: 8),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.8,
+          color: Color(0xFF6B7E8A),
+        ),
+      ),
+    );
 
     return AlertDialog(
       title: Row(
@@ -12934,8 +13829,11 @@ class _CustomerDetailsDialog extends StatelessWidget {
               if (customer.walletBalance > 0)
                 Row(
                   children: [
-                    const Icon(Icons.account_balance_wallet_outlined,
-                        size: 18, color: Color(0xFF3D5563)),
+                    const Icon(
+                      Icons.account_balance_wallet_outlined,
+                      size: 18,
+                      color: Color(0xFF3D5563),
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       '${l10n.posCustomerDetailsWallet}: '
@@ -13043,8 +13941,9 @@ class _CustomerDetailsDialog extends StatelessWidget {
           child: Text(L10n.of(context).commonClose),
         ),
         FilledButton.icon(
-          onPressed:
-              hasRedeemables ? () => Navigator.of(context).pop('redeem') : null,
+          onPressed: hasRedeemables
+              ? () => Navigator.of(context).pop('redeem')
+              : null,
           icon: const Icon(Icons.redeem_rounded, size: 18),
           label: Text(L10n.of(context).posCustomerDetailsRedeem),
         ),
@@ -13129,35 +14028,34 @@ class _ManagerPinDialogState extends State<_ManagerPinDialog> {
       ),
     );
 
-    Widget key(String label, {VoidCallback? onTap, IconData? icon}) =>
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Material(
-              color: const Color(0xFFF2F7FA),
-              borderRadius: BorderRadius.circular(14),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: _busy ? null : (onTap ?? () => _append(label)),
-                child: SizedBox(
-                  height: 52,
-                  child: Center(
-                    child: icon != null
-                        ? Icon(icon, size: 20, color: const Color(0xFF39505B))
-                        : Text(
-                            label,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF20323C),
-                            ),
-                          ),
-                  ),
-                ),
+    Widget key(String label, {VoidCallback? onTap, IconData? icon}) => Expanded(
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Material(
+          color: const Color(0xFFF2F7FA),
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: _busy ? null : (onTap ?? () => _append(label)),
+            child: SizedBox(
+              height: 52,
+              child: Center(
+                child: icon != null
+                    ? Icon(icon, size: 20, color: const Color(0xFF39505B))
+                    : Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF20323C),
+                        ),
+                      ),
               ),
             ),
           ),
-        );
+        ),
+      ),
+    );
 
     return AlertDialog(
       title: Text(l10n.posManagerPinTitle),
@@ -13184,7 +14082,10 @@ class _ManagerPinDialogState extends State<_ManagerPinDialog> {
                       size: 18,
                       color: Color(0xFF8B9DA8),
                     )
-                  : Row(mainAxisAlignment: MainAxisAlignment.center, children: dots),
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: dots,
+                    ),
             ),
             if (_error != null) ...[
               const SizedBox(height: 10),
@@ -13207,11 +14108,17 @@ class _ManagerPinDialogState extends State<_ManagerPinDialog> {
                   Row(children: [key('1'), key('2'), key('3')]),
                   Row(children: [key('4'), key('5'), key('6')]),
                   Row(children: [key('7'), key('8'), key('9')]),
-                  Row(children: [
-                    key('', icon: Icons.backspace_outlined, onTap: _backspace),
-                    key('0'),
-                    key('', icon: Icons.check_rounded, onTap: _verify),
-                  ]),
+                  Row(
+                    children: [
+                      key(
+                        '',
+                        icon: Icons.backspace_outlined,
+                        onTap: _backspace,
+                      ),
+                      key('0'),
+                      key('', icon: Icons.check_rounded, onTap: _verify),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -13570,9 +14477,9 @@ class _OrderCancellationPageState extends State<_OrderCancellationPage> {
                               onSelected: _busy
                                   ? null
                                   : (selected) => setState(() {
-                                        _selectedReason = selected ? r : null;
-                                        _reasonMissing = false;
-                                      }),
+                                      _selectedReason = selected ? r : null;
+                                      _reasonMissing = false;
+                                    }),
                             ),
                         ],
                       ),
@@ -14149,8 +15056,11 @@ class _DeliveryProviderPickerDialog extends StatelessWidget {
                         color: const Color(0xFFF3F7F8),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Icon(Icons.close_rounded,
-                          size: 25, color: Color(0xFF52626B)),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        size: 25,
+                        color: Color(0xFF52626B),
+                      ),
                     ),
                   ),
                 ],
@@ -14178,7 +15088,9 @@ class _DeliveryProviderPickerDialog extends StatelessWidget {
                             borderRadius: BorderRadius.circular(16),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 16),
+                                horizontal: 16,
+                                vertical: 16,
+                              ),
                               decoration: BoxDecoration(
                                 color: p.id == selectedId
                                     ? const Color(0xFFF1FBF4)
@@ -14213,8 +15125,10 @@ class _DeliveryProviderPickerDialog extends StatelessWidget {
                                     ),
                                   ),
                                   if (p.id == selectedId)
-                                    const Icon(Icons.check_circle_rounded,
-                                        color: Color(0xFF1F7A47)),
+                                    const Icon(
+                                      Icons.check_circle_rounded,
+                                      color: Color(0xFF1F7A47),
+                                    ),
                                 ],
                               ),
                             ),
@@ -14322,7 +15236,11 @@ class _DeliveryProceedDialogState extends State<_DeliveryProceedDialog> {
                   ],
                 ),
               ),
-              const Icon(Icons.edit_rounded, size: 18, color: Color(0xFF5B6770)),
+              const Icon(
+                Icons.edit_rounded,
+                size: 18,
+                color: Color(0xFF5B6770),
+              ),
             ],
           ),
         ),
@@ -14418,10 +15336,10 @@ class _DeliveryProceedDialogState extends State<_DeliveryProceedDialog> {
                     child: FilledButton(
                       onPressed: canConfirm
                           ? () => Navigator.of(context).pop((
-                                reference: _reference.trim(),
-                                customer: _customer.trim(),
-                                driver: _driver.trim(),
-                              ))
+                              reference: _reference.trim(),
+                              customer: _customer.trim(),
+                              driver: _driver.trim(),
+                            ))
                           : null,
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFF2E5E8C),
@@ -14602,9 +15520,13 @@ class _InAppKeyboardDialogState extends State<_InAppKeyboardDialog> {
                         onTap: () => _append(' '),
                       ),
                     ),
-                    if (widget.tableSearch) Expanded(
-                      child: _KeyboardKey(label: '-', onTap: () => _append('-')),
-                    ),
+                    if (widget.tableSearch)
+                      Expanded(
+                        child: _KeyboardKey(
+                          label: '-',
+                          onTap: () => _append('-'),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -14787,10 +15709,12 @@ class _CustomerSearchDialogState extends State<_CustomerSearchDialog> {
                     return ListTile(
                       leading: const Icon(Icons.person_outline),
                       title: Text(c.name.isEmpty ? c.phone : c.name),
-                      subtitle: Text([
-                        if (c.phone.isNotEmpty) c.phone,
-                        if (pts > 0) l10n.posCustomerSearchPoints(pts),
-                      ].join('  ·  ')),
+                      subtitle: Text(
+                        [
+                          if (c.phone.isNotEmpty) c.phone,
+                          if (pts > 0) l10n.posCustomerSearchPoints(pts),
+                        ].join('  ·  '),
+                      ),
                       onTap: () => Navigator.pop(context, c),
                     );
                   },
@@ -14852,13 +15776,16 @@ class _RedeemBlocksDialogState extends State<_RedeemBlocksDialog> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
-                onPressed:
-                    _blocks > 1 ? () => setState(() => _blocks--) : null,
+                onPressed: _blocks > 1 ? () => setState(() => _blocks--) : null,
                 icon: const Icon(Icons.remove_circle_outline),
               ),
-              Text('$_blocks',
-                  style: const TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.w800)),
+              Text(
+                '$_blocks',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
               IconButton(
                 onPressed: _blocks < widget.maxBlocks
                     ? () => setState(() => _blocks++)
@@ -14982,26 +15909,25 @@ class _DiscountDialogState extends State<_DiscountDialog> {
   }
 
   InputDecoration _fieldDecoration(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(
-          color: Color(0xFF8B9DA8),
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-        ),
-        isDense: true,
-        filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.86),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFDCE8EC)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFDCE8EC)),
-        ),
-      );
+    hintText: hint,
+    hintStyle: const TextStyle(
+      color: Color(0xFF8B9DA8),
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+    ),
+    isDense: true,
+    filled: true,
+    fillColor: Colors.white.withValues(alpha: 0.86),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: Color(0xFFDCE8EC)),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: Color(0xFFDCE8EC)),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -15161,8 +16087,9 @@ class _DiscountDialogState extends State<_DiscountDialog> {
                   child: TextField(
                     key: const ValueKey('discount-custom-percent'),
                     controller: _percentCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: _fieldDecoration(
                       l10n.posDiscountDlgCustomPercentHint,
                     ),
@@ -15177,8 +16104,9 @@ class _DiscountDialogState extends State<_DiscountDialog> {
                   child: TextField(
                     key: const ValueKey('discount-custom-amount'),
                     controller: _amountCtrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: _fieldDecoration(
                       l10n.posDiscountDlgCustomAmountHint,
                     ),
@@ -15195,8 +16123,9 @@ class _DiscountDialogState extends State<_DiscountDialog> {
               key: const ValueKey('discount-reason'),
               controller: _reasonCtrl,
               maxLength: 160,
-              decoration: _fieldDecoration(l10n.posDiscountDlgReasonHint)
-                  .copyWith(counterText: ''),
+              decoration: _fieldDecoration(
+                l10n.posDiscountDlgReasonHint,
+              ).copyWith(counterText: ''),
               onChanged: (_) => setState(() => _reasonMissing = false),
             ),
             if (_reasonMissing)
@@ -15403,8 +16332,9 @@ class _TransferDialog extends StatelessWidget {
                               padding: const EdgeInsets.only(bottom: 8),
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(16),
-                                onTap: () => Navigator.of(context)
-                                    .pop(_TransferSend(device)),
+                                onTap: () => Navigator.of(
+                                  context,
+                                ).pop(_TransferSend(device)),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 14,
@@ -15414,8 +16344,9 @@ class _TransferDialog extends StatelessWidget {
                                     color: Colors.white.withValues(alpha: 0.8),
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.9),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.9,
+                                      ),
                                     ),
                                   ),
                                   child: Row(
@@ -15543,11 +16474,11 @@ class _TransferDialog extends StatelessWidget {
                                   const SizedBox(width: 12),
                                   FilledButton.icon(
                                     style: FilledButton.styleFrom(
-                                      backgroundColor:
-                                          const Color(0xFF0FA3B1),
+                                      backgroundColor: const Color(0xFF0FA3B1),
                                     ),
-                                    onPressed: () => Navigator.of(context)
-                                        .pop(_TransferReceive(transfer)),
+                                    onPressed: () => Navigator.of(
+                                      context,
+                                    ).pop(_TransferReceive(transfer)),
                                     icon: const Icon(
                                       Icons.download_rounded,
                                       size: 18,
@@ -15641,9 +16572,7 @@ class _SplitBillDialogState extends State<_SplitBillDialog> {
         ? double.parse((widget.total / _splitCount).toStringAsFixed(3))
         : widget.total;
     for (var i = 0; i < _splitCount - 1; i++) {
-      _amountCtrls.add(
-        TextEditingController(text: share.toStringAsFixed(3)),
-      );
+      _amountCtrls.add(TextEditingController(text: share.toStringAsFixed(3)));
     }
   }
 
@@ -15683,9 +16612,9 @@ class _SplitBillDialogState extends State<_SplitBillDialog> {
   }
 
   List<double> get _customAmounts => [
-        for (var i = 0; i < _amountCtrls.length; i++) _parsedAmount(i)!,
-        _customRemainder,
-      ];
+    for (var i = 0; i < _amountCtrls.length; i++) _parsedAmount(i)!,
+    _customRemainder,
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -15703,237 +16632,236 @@ class _SplitBillDialogState extends State<_SplitBillDialog> {
         tint: const Color(0xEFF8FBFD),
         child: SingleChildScrollView(
           child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    l10n.posSplitDlgTitle,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF18262F),
-                    ),
-                  ),
-                ),
-                _CircleGlassButton(
-                  icon: Icons.close_rounded,
-                  onTap: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: List.generate(6, (index) {
-                final count = index + 1;
-                return _DiscountChoice(
-                  label: count == 1
-                      ? l10n.posSplitDlgSingleBill
-                      : l10n.posSplitDlgGuests(count),
-                  selected: _splitCount == count,
-                  onTap: () => setState(() {
-                    final changed = count != _splitCount;
-                    _splitCount = count;
-                    if (_customize && count > 1) {
-                      // Re-tapping the selected chip must not wipe amounts
-                      // the cashier already typed.
-                      if (changed) _seedControllers();
-                    } else {
-                      _customize = false;
-                    }
-                  }),
-                );
-              }),
-            ),
-            if (_splitCount > 1) ...[
-              const SizedBox(height: 14),
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(
                 children: [
                   Expanded(
                     child: Text(
-                      l10n.posSplitDlgCustomAmounts,
+                      l10n.posSplitDlgTitle,
                       style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
                         color: Color(0xFF18262F),
                       ),
                     ),
                   ),
-                  Switch(
-                    value: _customize,
-                    activeThumbColor: const Color(0xFF1D8D53),
-                    onChanged: (value) => setState(() {
-                      _customize = value;
-                      if (value) _seedControllers();
-                    }),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 12),
-            if (customizing)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 14,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.88),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.92),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 230),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          children: [
-                            for (var i = 0; i < _amountCtrls.length; i++)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: TextField(
-                                  controller: _amountCtrls[i],
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                                  onChanged: (_) => setState(() {}),
-                                  decoration: InputDecoration(
-                                    labelText:
-                                        l10n.posSplitDlgGuestN(i + 1),
-                                    suffixText: 'OMR',
-                                    isDense: true,
-                                    border: const OutlineInputBorder(),
-                                    errorText: _parsedAmount(i) == null
-                                        ? l10n.posSplitDlgAmountsInvalid
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            l10n.posSplitDlgLastGuestRemainder(_splitCount),
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF5D6E79),
-                            ),
-                          ),
-                        ),
-                        Text(
-                          SunmiReceiptService.money(
-                            _customRemainder < 0 ? 0 : _customRemainder,
-                          ),
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            color: _customRemainder > 0
-                                ? const Color(0xFF1D8D53)
-                                : const Color(0xFFC0392B),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (_customRemainder <= 0)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          l10n.posSplitDlgAmountsInvalid,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFFC0392B),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              )
-            else
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 18,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.88),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.92),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _splitCount > 1
-                          ? l10n.posSplitDlgEachGuestPays
-                          : l10n.posSplitDlgSinglePaymentTotal,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF5D6E79),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      SunmiReceiptService.money(share),
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF1D8D53),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: _OutlineActionButton(
-                    label: l10n.commonCancel,
+                  _CircleGlassButton(
                     icon: Icons.close_rounded,
                     onTap: () => Navigator.of(context).pop(),
                   ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: List.generate(6, (index) {
+                  final count = index + 1;
+                  return _DiscountChoice(
+                    label: count == 1
+                        ? l10n.posSplitDlgSingleBill
+                        : l10n.posSplitDlgGuests(count),
+                    selected: _splitCount == count,
+                    onTap: () => setState(() {
+                      final changed = count != _splitCount;
+                      _splitCount = count;
+                      if (_customize && count > 1) {
+                        // Re-tapping the selected chip must not wipe amounts
+                        // the cashier already typed.
+                        if (changed) _seedControllers();
+                      } else {
+                        _customize = false;
+                      }
+                    }),
+                  );
+                }),
+              ),
+              if (_splitCount > 1) ...[
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        l10n.posSplitDlgCustomAmounts,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF18262F),
+                        ),
+                      ),
+                    ),
+                    Switch(
+                      value: _customize,
+                      activeThumbColor: const Color(0xFF1D8D53),
+                      onChanged: (value) => setState(() {
+                        _customize = value;
+                        if (value) _seedControllers();
+                      }),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _FilledActionButton(
-                    label: _splitCount > 1
-                        ? l10n.posSplitDlgApplySplit
-                        : l10n.posSplitDlgUseSingleBill,
-                    // Null while invalid — the button greys out instead of
-                    // silently swallowing taps.
-                    onTap: customizing && !_customPlanValid
-                        ? null
-                        : () => Navigator.of(context).pop(
+              ],
+              const SizedBox(height: 12),
+              if (customizing)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.88),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.92),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 230),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            children: [
+                              for (var i = 0; i < _amountCtrls.length; i++)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: TextField(
+                                    controller: _amountCtrls[i],
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                    onChanged: (_) => setState(() {}),
+                                    decoration: InputDecoration(
+                                      labelText: l10n.posSplitDlgGuestN(i + 1),
+                                      suffixText: 'OMR',
+                                      isDense: true,
+                                      border: const OutlineInputBorder(),
+                                      errorText: _parsedAmount(i) == null
+                                          ? l10n.posSplitDlgAmountsInvalid
+                                          : null,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              l10n.posSplitDlgLastGuestRemainder(_splitCount),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF5D6E79),
+                              ),
+                            ),
+                          ),
+                          Text(
+                            SunmiReceiptService.money(
+                              _customRemainder < 0 ? 0 : _customRemainder,
+                            ),
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              color: _customRemainder > 0
+                                  ? const Color(0xFF1D8D53)
+                                  : const Color(0xFFC0392B),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_customRemainder <= 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            l10n.posSplitDlgAmountsInvalid,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFC0392B),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 18,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.88),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.92),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _splitCount > 1
+                            ? l10n.posSplitDlgEachGuestPays
+                            : l10n.posSplitDlgSinglePaymentTotal,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF5D6E79),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        SunmiReceiptService.money(share),
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF1D8D53),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: _OutlineActionButton(
+                      label: l10n.commonCancel,
+                      icon: Icons.close_rounded,
+                      onTap: () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _FilledActionButton(
+                      label: _splitCount > 1
+                          ? l10n.posSplitDlgApplySplit
+                          : l10n.posSplitDlgUseSingleBill,
+                      // Null while invalid — the button greys out instead of
+                      // silently swallowing taps.
+                      onTap: customizing && !_customPlanValid
+                          ? null
+                          : () => Navigator.of(context).pop(
                               _SplitBillResult(
                                 _splitCount,
                                 customizing ? _customAmounts : null,
                               ),
                             ),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
           ),
         ),
       ),

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pos_machine/draft_recovery/recovery_store.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/models/remote_table_state.dart';
 import 'package:pos_machine/models/table_sync_models.dart';
@@ -61,6 +62,7 @@ void main() {
         onCreate: (db, _) async {
           await createV5(db);
           await LocalOrderStorageService.createTableLedger(db);
+          await RecoveryStore.createSchema(db);
         },
       ),
     );

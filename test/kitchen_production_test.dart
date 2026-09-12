@@ -3,6 +3,7 @@ import 'package:pos_machine/models/kitchen_production.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// P-G1 — kitchen production: the kitchen_positions policy flow
 /// (config → meta → catalog → controller gate), cooked sold-out
@@ -21,7 +22,7 @@ void main() {
       });
       expect(parsed.meta.kitchenPositions.value, '["kitchen","manager"]');
 
-      final controller = PosController();
+      final controller = PosController(orderStorage: FakeOrderStorage());
       addTearDown(controller.dispose);
       controller.applyCatalog(
         categories: const ['X'],
@@ -37,7 +38,7 @@ void main() {
     });
 
     test('defaults to managers-only when the setting never synced', () {
-      final controller = PosController();
+      final controller = PosController(orderStorage: FakeOrderStorage());
       addTearDown(controller.dispose);
       expect(controller.positionCanUseKitchen('manager'), isTrue);
       expect(controller.positionCanUseKitchen('kitchen'), isFalse);
@@ -46,7 +47,7 @@ void main() {
 
   group('cooked sold-out semantics', () {
     PosController controller() {
-      final c = PosController();
+      final c = PosController(orderStorage: FakeOrderStorage());
       addTearDown(c.dispose);
       return c;
     }

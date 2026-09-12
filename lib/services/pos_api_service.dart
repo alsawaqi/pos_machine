@@ -21,49 +21,58 @@ class PosApiService {
     required this.tokenGetter,
     this.onUnauthorized,
     this.baseUrlGetter,
+    this.orderMutationGuard,
     Dio? dio,
-  }) : _dio = dio ??
-            Dio(BaseOptions(
-              baseUrl: ApiConfig.baseUrl,
-              connectTimeout: ApiConfig.connectTimeout,
-              receiveTimeout: ApiConfig.receiveTimeout,
-              // We never throw on non-2xx ourselves; let _unwrap inspect the body.
-              validateStatus: (_) => true,
-              headers: {'Accept': 'application/json'},
-            )) {
-    _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) {
-        // Resolve the server URL per request so debug Settings changes take
-        // effect without rebuilding the client. Release reads are locked to
-        // the compile-time configuration by SettingsService.
-        final base = baseUrlGetter?.call();
-        if (base != null && base.isNotEmpty) {
-          options.baseUrl = base;
-        }
-        final token = tokenGetter();
-        if (token != null && token.isNotEmpty) {
-          options.headers['Authorization'] = 'Bearer $token';
-        }
-        handler.next(options);
-      },
-    ));
+  }) : _dio =
+           dio ??
+           Dio(
+             BaseOptions(
+               baseUrl: ApiConfig.baseUrl,
+               connectTimeout: ApiConfig.connectTimeout,
+               receiveTimeout: ApiConfig.receiveTimeout,
+               // We never throw on non-2xx ourselves; let _unwrap inspect the body.
+               validateStatus: (_) => true,
+               headers: {'Accept': 'application/json'},
+             ),
+           ) {
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          // Resolve the server URL per request so debug Settings changes take
+          // effect without rebuilding the client. Release reads are locked to
+          // the compile-time configuration by SettingsService.
+          final base = baseUrlGetter?.call();
+          if (base != null && base.isNotEmpty) {
+            options.baseUrl = base;
+          }
+          final token = tokenGetter();
+          if (token != null && token.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
+          handler.next(options);
+        },
+      ),
+    );
   }
 
   final Dio _dio;
   final TokenGetter tokenGetter;
   final UnauthorizedCallback? onUnauthorized;
   final String Function()? baseUrlGetter;
+  final Future<void> Function()? orderMutationGuard;
 
   /// Lightweight reachability check for [baseUrl] (Settings "Test connection").
   /// Any HTTP response — even a 401/404 — means the server is reachable; only a
   /// transport failure (no route, refused, timeout) returns false.
   Future<bool> pingBaseUrl(String baseUrl) async {
-    final probe = Dio(BaseOptions(
-      baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 6),
-      receiveTimeout: const Duration(seconds: 6),
-      validateStatus: (_) => true,
-    ));
+    final probe = Dio(
+      BaseOptions(
+        baseUrl: baseUrl,
+        connectTimeout: const Duration(seconds: 6),
+        receiveTimeout: const Duration(seconds: 6),
+        validateStatus: (_) => true,
+      ),
+    );
     try {
       await probe.get('/');
       return true;
@@ -84,9 +93,9 @@ class PosApiService {
   /// the single admin-generated activation code for a device token + its kiosk
   /// ID + terminal ID.
   Future<PairResult> activateDevice({required String code}) async {
-    final body = await _send(() => _dio.post('/auth/device/activate', data: {
-          'code': code,
-        }));
+    final body = await _send(
+      () => _dio.post('/auth/device/activate', data: {'code': code}),
+    );
     return PairResult.fromJson(body.dataMap);
   }
 
@@ -98,11 +107,12 @@ class PosApiService {
     double? lat,
     double? lng,
   }) async {
-    final body = await _send(() => _dio.post('/auth/pos/login', data: {
-          'pin': pin,
-          'lat': ?lat,
-          'lng': ?lng,
-        }));
+    final body = await _send(
+      () => _dio.post(
+        '/auth/pos/login',
+        data: {'pin': pin, 'lat': ?lat, 'lng': ?lng},
+      ),
+    );
     final staff = body.dataMap['staff'] as Map<String, dynamic>;
     return StaffSessionData.fromJson(staff);
   }
@@ -160,7 +170,17 @@ class PosApiService {
   /// cursor the device persists + replays as `?since=` on the next delta
   /// call), and `meta.websocket` (Phase C3 — where to dial Reverb; null =
   /// live push not configured server-side).
-  Future<({Map<String, dynamic> data, String? terminalId, String? terminalPin, String? generatedAt, Map<String, dynamic>? websocket, bool? audienceMeasurement})> fetchConfig() async {
+  Future<
+    ({
+      Map<String, dynamic> data,
+      String? terminalId,
+      String? terminalPin,
+      String? generatedAt,
+      Map<String, dynamic>? websocket,
+      bool? audienceMeasurement,
+    })
+  >
+  fetchConfig() async {
     final body = await _send(() => _dio.get('/device/config'));
     return (
       data: body.dataMap,
@@ -176,7 +196,17 @@ class PosApiService {
   /// GET `/device/config/delta?since=...` — only rows changed since the cursor,
   /// plus `data.deleted{}` (per-entity ids to purge). `meta.generated_at` is the
   /// next cursor. `since` is the previous sync's generated_at (ISO-8601).
-  Future<({Map<String, dynamic> data, String? terminalId, String? terminalPin, String? generatedAt, Map<String, dynamic>? websocket, bool? audienceMeasurement})> fetchConfigDelta(String since) async {
+  Future<
+    ({
+      Map<String, dynamic> data,
+      String? terminalId,
+      String? terminalPin,
+      String? generatedAt,
+      Map<String, dynamic>? websocket,
+      bool? audienceMeasurement,
+    })
+  >
+  fetchConfigDelta(String since) async {
     final body = await _send(
       () => _dio.get('/device/config/delta', queryParameters: {'since': since}),
     );
@@ -199,10 +229,12 @@ class PosApiService {
     required String socketId,
     required String channelName,
   }) async {
-    final body = await _send(() => _dio.post('/broadcasting/auth', data: {
-          'socket_id': socketId,
-          'channel_name': channelName,
-        }));
+    final body = await _send(
+      () => _dio.post(
+        '/broadcasting/auth',
+        data: {'socket_id': socketId, 'channel_name': channelName},
+      ),
+    );
     final auth = body.body['auth'];
     if (auth is! String || auth.isEmpty) {
       throw ApiException(
@@ -218,7 +250,16 @@ class PosApiService {
   /// re-push of the same batch settles exactly once. Returns the `data` map:
   /// { results: [ per-event ACK {client_event_id, status, duplicate, result} ],
   ///   summary: {total, accepted, duplicates} }.
-  Future<Map<String, dynamic>> pushSync(List<Map<String, dynamic>> events) async {
+  Future<Map<String, dynamic>> pushSync(
+    List<Map<String, dynamic>> events,
+  ) async {
+    if (events.any(
+      (e) =>
+          (e['event_type']?.toString() ?? '').startsWith('order.') ||
+          (e['event_type']?.toString() ?? '').startsWith('table.'),
+    )) {
+      await orderMutationGuard?.call();
+    }
     final body = await _send(
       () => _dio.post('/device/sync/push', data: {'events': events}),
     );
@@ -231,14 +272,19 @@ class PosApiService {
     final body = await _send(() => _dio.get('/device/tables/board'));
     final rows = body.dataMap['tables'];
     if (rows is! List) throw const FormatException('Missing table board rows');
-    return [
-      for (final row in rows) (row as Map).cast<String, dynamic>(),
-    ];
+    return [for (final row in rows) (row as Map).cast<String, dynamic>()];
   }
 
-  Future<TableShadowFeed> fetchTableFeed({required int after, int limit = 100}) async {
-    final body = await _send(() => _dio.get('/device/tables/feed',
-        queryParameters: {'after': after, 'limit': limit}));
+  Future<TableShadowFeed> fetchTableFeed({
+    required int after,
+    int limit = 100,
+  }) async {
+    final body = await _send(
+      () => _dio.get(
+        '/device/tables/feed',
+        queryParameters: {'after': after, 'limit': limit},
+      ),
+    );
     final rows = body.dataMap['events'] as List;
     return TableShadowFeed(
       events: [
@@ -263,8 +309,9 @@ class PosApiService {
     if (q.length < 2 || q.length > 32) {
       throw const FormatException('Table search must be 2–32 characters');
     }
-    final body = await _send(() => _dio.get('/device/tables/search',
-        queryParameters: {'q': q}));
+    final body = await _send(
+      () => _dio.get('/device/tables/search', queryParameters: {'q': q}),
+    );
     final rows = body.dataMap['tables'];
     if (rows is! List) throw const FormatException('Missing table search rows');
     return [
@@ -279,16 +326,15 @@ class PosApiService {
     if (rows is! List) return const <QrTableBoardRow>[];
     return rows
         .whereType<Map>()
-        .map((row) => QrTableBoardRow.fromJson(
-              row.cast<String, dynamic>(),
-            ))
+        .map((row) => QrTableBoardRow.fromJson(row.cast<String, dynamic>()))
         .toList(growable: false);
   }
 
   Future<QrKitchenTicket> claimKitchenPrint(String ticketKey) async {
     final body = await _send(() async {
       final response = await _dio.post(
-        '/device/kitchen/claim-print', data: {'ticket_key': ticketKey},
+        '/device/kitchen/claim-print',
+        data: {'ticket_key': ticketKey},
       );
       final status = response.statusCode ?? 0;
       if (status >= 200 && status < 300 && status != 201) {
@@ -304,36 +350,35 @@ class PosApiService {
     required String printResult,
     required DateTime? printedAt,
   }) async {
-    await _send(() => _dio.post('/device/kitchen/print-result', data: {
-      'ticket_key': ticketKey,
-      'print_result': printResult,
-      'printed_at': printedAt?.toUtc().toIso8601String(),
-    }));
+    await _send(
+      () => _dio.post(
+        '/device/kitchen/print-result',
+        data: {
+          'ticket_key': ticketKey,
+          'print_result': printResult,
+          'printed_at': printedAt?.toUtc().toIso8601String(),
+        },
+      ),
+    );
   }
 
   Future<QrRoundEnvelope> fetchQrRound(int roundId) async {
-    final body = await _send(
-      () => _dio.get('/device/qr/table-round/$roundId'),
-    );
+    final body = await _send(() => _dio.get('/device/qr/table-round/$roundId'));
     return QrRoundEnvelope.fromJson(body.dataMap);
   }
 
   Future<QrRoundEnvelope> confirmQrRound(int roundId) async {
+    await orderMutationGuard?.call();
     final body = await _send(
-      () => _dio.post(
-        '/device/qr/confirm-round',
-        data: {'round_id': roundId},
-      ),
+      () => _dio.post('/device/qr/confirm-round', data: {'round_id': roundId}),
     );
     return QrRoundEnvelope.fromJson(body.dataMap);
   }
 
   Future<QrRoundEnvelope> rejectQrRound(int roundId) async {
+    await orderMutationGuard?.call();
     final body = await _send(
-      () => _dio.post(
-        '/device/qr/reject-round',
-        data: {'round_id': roundId},
-      ),
+      () => _dio.post('/device/qr/reject-round', data: {'round_id': roundId}),
     );
     return QrRoundEnvelope.fromJson(body.dataMap);
   }
@@ -355,13 +400,12 @@ class PosApiService {
     return QrAcceptedRoundsPage(
       rounds: rows is List
           ? rows
-              .whereType<Map>()
-              .map(
-                (row) => QrRoundEnvelope.fromFeedJson(
-                  row.cast<String, dynamic>(),
-                ),
-              )
-              .toList(growable: false)
+                .whereType<Map>()
+                .map(
+                  (row) =>
+                      QrRoundEnvelope.fromFeedJson(row.cast<String, dynamic>()),
+                )
+                .toList(growable: false)
           : const <QrRoundEnvelope>[],
       nextCursor: _nullableApiString(body.metaMap['next_cursor']),
       latestCursor: _nullableApiString(body.metaMap['latest_cursor']),
@@ -401,50 +445,131 @@ class PosApiService {
   Future<Map<String, dynamic>> dineInDetail(int id) async =>
       (await _send(() => _dio.get('/device/tables/$id/detail'))).dataMap;
 
-  Future<Map<String, dynamic>> combinePreview(int id, String sourceUuid) async =>
-      (await _send(() => _dio.get('/device/tables/$id/combine-preview',
-        queryParameters: {'source_order_uuid': sourceUuid}))).dataMap;
+  Future<Map<String, dynamic>> draftRecoveryPreview(
+    int id,
+    Map<String, dynamic> query,
+  ) async => (await _send(
+    () => _dio.get('/device/tables/$id/draft-recovery', queryParameters: query),
+  )).dataMap;
 
-  Future<Map<String, dynamic>> combineBill(int id, Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> draftRecoveryConfirm(
+    int id,
+    Map<String, dynamic> payload,
+  ) async {
     try {
-      return _interpret(await _dio.post('/device/tables/$id/combine', data: payload)).body;
+      final response = await _dio.post(
+        '/device/tables/$id/draft-recovery',
+        data: payload,
+      );
+      if (response.statusCode == 409 && response.data is Map) {
+        return Map<String, dynamic>.from(response.data as Map);
+      }
+      return _interpret(response).body;
     } on DioException catch (e) {
       if (e.response?.statusCode == 409 && e.response?.data is Map) {
         return Map<String, dynamic>.from(e.response!.data as Map);
       }
       if (e.response != null) return _interpret(e.response!).body;
-      throw ApiException(message: 'Cannot reach the server. Retry the saved combine.', code: 'network', isNetwork: true);
+      throw ApiException(
+        message: 'Cannot reach the server. Retry the saved recovery.',
+        code: 'network',
+        isNetwork: true,
+      );
     }
   }
 
-  Future<Map<String, dynamic>> dineInAppend(String uuid, Map<String, dynamic> payload) async =>
-      (await _send(() => _dio.post('/device/tables/${Uri.encodeComponent(uuid)}/round', data: payload))).dataMap;
+  Future<Map<String, dynamic>> combinePreview(
+    int id,
+    String sourceUuid,
+  ) async => (await _send(
+    () => _dio.get(
+      '/device/tables/$id/combine-preview',
+      queryParameters: {'source_order_uuid': sourceUuid},
+    ),
+  )).dataMap;
 
-  Future<void> dineInReview(String uuid, int id, {required bool staff, required bool accept}) async {
+  Future<Map<String, dynamic>> combineBill(
+    int id,
+    Map<String, dynamic> payload,
+  ) async {
+    try {
+      return _interpret(
+        await _dio.post('/device/tables/$id/combine', data: payload),
+      ).body;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 409 && e.response?.data is Map) {
+        return Map<String, dynamic>.from(e.response!.data as Map);
+      }
+      if (e.response != null) return _interpret(e.response!).body;
+      throw ApiException(
+        message: 'Cannot reach the server. Retry the saved combine.',
+        code: 'network',
+        isNetwork: true,
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>> dineInAppend(
+    String uuid,
+    Map<String, dynamic> payload,
+  ) async => (await _send(
+    () => _dio.post(
+      '/device/tables/${Uri.encodeComponent(uuid)}/round',
+      data: payload,
+    ),
+  )).dataMap;
+
+  Future<void> dineInReview(
+    String uuid,
+    int id, {
+    required bool staff,
+    required bool accept,
+  }) async {
     final action = accept ? 'confirm' : 'reject';
-    final result = await _send(() => _dio.post(staff
-        ? '/device/tables/${Uri.encodeComponent(uuid)}/rounds/$id/$action'
-        : '/device/qr/$action-round', data: staff ? <String, dynamic>{} : {'round_id': id}));
-    if (staff && !const {'accepted', 'rejected', 'replayed'}.contains(result.dataMap['outcome'])) {
-      throw ApiException(message: result.dataMap['outcome']?.toString() ?? 'Round not resolved');
+    final result = await _send(
+      () => _dio.post(
+        staff
+            ? '/device/tables/${Uri.encodeComponent(uuid)}/rounds/$id/$action'
+            : '/device/qr/$action-round',
+        data: staff ? <String, dynamic>{} : {'round_id': id},
+      ),
+    );
+    if (staff &&
+        !const {
+          'accepted',
+          'rejected',
+          'replayed',
+        }.contains(result.dataMap['outcome'])) {
+      throw ApiException(
+        message: result.dataMap['outcome']?.toString() ?? 'Round not resolved',
+      );
     }
   }
 
   Future<void> dineInClear(int id) => clearQrTable(id);
-  Future<void> dineInReopen(String uuid) async { await reopenQrPayment(uuid); }
+  Future<void> dineInReopen(String uuid) async {
+    await reopenQrPayment(uuid);
+  }
 
-  Future<Map<String, dynamic>> checkoutClaim(Map<String, dynamic> payload) async =>
-      (await _send(() => _dio.post('/device/qr/claim-settlement', data: payload))).dataMap;
+  Future<Map<String, dynamic>> checkoutClaim(
+    Map<String, dynamic> payload,
+  ) async => (await _send(
+    () => _dio.post('/device/qr/claim-settlement', data: payload),
+  )).dataMap;
 
-  Future<Map<String, dynamic>> checkoutRead(String uuid) async =>
-      (await _send(() => _dio.get('/device/qr/orders/${Uri.encodeComponent(uuid)}/checkout'))).dataMap;
+  Future<Map<String, dynamic>> checkoutRead(String uuid) async => (await _send(
+    () => _dio.get('/device/qr/orders/${Uri.encodeComponent(uuid)}/checkout'),
+  )).dataMap;
 
   Future<void> checkoutRelease(Map<String, dynamic> payload) async {
     await _send(() => _dio.post('/device/qr/release-charge', data: payload));
   }
 
-  Future<List<Map<String, dynamic>>> checkoutPush(Map<String, dynamic> event) async =>
-      ((await pushSync([event]))['results'] as List).map((row) => Map<String, dynamic>.from(row as Map)).toList();
+  Future<List<Map<String, dynamic>>> checkoutPush(
+    Map<String, dynamic> event,
+  ) async => ((await pushSync([event]))['results'] as List)
+      .map((row) => Map<String, dynamic>.from(row as Map))
+      .toList();
 
   Future<Map<String, dynamic>> fetchQuickInbox() async =>
       (await _send(() => _dio.get('/device/qr/pending-orders'))).dataMap;
@@ -453,13 +578,19 @@ class PosApiService {
     await moveQrPendingToCounter(uuid);
   }
 
-  Future<Map<String, dynamic>> appendQuickInbox(String uuid, Map<String, dynamic> payload) async =>
-      (await _send(() => _dio.post(
-        '/device/qr/pending-orders/${Uri.encodeComponent(uuid)}/items', data: payload,
-      ))).dataMap;
+  Future<Map<String, dynamic>> appendQuickInbox(
+    String uuid,
+    Map<String, dynamic> payload,
+  ) async => (await _send(
+    () => _dio.post(
+      '/device/qr/pending-orders/${Uri.encodeComponent(uuid)}/items',
+      data: payload,
+    ),
+  )).dataMap;
 
   /// Online only. A refusal or lost response is never added to the outbox.
   Future<QrPendingOrder> moveQrPendingToCounter(String orderUuid) async {
+    await orderMutationGuard?.call();
     final body = await _send(
       () => _dio.post(
         '/device/qr/pending-orders/${Uri.encodeComponent(orderUuid)}/to-counter',
@@ -476,12 +607,16 @@ class PosApiService {
     double? lat,
     double? lng,
   }) async {
+    await orderMutationGuard?.call();
     final body = await _send(
-      () => _dio.post('/device/qr/claim-settlement', data: {
-        'order_uuid': orderUuid,
-        if (lat != null && lng != null)
-          'gps': <String, double>{'lat': lat, 'lng': lng},
-      }),
+      () => _dio.post(
+        '/device/qr/claim-settlement',
+        data: {
+          'order_uuid': orderUuid,
+          if (lat != null && lng != null)
+            'gps': <String, double>{'lat': lat, 'lng': lng},
+        },
+      ),
     );
     return QrSettlementClaim.fromJson(body.dataMap);
   }
@@ -495,43 +630,50 @@ class PosApiService {
     String? softposAuthCode,
     Map<String, dynamic>? bankResponse,
   }) async {
+    await orderMutationGuard?.call();
     final body = await _send(
-      () => _dio.post('/device/qr/release-charge', data: {
-        'order_uuid': orderUuid,
-        'outcome': outcome.name,
-        if (softposReference != null && softposReference.isNotEmpty)
-          'softpos_reference': softposReference,
-        if (softposAuthCode != null && softposAuthCode.isNotEmpty)
-          'softpos_auth_code': softposAuthCode,
-        'bank_response': ?bankResponse,
-      }),
+      () => _dio.post(
+        '/device/qr/release-charge',
+        data: {
+          'order_uuid': orderUuid,
+          'outcome': outcome.name,
+          if (softposReference != null && softposReference.isNotEmpty)
+            'softpos_reference': softposReference,
+          if (softposAuthCode != null && softposAuthCode.isNotEmpty)
+            'softpos_auth_code': softposAuthCode,
+          'bank_response': ?bankResponse,
+        },
+      ),
     );
     return body.dataMap;
   }
 
   Future<QrOrderActionResult> reopenQrPayment(String orderUuid) async {
+    await orderMutationGuard?.call();
     final body = await _send(
-      () => _dio.post('/device/qr/reopen-payment', data: {
-        'order_uuid': orderUuid,
-      }),
+      () => _dio.post(
+        '/device/qr/reopen-payment',
+        data: {'order_uuid': orderUuid},
+      ),
     );
     return QrOrderActionResult.fromJson(body.dataMap);
   }
 
   Future<QrOrderActionResult> fallbackQrToCounter(String orderUuid) async {
+    await orderMutationGuard?.call();
     final body = await _send(
-      () => _dio.post('/device/qr/fallback-to-counter', data: {
-        'order_uuid': orderUuid,
-      }),
+      () => _dio.post(
+        '/device/qr/fallback-to-counter',
+        data: {'order_uuid': orderUuid},
+      ),
     );
     return QrOrderActionResult.fromJson(body.dataMap);
   }
 
   Future<void> clearQrTable(int tableId) async {
+    await orderMutationGuard?.call();
     await _send(
-      () => _dio.post('/device/qr/clear-table', data: {
-        'table_id': tableId,
-      }),
+      () => _dio.post('/device/qr/clear-table', data: {'table_id': tableId}),
     );
   }
 
@@ -559,10 +701,10 @@ class PosApiService {
   /// into this device's cart (ownership moves server-side; a second claim
   /// 409s `transfer_unavailable`). Returns the claimed order snapshot.
   Future<Map<String, dynamic>> claimTransfer(String orderUuid) async {
-    final body =
-        await _send(() => _dio.post('/device/transfers/$orderUuid/claim'));
-    return (body.dataMap['order'] as Map?)?.cast<String, dynamic>() ??
-        const {};
+    final body = await _send(
+      () => _dio.post('/device/transfers/$orderUuid/claim'),
+    );
+    return (body.dataMap['order'] as Map?)?.cast<String, dynamic>() ?? const {};
   }
 
   /// POST /device/customers — register a customer (find-or-create on phone) and,
@@ -573,11 +715,12 @@ class PosApiService {
     required String phone,
     String? plateNumber,
   }) async {
-    final body = await _send(() => _dio.post('/device/customers', data: {
-          'name': name,
-          'phone': phone,
-          'plate_number': ?plateNumber,
-        }));
+    final body = await _send(
+      () => _dio.post(
+        '/device/customers',
+        data: {'name': name, 'phone': phone, 'plate_number': ?plateNumber},
+      ),
+    );
     final customer = body.dataMap['customer'];
     return customer is Map ? (customer['id'] as num?)?.toInt() : null;
   }
@@ -604,8 +747,7 @@ class PosApiService {
   /// Network failures rethrow — the caller falls back to the local number.
   Future<({int number, String formatted})?> allocateOrderNumber() async {
     try {
-      final body =
-          await _send(() => _dio.post('/device/orders/next-number'));
+      final body = await _send(() => _dio.post('/device/orders/next-number'));
       final number = (body.dataMap['number'] as num?)?.toInt();
       final formatted = body.dataMap['formatted']?.toString();
       if (number == null || formatted == null || formatted.isEmpty) {
@@ -626,10 +768,12 @@ class PosApiService {
     required int staffId,
     required List<int> messageIds,
   }) async {
-    final body = await _send(() => _dio.post('/device/messages/read', data: {
-          'staff_id': staffId,
-          'message_ids': messageIds,
-        }));
+    final body = await _send(
+      () => _dio.post(
+        '/device/messages/read',
+        data: {'staff_id': staffId, 'message_ids': messageIds},
+      ),
+    );
     return (body.dataMap['marked'] as num?)?.toInt() ?? 0;
   }
 
@@ -645,10 +789,10 @@ class PosApiService {
         '${v.month.toString().padLeft(2, '0')}-'
         '${v.day.toString().padLeft(2, '0')}';
     final body = await _send(
-      () => _dio.get('/device/reports/branch', queryParameters: {
-        'from': d(from),
-        'to': d(to),
-      }),
+      () => _dio.get(
+        '/device/reports/branch',
+        queryParameters: {'from': d(from), 'to': d(to)},
+      ),
     );
     final report = (body.dataMap['report'] as Map?)?.cast<String, dynamic>();
     return BranchReport.fromJson(report ?? const {});
@@ -674,13 +818,18 @@ class PosApiService {
   /// sales rung at the branch (not just its own local store). Online-only.
   Future<List<OrderHistoryRecord>> fetchBranchOrders({int perPage = 50}) async {
     final body = await _send(
-      () => _dio.get('/device/orders/history', queryParameters: {'per_page': perPage}),
+      () => _dio.get(
+        '/device/orders/history',
+        queryParameters: {'per_page': perPage},
+      ),
     );
     final list = body.dataMap['orders'];
     if (list is! List) return const [];
     return list
         .whereType<Map>()
-        .map((m) => OrderHistoryRecord.fromServerJson(m.cast<String, dynamic>()))
+        .map(
+          (m) => OrderHistoryRecord.fromServerJson(m.cast<String, dynamic>()),
+        )
         .toList();
   }
 
@@ -696,20 +845,23 @@ class PosApiService {
     int? staffId,
     bool sharedStaffOnly = false,
   }) async {
-    final body = await _send(() => _dio.get(
-          '/device/shift/current',
-          queryParameters: {
-            if (staffId != null && staffId > 0) 'staff_id': staffId,
-            if (sharedStaffOnly) 'shared_staff_only': true,
-          },
-        ));
+    final body = await _send(
+      () => _dio.get(
+        '/device/shift/current',
+        queryParameters: {
+          if (staffId != null && staffId > 0) 'staff_id': staffId,
+          if (sharedStaffOnly) 'shared_staff_only': true,
+        },
+      ),
+    );
     final shift = body.dataMap['shift'];
     if (shift is! Map) return null;
     final m = shift.cast<String, dynamic>();
     return OpenShiftData(
       uuid: m['uuid'].toString(),
       openingCashBaisas: (m['opening_cash_baisas'] as num?)?.toInt() ?? 0,
-      openedAt: DateTime.tryParse(m['opened_at']?.toString() ?? '') ?? DateTime.now(),
+      openedAt:
+          DateTime.tryParse(m['opened_at']?.toString() ?? '') ?? DateTime.now(),
       staffId: (m['staff_id'] as num?)?.toInt() ?? 0,
     );
   }
@@ -732,7 +884,10 @@ class PosApiService {
     int? staffId,
     List<({int ingredientId, double quantity})> extras = const [],
   }) async {
-    final body = await _send(() => _dio.post('/device/productions', data: {
+    final body = await _send(
+      () => _dio.post(
+        '/device/productions',
+        data: {
           'product_id': productId,
           'quantity': quantity,
           'staff_id': ?staffId,
@@ -740,8 +895,11 @@ class PosApiService {
             for (final e in extras)
               {'ingredient_id': e.ingredientId, 'quantity': e.quantity},
           ],
-        }));
-    final production = (body.dataMap['production'] as Map?)?.cast<String, dynamic>();
+        },
+      ),
+    );
+    final production = (body.dataMap['production'] as Map?)
+        ?.cast<String, dynamic>();
     return ProductionBatch.fromJson(production ?? const {});
   }
 
@@ -756,11 +914,14 @@ class PosApiService {
     int? staffId,
     String? expiresAtIso,
   }) async {
-    final body = await _send(() => _dio.post('/device/productions/$uuid/finish', data: {
-          'staff_id': ?staffId,
-          'expires_at': expiresAtIso,
-        }));
-    final production = (body.dataMap['production'] as Map?)?.cast<String, dynamic>();
+    final body = await _send(
+      () => _dio.post(
+        '/device/productions/$uuid/finish',
+        data: {'staff_id': ?staffId, 'expires_at': expiresAtIso},
+      ),
+    );
+    final production = (body.dataMap['production'] as Map?)
+        ?.cast<String, dynamic>();
     return ProductionBatch.fromJson(production ?? const {});
   }
 
@@ -786,11 +947,12 @@ class PosApiService {
     int? staffId,
   }) async {
     try {
-      await _send(() => _dio.post('/device/disposition', data: {
-            'items': items,
-            'pin': ?pin,
-            'staff_id': ?staffId,
-          }));
+      await _send(
+        () => _dio.post(
+          '/device/disposition',
+          data: {'items': items, 'pin': ?pin, 'staff_id': ?staffId},
+        ),
+      );
       return true;
     } on ApiException catch (e) {
       if (e.code == 'invalid_pin') return false;
@@ -808,11 +970,14 @@ class PosApiService {
     int? staffId,
   }) async {
     try {
-      final body = await _send(() => _dio.post('/device/productions/$uuid/cancel', data: {
-            'pin': pin,
-            'staff_id': ?staffId,
-          }));
-      final production = (body.dataMap['production'] as Map?)?.cast<String, dynamic>();
+      final body = await _send(
+        () => _dio.post(
+          '/device/productions/$uuid/cancel',
+          data: {'pin': pin, 'staff_id': ?staffId},
+        ),
+      );
+      final production = (body.dataMap['production'] as Map?)
+          ?.cast<String, dynamic>();
       return ProductionBatch.fromJson(production ?? const {});
     } on ApiException catch (e) {
       if (e.code == 'invalid_pin') return null;
@@ -866,7 +1031,8 @@ class PosApiService {
       if (status == 401) {
         onUnauthorized?.call();
         throw ApiException(
-          message: 'This device is no longer authorized. Please set it up again.',
+          message:
+              'This device is no longer authorized. Please set it up again.',
           statusCode: 401,
           code: 'unauthorized',
         );
@@ -997,5 +1163,6 @@ class ApiException implements Exception {
   }
 
   @override
-  String toString() => 'ApiException($statusCode${code != null ? ', $code' : ''}): $message';
+  String toString() =>
+      'ApiException($statusCode${code != null ? ', $code' : ''}): $message';
 }

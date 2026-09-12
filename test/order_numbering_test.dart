@@ -3,6 +3,7 @@ import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/services/order_sync_payload.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// P-F8 — merchant-defined order numbering: the config flows from
 /// /device/config to the controller; payment allocates the server number
@@ -88,7 +89,7 @@ void main() {
   test('payment allocates ONCE when enabled; offline falls back silently',
       () async {
     const latte = Product(id: '1', name: 'Latte', category: 'X', price: 2.0);
-    final c = PosController();
+    final c = PosController(orderStorage: FakeOrderStorage());
     addTearDown(c.dispose);
     c.applyCatalog(
       categories: const ['X'],

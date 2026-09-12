@@ -8,12 +8,14 @@ class ApiCheckoutGateway implements CheckoutGateway {
     required this.currentScope,
     required this.location,
     required this.legacyGuard,
+    this.mutationGuard,
   }) : scope = currentScope(),
        token = api.tokenGetter();
   final PosApiService api;
   final String Function() currentScope;
   final Future<({double lat, double lng})?> Function() location;
   final Future<void> Function(String uuid) legacyGuard;
+  final Future<void> Function()? mutationGuard;
   final String scope;
   final String? token;
   ({double lat, double lng})? _fix;
@@ -26,7 +28,9 @@ class ApiCheckoutGateway implements CheckoutGateway {
     }
   }
 
-  Future<T> _call<T>(Future<T> Function() call) async {
+  Future<T> _call<T>(Future<T> Function() call, {bool writes = false}) async {
+    checkScope();
+    if (writes) await mutationGuard?.call();
     checkScope();
     final result = await call();
     checkScope();
@@ -50,6 +54,7 @@ class ApiCheckoutGateway implements CheckoutGateway {
             'order_uuid': orderUuid,
             if (_fix != null) 'gps': {'lat': _fix!.lat, 'lng': _fix!.lng},
           }),
+          writes: true,
         ),
       );
     } on ApiException catch (error) {
@@ -95,8 +100,9 @@ class ApiCheckoutGateway implements CheckoutGateway {
           case final row?)
         'softpos_auth_code': row['softpos_auth_code'],
     }),
+    writes: true,
   );
   @override
   Future<List<Map<String, dynamic>>> push(Map<String, dynamic> event) =>
-      _call(() => api.checkoutPush(event));
+      _call(() => api.checkoutPush(event), writes: true);
 }

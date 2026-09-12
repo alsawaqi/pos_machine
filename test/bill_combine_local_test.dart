@@ -4,6 +4,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:pos_machine/bill_combine/combine_local.dart';
 import 'package:pos_machine/bill_combine/combine_models.dart';
 import 'package:pos_machine/bill_combine/combine_store.dart';
+import 'package:pos_machine/draft_recovery/recovery_store.dart';
 import 'package:pos_machine/services/local_order_storage_service.dart';
 import 'bill_combine_test.dart' show sourceId, previewJson;
 
@@ -26,6 +27,7 @@ void main() {
     await db.execute('CREATE TABLE local_table_rounds (table_id TEXT)');
     await db.execute('CREATE TABLE local_line_cancellations (table_id TEXT)');
     await db.execute('CREATE TABLE order_history (snapshot_json TEXT)');
+    await RecoveryStore.createSchema(db);
     draft = {
       'serverOrderUuid': sourceId,
       'diningTableId': '1',

@@ -4,6 +4,7 @@ import 'package:pos_machine/data/db/app_database.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// Per-branch custom receipt template: parsed from /device/config
 /// `branch.receipt_template`, cached on the branch row, decoded into the
@@ -104,7 +105,7 @@ void main() {
 
   group('PosController', () {
     test('applyCatalog stores the receipt template', () {
-      final c = PosController();
+      final c = PosController(orderStorage: FakeOrderStorage());
       c.applyCatalog(
         categories: const [],
         products: const [],

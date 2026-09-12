@@ -10,6 +10,7 @@ import 'package:pos_machine/data/db/app_database.dart';
 import 'package:pos_machine/data/order_sync_repository.dart';
 import 'package:pos_machine/data/table_shadow_repository.dart';
 import 'package:pos_machine/data/table_sync_coordinator.dart';
+import 'package:pos_machine/draft_recovery/recovery_store.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/models/qr_till_models.dart';
 import 'package:pos_machine/models/remote_table_state.dart';
@@ -50,6 +51,7 @@ class ReplayDevice {
         onCreate: (db, _) async {
           await createV5(db);
           await LocalOrderStorageService.createTableLedger(db);
+          await RecoveryStore.createSchema(db);
         },
       ),
     );

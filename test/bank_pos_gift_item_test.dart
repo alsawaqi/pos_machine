@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/services/order_sync_payload.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// P-F5 — the bank-terminal tender + per-item gifts.
 String Function() _seqUuid() {
@@ -26,7 +27,7 @@ void main() {
     const cake = Product(id: '2', name: 'Cake', category: 'X', price: 3.0);
 
     PosController build() {
-      final c = PosController();
+      final c = PosController(orderStorage: FakeOrderStorage());
       c.applyCatalog(
         categories: const ['X'],
         products: const [latte, cake],

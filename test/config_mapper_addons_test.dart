@@ -4,6 +4,7 @@ import 'package:pos_machine/data/db/app_database.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// Covers the product add-on wiring: the API `addon_group_ids` + `addon_groups`
 /// survive parse → Drift companions, become AddonGroups (baisas → OMR) in
@@ -178,7 +179,7 @@ void main() {
 
   group('PosController.addonGroupsForProduct', () {
     test('resolves a product\'s groups in its assigned id order', () {
-      final controller = PosController();
+      final controller = PosController(orderStorage: FakeOrderStorage());
       addTearDown(controller.dispose);
 
       const latte = Product(
@@ -348,7 +349,7 @@ void main() {
     });
 
     test('isAddonOptionUnavailable mirrors the linked product sold-out state', () {
-      final controller = PosController();
+      final controller = PosController(orderStorage: FakeOrderStorage());
       addTearDown(controller.dispose);
 
       const cakeInStock = Product(
@@ -480,7 +481,7 @@ void main() {
     });
 
     test('add lines gate on visible stock; removals and unknown ids never do', () {
-      final controller = PosController();
+      final controller = PosController(orderStorage: FakeOrderStorage());
       addTearDown(controller.dispose);
 
       controller.applyCatalog(
@@ -551,7 +552,7 @@ void main() {
     });
 
     test('product add lines gate against the line QTY, not just zero stock', () {
-      final controller = PosController();
+      final controller = PosController(orderStorage: FakeOrderStorage());
       addTearDown(controller.dispose);
 
       controller.applyCatalog(

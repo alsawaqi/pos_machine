@@ -27,13 +27,14 @@ String quickDeviceScope(
 
 /// Uses the app's existing authenticated client; never a server lookup for prices.
 class ApiQrQuickGateway implements QrQuickGateway {
-  ApiQrQuickGateway(this.api, this.currentScope)
+  ApiQrQuickGateway(this.api, this.currentScope, {this.mutationGuard})
     : scope = currentScope(),
       token = api.tokenGetter();
   final PosApiService api;
   final String Function() currentScope;
   final String scope;
   final String? token;
+  final Future<void> Function()? mutationGuard;
   void _check() {
     if (token == null ||
         token!.isEmpty ||
@@ -43,9 +44,11 @@ class ApiQrQuickGateway implements QrQuickGateway {
     }
   }
 
-  Future<T> _call<T>(Future<T> Function() action) async {
+  Future<T> _call<T>(Future<T> Function() action, {bool writes = false}) async {
     _check();
     try {
+      if (writes) await mutationGuard?.call();
+      _check();
       final result = await action();
       _check();
       return result;
@@ -85,8 +88,11 @@ class ApiQrQuickGateway implements QrQuickGateway {
         .toList();
   });
   @override
-  Future<void> move(String uuid) => _call(() => api.moveQuickInbox(uuid));
+  Future<void> move(String uuid) =>
+      _call(() => api.moveQuickInbox(uuid), writes: true);
   @override
-  Future<Map<String, dynamic>> append(QrQuickRequest request) =>
-      _call(() => api.appendQuickInbox(request.orderUuid, request.payload));
+  Future<Map<String, dynamic>> append(QrQuickRequest request) => _call(
+    () => api.appendQuickInbox(request.orderUuid, request.payload),
+    writes: true,
+  );
 }

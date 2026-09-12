@@ -4,6 +4,7 @@ import 'package:pos_machine/data/db/app_database.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/state/pos_controller.dart';
+import 'support/fake_order_storage.dart';
 
 /// P-G6 — staff announcements on the device: the config `staff_messages`
 /// slice parses into Drift companions, the cached rows map back into domain
@@ -145,7 +146,7 @@ void main() {
 
   group('PosController — visibility + unread + local reads', () {
     PosController seeded() {
-      final c = PosController();
+      final c = PosController(orderStorage: FakeOrderStorage());
       c.applyCatalog(
         categories: const [],
         products: const [],
