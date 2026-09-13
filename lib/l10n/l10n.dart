@@ -6358,6 +6358,12 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Check the bank history before recording this payment.'**
   String get pay002ManagerCheck;
+
+  /// No description provided for @ctrlMsgCardTerminalBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Card terminal is busy. Wait a moment and try again.'**
+  String get ctrlMsgCardTerminalBusy;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

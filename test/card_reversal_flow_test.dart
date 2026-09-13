@@ -118,26 +118,33 @@ void main() {
             expect(requests.last['reversal_transaction_id'], 'NEW');
             expect(requests.last['rrn'], 'RRN');
             expect(requests.last['auth_code'], 'AUTH');
-            expect(slips, hasLength(1));
-            expect(
-              slips.single.where((line) => line.text == 'Customer copy'),
-              hasLength(1),
-            );
-            expect(
-              slips.single.map((line) => line.text),
-              containsAllInOrder([
-                'Merchant',
-                kind.toUpperCase(),
-                'Order: O-1',
-                'Original receipt: R-1',
-                'Card: 433662XXXXXX5819',
-                'Original auth: ORIG',
-                'Amount: 4.750 OMR',
-                'Auth: AUTH',
-                'Transaction: NEW',
-                'RRN: RRN',
-              ]),
-            );
+            if (verdict == 'uncertain') {
+              expect(slips, isEmpty);
+              expect(c.slip, isEmpty);
+              await c.reprint();
+              expect(slips, isEmpty);
+            } else {
+              expect(slips, hasLength(1));
+              expect(
+                slips.single.where((line) => line.text == 'Customer copy'),
+                hasLength(1),
+              );
+              expect(
+                slips.single.map((line) => line.text),
+                containsAllInOrder([
+                  'Merchant',
+                  kind.toUpperCase(),
+                  'Order: O-1',
+                  'Original receipt: R-1',
+                  'Card: 433662XXXXXX5819',
+                  'Original auth: ORIG',
+                  'Amount: 4.750 OMR',
+                  'Auth: AUTH',
+                  'Transaction: NEW',
+                  'RRN: RRN',
+                ]),
+              );
+            }
             expect(c.needsRecovery, verdict == 'uncertain');
             c.dispose();
           },

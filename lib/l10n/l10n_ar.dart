@@ -3849,4 +3849,8 @@ class L10nAr extends L10n {
 
   @override
   String get pay002ManagerCheck => 'تحقق من سجل البنك قبل تسجيل هذه الدفعة.';
+
+  @override
+  String get ctrlMsgCardTerminalBusy =>
+      'جهاز الدفع مشغول. انتظر قليلاً ثم حاول مرة أخرى.';
 }

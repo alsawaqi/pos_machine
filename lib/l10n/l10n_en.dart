@@ -3815,4 +3815,8 @@ class L10nEn extends L10n {
   @override
   String get pay002ManagerCheck =>
       'Check the bank history before recording this payment.';
+
+  @override
+  String get ctrlMsgCardTerminalBusy =>
+      'Card terminal is busy. Wait a moment and try again.';
 }

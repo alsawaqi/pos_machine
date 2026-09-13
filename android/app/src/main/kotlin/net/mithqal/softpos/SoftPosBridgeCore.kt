@@ -243,22 +243,7 @@ class SoftPosBridgeCore(
             startLogin(activity)
         } else {
             if (stage == "healthcheck" && declined) payload.put("code", "SOFTPOS_HEALTH_REFUSED")
-            val prime = stage != "healthcheck" && (approved || declined)
-            val nextLoginArgs = args
             complete(payload)
-            // Re-prime only after a definitive bank answer. Unknown operations remain
-            // available in terminal history for recovery, without any automatic launch.
-            if (prime && nextLoginArgs.text("userName").isNotEmpty() && nextLoginArgs.text("pin").isNotEmpty()) {
-                args = nextLoginArgs
-                owner = activity
-                operation = "login"
-                result = object : MethodChannel.Result {
-                    override fun success(value: Any?) {}
-                    override fun error(code: String, message: String?, details: Any?) {}
-                    override fun notImplemented() {}
-                }
-                startLogin(activity)
-            }
         }
         return true
     }

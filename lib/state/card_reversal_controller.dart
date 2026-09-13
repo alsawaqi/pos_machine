@@ -185,7 +185,14 @@ class CardReversalController extends ChangeNotifier {
           if (login.sessionId != null) args['sessionId'] = login.sessionId;
         }
         outcome = login != null && login.sessionId == null
-            ? login
+            ? SoftPosOutcome.fromPayload({
+                'status': 'cancelled',
+                'dispatchFailed': true,
+                'code': login.payload['code'],
+                'description': login.description,
+                'login_response_code': login.responseCode,
+                'login_response': login.payload,
+              })
             : await bank(
                 kind == 'void' ? 'voidTransaction' : 'refundTransaction',
                 args,
@@ -215,7 +222,8 @@ class CardReversalController extends ChangeNotifier {
     _report = {
       'client_request_id': _newId(),
       'status': outcome.verdict.name,
-      'response_code': outcome.responseCode,
+      'response_code':
+          outcome.responseCode ?? outcome.payload['login_response_code'],
       'description': outcome.description,
       'receipt_json': outcome.payload,
       'reversal_transaction_id': ids.transactionId,
@@ -237,6 +245,13 @@ class CardReversalController extends ChangeNotifier {
     needsRecovery =
         result!['status'] == 'uncertain' || result!['status'] == 'pending';
     final outcome = _outcome!;
+    if (outcome.verdict != SoftPosVerdict.approved &&
+        outcome.verdict != SoftPosVerdict.declined) {
+      slip = [];
+      printFailed = false;
+      _emit();
+      return;
+    }
     slip = buildReversalSlipLines(
       header: header,
       kind: reserved['kind'] as String,

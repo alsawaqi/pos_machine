@@ -43,7 +43,10 @@ fun main() {
   check(h.launches.last().first.getStringExtra("amount")=="9007199254740993")
   check(h.launches.last().first.getStringExtra("currency")=="0512")
   h.respond("00");check(r.json().getString("status")=="approved")
-  check(h.launches.last().first.action.endsWith(".login"))
+  check(h.launches.size==2) // No native launch after the definitive answer.
+  val next=h.call("prepareLogin");check(h.launches.size==3)
+  check(h.launches.last().first.action.endsWith(".login"));h.respond("00","NEXT")
+  check(next.json().getString("sessionId")=="NEXT")
  }
  test("session expires after five minutes") {
   val h=Harness();h.prime();SystemClock.now+=300_000

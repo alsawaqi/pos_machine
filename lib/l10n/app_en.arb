@@ -2401,6 +2401,6 @@
   "pay002ResponseCode": "Response code",
   "pay002Rrn": "RRN",
   "pay002AuthCode": "Auth code",
-  "pay002ManagerCheck": "Check the bank history before recording this payment."
-
+  "pay002ManagerCheck": "Check the bank history before recording this payment.",
+  "ctrlMsgCardTerminalBusy": "Card terminal is busy. Wait a moment and try again."
 }

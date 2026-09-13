@@ -3836,7 +3836,9 @@ class PosController extends ChangeNotifier
   /// bank terminal assigned to this device — gets a localized, actionable
   /// message instead ("ask the administrator to assign a terminal").
   String _cardFailureMessage(MosambeePaymentResult result) =>
-      result.isMissingTerminalId
+      result.isTerminalBusy
+      ? _l10n.ctrlMsgCardTerminalBusy
+      : result.isMissingTerminalId
       ? _l10n.ctrlMsgCardNoTerminalAssigned
       : result.userMessage;
 
@@ -3974,7 +3976,9 @@ class PosController extends ChangeNotifier
     final surface = event['surface']?.toString() ?? 'unknown';
 
     if (!isProcessingPayment) return;
-    if (stage != 'login_started' && stage != 'payment_started') return;
+    final isLogin = stage == 'login' || stage == 'login_started';
+    final isPayment = stage == 'payment' || stage == 'payment_started';
+    if (!isLogin && !isPayment) return;
 
     debugPrint(
       'PosController received Mosambee launch event: $stage on $surface.',
@@ -3986,10 +3990,10 @@ class PosController extends ChangeNotifier
 
     paymentStatus = 'Processing payment';
     _showPaymentLaunchOverlay(
-      title: stage == 'login_started'
+      title: isLogin
           ? _l10n.ctrlOverlayConnectingTerminal
           : _l10n.ctrlOverlayWaitingPaymentResult,
-      message: stage == 'login_started'
+      message: isLogin
           ? _l10n.ctrlMsgTerminalOpening
           : charityRoundUpAccepted
           ? _l10n.ctrlMsgRoundedSentToTerminal

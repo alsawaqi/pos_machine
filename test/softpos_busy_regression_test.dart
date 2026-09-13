@@ -7,7 +7,7 @@ import 'package:pos_machine/services/mosambee_payment_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   test(
-    'PAY002 BUSY makes exactly one launch and requires a manager check',
+    'PAY002 BUSY makes exactly one launch and is pre-dispatch busy with no record action',
     () async {
       FlutterSecureStorage.setMockInitialValues({'terminal_pin': 'TESTPIN'});
       SharedPreferences.setMockInitialValues({
@@ -31,7 +31,8 @@ void main() {
         'payWithPreparedSession',
       ], reason: 'No automatic loginAndPay: $calls');
       expect(result.payload['code'], 'BUSY');
-      expect(result.isUncertain, isTrue);
+      expect(result.isUncertain, isFalse);
+      expect(result.neverReachedTerminal, isTrue);
     },
   );
 }

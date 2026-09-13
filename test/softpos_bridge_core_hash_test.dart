@@ -9,10 +9,10 @@ void main() {
     final roots =
         Platform.environment['PAY002_PEER_ROOTS']?.split(';') ??
         [
-          r'C:\src\worktrees\pay002-p2-pos-machine',
-          r'C:\src\worktrees\pay002-p2-pos-handheld',
-          r'C:\src\worktrees\pay002-p2-pos-station',
-        ];
+          'pos_machine',
+          'pos_handheld',
+          'pos_station',
+        ].map((name) => '${Directory.current.parent.path}/$name').toList();
     expect(roots, hasLength(3));
     final own = File(core);
     expect(
@@ -23,7 +23,12 @@ void main() {
     final hash = sha256.convert(own.readAsBytesSync()).toString();
     for (final root in roots) {
       final peer = File('$root/$core');
-      expect(peer.existsSync(), isTrue, reason: 'Missing peer export: $root');
+      expect(
+        peer.existsSync(),
+        isTrue,
+        reason:
+            'Missing peer export: $root. Set PAY002_PEER_ROOTS to three exported repository roots separated by semicolons.',
+      );
       expect(sha256.convert(peer.readAsBytesSync()).toString(), hash);
     }
     final source = own.readAsStringSync();

@@ -31,7 +31,7 @@ dependencies:
   mithqal_softpos:
     git:
       url: https://github.com/alsawaqi/mithqal_softpos.git
-      ref: 3765ec9046e4dc2d116cf260d6c137f7b7861c70
+      ref: 7ae9a1260f1d77991c3eaae6bd21ee4fc78955e9
   flutter:
     sdk: flutter
   flutter_presentation_display: ^2.0.7

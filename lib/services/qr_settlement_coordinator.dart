@@ -402,7 +402,7 @@ class QrSettlementCoordinator implements QrSettlementFlow {
           releaseError: releaseError,
         );
       }
-      if (terminalResult.isCanceled) {
+      if (terminalResult.isCanceled && !terminalResult.neverReachedTerminal) {
         final releaseError = await _releaseCapturingError(
           claim,
           QrReleaseOutcome.cancelled,
@@ -445,9 +445,9 @@ class QrSettlementCoordinator implements QrSettlementFlow {
         softposReference: terminalResult.softposReference,
         softposAuthCode: terminalResult.softposAuthCode,
         bankResponse: terminalResult.payload,
-      transactionId: terminalResult.identifiers.transactionId,
-      rrn: terminalResult.identifiers.rrn,
-      authCode: terminalResult.identifiers.authCode,
+        transactionId: terminalResult.identifiers.transactionId,
+        rrn: terminalResult.identifiers.rrn,
+        authCode: terminalResult.identifiers.authCode,
       );
     }
 

@@ -794,11 +794,11 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "3765ec9046e4dc2d116cf260d6c137f7b7861c70"
-      resolved-ref: "3765ec9046e4dc2d116cf260d6c137f7b7861c70"
+      ref: "7ae9a1260f1d77991c3eaae6bd21ee4fc78955e9"
+      resolved-ref: "7ae9a1260f1d77991c3eaae6bd21ee4fc78955e9"
       url: "https://github.com/alsawaqi/mithqal_softpos.git"
     source: git
-    version: "0.1.0"
+    version: "0.1.1"
   mobile_scanner:
     dependency: "direct main"
     description:

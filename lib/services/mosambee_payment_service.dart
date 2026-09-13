@@ -51,11 +51,28 @@ class MosambeePaymentResult {
   /// the bank, so recording it would invent revenue that no settlement file
   /// can ever match.
   bool get neverReachedTerminal {
-    if (isSuccess || isCanceled) return false;
+    if (isSuccess) return false;
     final code = payload['code']?.toString().toUpperCase();
-    if (code == 'SOFTPOS_NOT_RESPONDING' || code == 'BUSY') return false;
-    return const {'NO_SESSION', 'BAD_ARGS', 'NO_BRIDGE', 'MISSING_TERMINAL_ID',
-        'NO_TERMINAL_CREDENTIALS'}.contains(code) || payload['dispatch_failed'] == true ||
+    if (code == 'SOFTPOS_NOT_RESPONDING') return false;
+    if (code != 'BUSY' &&
+        (payload['status'] == 'cancelled' || payload['status'] == 'canceled') &&
+        isCanceled) {
+      return false;
+    }
+    if (code == 'BUSY' ||
+        payload['dispatch_failed'] == true ||
+        payload['dispatchFailed'] == true) {
+      return true;
+    }
+    if (isCanceled) return false;
+    return const {
+          'NO_SESSION',
+          'BAD_ARGS',
+          'NO_BRIDGE',
+          'MISSING_TERMINAL_ID',
+          'NO_TERMINAL_CREDENTIALS',
+        }.contains(code) ||
+        payload['dispatch_failed'] == true ||
         payload['dispatchFailed'] == true ||
         payload['stage'] == 'preflight' ||
         payload['stage'] == 'login';
@@ -70,6 +87,7 @@ class MosambeePaymentResult {
   /// unknown even though the older Phase 0 UI deliberately suppresses its
   /// force-record action through [neverReachedTerminal].
   MosambeeFailurePhase get failurePhase {
+    if (neverReachedTerminal) return MosambeeFailurePhase.preDispatch;
     if (isSuccess || isCanceled) return MosambeeFailurePhase.none;
 
     final code = _lookupString(payload, const ['code']).toUpperCase();
@@ -91,6 +109,10 @@ class MosambeePaymentResult {
 
   /// The native bridge had no pre-warmed login session to pay with (so the caller
   /// should fall back to a full login+pay).
+  /// BUSY refuses this attempt before dispatch; force-record stays refused.
+  bool get isTerminalBusy =>
+      payload['code']?.toString().toUpperCase() == 'BUSY';
+
   bool get isNoSession =>
       _lookupString(payload, const ['code']).toUpperCase() == 'NO_SESSION';
 
@@ -301,7 +323,11 @@ class MosambeePaymentService {
   /// [loginAndPay] when no warm session is available (already consumed, expired,
   /// or never prepared), so a sale never fails just because the session lapsed.
   Future<MosambeePaymentResult> payWithPreparedSession(double amountOmr) async {
-    return payWithPreparedSessionBaisas(omrToBaisas(amountOmr));
+    try {
+      return await payWithPreparedSessionBaisas(omrToBaisas(amountOmr));
+    } catch (error) {
+      return _dispatchFailure('flutter', 'DART_ERROR', error.toString());
+    }
   }
 
   /// Integer-baisas entrypoint for server-priced QR settlements. Keeping the
@@ -405,6 +431,7 @@ class MosambeePaymentService {
         'NO_BRIDGE',
         'MISSING_TERMINAL_ID',
         'NO_TERMINAL_CREDENTIALS',
+        'DART_ERROR',
       }.contains(code),
       'code': code,
       'message': message,
@@ -450,7 +477,11 @@ class MosambeePaymentService {
       );
 
   Future<MosambeePaymentResult> loginAndPay(double amountOmr) async {
-    return loginAndPayBaisas(omrToBaisas(amountOmr));
+    try {
+      return await loginAndPayBaisas(omrToBaisas(amountOmr));
+    } catch (error) {
+      return _dispatchFailure('flutter', 'DART_ERROR', error.toString());
+    }
   }
 
   Future<MosambeePaymentResult> loginAndPayBaisas(int amountBaisas) async {
@@ -523,7 +554,15 @@ class MosambeePaymentService {
     } on PlatformException catch (error) {
       return SoftPosOutcome.fromPayload({
         'code': error.code,
-        'status': 'uncertain',
+        'status': 'cancelled',
+        'dispatchFailed': true,
+        'description': error.message,
+      });
+    } on MissingPluginException catch (error) {
+      return SoftPosOutcome.fromPayload({
+        'code': 'NO_BRIDGE',
+        'status': 'cancelled',
+        'dispatchFailed': true,
         'description': error.message,
       });
     } catch (_) {

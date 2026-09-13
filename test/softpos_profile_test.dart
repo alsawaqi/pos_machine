@@ -105,7 +105,7 @@ void main() {
       final result = await MosambeePaymentService()
           .payWithPreparedSessionBaisas(4750);
       expect(result.payload['code'], 'BUSY');
-      expect(result.isUncertain, isTrue);
+      expect(result.isUncertain, isFalse);
       expect(calls, ['payWithPreparedSession']);
     },
   );
