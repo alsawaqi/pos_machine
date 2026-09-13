@@ -445,6 +445,9 @@ class QrSettlementCoordinator implements QrSettlementFlow {
         softposReference: terminalResult.softposReference,
         softposAuthCode: terminalResult.softposAuthCode,
         bankResponse: terminalResult.payload,
+      transactionId: terminalResult.identifiers.transactionId,
+      rrn: terminalResult.identifiers.rrn,
+      authCode: terminalResult.identifiers.authCode,
       );
     }
 

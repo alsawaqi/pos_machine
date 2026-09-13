@@ -6,6 +6,8 @@ import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
 import 'qr_scanner_screen.dart';
+import 'card_reversal_sheet.dart';
+import '../services/mosambee_payment_service.dart';
 import 'settings_screen.dart';
 
 /// Layer 1 (one-time, admin): scan OR type the single activation code generated
@@ -154,6 +156,12 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
                   ],
                 ),
                 const SizedBox(height: 20),
+                SoftposTerminalPanel(
+                  profile: ref.read(sessionServiceProvider).softpos,
+                  reason: ref.read(sessionServiceProvider).softpos.unavailableReason(
+                    terminalId: ref.read(sessionServiceProvider).terminalId,
+                    terminalPin: ref.read(sessionServiceProvider).terminalPin),
+                  check: MosambeePaymentService().checkTerminal),
                 TextField(
                   controller: _codeController,
                   style: const TextStyle(color: Colors.white),

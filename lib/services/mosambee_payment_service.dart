@@ -1,3 +1,4 @@
+import 'package:mithqal_softpos/mithqal_softpos.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -26,52 +27,11 @@ class MosambeePaymentResult {
     return MosambeePaymentResult(rawPayload: safeRaw, payload: decoded);
   }
 
-  bool get isSuccess {
-    final statusRaw = _lookupString(payload, const [
-      'status',
-      'result',
-      'paymentStatus',
-      'payment_status',
-    ]).toLowerCase();
-
-    final receiptResponse = _nestedMap(payload['receiptResponse']);
-    final responseCode = _lookupString(payload, const [
-      'paymentResponseCode',
-      'responseCode',
-    ]).trim();
-    final receiptCode = _lookupString(receiptResponse, const [
-      'responseCode',
-      'paymentResponseCode',
-    ]).trim();
-    final receiptResult = _lookupString(receiptResponse, const [
-      'result',
-    ]).toLowerCase();
-
-    return statusRaw == 'success' ||
-        responseCode == '0' ||
-        responseCode == '00' ||
-        receiptCode == '0' ||
-        receiptCode == '00' ||
-        receiptResult == 'success';
-  }
-
-  bool get isCanceled {
-    final statusRaw = _lookupString(payload, const [
-      'status',
-      'result',
-      'paymentStatus',
-      'payment_status',
-    ]).toLowerCase();
-    // _reportedMessage, NOT userMessage: userMessage's last-resort fallback
-    // asks isCanceled, so using it here made the two recurse forever (a
-    // stack overflow at the till) whenever the terminal answered without
-    // any message field.
-    final message = _reportedMessage.toLowerCase();
-
-    return statusRaw == 'canceled' ||
-        statusRaw == 'cancelled' ||
-        message.contains('cancel');
-  }
+  SoftPosOutcome get outcome => SoftPosOutcome.fromPayload(payload);
+  SoftPosReceiptIdentifiers get identifiers => outcome.identifiers;
+  bool get isSuccess => outcome.verdict == SoftPosVerdict.approved;
+  bool get isDeclined => outcome.verdict == SoftPosVerdict.declined;
+  bool get isCanceled => outcome.verdict == SoftPosVerdict.cancelled;
 
   /// This device has no bank terminal assigned — the one
   /// [neverReachedTerminal] case the cashier can act on (call the admin),
@@ -92,52 +52,13 @@ class MosambeePaymentResult {
   /// can ever match.
   bool get neverReachedTerminal {
     if (isSuccess || isCanceled) return false;
-
-    // (1) The strongest signal, and the one that does not depend on
-    // enumerating codes: the native bridge calls result.error() ONLY before
-    // startActivityForResult, so every PlatformException the Dart wrapper
-    // catches is by construction a failure to DISPATCH. The wrapper stamps
-    // this marker; anything carrying it provably never reached the acquirer.
-    if (payload['dispatch_failed'] == true) return true;
-
-    final code = _lookupString(payload, const ['code']).toUpperCase();
-    if (const {
-      'MISSING_TERMINAL_ID',
-      'BAD_ARGS',
-      'BUSY', // bridge refused: another transaction holds it, we sent nothing
-      'NO_SESSION', // emitted before any intent is dispatched
-      'NO_BRIDGE', // no native implementation in this build
-      // The activity launched but never produced a result. The Phase 0 owner
-      // classifies this watchdog outcome as never reached so it can never
-      // expose the force-record action.
-      'SOFTPOS_NOT_RESPONDING',
-    }.contains(code)) {
-      return true;
-    }
-
-    // (2) A failure still at the LOGIN stage means no payment intent was ever
-    // dispatched to the acquirer, so there is nothing to reconcile. The
-    // bridge reports stage 'login' only when the chain STOPPED there — a
-    // login that continues into payment reports stage 'payment'.
-    final stage = _lookupString(payload, const ['stage']).toLowerCase();
-    if (stage == 'login' || stage == 'preflight') return true;
-
-    // (3) Last resort: the launch-failure wordings. Scoped to payloads
-    // carrying NO acquirer evidence — the acquirer authors
-    // paymentDescription, and real verdicts like "Card record was not found"
-    // would otherwise be misread as a failure to launch, hiding the
-    // force-record button on a card that may genuinely have been charged.
-    if (_lookupString(payload, const ['paymentResponseCode', 'responseCode'])
-            .trim()
-            .isNotEmpty ||
-        _nestedMap(payload['receiptResponse']).isNotEmpty) {
-      return false;
-    }
-    final message = _reportedMessage.toLowerCase();
-    return message.contains('is not installed') ||
-        message.contains('was not found') ||
-        message.contains('unable to launch') ||
-        message.contains('unable to continue');
+    final code = payload['code']?.toString().toUpperCase();
+    if (code == 'SOFTPOS_NOT_RESPONDING' || code == 'BUSY') return false;
+    return const {'NO_SESSION', 'BAD_ARGS', 'NO_BRIDGE', 'MISSING_TERMINAL_ID',
+        'NO_TERMINAL_CREDENTIALS'}.contains(code) || payload['dispatch_failed'] == true ||
+        payload['dispatchFailed'] == true ||
+        payload['stage'] == 'preflight' ||
+        payload['stage'] == 'login';
   }
 
   /// Whether a failed result is proven to precede the payment intent, or may
@@ -165,7 +86,8 @@ class MosambeePaymentResult {
   /// ambiguous terminal verdict). The cashier may force-record these as
   /// pending reconciliation rather than losing the sale — but only when the
   /// charge actually reached the terminal (see [neverReachedTerminal]).
-  bool get isUncertain => !isSuccess && !isCanceled && !neverReachedTerminal;
+  bool get isUncertain =>
+      !isSuccess && !isDeclined && !isCanceled && !neverReachedTerminal;
 
   /// The native bridge had no pre-warmed login session to pay with (so the caller
   /// should fall back to a full login+pay).
@@ -238,7 +160,7 @@ class MosambeePaymentResult {
   static Map<String, dynamic> _decodePayload(String rawPayload) {
     if (rawPayload.isEmpty) {
       return <String, dynamic>{
-        'status': 'failed',
+        'status': 'uncertain',
         'message': 'Empty payment response.',
       };
     }
@@ -252,7 +174,7 @@ class MosambeePaymentResult {
     } catch (_) {}
 
     return <String, dynamic>{
-      'status': 'failed',
+      'status': 'uncertain',
       'raw': rawPayload,
       'message': rawPayload,
     };
@@ -294,16 +216,12 @@ class MosambeePaymentService {
   static void Function(Map<String, dynamic> event)? _launchStateListener;
 
   static const String appPackageName = 'com.mosambee.dhofar.softpos';
-  static const String defaultTerminalPin = '1321';
   static const String partnerId = '';
   static const Duration defaultLaunchWatchdogTimeout = Duration(seconds: 95);
 
   /// The Mosambee login PIN to use: the bank-issued per-device PIN cached
   /// under prefs 'terminal_pin' when set, else the [defaultTerminalPin].
-  static String effectivePin(String? cached) =>
-      (cached == null || cached.trim().isEmpty)
-          ? defaultTerminalPin
-          : cached.trim();
+  static String effectivePin(String? cached) => cached?.trim() ?? '';
 
   MosambeePaymentService({
     this.launchWatchdogTimeout = defaultLaunchWatchdogTimeout,
@@ -320,16 +238,19 @@ class MosambeePaymentService {
     _ensureHandlerInstalled();
   }
 
-  Map<String, String> _loginArgs(String terminalId, String pin) => {
+  SoftPosProfile _profile = const SoftPosProfile();
+
+  Map<String, dynamic> _loginArgs(String terminalId, String pin) => {
     'userName': terminalId,
     'pin': pin,
     'partnerId': partnerId,
-    'packageName': appPackageName,
+    ..._profile.channelArguments,
   };
 
-  Map<String, String> _paymentArgsBaisas(int amountBaisas) => {
-    'packageName': appPackageName,
+  Map<String, dynamic> _paymentArgsBaisas(int amountBaisas) => {
+    ..._profile.channelArguments,
     'amount': amountBaisas.toString(),
+    'amountBaisas': amountBaisas,
     'mobNo': '',
     'description': 'Mithqal POS Order',
   };
@@ -357,6 +278,7 @@ class MosambeePaymentService {
   }
 
   Future<String?> _prepareSessionOnce() async {
+    _profile = await LocalStorageService.getSoftposProfile();
     final terminalId = (await LocalStorageService.getTerminalId())?.trim();
     if (terminalId == null || terminalId.isEmpty) {
       return null; // not configured — nothing to warm
@@ -364,6 +286,7 @@ class MosambeePaymentService {
     final pin = MosambeePaymentService.effectivePin(
       await LocalStorageService.getTerminalPin(),
     );
+    if (!_profile.canPay(terminalId: terminalId, terminalPin: pin)) return null;
     // Native owns the background pre-warm watchdog. Starting a 95-second Dart
     // timer here would outlive screens/tests that intentionally fire-and-forget
     // this best-effort warm-up. The payment path applies its own bounded wait
@@ -378,7 +301,7 @@ class MosambeePaymentService {
   /// [loginAndPay] when no warm session is available (already consumed, expired,
   /// or never prepared), so a sale never fails just because the session lapsed.
   Future<MosambeePaymentResult> payWithPreparedSession(double amountOmr) async {
-    return payWithPreparedSessionBaisas((amountOmr * 1000).round());
+    return payWithPreparedSessionBaisas(omrToBaisas(amountOmr));
   }
 
   /// Integer-baisas entrypoint for server-priced QR settlements. Keeping the
@@ -390,28 +313,42 @@ class MosambeePaymentService {
     // Preflight (mirrors pos_handheld's payment screen): a device with no
     // bank terminal assigned can never charge, so fail FAST and clearly
     // instead of launching the SoftPOS app to watch it reject us.
+    _profile = await LocalStorageService.getSoftposProfile();
     final terminalId = (await LocalStorageService.getTerminalId())?.trim();
     if (terminalId == null || terminalId.isEmpty) {
       return MosambeePaymentResult.fromRaw(
         jsonEncode({
           'stage': 'preflight',
-          'status': 'failed',
+          'status': 'uncertain',
           'code': 'MISSING_TERMINAL_ID',
           'message': 'Terminal ID is not set.',
         }),
       );
     }
 
+    baisasToOmr(amountBaisas);
+    final pin = await LocalStorageService.getTerminalPin();
+    final reason = _profile.unavailableReason(
+      terminalId: terminalId,
+      terminalPin: pin,
+    );
+    if (reason != null) {
+      return _dispatchFailure('preflight', 'NO_TERMINAL_CREDENTIALS', reason);
+    }
     // Let any in-flight pre-warm finish first, to avoid a native BUSY race.
     final inFlight = _prepareInFlight;
     if (inFlight != null) {
-      await _awaitInFlightPreparation(inFlight);
+      try {
+        await _awaitInFlightPreparation(inFlight);
+      } on _SoftPosNotRespondingException {
+        return _notRespondingFailure();
+      }
     }
 
     try {
       final raw = await _invokeWithLaunchWatchdog<String>(
         'payWithPreparedSession',
-        _paymentArgsBaisas(amountBaisas),
+        {..._loginArgs(terminalId, pin!), ..._paymentArgsBaisas(amountBaisas)},
       );
       final result = MosambeePaymentResult.fromRaw(raw);
       if (result.isNoSession) {
@@ -421,11 +358,12 @@ class MosambeePaymentService {
     } on _SoftPosNotRespondingException {
       return _notRespondingFailure();
     } on PlatformException catch (error) {
-      if (error.code == 'BUSY') {
-        return loginAndPayBaisas(amountBaisas);
-      }
-      return _dispatchFailure('flutter_platform', error.code, error.message,
-          details: error.details);
+      return _dispatchFailure(
+        'flutter_platform',
+        error.code,
+        error.message,
+        details: error.details,
+      );
     } on MissingPluginException catch (error) {
       return _dispatchFailure('flutter_platform', 'NO_BRIDGE', error.message);
     } catch (error) {
@@ -441,6 +379,7 @@ class MosambeePaymentService {
       if (identical(_prepareInFlight, inFlight)) {
         _prepareInFlight = null;
       }
+      throw const _SoftPosNotRespondingException();
     } catch (_) {
       // Best-effort pre-warm failures fall through to the normal payment path.
     }
@@ -457,17 +396,21 @@ class MosambeePaymentService {
     String code,
     String? message, {
     Object? details,
-  }) =>
-      MosambeePaymentResult.fromRaw(
-        jsonEncode({
-          'stage': stage,
-          'status': 'failed',
-          'dispatch_failed': true,
-          'code': code,
-          'message': message,
-          'details': ?details,
-        }),
-      );
+  }) => MosambeePaymentResult.fromRaw(
+    jsonEncode({
+      'stage': stage,
+      'status': 'uncertain',
+      'dispatch_failed': const {
+        'BAD_ARGS',
+        'NO_BRIDGE',
+        'MISSING_TERMINAL_ID',
+        'NO_TERMINAL_CREDENTIALS',
+      }.contains(code),
+      'code': code,
+      'message': message,
+      'details': ?details,
+    }),
+  );
 
   /// Waits for exactly one native activity result. If the SoftPOS activity
   /// never returns, the cashier flow resolves once and asks native to release
@@ -491,7 +434,7 @@ class MosambeePaymentService {
   Future<void> _clearNativePendingPayment() async {
     try {
       await _platform
-          .invokeMethod<bool>('cancelPendingPayment')
+          .invokeMethod<bool>('cancelPendingOperation')
           .timeout(const Duration(seconds: 2));
     } catch (_) {}
   }
@@ -500,18 +443,19 @@ class MosambeePaymentService {
       MosambeePaymentResult.fromRaw(
         jsonEncode({
           'stage': 'watchdog',
-          'status': 'failed',
+          'status': 'uncertain',
           'code': 'SOFTPOS_NOT_RESPONDING',
           'message': 'Payment app not responding.',
         }),
       );
 
   Future<MosambeePaymentResult> loginAndPay(double amountOmr) async {
-    return loginAndPayBaisas((amountOmr * 1000).round());
+    return loginAndPayBaisas(omrToBaisas(amountOmr));
   }
 
   Future<MosambeePaymentResult> loginAndPayBaisas(int amountBaisas) async {
     try {
+      _profile = await LocalStorageService.getSoftposProfile();
       final terminalId = (await LocalStorageService.getTerminalId())?.trim();
       if (terminalId == null || terminalId.isEmpty) {
         throw PlatformException(
@@ -523,6 +467,14 @@ class MosambeePaymentService {
       final pin = MosambeePaymentService.effectivePin(
         await LocalStorageService.getTerminalPin(),
       );
+      baisasToOmr(amountBaisas);
+      final reason = _profile.unavailableReason(
+        terminalId: terminalId,
+        terminalPin: pin,
+      );
+      if (reason != null) {
+        return _dispatchFailure('preflight', 'NO_TERMINAL_CREDENTIALS', reason);
+      }
       final result = await _invokeWithLaunchWatchdog<String>('loginAndPay', {
         ..._loginArgs(terminalId, pin),
         ..._paymentArgsBaisas(amountBaisas),
@@ -532,12 +484,50 @@ class MosambeePaymentService {
     } on _SoftPosNotRespondingException {
       return _notRespondingFailure();
     } on PlatformException catch (error) {
-      return _dispatchFailure('flutter_platform', error.code, error.message,
-          details: error.details);
+      return _dispatchFailure(
+        'flutter_platform',
+        error.code,
+        error.message,
+        details: error.details,
+      );
     } on MissingPluginException catch (error) {
       return _dispatchFailure('flutter_platform', 'NO_BRIDGE', error.message);
     } catch (error) {
       return _dispatchFailure('flutter', 'DART_ERROR', error.toString());
+    }
+  }
+
+  Future<SoftPosOutcome> checkTerminal() async {
+    final profile = await LocalStorageService.getSoftposProfile();
+    return invokeBank('healthCheck', profile.channelArguments);
+  }
+
+  Future<SoftPosOutcome> invokeBank(
+    String method,
+    Map<String, dynamic> arguments,
+  ) async {
+    final profile = await LocalStorageService.getSoftposProfile();
+    final userName = await LocalStorageService.getTerminalId();
+    final pin = await LocalStorageService.getTerminalPin();
+    try {
+      return SoftPosOutcome.fromRaw(
+        await _invokeWithLaunchWatchdog<String>(method, {
+          ...profile.channelArguments,
+          'userName': userName,
+          'pin': pin,
+          ...arguments,
+        }),
+      );
+    } on _SoftPosNotRespondingException {
+      return SoftPosOutcome.fromPayload(_notRespondingFailure().payload);
+    } on PlatformException catch (error) {
+      return SoftPosOutcome.fromPayload({
+        'code': error.code,
+        'status': 'uncertain',
+        'description': error.message,
+      });
+    } catch (_) {
+      return SoftPosOutcome.fromPayload({'status': 'uncertain'});
     }
   }
 

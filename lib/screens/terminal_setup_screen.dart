@@ -3,6 +3,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../l10n/l10n.dart';
+import 'card_reversal_sheet.dart';
+import '../services/mosambee_payment_service.dart';
+import 'package:mithqal_softpos/mithqal_softpos.dart';
 import '../services/local_storage_service.dart';
 
 class TerminalSetupScreen extends StatefulWidget {
@@ -160,6 +163,11 @@ class _TerminalSetupScreenState extends State<TerminalSetupScreen> {
                               ),
                             ),
                             const SizedBox(height: 24),
+                            FutureBuilder<SoftPosProfile>(
+                              future: LocalStorageService.getSoftposProfile(),
+                              builder: (context, snapshot) => SoftposTerminalPanel(
+                                profile: snapshot.data ?? const SoftPosProfile(),
+                                check: MosambeePaymentService().checkTerminal)),
                             TextField(
                               controller: _terminalIdController,
                               keyboardType: TextInputType.text,

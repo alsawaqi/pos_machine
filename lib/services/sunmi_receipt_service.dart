@@ -1,3 +1,4 @@
+import 'package:mithqal_softpos/mithqal_softpos.dart';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -8,6 +9,11 @@ import 'kitchen_ticket.dart';
 import 'shift_summary.dart';
 
 class SunmiReceiptService {
+  static Future<bool> printReversalSlip(List<SlipLine> lines) =>
+      _printLines([for (final line in lines)
+        KitchenTicketLine(line.text, bold: line.bold, center: true,
+          fontSize: line.large ? 32 : 24)]);
+
   /// Phase G4 — false once a print hit MissingPluginException (non-Sunmi /
   /// dev hardware: there IS no printer). Callers use it to stay silent on
   /// dev instead of alerting staff about a printer that never existed.

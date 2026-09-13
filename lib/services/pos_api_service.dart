@@ -1,3 +1,5 @@
+import 'package:mithqal_softpos/mithqal_softpos.dart';
+
 import 'package:dio/dio.dart';
 
 import '../core/api_config.dart';
@@ -38,6 +40,7 @@ class PosApiService {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
+          options.headers['X-Mithqal-SoftPos-Capable'] = '1';
           // Resolve the server URL per request so debug Settings changes take
           // effect without rebuilding the client. Release reads are locked to
           // the compile-time configuration by SettingsService.
@@ -53,6 +56,13 @@ class PosApiService {
         },
       ),
     );
+  }
+
+  Future<Map<String, dynamic>> reversalRequest(
+      String method, String path, Map<String, dynamic>? body) async {
+    final result = await _send(() => _dio.request<dynamic>(path,
+      data: body, options: Options(method: method)));
+    return result.dataMap;
   }
 
   final Dio _dio;
@@ -175,6 +185,7 @@ class PosApiService {
       Map<String, dynamic> data,
       String? terminalId,
       String? terminalPin,
+      SoftPosProfile softpos,
       String? generatedAt,
       Map<String, dynamic>? websocket,
       bool? audienceMeasurement,
@@ -186,6 +197,9 @@ class PosApiService {
       data: body.dataMap,
       terminalId: body.metaMap['terminal_id'] as String?,
       terminalPin: body.metaMap['terminal_pin'] as String?,
+      softpos: SoftPosProfile.fromJson(
+        (body.metaMap['softpos'] as Map?)?.cast<String, dynamic>(),
+      ),
       generatedAt: body.metaMap['generated_at'] as String?,
       websocket: (body.metaMap['websocket'] as Map?)?.cast<String, dynamic>(),
       // Marketing #46 — server-driven audience gate; absent on older servers.
@@ -201,6 +215,7 @@ class PosApiService {
       Map<String, dynamic> data,
       String? terminalId,
       String? terminalPin,
+      SoftPosProfile softpos,
       String? generatedAt,
       Map<String, dynamic>? websocket,
       bool? audienceMeasurement,
@@ -214,6 +229,9 @@ class PosApiService {
       data: body.dataMap,
       terminalId: body.metaMap['terminal_id'] as String?,
       terminalPin: body.metaMap['terminal_pin'] as String?,
+      softpos: SoftPosProfile.fromJson(
+        (body.metaMap['softpos'] as Map?)?.cast<String, dynamic>(),
+      ),
       generatedAt: body.metaMap['generated_at'] as String?,
       websocket: (body.metaMap['websocket'] as Map?)?.cast<String, dynamic>(),
       // Marketing #46 — server-driven audience gate; absent on older servers.

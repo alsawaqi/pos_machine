@@ -1,3 +1,5 @@
+import 'package:mithqal_softpos/mithqal_softpos.dart';
+
 // Plain DTOs for the auth responses from pos_api. The config bundle itself is
 // handled as a raw Map and mapped in config_mapper.dart.
 
@@ -13,6 +15,7 @@ class PairResult {
     this.kioskId,
     this.terminalId,
     this.terminalPin,
+    this.softpos = const SoftPosProfile(),
     this.deviceName,
   });
 
@@ -22,7 +25,8 @@ class PairResult {
   final int? branchId;
   final String? kioskId;
   final String? terminalId;
-  final String? terminalPin; // bank-issued Mosambee PIN (null = default)
+  final SoftPosProfile softpos;
+  final String? terminalPin; // bank-issued Mosambee PIN (null = card disabled)
   final String? deviceName;
 
   factory PairResult.fromJson(Map<String, dynamic> json) {
@@ -35,6 +39,9 @@ class PairResult {
       kioskId: device?['kiosk_id'] as String?,
       terminalId: device?['terminal_id'] as String?,
       terminalPin: device?['terminal_pin'] as String?,
+      softpos: SoftPosProfile.fromJson(
+        (device?['softpos'] as Map?)?.cast<String, dynamic>(),
+      ),
       deviceName: device?['name'] as String?,
     );
   }
@@ -55,7 +62,8 @@ class StaffSessionData {
   final String? position;
   final int? branchId;
 
-  factory StaffSessionData.fromJson(Map<String, dynamic> json) => StaffSessionData(
+  factory StaffSessionData.fromJson(Map<String, dynamic> json) =>
+      StaffSessionData(
         id: (json['id'] as num).toInt(),
         name: (json['name'] ?? '').toString(),
         uuid: json['uuid'] as String?,
@@ -64,14 +72,15 @@ class StaffSessionData {
       );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'uuid': uuid,
-        'position': position,
-        'branch_id': branchId,
-      };
+    'id': id,
+    'name': name,
+    'uuid': uuid,
+    'position': position,
+    'branch_id': branchId,
+  };
 
-  factory StaffSessionData.fromStored(Map<String, dynamic> json) => StaffSessionData.fromJson(json);
+  factory StaffSessionData.fromStored(Map<String, dynamic> json) =>
+      StaffSessionData.fromJson(json);
 
   /// A manager may perform manager-only POS actions.
   bool get isManager => (position ?? '').toLowerCase().contains('manager');

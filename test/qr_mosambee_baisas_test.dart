@@ -1,3 +1,4 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/services/mosambee_payment_service.dart';
@@ -5,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => FlutterSecureStorage.setMockInitialValues({'terminal_pin':'TESTPIN'}));
   const channel = MethodChannel('com.example.mosambee');
 
   tearDown(() {
@@ -20,7 +22,7 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
             captured = call;
-            return '{"status":"success","rrn":"RRN-1"}';
+            return '{"status":"success","responseCode":"00","rrn":"RRN-1"}';
           });
 
       // Deliberately above IEEE-754's exact-integer boundary. This is not a real

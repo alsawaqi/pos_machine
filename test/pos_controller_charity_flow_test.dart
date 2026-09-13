@@ -1,3 +1,4 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:async';
 
 import 'package:flutter/services.dart';
@@ -156,6 +157,7 @@ void main() {
   late _FakeOrderStorageService fakeStorage;
 
   setUp(() async {
+    FlutterSecureStorage.setMockInitialValues({'terminal_pin':'TESTPIN'});
     SharedPreferences.setMockInitialValues({'terminal_id': 'TERM-1001'});
     // The expectations in this file are written against 5% VAT — taxes are
     // config-driven now (empty ⇒ no tax), so seed the historical rate.
@@ -427,7 +429,7 @@ void main() {
                 call.arguments as Map,
               );
               sentAmount = arguments['amount']?.toString();
-              return '{"status":"success","message":"Payment approved."}';
+              return '{"status":"success","responseCode":"00","message":"Payment approved."}';
             }
             return null;
           });
@@ -472,7 +474,7 @@ void main() {
                 call.arguments as Map,
               );
               sentAmount = arguments['amount']?.toString();
-              return '{"status":"success","message":"Payment approved."}';
+              return '{"status":"success","responseCode":"00","message":"Payment approved."}';
             }
             return null;
           });
@@ -516,7 +518,7 @@ void main() {
                 call.arguments as Map,
               );
               sentAmount = arguments['amount']?.toString();
-              return '{"status":"success","message":"Payment approved."}';
+              return '{"status":"success","responseCode":"00","message":"Payment approved."}';
             }
             return null;
           });
@@ -631,7 +633,7 @@ void main() {
       expect(openRearDisplayCalls, 1);
 
       paymentCompleter.complete(
-        '{"status":"success","message":"Payment approved."}',
+        '{"status":"success","responseCode":"00","message":"Payment approved."}',
       );
       await tester.pump(const Duration(milliseconds: 1800));
 
@@ -658,7 +660,7 @@ void main() {
             }
             if (call.method == 'loginAndPay') {
               loginAndPayCalls++;
-              return '{"status":"success","message":"Payment approved."}';
+              return '{"status":"success","responseCode":"00","message":"Payment approved."}';
             }
             return null;
           });
@@ -768,7 +770,7 @@ void main() {
                 call.arguments as Map,
               );
               sentAmounts.add(arguments['amount']?.toString() ?? '');
-              return '{"status":"success","message":"Payment approved."}';
+              return '{"status":"success","responseCode":"00","message":"Payment approved."}';
             }
             return null;
           });
@@ -837,7 +839,7 @@ void main() {
                 call.arguments as Map,
               );
               sentAmount = arguments['amount']?.toString();
-              return '{"status":"success","message":"Payment approved."}';
+              return '{"status":"success","responseCode":"00","message":"Payment approved."}';
             }
             return null;
           });

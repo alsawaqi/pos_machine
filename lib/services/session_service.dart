@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:mithqal_softpos/mithqal_softpos.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,19 +23,20 @@ class OpenShiftData {
   final int staffId;
 
   factory OpenShiftData.fromJson(Map<String, dynamic> json) => OpenShiftData(
-        uuid: json['uuid'].toString(),
-        openingCashBaisas: (json['opening_cash_baisas'] as num?)?.toInt() ?? 0,
-        openedAt: DateTime.tryParse(json['opened_at']?.toString() ?? '') ??
-            DateTime.fromMillisecondsSinceEpoch(0),
-        staffId: (json['staff_id'] as num?)?.toInt() ?? 0,
-      );
+    uuid: json['uuid'].toString(),
+    openingCashBaisas: (json['opening_cash_baisas'] as num?)?.toInt() ?? 0,
+    openedAt:
+        DateTime.tryParse(json['opened_at']?.toString() ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0),
+    staffId: (json['staff_id'] as num?)?.toInt() ?? 0,
+  );
 
   Map<String, dynamic> toJson() => {
-        'uuid': uuid,
-        'opening_cash_baisas': openingCashBaisas,
-        'opened_at': openedAt.toIso8601String(),
-        'staff_id': staffId,
-      };
+    'uuid': uuid,
+    'opening_cash_baisas': openingCashBaisas,
+    'opened_at': openedAt.toIso8601String(),
+    'staff_id': staffId,
+  };
 }
 
 /// Immutable snapshot of the device/staff session, watched by the boot gate.
@@ -46,6 +48,7 @@ class SessionState {
     this.kioskId,
     this.terminalId,
     this.terminalPin,
+    this.softpos = const SoftPosProfile(),
     this.staff,
     this.openShift,
   });
@@ -54,8 +57,10 @@ class SessionState {
   final int? companyId;
   final int? branchId;
   final String? kioskId; // fetched at activation (layer 1)
-  final String? terminalId; // fetched at activation + refreshed from config (Soft POS)
-  final String? terminalPin; // bank-issued Mosambee login PIN (null = default)
+  final String?
+  terminalId; // fetched at activation + refreshed from config (Soft POS)
+  final String? terminalPin; // Null disables card payments.
+  final SoftPosProfile softpos;
   final StaffSessionData? staff;
   final OpenShiftData? openShift;
 
@@ -97,7 +102,17 @@ class SessionService {
 
   String? get kioskId => _prefs.getString(_kKioskId);
   String? get terminalId => _prefs.getString(_kTerminalId);
-  String? get terminalPin => _prefs.getString(_kTerminalPin);
+  String? _terminalPin;
+  String? get terminalPin => _terminalPin;
+  SoftPosProfile get softpos {
+    final raw = _prefs.getString('softpos_profile');
+    if (raw == null) return const SoftPosProfile();
+    return SoftPosProfile.fromJson(softPosObject(raw));
+  }
+
+  Future<void> saveSoftpos(SoftPosProfile profile) =>
+      _prefs.setString('softpos_profile', jsonEncode(profile.toJson()));
+
   int? get companyId => _prefs.getInt(_kCompanyId);
   int? get branchId => _prefs.getInt(_kBranchId);
 
@@ -105,7 +120,9 @@ class SessionService {
     final raw = _prefs.getString(_kStaff);
     if (raw == null || raw.isEmpty) return null;
     try {
-      return StaffSessionData.fromStored(jsonDecode(raw) as Map<String, dynamic>);
+      return StaffSessionData.fromStored(
+        jsonDecode(raw) as Map<String, dynamic>,
+      );
     } catch (_) {
       return null;
     }
@@ -124,18 +141,26 @@ class SessionService {
   /// Read the persisted token into memory at startup.
   Future<void> load() async {
     _deviceToken = await _secure.read(key: _kDeviceToken);
+    _terminalPin = await _secure.read(key: _kTerminalPin);
+    final legacy = _prefs.getString(_kTerminalPin);
+    if (_terminalPin == null && legacy != null && legacy.trim().isNotEmpty) {
+      await _secure.write(key: _kTerminalPin, value: legacy.trim());
+      _terminalPin = legacy.trim();
+    }
+    await _prefs.remove(_kTerminalPin);
   }
 
   SessionState snapshot() => SessionState(
-        isConfigured: isConfigured,
-        companyId: companyId,
-        branchId: branchId,
-        kioskId: kioskId,
-        terminalId: terminalId,
-        terminalPin: terminalPin,
-        staff: staff,
-        openShift: openShift,
-      );
+    isConfigured: isConfigured,
+    companyId: companyId,
+    branchId: branchId,
+    kioskId: kioskId,
+    terminalId: terminalId,
+    terminalPin: terminalPin,
+    softpos: softpos,
+    staff: staff,
+    openShift: openShift,
+  );
 
   /// Store a successful device activation: device token + kiosk ID + terminal ID
   /// + company/branch. Layer-1 data that PERSISTS (only [clearForRePair] removes it).
@@ -149,6 +174,7 @@ class SessionService {
       await _prefs.setString(_kTerminalId, result.terminalId!);
     }
     await saveTerminalPin(result.terminalPin);
+    await saveSoftpos(result.softpos);
     if (result.companyId != null) {
       await _prefs.setInt(_kCompanyId, result.companyId!);
     }
@@ -165,14 +191,16 @@ class SessionService {
 
   /// Refresh the Mosambee terminal PIN from the server (activation + config).
   /// Unlike [saveTerminalId] (keep-last-known), null/empty REMOVES the cached
-  /// value — an admin clearing the PIN must revert the device to the default.
+  /// value — an admin clearing the PIN disables card payments.
   Future<void> saveTerminalPin(String? terminalPin) async {
     final trimmed = terminalPin?.trim();
-    if (trimmed == null || trimmed.isEmpty) {
-      await _prefs.remove(_kTerminalPin);
+    _terminalPin = trimmed == null || trimmed.isEmpty ? null : trimmed;
+    if (_terminalPin == null) {
+      await _secure.delete(key: _kTerminalPin);
     } else {
-      await _prefs.setString(_kTerminalPin, trimmed);
+      await _secure.write(key: _kTerminalPin, value: _terminalPin);
     }
+    await _prefs.remove(_kTerminalPin);
   }
 
   /// Phase C3 — the Reverb endpoint from /device/config meta.websocket
@@ -199,8 +227,9 @@ class SessionService {
   /// Marketing #46 — the server-driven audience-measurement consent from
   /// /device/config meta. Null = the server didn't state a policy (older
   /// pos_api) — the device-local Settings toggle stays in charge then.
-  bool? get serverAudienceMeasurement =>
-      _prefs.containsKey(_kAudienceServer) ? _prefs.getBool(_kAudienceServer) : null;
+  bool? get serverAudienceMeasurement => _prefs.containsKey(_kAudienceServer)
+      ? _prefs.getBool(_kAudienceServer)
+      : null;
 
   Future<void> saveServerAudienceMeasurement(bool? enabled) async {
     if (enabled == null) {
@@ -252,6 +281,8 @@ class SessionService {
   /// the layer-1 identity too, so the device must be re-activated with a new code.
   Future<void> clearForRePair() async {
     _deviceToken = null;
+    await saveTerminalPin(null);
+    await _prefs.remove('softpos_profile');
     await _secure.delete(key: _kDeviceToken);
     await _prefs.remove(_kStaff);
     await _prefs.remove(_kShift);

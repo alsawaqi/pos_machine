@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'card_reversal_sheet.dart';
+import 'card_reversal_factory.dart';
+import '../strings/softpos_strings.dart';
 import '../bill_combine/combine_controller.dart';
 import '../bill_combine/combine_gateway.dart';
 import '../bill_combine/combine_local.dart';
@@ -4001,6 +4004,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           subtitle: l10n.posHistorySubtitle,
           child: _OrderHistoryPanel(
             records: controller.orderHistory,
+            onReversal: (record) async {
+              await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
+                CardReversalScreen(
+                  controller: createMachineReversalController(ref,
+                    header: controller.receiptTemplate?.headerLines ?? const [],
+                    reference: record.snapshot.staffReference ?? record.orderNumber.toString(),
+                    receipt: record.snapshot.receiptNumber),
+                  orderUuid: record.snapshot.serverOrderUuid.isEmpty ? record.id : record.snapshot.serverOrderUuid,
+                  operatorName: ref.read(sessionServiceProvider).staff?.name ?? '',
+                  voidReasons: [for (final reason in controller.voidReasons)
+                    {'id': reason.id, 'name': Localizations.localeOf(context).languageCode == 'ar'
+                      ? reason.nameAr ?? reason.name : reason.name}],
+                )));
+              final refreshed = await ref.read(apiServiceProvider).fetchBranchOrders();
+              controller.applyServerOrderHistory(refreshed);
+              if (mounted) setState(() {});
+            },
             onRegisterManager: _registerManagerFingerprint,
             onPrint: (record) async {
               final printed = await controller.printHistoricalReceipt(record);
@@ -7201,6 +7221,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 Expanded(
                                   child: _PaymentMethodActionButton(
                                     label: l10n.posPaymentCard,
+                                    subtitle: ref.read(sessionServiceProvider).softpos.canPay(
+                                      terminalId: ref.read(sessionServiceProvider).terminalId,
+                                      terminalPin: ref.read(sessionServiceProvider).terminalPin)
+                                      ? '${softposText(context, 'payingVia')} ${ref.read(sessionServiceProvider).softpos.bankName}'
+                                      : softposText(context, ref.read(sessionServiceProvider).softpos.unavailableReason(
+                                          terminalId: ref.read(sessionServiceProvider).terminalId,
+                                          terminalPin: ref.read(sessionServiceProvider).terminalPin)!),
                                     icon: Icons.credit_card_rounded,
                                     gradient: const LinearGradient(
                                       begin: Alignment.topLeft,
@@ -7210,9 +7237,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                         Color(0xFF1F7236),
                                       ],
                                     ),
-                                    onTap: qr == null
-                                        ? _submitCardPayment
-                                        : () => _payQr(qr, 'card'),
+                                    onTap: !ref.read(sessionServiceProvider).softpos.canPay(
+                                        terminalId: ref.read(sessionServiceProvider).terminalId,
+                                        terminalPin: ref.read(sessionServiceProvider).terminalPin)
+                                      ? null : qr == null ? _submitCardPayment : () => _payQr(qr, 'card'),
                                   ),
                                 ),
                                 const SizedBox(height: 14),
@@ -11726,12 +11754,14 @@ class _PaymentKeyButton extends StatelessWidget {
 
 class _PaymentMethodActionButton extends StatelessWidget {
   final String label;
+  final String? subtitle;
   final IconData icon;
   final Gradient gradient;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _PaymentMethodActionButton({
     required this.label,
+    this.subtitle,
     required this.icon,
     required this.gradient,
     required this.onTap,
@@ -11772,11 +11802,11 @@ class _PaymentMethodActionButton extends StatelessWidget {
                 ],
               );
             }
-            return Column(
+            return Center(child: FittedBox(fit: BoxFit.scaleDown, child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(icon, size: 42, color: Colors.white),
-                const SizedBox(height: 18),
+                const SizedBox(height: 8),
                 Text(
                   label,
                   style: const TextStyle(
@@ -11785,8 +11815,9 @@ class _PaymentMethodActionButton extends StatelessWidget {
                     color: Colors.white,
                   ),
                 ),
+                if (subtitle != null) Padding(padding: const EdgeInsets.all(6), child: Text(subtitle!, style: const TextStyle(fontSize:12,color:Colors.white))),
               ],
-            );
+            )));
           },
         ),
       ),
@@ -13278,9 +13309,11 @@ class _OrderHistoryPanel extends StatelessWidget {
   final Future<void> Function(OrderHistoryRecord record) onPrint;
   final Future<void> Function(OrderHistoryRecord record) onPrintKitchen;
   final Future<void> Function(OrderHistoryRecord record) onCancel;
+  final Future<void> Function(OrderHistoryRecord record) onReversal;
 
   const _OrderHistoryPanel({
     required this.records,
+    required this.onReversal,
     required this.onRegisterManager,
     required this.onPrint,
     required this.onPrintKitchen,
@@ -13313,6 +13346,7 @@ class _OrderHistoryPanel extends StatelessWidget {
                       onPrint: () => onPrint(record),
                       onPrintKitchen: () => onPrintKitchen(record),
                       onCancel: () => onCancel(record),
+                      onReversal: () => onReversal(record),
                     );
                   },
                 ),
@@ -13610,6 +13644,7 @@ class _HeldOrderCard extends StatelessWidget {
 }
 
 class _OrderHistoryCard extends StatelessWidget {
+  final VoidCallback onReversal;
   final OrderHistoryRecord record;
   final VoidCallback onPrint;
   final VoidCallback onPrintKitchen;
@@ -13617,6 +13652,7 @@ class _OrderHistoryCard extends StatelessWidget {
 
   const _OrderHistoryCard({
     required this.record,
+    required this.onReversal,
     required this.onPrint,
     required this.onPrintKitchen,
     required this.onCancel,
@@ -13768,6 +13804,8 @@ class _OrderHistoryCard extends StatelessWidget {
                     onTap: onPrint,
                   ),
                 ),
+                TextButton(onPressed: onReversal,
+                  child: Text(softposText(context, 'title'))),
                 const SizedBox(height: 10),
                 // Phase C1 — manager-gated kitchen-ticket reprint (§6.10).
                 SizedBox(

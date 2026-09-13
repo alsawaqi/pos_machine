@@ -1303,12 +1303,14 @@ class IngredientRef {
 /// the pos_api Payment status — 'success' or 'pending_reconciliation' (the
 /// latter when the cashier force-records an unconfirmed/NFC-timeout charge).
 class CardCharge {
+  final String? transactionId, rrn, authCode;
   final String? softposReference;
   final String? softposAuthCode;
   final Map<String, dynamic>? bankResponse;
   final String status;
 
   const CardCharge({
+    this.transactionId, this.rrn, this.authCode,
     this.softposReference,
     this.softposAuthCode,
     this.bankResponse,
@@ -1320,6 +1322,9 @@ class CardCharge {
   factory CardCharge.fromMap(Map<String, dynamic> map) {
     final raw = map['bankResponse'];
     return CardCharge(
+      transactionId: map['transactionId']?.toString(),
+      rrn: map['rrn']?.toString(),
+      authCode: map['authCode']?.toString(),
       softposReference: map['softposReference']?.toString(),
       softposAuthCode: map['softposAuthCode']?.toString(),
       bankResponse: raw is Map ? Map<String, dynamic>.from(raw) : null,
@@ -1329,6 +1334,9 @@ class CardCharge {
 
   Map<String, dynamic> toMap() {
     return {
+      if (transactionId != null) 'transactionId': transactionId,
+      if (rrn != null) 'rrn': rrn,
+      if (authCode != null) 'authCode': authCode,
       if (softposReference != null) 'softposReference': softposReference,
       if (softposAuthCode != null) 'softposAuthCode': softposAuthCode,
       if (bankResponse != null) 'bankResponse': bankResponse,

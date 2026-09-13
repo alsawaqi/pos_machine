@@ -49,6 +49,7 @@ class ConfigRepository {
     );
     await _session.saveTerminalId(config.terminalId);
     await _session.saveTerminalPin(config.terminalPin);
+    await _session.saveSoftpos(config.softpos);
     // Phase C3 — where to dial Reverb (null = live push off server-side).
     await _session.saveWebsocketConfig(config.websocket);
     // Marketing #46 — the admin-set audience-measurement consent.
@@ -124,6 +125,7 @@ class ConfigRepository {
       );
       await _session.saveTerminalId(res.terminalId);
       await _session.saveTerminalPin(res.terminalPin);
+      await _session.saveSoftpos(res.softpos);
       await _session.saveWebsocketConfig(res.websocket);
       // Marketing #46 — the admin-set audience-measurement consent.
       await _session.saveServerAudienceMeasurement(res.audienceMeasurement);
@@ -166,17 +168,40 @@ class ConfigRepository {
     var sliderRows = <MarketingSliderRow>[];
     var sliderItemRows = <MarketingSliderItemRow>[];
     SyncMetaRow? meta;
-    var seenCats = false, seenProds = false, seenFloors = false, seenTables = false, seenTaxes = false;
+    var seenCats = false,
+        seenProds = false,
+        seenFloors = false,
+        seenTables = false,
+        seenTaxes = false;
 
     void emit() {
       if (seenCats && seenProds && seenFloors && seenTables && seenTaxes) {
-        controller.add(ConfigMapper.toCatalog(
-          branch, cats, prods, floors, tables, taxes, addonGroups, addons,
-          deliveryProviders, expenseCategories, branchStock, discounts,
-          loyaltyRules, customers, ingredients, meta,
-          voidReasons, compReasons, offerRows, staffMessageRows,
-          sliderRows, sliderItemRows,
-        ));
+        controller.add(
+          ConfigMapper.toCatalog(
+            branch,
+            cats,
+            prods,
+            floors,
+            tables,
+            taxes,
+            addonGroups,
+            addons,
+            deliveryProviders,
+            expenseCategories,
+            branchStock,
+            discounts,
+            loyaltyRules,
+            customers,
+            ingredients,
+            meta,
+            voidReasons,
+            compReasons,
+            offerRows,
+            staffMessageRows,
+            sliderRows,
+            sliderItemRows,
+          ),
+        );
       }
     }
 

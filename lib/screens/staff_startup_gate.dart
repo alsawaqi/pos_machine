@@ -8,6 +8,8 @@ import 'shift_close_screen.dart';
 import 'shift_open_screen.dart';
 import 'staff_pin_login_screen.dart';
 import 'staff_pos_screen.dart';
+import 'card_reversal_sheet.dart';
+import 'card_reversal_factory.dart';
 
 /// Boot stages, decided from the persisted session:
 ///   not configured      → DeviceSetupScreen     (one-time terminal-ID claim)
@@ -50,6 +52,9 @@ class StaffStartupGate extends ConsumerWidget {
     if (session.openShift!.staffId != staffId) {
       return const ShiftCloseScreen(forcedHandover: true);
     }
-    return const GeofenceGate(child: StaffPosScreen());
+    return CardReversalRecoveryGate(
+      createController: () => createMachineReversalController(ref),
+      operatorName: session.staff?.name ?? '',
+      child: const GeofenceGate(child: StaffPosScreen()));
   }
 }

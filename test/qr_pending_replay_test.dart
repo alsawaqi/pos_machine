@@ -139,7 +139,7 @@ class _Terminal implements QrCardTerminalGateway {
     captures++;
     log.add('terminal:$amountBaisas');
     return MosambeePaymentResult.fromRaw(
-      '{"status":"success","rrn":"TEST-ONLY"}',
+      '{"status":"success","responseCode":"00","rrn":"TEST-ONLY"}',
     );
   }
 }

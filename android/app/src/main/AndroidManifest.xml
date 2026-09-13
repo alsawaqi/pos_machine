@@ -61,6 +61,10 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <package android:name="com.mosambee.muscat.softpos"/>
+        <intent><action android:name="com.mosambee.softpos.healthcheck"/></intent>
+        <intent><action android:name="com.mosambee.softpos.void"/></intent>
+        <intent><action android:name="com.mosambee.softpos.refund"/></intent>
         <package android:name="com.sunmi.fingerprintservice"/>
         <package android:name="com.mosambee.dhofar.softpos"/>
         <!-- Sunmi USB customer-display control service (bound for touch/screen control). -->

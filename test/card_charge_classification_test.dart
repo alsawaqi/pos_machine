@@ -43,6 +43,7 @@ void main() {
     test('SoftPOS app not installed', () {
       final r = resultFor({
         'status': 'failed',
+        'dispatchFailed': true,
         'message': 'Mosambee application is not installed.',
       });
 
@@ -55,6 +56,7 @@ void main() {
     test('payment activity not found', () {
       final r = resultFor({
         'status': 'failed',
+        'dispatchFailed': true,
         'message': 'Mosambee payment activity was not found.',
       });
 
@@ -87,7 +89,7 @@ void main() {
 
   group('success and explicit cancel are unaffected', () {
     test('approved charge is a success', () {
-      final r = resultFor({'status': 'success', 'rrn': 'RRN-1'});
+      final r = resultFor({'status': 'success', 'responseCode':'00', 'rrn': 'RRN-1'});
 
       expect(r.isSuccess, isTrue);
       expect(r.isUncertain, isFalse);

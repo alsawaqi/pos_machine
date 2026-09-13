@@ -3461,6 +3461,9 @@ class PosController extends ChangeNotifier
       softposReference: result.softposReference,
       softposAuthCode: result.softposAuthCode,
       bankResponse: result.payload,
+      transactionId: result.identifiers.transactionId,
+      rrn: result.identifiers.rrn,
+      authCode: result.identifiers.authCode,
       status: status,
     );
   }

@@ -9,23 +9,24 @@ import 'package:pos_machine/services/session_service.dart';
 /// Per-device Mosambee terminal PIN — the bank-issued login PIN that pos_api
 /// delivers beside terminal_id (config meta + activation payload). The device
 /// caches it under prefs 'terminal_pin' and uses it as the Mosambee login
-/// 'pin' arg; a missing/blank cache falls back to the factory default '1321'.
+/// 'pin' arg; a missing/blank cache falls back to the factory default ''.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
 
   group('MosambeePaymentService.effectivePin', () {
-    test('falls back to the default when the cache is null', () {
+    test('remains empty without credentials when the cache is null', () {
       expect(MosambeePaymentService.effectivePin(null),
-          MosambeePaymentService.defaultTerminalPin);
-      expect(MosambeePaymentService.effectivePin(null), '1321');
+          '');
+      expect(MosambeePaymentService.effectivePin(null), '');
     });
 
-    test('falls back to the default when the cache is empty', () {
-      expect(MosambeePaymentService.effectivePin(''), '1321');
+    test('remains empty without credentials when the cache is empty', () {
+      expect(MosambeePaymentService.effectivePin(''), '');
     });
 
-    test('falls back to the default on a whitespace-only cache', () {
-      expect(MosambeePaymentService.effectivePin('  '), '1321');
+    test('remains empty without credentials on a whitespace-only cache', () {
+      expect(MosambeePaymentService.effectivePin('  '), '');
     });
 
     test('returns the cached per-device PIN when set', () {
@@ -53,23 +54,24 @@ void main() {
           .setMockMethodCallHandler(channel, (call) async {
         if (call.method == method) {
           captured.addAll(Map<String, dynamic>.from(call.arguments as Map));
-          return '{"status":"success","message":"Payment approved."}';
+          return '{"status":"approved","responseCode":"00","sessionId":"S","message":"Payment approved."}';
         }
         return null;
       });
       return captured;
     }
 
-    test('loginAndPay sends the default PIN when prefs hold no terminal_pin',
+    test('loginAndPay does not launch without a terminal PIN',
         () async {
       SharedPreferences.setMockInitialValues({'terminal_id': 'TERM-1001'});
       final args = captureArgsOf('loginAndPay');
 
       final result = await MosambeePaymentService().loginAndPay(1.575);
 
-      expect(result.isSuccess, isTrue);
-      expect(args['userName'], 'TERM-1001');
-      expect(args['pin'], '1321');
+      expect(result.isSuccess, isFalse);
+      expect(args['userName'], isNull);
+      expect(args['pin'], isNull);
+      expect(args, isEmpty);
     });
 
     test('loginAndPay sends the cached per-device terminal PIN when set',
@@ -100,14 +102,15 @@ void main() {
       expect(args['pin'], '9876');
     });
 
-    test('prepareSession falls back to the default PIN when none is cached',
+    test('prepareSession remains empty without credentials PIN when none is cached',
         () async {
       SharedPreferences.setMockInitialValues({'terminal_id': 'TERM-1001'});
       final args = captureArgsOf('prepareLogin');
 
       await MosambeePaymentService().prepareSession();
 
-      expect(args['pin'], '1321');
+      expect(args['pin'], isNull);
+      expect(args, isEmpty);
     });
   });
 
@@ -119,7 +122,8 @@ void main() {
 
       await session.saveTerminalPin('  9876 ');
 
-      expect(prefs.getString('terminal_pin'), '9876');
+      expect(await const FlutterSecureStorage().read(key: 'terminal_pin'), '9876');
+      expect(prefs.getString('terminal_pin'), isNull);
       expect(session.terminalPin, '9876');
       expect(session.snapshot().terminalPin, '9876');
     });
@@ -135,7 +139,7 @@ void main() {
 
       // Contrast pinned on purpose: terminal_id keeps the last-known value on
       // a null refresh, but a null terminal_pin means the admin cleared it —
-      // the device must revert to the default.
+      // the device must disable card payments.
       await session.saveTerminalId(null);
       await session.saveTerminalPin(null);
 

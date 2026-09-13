@@ -3681,4 +3681,138 @@ class L10nEn extends L10n {
 
   @override
   String get qrPendingClose => 'Close';
+
+  @override
+  String get pay002Title => 'Card payment reversal';
+
+  @override
+  String get pay002Void => 'Void card payment';
+
+  @override
+  String get pay002Refund => 'Refund';
+
+  @override
+  String get pay002Payment => 'Card payment';
+
+  @override
+  String get pay002Reason => 'Void reason';
+
+  @override
+  String get pay002Custom => 'Custom amount (OMR)';
+
+  @override
+  String get pay002Lines => 'Refund quantities';
+
+  @override
+  String get pay002Remaining => 'Remaining quantity';
+
+  @override
+  String get pay002ManagerPin => 'Manager PIN';
+
+  @override
+  String get pay002Continue => 'Continue';
+
+  @override
+  String get pay002Cancel => 'Cancel';
+
+  @override
+  String get pay002Confirm => 'Confirm bank amount';
+
+  @override
+  String get pay002Progress => 'Card reversal in progress';
+
+  @override
+  String get pay002Recovery =>
+      'Check the receipt in the bank app history. Report the observed result or leave it for admin. Do not repeat the bank operation.';
+
+  @override
+  String get pay002Report => 'Report observed result';
+
+  @override
+  String get pay002RetryReport => 'Retry result report';
+
+  @override
+  String get pay002Reprint => 'Reprint reversal slip';
+
+  @override
+  String get pay002PrintFailed =>
+      'Printing did not complete. Reprint only if needed.';
+
+  @override
+  String get pay002ReceiptJson => 'Receipt evidence (JSON from bank history)';
+
+  @override
+  String get pay002Operator => 'Operator name';
+
+  @override
+  String get pay002NoPayments => 'No card payments are available for reversal.';
+
+  @override
+  String get pay002Online => 'Card reversals require an online connection.';
+
+  @override
+  String get pay002CheckTerminal => 'Check card terminal';
+
+  @override
+  String get pay002Terminal => 'Card terminal';
+
+  @override
+  String get pay002PayingVia => 'Paying via';
+
+  @override
+  String get pay002FirstLaunch =>
+      'Open the bank app once and complete its setup before accepting cards.';
+
+  @override
+  String get pay002Noterminalcredentials =>
+      'No terminal credentials. Ask your administrator.';
+
+  @override
+  String get pay002Softposunavailable => 'Card terminal unavailable.';
+
+  @override
+  String get pay002Softposnotconfigured => 'Card terminal is not configured.';
+
+  @override
+  String get pay002Softposmismatch =>
+      'Assigned bank and terminal app do not match.';
+
+  @override
+  String get pay002Softposappupdaterequired =>
+      'Card terminal app update required.';
+
+  @override
+  String get pay002Cardblocked =>
+      'Card payments are blocked. Ask your administrator.';
+
+  @override
+  String get pay002Select => 'Select';
+
+  @override
+  String get pay002Done => 'Close';
+
+  @override
+  String get pay002Approved => 'Approved';
+
+  @override
+  String get pay002Declined => 'Declined';
+
+  @override
+  String get pay002Uncertain => 'Outcome uncertain — manager must check';
+
+  @override
+  String get pay002Cancelled => 'Cancelled before bank dispatch';
+
+  @override
+  String get pay002ResponseCode => 'Response code';
+
+  @override
+  String get pay002Rrn => 'RRN';
+
+  @override
+  String get pay002AuthCode => 'Auth code';
+
+  @override
+  String get pay002ManagerCheck =>
+      'Check the bank history before recording this payment.';
 }

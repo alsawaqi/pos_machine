@@ -3718,4 +3718,135 @@ class L10nAr extends L10n {
 
   @override
   String get qrPendingClose => 'إغلاق';
+
+  @override
+  String get pay002Title => 'عكس دفعة البطاقة';
+
+  @override
+  String get pay002Void => 'إلغاء دفعة البطاقة';
+
+  @override
+  String get pay002Refund => 'استرداد';
+
+  @override
+  String get pay002Payment => 'دفعة البطاقة';
+
+  @override
+  String get pay002Reason => 'سبب الإلغاء';
+
+  @override
+  String get pay002Custom => 'مبلغ مخصص (ر.ع.)';
+
+  @override
+  String get pay002Lines => 'كميات الاسترداد';
+
+  @override
+  String get pay002Remaining => 'الكمية المتبقية';
+
+  @override
+  String get pay002ManagerPin => 'الرمز السري للمدير';
+
+  @override
+  String get pay002Continue => 'متابعة';
+
+  @override
+  String get pay002Cancel => 'إلغاء';
+
+  @override
+  String get pay002Confirm => 'تأكيد مبلغ البنك';
+
+  @override
+  String get pay002Progress => 'جارٍ عكس دفعة البطاقة';
+
+  @override
+  String get pay002Recovery =>
+      'تحقق من الإيصال في سجل تطبيق البنك. أبلغ عن النتيجة أو اتركها للمسؤول. لا تكرر العملية البنكية.';
+
+  @override
+  String get pay002Report => 'الإبلاغ عن النتيجة';
+
+  @override
+  String get pay002RetryReport => 'إعادة إرسال تقرير النتيجة';
+
+  @override
+  String get pay002Reprint => 'إعادة طباعة إيصال العكس';
+
+  @override
+  String get pay002PrintFailed =>
+      'لم تكتمل الطباعة. أعد الطباعة عند الحاجة فقط.';
+
+  @override
+  String get pay002ReceiptJson => 'بيانات الإيصال (JSON من سجل البنك)';
+
+  @override
+  String get pay002Operator => 'اسم الموظف';
+
+  @override
+  String get pay002NoPayments => 'لا توجد دفعات بطاقة متاحة للعكس.';
+
+  @override
+  String get pay002Online => 'يتطلب عكس دفعات البطاقة اتصالاً بالإنترنت.';
+
+  @override
+  String get pay002CheckTerminal => 'فحص جهاز الدفع';
+
+  @override
+  String get pay002Terminal => 'جهاز الدفع بالبطاقة';
+
+  @override
+  String get pay002PayingVia => 'الدفع عبر';
+
+  @override
+  String get pay002FirstLaunch =>
+      'افتح تطبيق البنك وأكمل إعداده قبل قبول البطاقات.';
+
+  @override
+  String get pay002Noterminalcredentials =>
+      'لا توجد بيانات اعتماد للجهاز. تواصل مع المسؤول.';
+
+  @override
+  String get pay002Softposunavailable => 'جهاز الدفع غير متاح.';
+
+  @override
+  String get pay002Softposnotconfigured => 'لم يتم إعداد جهاز الدفع.';
+
+  @override
+  String get pay002Softposmismatch =>
+      'البنك المعيّن وتطبيق الجهاز غير متطابقين.';
+
+  @override
+  String get pay002Softposappupdaterequired => 'يلزم تحديث تطبيق الدفع.';
+
+  @override
+  String get pay002Cardblocked => 'دفعات البطاقة محظورة. تواصل مع المسؤول.';
+
+  @override
+  String get pay002Select => 'اختر';
+
+  @override
+  String get pay002Done => 'إغلاق';
+
+  @override
+  String get pay002Approved => 'تمت الموافقة';
+
+  @override
+  String get pay002Declined => 'مرفوضة';
+
+  @override
+  String get pay002Uncertain => 'النتيجة غير مؤكدة — يجب على المدير التحقق';
+
+  @override
+  String get pay002Cancelled => 'أُلغيت قبل الإرسال إلى البنك';
+
+  @override
+  String get pay002ResponseCode => 'رمز الاستجابة';
+
+  @override
+  String get pay002Rrn => 'الرقم المرجعي للبنك';
+
+  @override
+  String get pay002AuthCode => 'رمز التفويض';
+
+  @override
+  String get pay002ManagerCheck => 'تحقق من سجل البنك قبل تسجيل هذه الدفعة.';
 }

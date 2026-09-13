@@ -44,7 +44,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           secureStorageChannel,
-          (call) async => call.method == 'read' ? mockDeviceToken : null,
+          (call) async => call.method == 'read' ? (call.arguments['key'] == 'terminal_pin' ? 'TESTPIN' : mockDeviceToken) : null,
         );
     // The card flow hands the rear display to Mosambee before loginAndPay —
     // answer the host + printer channels so the awaits resolve in tests.
@@ -458,7 +458,7 @@ void main() {
       expect(find.text('SECURE CARD PAYMENT'), findsNothing);
 
       paymentCompleter.complete(
-        '{"status":"success","message":"Payment approved."}',
+        '{"status":"success","responseCode":"00","message":"Payment approved."}',
       );
       await tester.pumpAndSettle();
       // Let the 4s payment-result popup auto-dismiss so no timer outlives
@@ -487,7 +487,7 @@ void main() {
                 call.arguments as Map,
               );
               sentMobNo = arguments['mobNo']?.toString();
-              return '{"status":"success","message":"Payment approved."}';
+              return '{"status":"success","responseCode":"00","message":"Payment approved."}';
             }
             return null;
           });

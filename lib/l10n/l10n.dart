@@ -6106,6 +6106,258 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Close'**
   String get qrPendingClose;
+
+  /// No description provided for @pay002Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Card payment reversal'**
+  String get pay002Title;
+
+  /// No description provided for @pay002Void.
+  ///
+  /// In en, this message translates to:
+  /// **'Void card payment'**
+  String get pay002Void;
+
+  /// No description provided for @pay002Refund.
+  ///
+  /// In en, this message translates to:
+  /// **'Refund'**
+  String get pay002Refund;
+
+  /// No description provided for @pay002Payment.
+  ///
+  /// In en, this message translates to:
+  /// **'Card payment'**
+  String get pay002Payment;
+
+  /// No description provided for @pay002Reason.
+  ///
+  /// In en, this message translates to:
+  /// **'Void reason'**
+  String get pay002Reason;
+
+  /// No description provided for @pay002Custom.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom amount (OMR)'**
+  String get pay002Custom;
+
+  /// No description provided for @pay002Lines.
+  ///
+  /// In en, this message translates to:
+  /// **'Refund quantities'**
+  String get pay002Lines;
+
+  /// No description provided for @pay002Remaining.
+  ///
+  /// In en, this message translates to:
+  /// **'Remaining quantity'**
+  String get pay002Remaining;
+
+  /// No description provided for @pay002ManagerPin.
+  ///
+  /// In en, this message translates to:
+  /// **'Manager PIN'**
+  String get pay002ManagerPin;
+
+  /// No description provided for @pay002Continue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get pay002Continue;
+
+  /// No description provided for @pay002Cancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get pay002Cancel;
+
+  /// No description provided for @pay002Confirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm bank amount'**
+  String get pay002Confirm;
+
+  /// No description provided for @pay002Progress.
+  ///
+  /// In en, this message translates to:
+  /// **'Card reversal in progress'**
+  String get pay002Progress;
+
+  /// No description provided for @pay002Recovery.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the receipt in the bank app history. Report the observed result or leave it for admin. Do not repeat the bank operation.'**
+  String get pay002Recovery;
+
+  /// No description provided for @pay002Report.
+  ///
+  /// In en, this message translates to:
+  /// **'Report observed result'**
+  String get pay002Report;
+
+  /// No description provided for @pay002RetryReport.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry result report'**
+  String get pay002RetryReport;
+
+  /// No description provided for @pay002Reprint.
+  ///
+  /// In en, this message translates to:
+  /// **'Reprint reversal slip'**
+  String get pay002Reprint;
+
+  /// No description provided for @pay002PrintFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Printing did not complete. Reprint only if needed.'**
+  String get pay002PrintFailed;
+
+  /// No description provided for @pay002ReceiptJson.
+  ///
+  /// In en, this message translates to:
+  /// **'Receipt evidence (JSON from bank history)'**
+  String get pay002ReceiptJson;
+
+  /// No description provided for @pay002Operator.
+  ///
+  /// In en, this message translates to:
+  /// **'Operator name'**
+  String get pay002Operator;
+
+  /// No description provided for @pay002NoPayments.
+  ///
+  /// In en, this message translates to:
+  /// **'No card payments are available for reversal.'**
+  String get pay002NoPayments;
+
+  /// No description provided for @pay002Online.
+  ///
+  /// In en, this message translates to:
+  /// **'Card reversals require an online connection.'**
+  String get pay002Online;
+
+  /// No description provided for @pay002CheckTerminal.
+  ///
+  /// In en, this message translates to:
+  /// **'Check card terminal'**
+  String get pay002CheckTerminal;
+
+  /// No description provided for @pay002Terminal.
+  ///
+  /// In en, this message translates to:
+  /// **'Card terminal'**
+  String get pay002Terminal;
+
+  /// No description provided for @pay002PayingVia.
+  ///
+  /// In en, this message translates to:
+  /// **'Paying via'**
+  String get pay002PayingVia;
+
+  /// No description provided for @pay002FirstLaunch.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the bank app once and complete its setup before accepting cards.'**
+  String get pay002FirstLaunch;
+
+  /// No description provided for @pay002Noterminalcredentials.
+  ///
+  /// In en, this message translates to:
+  /// **'No terminal credentials. Ask your administrator.'**
+  String get pay002Noterminalcredentials;
+
+  /// No description provided for @pay002Softposunavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Card terminal unavailable.'**
+  String get pay002Softposunavailable;
+
+  /// No description provided for @pay002Softposnotconfigured.
+  ///
+  /// In en, this message translates to:
+  /// **'Card terminal is not configured.'**
+  String get pay002Softposnotconfigured;
+
+  /// No description provided for @pay002Softposmismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Assigned bank and terminal app do not match.'**
+  String get pay002Softposmismatch;
+
+  /// No description provided for @pay002Softposappupdaterequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Card terminal app update required.'**
+  String get pay002Softposappupdaterequired;
+
+  /// No description provided for @pay002Cardblocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Card payments are blocked. Ask your administrator.'**
+  String get pay002Cardblocked;
+
+  /// No description provided for @pay002Select.
+  ///
+  /// In en, this message translates to:
+  /// **'Select'**
+  String get pay002Select;
+
+  /// No description provided for @pay002Done.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get pay002Done;
+
+  /// No description provided for @pay002Approved.
+  ///
+  /// In en, this message translates to:
+  /// **'Approved'**
+  String get pay002Approved;
+
+  /// No description provided for @pay002Declined.
+  ///
+  /// In en, this message translates to:
+  /// **'Declined'**
+  String get pay002Declined;
+
+  /// No description provided for @pay002Uncertain.
+  ///
+  /// In en, this message translates to:
+  /// **'Outcome uncertain — manager must check'**
+  String get pay002Uncertain;
+
+  /// No description provided for @pay002Cancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancelled before bank dispatch'**
+  String get pay002Cancelled;
+
+  /// No description provided for @pay002ResponseCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Response code'**
+  String get pay002ResponseCode;
+
+  /// No description provided for @pay002Rrn.
+  ///
+  /// In en, this message translates to:
+  /// **'RRN'**
+  String get pay002Rrn;
+
+  /// No description provided for @pay002AuthCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Auth code'**
+  String get pay002AuthCode;
+
+  /// No description provided for @pay002ManagerCheck.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the bank history before recording this payment.'**
+  String get pay002ManagerCheck;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

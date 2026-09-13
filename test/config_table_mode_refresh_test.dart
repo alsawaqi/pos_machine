@@ -1,3 +1,4 @@
+import 'package:mithqal_softpos/mithqal_softpos.dart';
 import 'dart:convert';
 
 import 'package:drift/drift.dart' show Value;
@@ -14,6 +15,7 @@ typedef _ConfigResult = ({
   Map<String, dynamic> data,
   String? terminalId,
   String? terminalPin,
+      SoftPosProfile softpos,
   String? generatedAt,
   Map<String, dynamic>? websocket,
   bool? audienceMeasurement,
@@ -30,6 +32,7 @@ class _Api implements PosApiService {
   _ConfigResult _result(Map<String, dynamic> data, String cursor) => (
     data: data,
     terminalId: null,
+    softpos: const SoftPosProfile(),
     terminalPin: null,
     generatedAt: cursor,
     websocket: null,
@@ -56,6 +59,8 @@ class _Api implements PosApiService {
 }
 
 class _Session implements SessionService {
+  @override
+  Future<void> saveSoftpos(SoftPosProfile value) async {}
   @override
   Future<void> saveTerminalId(String? value) async {}
   @override

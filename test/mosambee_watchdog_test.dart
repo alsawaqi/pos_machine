@@ -1,3 +1,4 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -10,6 +11,7 @@ import 'package:pos_machine/services/mosambee_payment_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => FlutterSecureStorage.setMockInitialValues({'terminal_pin':'TESTPIN'}));
 
   group('IMP-4 SoftPOS launch watchdog parity', () {
     const channel = MethodChannel('com.example.mosambee');
@@ -21,7 +23,7 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('watchdog payload is never force-recordable', () {
+    test('watchdog payload requires manager reconciliation', () {
       final result = MosambeePaymentResult.fromRaw(
         jsonEncode({
           'stage': 'payment',
@@ -32,8 +34,8 @@ void main() {
       );
 
       expect(result.userMessage, 'Payment app not responding.');
-      expect(result.neverReachedTerminal, isTrue);
-      expect(result.isUncertain, isFalse);
+      expect(result.neverReachedTerminal, isFalse);
+      expect(result.isUncertain, isTrue);
       expect(
         result.failurePhase,
         MosambeeFailurePhase.postDispatchUnknown,
@@ -49,7 +51,7 @@ void main() {
 
         messenger.setMockMethodCallHandler(channel, (call) {
           methods.add(call.method);
-          if (call.method == 'cancelPendingPayment') {
+          if (call.method == 'cancelPendingOperation') {
             return Future<Object?>.value(true);
           }
           return neverCompletes.future;
@@ -59,11 +61,11 @@ void main() {
           launchWatchdogTimeout: const Duration(milliseconds: 20),
         ).payWithPreparedSession(1.5);
 
-        expect(methods, ['payWithPreparedSession', 'cancelPendingPayment']);
+        expect(methods, ['payWithPreparedSession', 'cancelPendingOperation']);
         expect(result.payload['code'], 'SOFTPOS_NOT_RESPONDING');
         expect(result.userMessage, 'Payment app not responding.');
-        expect(result.neverReachedTerminal, isTrue);
-        expect(result.isUncertain, isFalse);
+        expect(result.neverReachedTerminal, isFalse);
+        expect(result.isUncertain, isTrue);
         expect(
           result.failurePhase,
           MosambeeFailurePhase.postDispatchUnknown,
@@ -96,12 +98,12 @@ void main() {
 
     test('native callbacks are correlated to a unique active launch', () {
       final bridge = File(
-        'android/app/src/main/kotlin/com/example/pos_machine/MosambeeBridge.kt',
+        'android/app/src/main/kotlin/net/mithqal/softpos/SoftPosBridgeCore.kt',
       ).readAsStringSync();
 
-      expect(bridge, contains('requestCode != activeRequestCode'));
-      expect(bridge, contains('retiredRequestCodes.add(requestCode)'));
-      expect(bridge, contains('retiredRequestCodes.remove(requestCode)'));
+      expect(bridge, contains('code != requestCode'));
+      expect(bridge, contains('retired.add(code)'));
+      expect(bridge, contains('retired.remove(code)'));
       expect(bridge, isNot(contains('LOGIN_REQUEST_CODE')));
       expect(bridge, isNot(contains('PAYMENT_REQUEST_CODE')));
     });

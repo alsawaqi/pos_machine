@@ -309,13 +309,13 @@ void main() {
       final held = await flow.claim(claim().orderUuid);
       final result = await flow.settleClaim(held, QrTender.card);
 
-      expect(result.kind, QrSettlementResultKind.cardFailedBeforeCapture);
-      expect(terminalResult.failurePhase, MosambeeFailurePhase.preDispatch);
-      expect(result.managerRequired, isFalse);
-      expect(result.mustNotRetryTender, isFalse);
-      expect(till.releases.single.outcome, QrReleaseOutcome.cancelled);
+      expect(result.kind, code == 'BUSY' ? QrSettlementResultKind.cardUncertain : QrSettlementResultKind.cardFailedBeforeCapture);
+      expect(terminalResult.failurePhase, code == 'BUSY' ? MosambeeFailurePhase.postDispatchUnknown : MosambeeFailurePhase.preDispatch);
+      expect(result.managerRequired, code == 'BUSY' ? isTrue : isFalse);
+      expect(result.mustNotRetryTender, code == 'BUSY' ? isTrue : isFalse);
+      expect(till.releases.single.outcome, code == 'BUSY' ? QrReleaseOutcome.uncertain : QrReleaseOutcome.cancelled);
       expect(outbox.amounts, isEmpty);
-      expect(flow.pendingManagerRecoveries, isEmpty);
+      expect(flow.pendingManagerRecoveries, code == 'BUSY' ? hasLength(1) : isEmpty);
     });
   }
 
@@ -593,7 +593,7 @@ class _Location implements QrLocationGateway {
 }
 
 MosambeePaymentResult _success() => MosambeePaymentResult.fromRaw(
-  jsonEncode({'status': 'success', 'rrn': 'RRN-1'}),
+  jsonEncode({'status': 'success', 'responseCode':'00', 'rrn': 'RRN-1'}),
 );
 
 MosambeePaymentResult _cancelled() =>

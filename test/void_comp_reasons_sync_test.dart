@@ -1,3 +1,4 @@
+import 'package:mithqal_softpos/mithqal_softpos.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -25,6 +26,7 @@ class _FakeApi implements PosApiService {
         Map<String, dynamic> data,
         String? terminalId,
         String? terminalPin,
+      SoftPosProfile softpos,
         String? generatedAt,
         Map<String, dynamic>? websocket,
         bool? audienceMeasurement
@@ -33,6 +35,7 @@ class _FakeApi implements PosApiService {
     return (
       data: fullPayload,
       terminalId: null,
+      softpos: const SoftPosProfile(),
       terminalPin: null,
       generatedAt: 'CURSOR-$fullCalls',
       websocket: null,
@@ -46,6 +49,7 @@ class _FakeApi implements PosApiService {
         Map<String, dynamic> data,
         String? terminalId,
         String? terminalPin,
+      SoftPosProfile softpos,
         String? generatedAt,
         Map<String, dynamic>? websocket,
         bool? audienceMeasurement
@@ -56,6 +60,7 @@ class _FakeApi implements PosApiService {
     return (
       data: delta,
       terminalId: null,
+      softpos: const SoftPosProfile(),
       terminalPin: null,
       generatedAt: 'CURSOR-D$deltaCalls',
       websocket: null,
@@ -69,6 +74,7 @@ class _FakeApi implements PosApiService {
 }
 
 class _FakeSession implements SessionService {
+  @override Future<void> saveSoftpos(SoftPosProfile profile) async {}
   @override
   Future<void> saveTerminalId(String? terminalId) async {}
 
