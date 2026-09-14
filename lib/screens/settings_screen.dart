@@ -1,3 +1,8 @@
+import '../strings/softpos_strings.dart';
+import '../services/local_storage_service.dart';
+import '../services/mosambee_payment_service.dart';
+import 'card_reversal_sheet.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,7 +59,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   String get _candidateUrl =>
-      SettingsService.normalizeBaseUrl(_urlController.text) ?? ApiConfig.baseUrl;
+      SettingsService.normalizeBaseUrl(_urlController.text) ??
+      ApiConfig.baseUrl;
+
+  Future<void> _showCardTerminal() async {
+    final profile = await LocalStorageService.getSoftposProfile();
+    final terminalId = await LocalStorageService.getTerminalId();
+    final terminalPin = await LocalStorageService.getTerminalPin();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(softposText(context, 'terminal')),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: SoftposTerminalPanel(
+              profile: profile,
+              reason: profile.unavailableReason(
+                terminalId: terminalId,
+                terminalPin: terminalPin,
+              ),
+              check: MosambeePaymentService().checkTerminal,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(MaterialLocalizations.of(context).closeButtonLabel),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _save() async {
     await ref
@@ -64,9 +102,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     // Reflect the normalized value back into the field.
     final saved = ref.read(settingsControllerProvider).serverBaseUrl ?? '';
     _urlController.text = saved;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(L10n.of(context).settingsSaved)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(L10n.of(context).settingsSaved)));
   }
 
   Future<void> _testConnection() async {
@@ -105,8 +143,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     Builder(
                       builder: (context) {
                         final row = item.row;
-                        final awaitingGps = item.reason ==
-                            OrderSyncAttentionReason.awaitingGps;
+                        final awaitingGps =
+                            item.reason == OrderSyncAttentionReason.awaitingGps;
                         final created = row.createdAt.toLocal();
                         final orderNumber = row.orderNumber ?? 0;
                         return ListTile(
@@ -137,8 +175,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 awaitingGps
                                     ? l10n.settingsGpsHeldStatus
                                     : row.lastError?.trim().isNotEmpty == true
-                                        ? row.lastError!.trim()
-                                        : l10n.settingsUnknownSyncError,
+                                    ? row.lastError!.trim()
+                                    : l10n.settingsUnknownSyncError,
                                 style: TextStyle(
                                   color: awaitingGps
                                       ? const Color(0xFF9A6700)
@@ -204,9 +242,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.settingsRetryFailed)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.settingsRetryFailed)));
     } finally {
       if (mounted) setState(() => _retryingAttention = false);
     }
@@ -218,7 +256,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final releaseBuild = ref.watch(releaseBuildProvider);
     final attentionItems =
         ref.watch(orderSyncAttentionProvider).asData?.value ??
-            const <OrderSyncAttention>[];
+        const <OrderSyncAttention>[];
     final l10n = L10n.of(context);
     return Scaffold(
       backgroundColor: const Color(0xFF102028),
@@ -226,6 +264,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         backgroundColor: const Color(0xFF102028),
         foregroundColor: Colors.white,
         title: Text(l10n.settingsTitle),
+        actions: [
+          if (widget.showOperations)
+            TextButton.icon(
+              onPressed: _showCardTerminal,
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              icon: const Icon(Icons.credit_card),
+              label: Text(softposText(context, 'terminal')),
+            ),
+        ],
       ),
       body: Center(
         child: ConstrainedBox(
@@ -314,7 +361,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.wifi_tethering),
                         label: Text(l10n.settingsTestConnection),
@@ -416,8 +465,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 key: const ValueKey('settings-unified-dine-in'),
                 contentPadding: EdgeInsets.zero,
-                title: Text(settings.language == 'ar' ? 'طلبات الطاولات داخل المطعم' : 'Table orders are in Dine-In',
-                  style: const TextStyle(color: Colors.white)),
+                title: Text(
+                  settings.language == 'ar'
+                      ? 'طلبات الطاولات داخل المطعم'
+                      : 'Table orders are in Dine-In',
+                  style: const TextStyle(color: Colors.white),
+                ),
               ),
               const Divider(color: Colors.white12, height: 36),
               // Phase 1A — anonymous on-device audience measurement (camera).
@@ -444,14 +497,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 12),
               SegmentedButton<String>(
                 segments: [
-                  ButtonSegment(
-                    value: 'en',
-                    label: Text(l10n.languageEnglish),
-                  ),
-                  ButtonSegment(
-                    value: 'ar',
-                    label: Text(l10n.languageArabic),
-                  ),
+                  ButtonSegment(value: 'en', label: Text(l10n.languageEnglish)),
+                  ButtonSegment(value: 'ar', label: Text(l10n.languageArabic)),
                 ],
                 selected: {settings.language},
                 onSelectionChanged: (selection) => ref
@@ -475,7 +522,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               _sectionLabel('Audience (experimental)'),
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.groups_2_outlined, color: Colors.white70),
+                leading: const Icon(
+                  Icons.groups_2_outlined,
+                  color: Colors.white70,
+                ),
                 title: const Text(
                   'Audience camera spike',
                   style: TextStyle(color: Colors.white),
@@ -484,9 +534,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   'Live face count from the customer-facing camera (debug)',
                   style: TextStyle(color: Colors.white54),
                 ),
-                trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  color: Colors.white38,
+                ),
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AudienceSpikeScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const AudienceSpikeScreen(),
+                  ),
                 ),
               ),
             ],
@@ -501,15 +556,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required String title,
     required String subtitle,
     required String action,
-  }) =>
-      ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: Icon(icon, color: Colors.white70),
-        title: Text(title, style: const TextStyle(color: Colors.white)),
-        subtitle: Text(subtitle, style: const TextStyle(color: Colors.white54)),
-        trailing: const Icon(Icons.chevron_right, color: Colors.white38),
-        onTap: () => Navigator.of(context).pop(action),
-      );
+  }) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    leading: Icon(icon, color: Colors.white70),
+    title: Text(title, style: const TextStyle(color: Colors.white)),
+    subtitle: Text(subtitle, style: const TextStyle(color: Colors.white54)),
+    trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+    onTap: () => Navigator.of(context).pop(action),
+  );
 
   int _gpsHoldCount(List<OrderSyncAttention> items) => items
       .where((item) => item.reason == OrderSyncAttentionReason.awaitingGps)
@@ -538,62 +592,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return l10n.settingsAttentionSalesDialogBody;
   }
 
-  Widget _syncAttentionTile(
-    L10n l10n,
-    List<OrderSyncAttention> items,
-  ) {
+  Widget _syncAttentionTile(L10n l10n, List<OrderSyncAttention> items) {
     final gpsOnly = _gpsHoldCount(items) == items.length;
     final accent = gpsOnly ? const Color(0xFFFBBF24) : const Color(0xFFFF6B6B);
     return Material(
-        key: const ValueKey('settings-stuck-sales-tile'),
-        color: gpsOnly ? const Color(0xFF3A2B0A) : const Color(0xFF3A171B),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(
-            color: gpsOnly ? const Color(0xFFF59E0B) : const Color(0xFFEF4444),
-            width: 1.2,
-          ),
+      key: const ValueKey('settings-stuck-sales-tile'),
+      color: gpsOnly ? const Color(0xFF3A2B0A) : const Color(0xFF3A171B),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: gpsOnly ? const Color(0xFFF59E0B) : const Color(0xFFEF4444),
+          width: 1.2,
         ),
-        clipBehavior: Clip.antiAlias,
-        child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-          leading: Icon(
-            gpsOnly ? Icons.location_off_rounded : Icons.error_rounded,
-            color: accent,
-          ),
-          title: Text(
-            _attentionTitle(l10n, items),
-            style: TextStyle(
-              color: accent,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          subtitle: Text(
-            _attentionSubtitle(l10n, items),
-            style: const TextStyle(color: Colors.white70),
-          ),
-          trailing: _retryingAttention
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Icon(Icons.chevron_right, color: accent),
-          onTap:
-              _retryingAttention ? null : () => _showSyncAttention(items),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        leading: Icon(
+          gpsOnly ? Icons.location_off_rounded : Icons.error_rounded,
+          color: accent,
         ),
-      );
+        title: Text(
+          _attentionTitle(l10n, items),
+          style: TextStyle(color: accent, fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          _attentionSubtitle(l10n, items),
+          style: const TextStyle(color: Colors.white70),
+        ),
+        trailing: _retryingAttention
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(Icons.chevron_right, color: accent),
+        onTap: _retryingAttention ? null : () => _showSyncAttention(items),
+      ),
+    );
   }
 
   Widget _sectionLabel(String text) => Text(
-        text.toUpperCase(),
-        style: const TextStyle(
-          color: Colors.white38,
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1.1,
-        ),
-      );
+    text.toUpperCase(),
+    style: const TextStyle(
+      color: Colors.white38,
+      fontSize: 12,
+      fontWeight: FontWeight.w800,
+      letterSpacing: 1.1,
+    ),
+  );
 
   InputDecoration _fieldDecoration({required String label, String? hint}) =>
       InputDecoration(
@@ -639,7 +686,8 @@ class _TableReconciliationSettingsSectionState
       onExpansionChanged: (expanded) {
         if (expanded) {
           setState(() {
-            _rows = ref.read(tableLedgerStoreProvider)
+            _rows = ref
+                .read(tableLedgerStoreProvider)
                 .readTableSyncVerdicts(limit: 200);
           });
         }
@@ -651,11 +699,15 @@ class _TableReconciliationSettingsSectionState
           child: FutureBuilder<List<TableSyncVerdict>>(
             future: _rows,
             builder: (context, value) {
-              if (value.hasError) return Center(child: Text(l10n.tableHistoryUnavailable));
+              if (value.hasError) {
+                return Center(child: Text(l10n.tableHistoryUnavailable));
+              }
               if (value.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
-              return TableReconciliationHistoryPanel(rows: value.data ?? const []);
+              return TableReconciliationHistoryPanel(
+                rows: value.data ?? const [],
+              );
             },
           ),
         ),
@@ -680,22 +732,33 @@ class _TableSoakSectionState extends ConsumerState<_TableSoakSection> {
   }
 
   Future<(RemoteSyncMeta, List<Map<String, Object?>>)> _load() async {
-    final storedScope = ref.read(sharedPreferencesProvider).getString('table_shadow_scope');
+    final storedScope = ref
+        .read(sharedPreferencesProvider)
+        .getString('table_shadow_scope');
     if (storedScope == null) {
       return (const RemoteSyncMeta(), <Map<String, Object?>>[]);
     }
     final session = ref.read(sessionServiceProvider);
     final base = ref.read(settingsServiceProvider).effectiveBaseUrl;
-    final scope = '$base|${session.companyId}|${session.branchId}|${session.kioskId}';
+    final scope =
+        '$base|${session.companyId}|${session.branchId}|${session.kioskId}';
     if (storedScope != scope) {
       return (const RemoteSyncMeta(), <Map<String, Object?>>[]);
     }
     try {
       final store = ref.read(remoteTableStoreProvider);
-      return (await store.readRemoteMeta(), await store.readRemoteDisagreements());
+      return (
+        await store.readRemoteMeta(),
+        await store.readRemoteDisagreements(),
+      );
     } catch (_) {
-      return (const RemoteSyncMeta(lastError: 'shadow_unavailable', consecutiveFailures: 1),
-          <Map<String, Object?>>[]);
+      return (
+        const RemoteSyncMeta(
+          lastError: 'shadow_unavailable',
+          consecutiveFailures: 1,
+        ),
+        <Map<String, Object?>>[],
+      );
     }
   }
 
@@ -705,7 +768,9 @@ class _TableSoakSectionState extends ConsumerState<_TableSoakSection> {
     if (mode != 'off') {
       ref.listen(remoteBoardProvider, (_, _) {
         if (mounted) {
-          setState(() { _loaded = _load(); });
+          setState(() {
+            _loaded = _load();
+          });
         }
       });
     }
@@ -732,8 +797,14 @@ class TableSoakPanel extends StatelessWidget {
   final List<Map<String, Object?>> rows;
 
   static const _columns = [
-    'observed_at', 'table_id', 'local_status', 'server_status', 'server_origin',
-    'server_reference', 'local_reference', 'kind',
+    'observed_at',
+    'table_id',
+    'local_status',
+    'server_status',
+    'server_origin',
+    'server_reference',
+    'local_reference',
+    'kind',
   ];
 
   @override
@@ -753,7 +824,8 @@ class TableSoakPanel extends StatelessWidget {
       if (meta.lastError != null) l10n.tableSoakError(meta.lastError!),
     ];
     final lines = [
-      for (final row in visible) _columns.map((key) => row[key]?.toString() ?? '').join('\t'),
+      for (final row in visible)
+        _columns.map((key) => row[key]?.toString() ?? '').join('\t'),
     ];
     return DefaultTextStyle(
       style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -761,30 +833,44 @@ class TableSoakPanel extends StatelessWidget {
         key: const ValueKey('table-soak-section'),
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(l10n.tableSoakTitle,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+          Text(
+            l10n.tableSoakTitle,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           const SizedBox(height: 8),
           for (final detail in details) Text(detail),
           TextButton.icon(
             key: const ValueKey('table-soak-copy'),
             icon: const Icon(Icons.copy),
             label: Text(l10n.tableSoakCopy),
-            onPressed: () => Clipboard.setData(ClipboardData(text: [
-              l10n.tableSoakTitle, ...details, _columns.join('\t'), ...lines,
-            ].join('\n'))),
-          ),
-          if (visible.isEmpty) Text(l10n.tableSoakEmpty)
-          else SizedBox(
-            height: 220,
-            child: ListView.builder(
-              key: const ValueKey('table-soak-rows'),
-              itemCount: visible.length,
-              itemBuilder: (context, index) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: SelectableText(lines[index]),
+            onPressed: () => Clipboard.setData(
+              ClipboardData(
+                text: [
+                  l10n.tableSoakTitle,
+                  ...details,
+                  _columns.join('\t'),
+                  ...lines,
+                ].join('\n'),
               ),
             ),
           ),
+          if (visible.isEmpty)
+            Text(l10n.tableSoakEmpty)
+          else
+            SizedBox(
+              height: 220,
+              child: ListView.builder(
+                key: const ValueKey('table-soak-rows'),
+                itemCount: visible.length,
+                itemBuilder: (context, index) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: SelectableText(lines[index]),
+                ),
+              ),
+            ),
         ],
       ),
     );
