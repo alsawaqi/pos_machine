@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../data/order_sync_repository.dart';
 import '../models/pos_models.dart';
 import '../models/qr_till_models.dart';
@@ -109,18 +110,102 @@ class GeolocatorQrLocation implements QrLocationGateway {
 
   @override
   Future<QrGeoFix?> currentFix() async {
+    final fix = await _request(
+      const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        timeLimit: Duration(seconds: 5),
+      ),
+    );
+    if (fix != null ||
+        kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.android) {
+      return fix;
+    }
+    // Network-only terminals can fail to obtain a fused-provider fix. Ask
+    // Android's available provider for a new fix; never substitute old or
+    // configured branch coordinates. The server still checks the geofence.
+    return _request(
+      AndroidSettings(
+        forceLocationManager: true,
+        accuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
+      ),
+    );
+  }
+
+  Future<QrGeoFix?> _request(LocationSettings settings) async {
     try {
+      // The plugin's timeLimit cancels its native request on timeout. A timeout
+      // on the outer Future alone leaves the native listener running.
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      ).timeout(const Duration(seconds: 5));
+        locationSettings: settings,
+      );
+      final age = DateTime.now().difference(position.timestamp);
+      if (age > const Duration(seconds: 30) ||
+          age < const Duration(seconds: -5) ||
+          !position.latitude.isFinite ||
+          !position.longitude.isFinite ||
+          position.latitude.abs() > 90 ||
+          position.longitude.abs() > 180) {
+        return null;
+      }
       return (lat: position.latitude, lng: position.longitude);
     } catch (_) {
-      // A cached fix may describe a different branch. Fenced branches fail
-      // closed on the missing GPS; unfenced branches accept the omitted field.
+      // Missing location remains missing; fenced branches refuse admission.
       return null;
     }
+  }
+}
+
+/// Warm a real provider fix while staff review the order. Age is checked at
+/// consumption, so warming never bypasses freshness or server geofencing.
+class PreparedQrLocation implements QrLocationGateway {
+  Position? _position;
+  Future<void>? _request;
+  bool get _fresh {
+    final p = _position;
+    if (p == null) return false;
+    final age = DateTime.now().difference(p.timestamp);
+    return age <= const Duration(seconds: 30) &&
+        age >= const Duration(seconds: -5) &&
+        p.latitude.isFinite &&
+        p.longitude.isFinite &&
+        p.latitude.abs() <= 90 &&
+        p.longitude.abs() <= 180;
+  }
+
+  Future<void> prepare() {
+    if (_fresh) return Future.value();
+    if (_request != null) return _request!;
+    return _request = _read().whenComplete(() => _request = null);
+  }
+
+  Future<void> _read() async {
+    try {
+      _position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+            ? AndroidSettings(
+                forceLocationManager: true,
+                accuracy: LocationAccuracy.high,
+                timeLimit: const Duration(seconds: 15),
+              )
+            : const LocationSettings(
+                accuracy: LocationAccuracy.high,
+                timeLimit: Duration(seconds: 5),
+              ),
+      );
+    } catch (_) {
+      _position = null;
+    }
+  }
+
+  @override
+  Future<QrGeoFix?> currentFix() async {
+    await prepare();
+    return _fresh
+        ? (lat: _position!.latitude, lng: _position!.longitude)
+        : null;
   }
 }
 

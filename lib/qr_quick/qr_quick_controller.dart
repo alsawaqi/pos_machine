@@ -8,6 +8,10 @@ abstract interface class QrQuickGateway {
   Future<Map<String, dynamic>> append(QrQuickRequest request);
 }
 
+abstract interface class QrQuickWorkspaceGateway {
+  Future<Map<String, dynamic>> change(QrQuickRequest request);
+}
+
 class QrQuickController extends ChangeNotifier {
   QrQuickController(this.gateway, this.store);
   final QrQuickGateway gateway;
@@ -53,6 +57,21 @@ class QrQuickController extends ChangeNotifier {
       if (revision == _revision) stale = true;
     } finally {
       _fetching = false;
+      _notify();
+    }
+  }
+
+  /// Reviewing a known, refused draft must not dismiss an uncertain request.
+  void reviewDraft(String uuid) {
+    if (!ready || busy || pending.containsKey(uuid)) return;
+    if (const {
+      'product_unavailable',
+      'addon_unavailable',
+      'addon_selection_invalid',
+      'invalid_catalogue_line',
+      'validation_failed',
+    }.contains(notice)) {
+      notice = null;
       _notify();
     }
   }
@@ -104,6 +123,40 @@ class QrQuickController extends ChangeNotifier {
     return _send(request, fresh: true);
   }
 
+  bool canEdit(String uuid) =>
+      canAdd(uuid) &&
+      gateway is QrQuickWorkspaceGateway &&
+      find(uuid)?.json['edit_revision'] is String;
+
+  Future<bool> change(
+    String uuid,
+    Map<String, dynamic> operation, {
+    List<QrQuickLine> lines = const [],
+  }) async {
+    if (!canEdit(uuid)) return false;
+    final request = QrQuickRequest(
+      uuid,
+      QrQuickRequest.newId(),
+      lines,
+      change: {...operation, 'revision': find(uuid)!.json['edit_revision']},
+    );
+    busy = true;
+    _revision++;
+    notice = null;
+    _notify();
+    try {
+      await store.save(request);
+      pending[uuid] = request;
+    } catch (_) {
+      ready = false;
+      busy = false;
+      notice = 'storage';
+      _notify();
+      return false;
+    }
+    return _send(request, fresh: true);
+  }
+
   Future<bool> retry(String uuid) async {
     final request = pending[uuid];
     if (!ready || busy || request == null) return false;
@@ -118,30 +171,37 @@ class QrQuickController extends ChangeNotifier {
   Future<bool> _send(QrQuickRequest request, {required bool fresh}) async {
     var success = false;
     try {
-      final result = await gateway.append(request);
+      final result = request.change == null
+          ? await gateway.append(request)
+          : await (gateway as QrQuickWorkspaceGateway).change(request);
       final order = QrQuickOrder(qrMap(result['order']));
-      final addition = qrMap(result['addition']);
-      if (order.uuid != request.orderUuid ||
-          addition['id'] is! int ||
-          (addition['id'] as int) < 1 ||
-          addition['priced_lines'] is! List ||
-          (addition['priced_lines'] as List).length != request.lines.length ||
-          addition['round_no'] is! int ||
-          (addition['round_no'] as int) < 1 ||
-          addition['subtotal_baisas'] is! int ||
-          addition['tax_baisas'] is! int ||
-          addition['total_baisas'] is! int ||
-          result['replayed'] is! bool) {
-        throw const FormatException('Invalid addition acknowledgement');
+      if (order.uuid != request.orderUuid || result['replayed'] is! bool) {
+        throw const FormatException('Invalid mutation acknowledgement');
       }
-      final frozen = (addition['priced_lines'] as List).map(qrMap).toList();
-      for (var index = 0; index < request.lines.length; index++) {
-        final line = frozen[index];
-        if (line['product_id'] != request.lines[index].productId ||
-            line['qty'] != request.lines[index].quantity ||
-            line['order_item_id'] is! int ||
-            (line['order_item_id'] as int) < 1) {
-          throw const FormatException('Mismatched addition acknowledgement');
+      if (request.change == null) {
+        final addition = qrMap(result['addition']);
+        if (order.uuid != request.orderUuid ||
+            addition['id'] is! int ||
+            (addition['id'] as int) < 1 ||
+            addition['priced_lines'] is! List ||
+            (addition['priced_lines'] as List).length != request.lines.length ||
+            addition['round_no'] is! int ||
+            (addition['round_no'] as int) < 1 ||
+            addition['subtotal_baisas'] is! int ||
+            addition['tax_baisas'] is! int ||
+            addition['total_baisas'] is! int ||
+            result['replayed'] is! bool) {
+          throw const FormatException('Invalid addition acknowledgement');
+        }
+        final frozen = (addition['priced_lines'] as List).map(qrMap).toList();
+        for (var index = 0; index < request.lines.length; index++) {
+          final line = frozen[index];
+          if (line['product_id'] != request.lines[index].productId ||
+              line['qty'] != request.lines[index].quantity ||
+              line['order_item_id'] is! int ||
+              (line['order_item_id'] as int) < 1) {
+            throw const FormatException('Mismatched addition acknowledgement');
+          }
         }
       }
       await store.remove(request);
@@ -171,10 +231,11 @@ class QrQuickController extends ChangeNotifier {
       notice = 'uncertain';
     } finally {
       busy = false;
-      stale = true;
+      // A validated append ACK already contains the authoritative bill.
+      stale = !success;
       _notify();
     }
-    await refresh();
+    if (!success) await refresh();
     return success;
   }
 

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../qr_quick/qr_quick_models.dart';
 import 'dine_in_models.dart';
@@ -11,7 +12,7 @@ abstract interface class DineInGateway {
     Map<String, dynamic> round,
     bool accept,
   );
-  Future<void> clear(int tableId);
+  Future<void> clear(int tableId, {String? seatingUuid});
   Future<void> reopen(String uuid);
 }
 
@@ -23,11 +24,13 @@ class DineInController extends ChangeNotifier {
     this.staffId,
     this.localDraftTables,
     this.printAccepted,
+    this.recordCancellationWaste,
   });
   final DineInGateway gateway;
   final DineInStore store;
   final int tableId;
   final int? staffId;
+  final Future<void> Function(DineInRequest, int)? recordCancellationWaste;
   final Set<int> Function()? localDraftTables;
   final Future<bool> Function(DineInDetail, Map<String, dynamic>)?
   printAccepted;
@@ -157,6 +160,119 @@ class DineInController extends ChangeNotifier {
     }
   }
 
+  /// Uses the normal manager gate, revalidates the bill after approval, and
+  /// persists one immutable cancellation before sending it to the same seating.
+  Future<bool> cancelLine(
+    Map<String, dynamic> line,
+    int qty, {
+    required Future<Map<String, dynamic>?> Function() approve,
+  }) async {
+    if (!canAdd ||
+        qty < 1 ||
+        qty > (line['qty'] as num) ||
+        detail?.billUuid == null) {
+      return false;
+    }
+    final before = detail!;
+    final ids = (line['item_ids'] as List?) ?? [line['id']];
+    final currentLines = (before.bill!['items'] as List)
+        .map(tableMap)
+        .where((r) => ids.contains(r['id']))
+        .toList();
+    String selector(Map<String, dynamic> row) => jsonEncode([
+      row['product_id'],
+      ((row['addons'] as List? ?? [])
+          .map((a) => qrMap(a)['add_on_id'])
+          .toSet()
+          .toList()
+        ..sort()),
+      (row['notes'] as String? ?? '')
+          .trim()
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .toLowerCase(),
+    ]);
+    if (currentLines.length != ids.length ||
+        currentLines.any((r) => selector(r) != selector(line)) ||
+        currentLines.fold<num>(0, (n, r) => n + (r['qty'] as num)) !=
+            line['qty'] ||
+        currentLines.fold<int>(
+              0,
+              (n, r) => n + (r['line_total_baisas'] as int),
+            ) !=
+            line['line_total_baisas']) {
+      notice = 'changed';
+      _notify();
+      return false;
+    }
+    busy = true;
+    _generation++;
+    notice = null;
+    _notify();
+    try {
+      final approval = await approve();
+      if (approval == null || _disposed || !_foreground) return false;
+      final current = await gateway.detail(tableId);
+      if (_disposed ||
+          !_foreground ||
+          !current.canAppend ||
+          _localConflict(current) ||
+          current.seatingUuid != before.seatingUuid ||
+          current.billUuid != before.billUuid ||
+          jsonEncode(current.bill) != jsonEncode(before.bill) ||
+          jsonEncode(current.rounds) != jsonEncode(before.rounds)) {
+        notice = 'changed';
+        return false;
+      }
+      if (approval['prepared'] == true && recordCancellationWaste == null) {
+        throw StateError('Waste journal unavailable');
+      }
+      final request = DineInRequest(
+        tableId: tableId,
+        seatingUuid: current.seatingUuid!,
+        billUuid: current.billUuid,
+        payload: {
+          'table_id': current.primaryTableId!,
+          'seating_key': QrQuickRequest.newId(),
+          'client_request_id': QrQuickRequest.newId(),
+          'queued_offline': false,
+          'staff_id': ?staffId,
+          'cancellation': {
+            'product_id': line['product_id'],
+            'qty': qty,
+            'addon_ids': [
+              for (final raw in line['addons'] as List? ?? [])
+                qrMap(raw)['add_on_id'],
+            ],
+            'notes': line['notes'],
+            'prepared': approval['prepared'],
+            'authorized_by': 'Manager',
+            'reason': approval['reason'],
+            'cancelled_at': DateTime.now().toUtc().toIso8601String(),
+            'waste_event_id': QrQuickRequest.newId(),
+          },
+        },
+      );
+      try {
+        await store.save(request);
+      } catch (_) {
+        pending = await store.load();
+        if (pending == null) ready = false;
+        notice = 'storage';
+        return false;
+      }
+      pending = request;
+      return await _send(request, fresh: true);
+    } catch (_) {
+      notice = pending == null ? 'refresh' : 'uncertain';
+      return false;
+    } finally {
+      busy = false;
+      stale = true;
+      _notify();
+      await refresh();
+    }
+  }
+
   Future<bool> retry() async {
     if (!ready || busy || !_foreground || pending == null) return false;
     busy = true;
@@ -189,6 +305,37 @@ class DineInController extends ChangeNotifier {
     try {
       final result = await gateway.append(request);
       final outcome = result['outcome'];
+      if (request.isCancellation) {
+        final count = result['cancelled_qty'];
+        if (!const {
+              'cancelled',
+              'replayed',
+              'nothing_to_cancel',
+              'bill_terminal',
+            }.contains(outcome) ||
+            (result['winner_table_session_uuid'] ??
+                    result['table_session_uuid']) !=
+                request.seatingUuid ||
+            result['seating_key'] != request.payload['seating_key'] ||
+            result['table_id'] != request.payload['table_id'] ||
+            result['order_uuid'] != request.billUuid ||
+            count is! int ||
+            count < 0 ||
+            count > (request.cancellation['qty'] as int) ||
+            result['grand_total_baisas'] is! int) {
+          throw const FormatException('Uncertain cancellation acknowledgement');
+        }
+        if (count > 0 && request.cancellation['prepared'] == true) {
+          if (recordCancellationWaste == null) {
+            throw StateError('Waste journal unavailable');
+          }
+          await recordCancellationWaste!(request, count);
+        }
+        await store.remove(request);
+        pending = null;
+        notice = count == request.cancellation['qty'] ? null : 'changed';
+        return count == request.cancellation['qty'];
+      }
       if (fresh && const {'bill_terminal', 'bill_unpaid'}.contains(outcome)) {
         // These two business verdicts store no round. Only a NEW attempt may unlock.
         await store.remove(request);
@@ -257,8 +404,9 @@ class DineInController extends ChangeNotifier {
   }
 
   Future<void> clear() async {
-    if (!available || detail?.occupied != true || detail?.bill != null) return;
-    await _action(() => gateway.clear(tableId));
+    if (!available || detail?.canClearEmpty != true) return;
+    final uuid = detail!.seatingUuid!;
+    await _action(() => gateway.clear(tableId, seatingUuid: uuid));
   }
 
   Future<void> reopen() async {

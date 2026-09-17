@@ -1,3 +1,4 @@
+import '../services/table_round_validation.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -61,6 +62,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
   bindBillIdentity;
   // Current device catalogue, not the frozen cart snapshot or a server read.
   String? Function(int productId)? stockModeForProduct;
+  void Function(List<Map<String, dynamic>> lines)? validateRound;
   final DateTime Function() clock;
   final String Function() newUuid;
   final Future<void> Function(DiningTableSession)? guardSession;
@@ -471,6 +473,78 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
     );
   }
 
+  Future<List<LocalTableRound>> heldRounds(DiningTableSession source) async {
+    final session = await _remember(source);
+    return (await store.readLocalTableRounds(
+      seatingKey: session.seatingKey,
+    )).where((round) => round.status == 'held').toList();
+  }
+
+  /// Explicit staff action. Retain immutable requests/print evidence. A lost
+  /// rejection response is recovered by rereading the exact server round.
+  Future<void> rejectHeldRounds(
+    DiningTableSession source, {
+    required Future<Map<String, dynamic>> Function() readDetail,
+    required Future<void> Function(String seatingUuid, int roundId) reject,
+    required bool Function() isCurrent,
+  }) => _serial(() async {
+    final session = await _remember(source);
+    void check() {
+      if (!live ||
+          !isCurrent() ||
+          session.seatingUuid == null ||
+          session.serverOrderUuid == null) {
+        throw StateError('Table context changed.');
+      }
+    }
+
+    check();
+    if ((await outbox.pendingRows()).isNotEmpty) {
+      throw StateError('Finish pending sync before reviewing this round.');
+    }
+    final held = await heldRounds(session);
+    for (final round in held) {
+      Map<String, dynamic> exact(Map<String, dynamic> detail) {
+        check();
+        final seat = detail['seating'] as Map?;
+        final bill = detail['bill'] as Map?;
+        final server = (detail['rounds'] as List? ?? const [])
+            .whereType<Map>()
+            .where((r) => r['id'] == round.serverRoundId)
+            .firstOrNull;
+        if (round.serverRoundId == null ||
+            round.ackedAt == null ||
+            round.orderUuid != session.serverOrderUuid ||
+            seat?['uuid'] != session.seatingUuid ||
+            seat?['status'] != 'open' ||
+            bill?['uuid'] != session.serverOrderUuid ||
+            bill?['status'] != 'open' ||
+            bill?['charge'] != 'none' ||
+            server == null ||
+            server['entered_by'] != 'staff' ||
+            server['client_request_id'] != round.clientRequestId) {
+          throw StateError('The held round changed. Refresh the table.');
+        }
+        return Map<String, dynamic>.from(server);
+      }
+
+      var server = exact(await readDetail());
+      if (server['status'] == 'pending_confirmation') {
+        check();
+        await reject(session.seatingUuid!, round.serverRoundId!);
+        server = exact(await readDetail());
+      }
+      if (server['status'] != 'rejected') {
+        throw StateError('The round was not rejected. Review the server bill.');
+      }
+      check();
+      await store.saveLocalTableRound(
+        round.withChanges({'status': 'rejected'}),
+      );
+      _changed();
+    }
+  });
+
   Future<LocalTableRound?> sendRound(DiningTableSession session) {
     if (!live) return Future.value(null);
     return _serial(() => _sendRound(session));
@@ -478,10 +552,14 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
 
   Future<LocalTableRound?> _sendRound(DiningTableSession source) async {
     final session = await _ensure(source);
+    if ((await heldRounds(session)).isNotEmpty) {
+      throw const TableRoundReviewRequired();
+    }
     final lines = (await delta(
       session,
     )).where((line) => (line['qty'] as int) > 0).toList();
     if (lines.isEmpty) return null;
+    validateRound?.call(lines);
     final requestId = newUuid();
     final at = clock().toUtc();
     final key = 'tbl:${session.seatingKey}:round:$requestId';
@@ -727,6 +805,9 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
         var round = rounds
             .where((r) => r.clientRequestId == payload['client_request_id'])
             .firstOrNull;
+        // A replay of the original held acknowledgement cannot undo a later
+        // verified rejection. Keep the review and print audit immutable.
+        if (round?.status == 'rejected') continue;
         // Recover a durable row whose process died before the sqflite write.
         round ??= LocalTableRound(
           clientRequestId: payload['client_request_id'] as String,

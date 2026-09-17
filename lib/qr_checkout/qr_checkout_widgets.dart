@@ -56,9 +56,21 @@ String checkoutText(BuildContext context, String key) {
       'The reservation changed or expired. No further tender was started.',
       'تغيّر حجز الدفع أو انتهت صلاحيته. لم يبدأ دفع إضافي.',
     ),
+    'terminal_busy': (
+      'Terminal busy. Try again.',
+      'جهاز الدفع مشغول. حاول مرة أخرى.',
+    ),
     'cancelled': (
       'Payment cancelled. Refresh the order before another attempt.',
       'تم إلغاء الدفع. حدّث الطلب قبل المحاولة مجدداً.',
+    ),
+    'geofence_fix_required': (
+      'The terminal could not get a fresh location. Check Location settings, then reopen payment. No payment was started.',
+      'تعذّر تحديد الموقع الحالي للجهاز. تحقّق من إعدادات الموقع ثم افتح الدفع مجدداً. لم تبدأ أي عملية دفع.',
+    ),
+    'geofence_outside': (
+      'The terminal location is outside the branch area. Check the device and branch location before trying again. No payment was started.',
+      'موقع الجهاز خارج نطاق الفرع. تحقّق من موقع الجهاز والفرع قبل المحاولة مجدداً. لم تبدأ أي عملية دفع.',
     ),
     'staff_bill_owner_required': (
       'Recover the original table draft on its owning device first. No payment was started.',
@@ -150,10 +162,12 @@ class QrCheckoutBoundary extends StatefulWidget {
     required this.controller,
     required this.authorizeManager,
     required this.paymentPage,
+    this.statusPage,
   });
   final QrCheckoutController controller;
   final Future<bool> Function() authorizeManager;
   final Widget Function(BuildContext, VoidCallback) paymentPage;
+  final Widget Function(BuildContext, VoidCallback, Widget)? statusPage;
   @override
   State<QrCheckoutBoundary> createState() => _QrCheckoutBoundaryState();
 }
@@ -214,81 +228,79 @@ class _QrCheckoutBoundaryState extends State<QrCheckoutBoundary> {
     },
     child: controller.phase == CheckoutPhase.ready
         ? widget.paymentPage(context, _exit)
-        : Scaffold(
-            appBar: AppBar(
-              automaticallyImplyLeading: false,
-              title: Text(checkoutText(context, 'title')),
-            ),
-            body: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 600),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (controller.busy) const CircularProgressIndicator(),
-                      const SizedBox(height: 16),
-                      Text(
-                        controller.reference,
-                        key: const ValueKey('qr-checkout-reference'),
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        checkoutText(context, controller.phase.name),
-                        key: const ValueKey('qr-checkout-status'),
-                        textAlign: TextAlign.center,
-                      ),
-                      if (controller.notice case final notice?)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 16),
-                          child: Text(
-                            checkoutText(context, notice),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      if (controller.phase == CheckoutPhase.paid) ...[
-                        const SizedBox(height: 16),
-                        Text(
-                          '${checkoutText(context, 'receipt')}: ${controller.attempt?.receiptNumber ?? controller.reference}',
-                        ),
-                        Text(checkoutText(context, 'history_receipt')),
-                      ],
-                      if (controller.phase == CheckoutPhase.attention ||
-                          controller.phase == CheckoutPhase.pending) ...[
-                        const SizedBox(height: 16),
-                        Text(
-                          checkoutText(context, 'handover_scope'),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-                      if (controller.phase == CheckoutPhase.pending)
-                        FilledButton(
-                          key: const ValueKey('qr-checkout-retry'),
-                          onPressed: controller.busy
-                              ? null
-                              : controller.retryAcknowledgement,
-                          child: Text(checkoutText(context, 'retry')),
-                        ),
-                      if (!controller.busy)
-                        TextButton(
-                          key: const ValueKey('qr-checkout-exit'),
-                          onPressed: _exit,
-                          child: Text(
-                            checkoutText(
-                              context,
-                              controller.canLeave ? 'done' : 'manager',
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+        : widget.statusPage?.call(context, _exit, _statusContent(context)) ??
+              Scaffold(
+                appBar: AppBar(
+                  automaticallyImplyLeading: false,
+                  title: Text(checkoutText(context, 'title')),
                 ),
+                body: Center(child: _statusContent(context)),
+              ),
+  );
+
+  Widget _statusContent(BuildContext context) => SingleChildScrollView(
+    padding: const EdgeInsets.all(24),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 600),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (controller.busy) const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(
+            controller.reference,
+            key: const ValueKey('qr-checkout-reference'),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            checkoutText(context, controller.phase.name),
+            key: const ValueKey('qr-checkout-status'),
+            textAlign: TextAlign.center,
+          ),
+          if (controller.notice case final notice?)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: Text(
+                checkoutText(context, notice),
+                textAlign: TextAlign.center,
               ),
             ),
-          ),
+          if (controller.phase == CheckoutPhase.paid) ...[
+            const SizedBox(height: 16),
+            Text(
+              '${checkoutText(context, 'receipt')}: ${controller.attempt?.receiptNumber ?? controller.reference}',
+            ),
+            Text(checkoutText(context, 'history_receipt')),
+          ],
+          if (controller.phase == CheckoutPhase.attention ||
+              controller.phase == CheckoutPhase.pending) ...[
+            const SizedBox(height: 16),
+            Text(
+              checkoutText(context, 'handover_scope'),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          const SizedBox(height: 20),
+          if (controller.phase == CheckoutPhase.pending)
+            FilledButton(
+              key: const ValueKey('qr-checkout-retry'),
+              onPressed: controller.busy
+                  ? null
+                  : controller.retryAcknowledgement,
+              child: Text(checkoutText(context, 'retry')),
+            ),
+          if (!controller.busy)
+            TextButton(
+              key: const ValueKey('qr-checkout-exit'),
+              onPressed: _exit,
+              child: Text(
+                checkoutText(context, controller.canLeave ? 'done' : 'manager'),
+              ),
+            ),
+        ],
+      ),
+    ),
   );
 }
 

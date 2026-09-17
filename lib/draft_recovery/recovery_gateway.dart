@@ -74,7 +74,7 @@ class ApiRecoveryGateway implements DraftRecoveryGateway, DineInGateway {
   });
 
   @override
-  Future<void> clear(int tableId) async =>
+  Future<void> clear(int tableId, {String? seatingUuid}) async =>
       throw StateError('Recovery cannot clear tables.');
   @override
   Future<void> reopen(String uuid) async =>

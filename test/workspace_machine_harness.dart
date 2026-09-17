@@ -45,6 +45,8 @@ class _Outbox implements OrderSyncRepository {
 
 class _Coordinator implements TableSyncCoordinator {
   @override
+  void Function(List<Map<String, dynamic>> lines)? validateRound;
+  @override
   String? Function(int productId)? stockModeForProduct;
   @override
   Future<TablePaymentContext> Function(OrderSnapshot)? paymentContext;
@@ -138,6 +140,8 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
   required bool toggle,
   bool arabic = false,
   required CatalogSnapshot catalog,
+  AudienceService? audience,
+  bool? audienceConsent,
 }) async {
   SharedPreferences.setMockInitialValues({
     'app_language': arabic ? 'ar' : 'en',
@@ -162,6 +166,9 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
   final preferences = await SharedPreferences.getInstance();
   final session = SessionService(const FlutterSecureStorage(), preferences);
   await session.load();
+  if (audienceConsent != null) {
+    await session.saveServerAudienceMeasurement(audienceConsent);
+  }
   final gateway = T7SheetGateway(board: []);
   await tester.pumpWidget(
     ProviderScope(
@@ -193,7 +200,7 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
           (ref) => Stream.value(const GeofenceStatus(FenceState.disabled)),
         ),
         liveSyncProvider.overrideWithValue(_LiveSync()),
-        audienceServiceProvider.overrideWithValue(_Audience()),
+        audienceServiceProvider.overrideWithValue(audience ?? _Audience()),
         qrRoundAutoPrintControllerProvider.overrideWithValue(_AutoPrint()),
         qrTillServiceProvider.overrideWithValue(gateway),
         qrRoundGatewayProvider.overrideWithValue(gateway),

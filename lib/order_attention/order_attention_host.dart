@@ -10,8 +10,10 @@ class OrderAttentionHost extends StatefulWidget {
     required this.child,
     required this.createController,
     this.signal,
+    this.showBanner = true,
   });
   final Widget child;
+  final bool showBanner;
   final OrderAttentionController Function() createController;
   final Listenable? signal;
 
@@ -79,6 +81,7 @@ class _OrderAttentionHostState extends State<OrderAttentionHost>
     animation: controller,
     child: widget.child,
     builder: (context, child) {
+      if (!widget.showBanner) return child!;
       final snap = controller.snapshot;
       final quick = snap?.quick.length ?? 0;
       final rounds = snap?.rounds.length ?? 0;

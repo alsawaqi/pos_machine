@@ -19,6 +19,8 @@ class ApiCheckoutGateway implements CheckoutGateway {
   final String scope;
   final String? token;
   ({double lat, double lng})? _fix;
+  CheckoutClaim? _reservation;
+  bool _editableQrOrder = false;
   void checkScope() {
     if (scope != currentScope() ||
         token == null ||
@@ -48,7 +50,7 @@ class ApiCheckoutGateway implements CheckoutGateway {
   @override
   Future<CheckoutClaim> claim(String orderUuid) async {
     try {
-      return CheckoutClaim(
+      return _reservation = CheckoutClaim(
         await _call(
           () => api.checkoutClaim({
             'order_uuid': orderUuid,
@@ -82,25 +84,46 @@ class ApiCheckoutGateway implements CheckoutGateway {
   }
 
   @override
-  Future<Map<String, dynamic>> snapshot(String orderUuid) =>
-      _call(() => api.checkoutRead(orderUuid));
+  Future<Map<String, dynamic>> snapshot(String orderUuid) => _call(() async {
+    final result = await api.checkoutRead(orderUuid);
+    final order = checkoutMap(result['order']);
+    _editableQrOrder =
+        order['source'] == 'qr_web' &&
+        const ['quick', 'dine_in'].contains(order['order_type']);
+    return result;
+  });
   @override
   Future<void> release(
     String orderUuid,
     String outcome,
     List<Map<String, dynamic>> captures,
   ) => _call(
-    () => api.checkoutRelease({
-      'order_uuid': orderUuid,
-      'outcome': outcome,
-      if (captures.isNotEmpty) 'bank_response': {'checkout_tenders': captures},
-      if (captures.where((c) => c['softpos_reference'] is String).firstOrNull
-          case final row?)
-        'softpos_reference': row['softpos_reference'],
-      if (captures.where((c) => c['softpos_auth_code'] is String).firstOrNull
-          case final row?)
-        'softpos_auth_code': row['softpos_auth_code'],
-    }),
+    () =>
+        _editableQrOrder &&
+            outcome == 'cancelled' &&
+            captures.isEmpty &&
+            _reservation != null
+        ? api.cancelQuickReservation({
+            'order_uuid': orderUuid,
+            'charge_claimed_at': _reservation!.json['charge_claimed_at'],
+            'charge_deadline_at': _reservation!.json['charge_deadline_at'],
+          })
+        : api.checkoutRelease({
+            'order_uuid': orderUuid,
+            'outcome': outcome,
+            if (captures.isNotEmpty)
+              'bank_response': {'checkout_tenders': captures},
+            if (captures
+                    .where((c) => c['softpos_reference'] is String)
+                    .firstOrNull
+                case final row?)
+              'softpos_reference': row['softpos_reference'],
+            if (captures
+                    .where((c) => c['softpos_auth_code'] is String)
+                    .firstOrNull
+                case final row?)
+              'softpos_auth_code': row['softpos_auth_code'],
+          }),
     writes: true,
   );
   @override

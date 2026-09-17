@@ -46,9 +46,14 @@ class SqliteQrQuickStore implements QrQuickStore {
       return QrQuickRequest(
         row['order_uuid'] as String,
         row['request_id'] as String,
-        (payload['lines'] as List)
+        (payload['lines'] as List? ?? const [])
             .map((line) => QrQuickLine.fromJson(qrMap(line)))
             .toList(),
+        change: payload.containsKey('operation')
+            ? (Map<String, dynamic>.from(payload)
+                ..remove('client_request_id')
+                ..remove('lines'))
+            : null,
       );
     }).toList();
   }

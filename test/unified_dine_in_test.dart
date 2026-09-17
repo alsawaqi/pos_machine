@@ -131,7 +131,7 @@ class TableFake implements DineInGateway {
   }
 
   @override
-  Future<void> clear(int id) async {
+  Future<void> clear(int id, {String? seatingUuid}) async {
     calls.add('clear:$id');
   }
 
@@ -405,6 +405,10 @@ void main() {
     'empty shared seating clear uses table id and no local mutation',
     () async {
       gateway.value['bill'] = null;
+      // An empty session has no submitted rounds or joined table family.
+      gateway.value['rounds'] = [];
+      gateway.value['seating']['table_id'] = 2;
+      gateway.value['seating']['joined_table_ids'] = [];
       await controller.start();
       await controller.clear();
       expect(gateway.calls, contains('clear:2'));

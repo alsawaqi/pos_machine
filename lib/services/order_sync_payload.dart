@@ -46,10 +46,17 @@ List<Map<String, dynamic>> buildTableRoundLines(List<CartItem> items) => [
 ];
 
 String tableLineFingerprint(Map<String, dynamic> line) {
-  final ids = (line['addon_ids'] as List? ?? const [])
-      .whereType<num>().map((id) => id.toInt()).toSet().toList()..sort();
-  final notes = (line['notes']?.toString() ?? '').trim()
-      .replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+  final ids =
+      (line['addon_ids'] as List? ?? const [])
+          .whereType<num>()
+          .map((id) => id.toInt())
+          .toSet()
+          .toList()
+        ..sort();
+  final notes = (line['notes']?.toString() ?? '')
+      .trim()
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .toLowerCase();
   return jsonEncode([line['product_id'], ids, notes]);
 }
 
@@ -66,12 +73,17 @@ List<Map<String, dynamic>> tableRoundDelta(
     lines.putIfAbsent(key, () => {...line, 'qty': 0});
     lines[key]!['qty'] = (lines[key]!['qty'] as int) + quantity;
   }
+
   for (final line in buildTableRoundLines(items)) {
     add(line, line['qty'] as int);
   }
   for (final round in rounds) {
-    if (const {'bill_terminal', 'bill_unpaid', 'failed'}
-        .contains(round.status)) {
+    if (const {
+      'bill_terminal',
+      'bill_unpaid',
+      'failed',
+      'rejected',
+    }.contains(round.status)) {
       continue;
     }
     for (final line in round.lines) {
@@ -80,13 +92,13 @@ List<Map<String, dynamic>> tableRoundDelta(
   }
   for (final cancellation in cancellations) {
     final quantity = cancellation.status == 'queued'
-        ? cancellation.qty : (cancellation.cancelledQty ?? 0);
+        ? cancellation.qty
+        : (cancellation.cancelledQty ?? 0);
     if (quantity == 0) continue;
     add({
       'product_id': cancellation.productId,
       'addon_ids': cancellation.addonIds,
-      if ((cancellation.notes ?? '').isNotEmpty)
-        'notes': cancellation.notes,
+      if ((cancellation.notes ?? '').isNotEmpty) 'notes': cancellation.notes,
     }, quantity);
   }
   return lines.values.where((line) => line['qty'] != 0).toList();
@@ -623,7 +635,8 @@ Map<String, dynamic> buildOrderPayEvent(
   String? clientEventId,
 }) {
   final gen = newUuid ?? uuidV4;
-  final billUuid = orderUuid ??
+  final billUuid =
+      orderUuid ??
       (snapshot.serverOrderUuid.isNotEmpty ? snapshot.serverOrderUuid : gen());
   final ts = (now ?? DateTime.now()).toUtc().toIso8601String();
   if (clientEventId == null) gen(); // The legacy create-event UUID slot.

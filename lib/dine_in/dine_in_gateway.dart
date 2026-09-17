@@ -39,7 +39,9 @@ class ApiDineInGateway implements DineInGateway {
       _call(() async => DineInDetail(await api.dineInDetail(tableId)));
   @override
   Future<Map<String, dynamic>> append(DineInRequest request) => _call(
-    () => api.dineInAppend(request.seatingUuid, request.payload),
+    () => request.isCancellation
+        ? api.dineInCancelLine(request.seatingUuid, request.cancellationPayload)
+        : api.dineInAppend(request.seatingUuid, request.payload),
     writes: true,
   );
   @override
@@ -57,8 +59,10 @@ class ApiDineInGateway implements DineInGateway {
     writes: true,
   );
   @override
-  Future<void> clear(int tableId) =>
-      _call(() => api.dineInClear(tableId), writes: true);
+  Future<void> clear(int tableId, {String? seatingUuid}) => _call(
+    () => api.dineInClear(tableId, seatingUuid: seatingUuid!),
+    writes: true,
+  );
   @override
   Future<void> reopen(String uuid) =>
       _call(() => api.dineInReopen(uuid), writes: true);

@@ -47,6 +47,8 @@ class _Outbox implements OrderSyncRepository {
 
 class _Coordinator implements TableSyncCoordinator {
   @override
+  void Function(List<Map<String, dynamic>> lines)? validateRound;
+  @override
   String? Function(int productId)? stockModeForProduct;
   @override
   Future<TablePaymentContext> Function(OrderSnapshot)? paymentContext;
@@ -298,63 +300,70 @@ void main() {
     },
   );
 
-  testWidgets('Settings retires the legacy switch without rewriting its saved value', (
-    tester,
-  ) async {
-    final preferences = await SharedPreferences.getInstance();
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          sharedPreferencesProvider.overrideWithValue(preferences),
-          releaseBuildProvider.overrideWithValue(true),
-          orderSyncAttentionProvider.overrideWith((ref) => Stream.value([])),
-        ],
-        child: const MaterialApp(
-          localizationsDelegates: L10n.localizationsDelegates,
-          supportedLocales: L10n.supportedLocales,
-          home: SettingsScreen(showOperations: false),
+  testWidgets(
+    'Settings retires the legacy switch without rewriting its saved value',
+    (tester) async {
+      final preferences = await SharedPreferences.getInstance();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            releaseBuildProvider.overrideWithValue(true),
+            orderSyncAttentionProvider.overrideWith((ref) => Stream.value([])),
+          ],
+          child: const MaterialApp(
+            localizationsDelegates: L10n.localizationsDelegates,
+            supportedLocales: L10n.supportedLocales,
+            home: SettingsScreen(showOperations: false),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const ValueKey('settings-unified-dine-in')));
-    expect(find.byKey(toggleKey), findsNothing);
-    expect(find.text('Show the old QR Tables tab'), findsNothing);
-    expect(find.text('Table orders are in Dine-In'), findsOneWidget);
-    expect(preferences.getBool('show_legacy_qr_tables_tab'), isNull);
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(SettingsScreen)),
-    );
-    expect(
-      container.read(settingsControllerProvider).showLegacyQrTablesTab,
-      isFalse,
-    );
-    await _dispose(tester);
-  });
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('settings-unified-dine-in')),
+      );
+      expect(find.byKey(toggleKey), findsNothing);
+      expect(find.text('Show the old QR Tables tab'), findsNothing);
+      expect(find.text('Table orders are in Dine-In'), findsOneWidget);
+      expect(preferences.getBool('show_legacy_qr_tables_tab'), isNull);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(SettingsScreen)),
+      );
+      expect(
+        container.read(settingsControllerProvider).showLegacyQrTablesTab,
+        isFalse,
+      );
+      await _dispose(tester);
+    },
+  );
 
   for (final mode in ['off', 'shadow', 'live']) {
     for (final enabled in [false, true]) {
-      testWidgets('actual nav $mode old toggle=$enabled exposes no separate QR Tables', (
-        tester,
-      ) async {
-        tester.view.physicalSize = const Size(1600, 1000);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-        final harness = await _pumpPos(tester, mode: mode, toggle: enabled);
-        expect(find.byType(StaffPosScreen), findsOneWidget);
-        expect(find.text('QR Tables'), findsNothing);
-        expect(find.text('Offers'), findsOneWidget);
-        expect(find.text('Messages'), findsOneWidget);
-        expect(harness.gateway.calls, isEmpty);
-        expect(find.byType(QrTablesScreen), findsNothing);
-        expect(harness.preferences.getBool('show_legacy_qr_tables_tab'), enabled);
-        debugPrint(
-          'T7_LEGACY_TAB_MATRIX mode=$mode toggle=$enabled '
-          'visible=false legacy_route=retired',
-        );
-        await _dispose(tester);
-      });
+      testWidgets(
+        'actual nav $mode old toggle=$enabled exposes no separate QR Tables',
+        (tester) async {
+          tester.view.physicalSize = const Size(1600, 1000);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final harness = await _pumpPos(tester, mode: mode, toggle: enabled);
+          expect(find.byType(StaffPosScreen), findsOneWidget);
+          expect(find.text('QR Tables'), findsNothing);
+          expect(find.text('Offers'), findsOneWidget);
+          expect(find.text('Messages'), findsOneWidget);
+          expect(harness.gateway.calls, isEmpty);
+          expect(find.byType(QrTablesScreen), findsNothing);
+          expect(
+            harness.preferences.getBool('show_legacy_qr_tables_tab'),
+            enabled,
+          );
+          debugPrint(
+            'T7_LEGACY_TAB_MATRIX mode=$mode toggle=$enabled '
+            'visible=false legacy_route=retired',
+          );
+          await _dispose(tester);
+        },
+      );
     }
 
     testWidgets('Settings return cannot restore QR Tables in $mode', (
@@ -388,10 +397,7 @@ void main() {
         );
         await tester.pageBack();
         await tester.pumpAndSettle();
-        expect(
-          find.text('QR Tables'),
-          findsNothing,
-        );
+        expect(find.text('QR Tables'), findsNothing);
       }
       expect(harness.gateway.calls, isEmpty);
       debugPrint(

@@ -59,9 +59,17 @@ class PosApiService {
   }
 
   Future<Map<String, dynamic>> reversalRequest(
-      String method, String path, Map<String, dynamic>? body) async {
-    final result = await _send(() => _dio.request<dynamic>(path,
-      data: body, options: Options(method: method)));
+    String method,
+    String path,
+    Map<String, dynamic>? body,
+  ) async {
+    final result = await _send(
+      () => _dio.request<dynamic>(
+        path,
+        data: body,
+        options: Options(method: method),
+      ),
+    );
     return result.dataMap;
   }
 
@@ -447,7 +455,12 @@ class PosApiService {
   }
 
   Future<List<QrPendingOrder>> fetchQrPendingOrders() async {
-    final body = await _send(() => _dio.get('/device/qr/pending-orders'));
+    final body = await _send(
+      () => _dio.get(
+        '/device/qr/pending-orders',
+        queryParameters: {'workspace': 1},
+      ),
+    );
     final orders = body.dataMap['orders'];
     if (orders is! List) throw const FormatException('Missing pending orders');
     return orders
@@ -537,6 +550,16 @@ class PosApiService {
     ),
   )).dataMap;
 
+  Future<Map<String, dynamic>> dineInCancelLine(
+    String uuid,
+    Map<String, dynamic> payload,
+  ) async => (await _send(
+    () => _dio.post(
+      '/device/tables/${Uri.encodeComponent(uuid)}/cancel-line',
+      data: payload,
+    ),
+  )).dataMap;
+
   Future<void> dineInReview(
     String uuid,
     int id, {
@@ -564,7 +587,15 @@ class PosApiService {
     }
   }
 
-  Future<void> dineInClear(int id) => clearQrTable(id);
+  Future<void> dineInClear(int id, {required String seatingUuid}) async {
+    await _send(
+      () => _dio.post(
+        '/device/tables/clear-empty-session',
+        data: {'table_id': id, 'seating_uuid': seatingUuid},
+      ),
+    );
+  }
+
   Future<void> dineInReopen(String uuid) async {
     await reopenQrPayment(uuid);
   }
@@ -578,6 +609,10 @@ class PosApiService {
   Future<Map<String, dynamic>> checkoutRead(String uuid) async => (await _send(
     () => _dio.get('/device/qr/orders/${Uri.encodeComponent(uuid)}/checkout'),
   )).dataMap;
+
+  Future<void> cancelQuickReservation(Map<String, dynamic> payload) async {
+    await _send(() => _dio.post('/device/qr/cancel-settlement', data: payload));
+  }
 
   Future<void> checkoutRelease(Map<String, dynamic> payload) async {
     await _send(() => _dio.post('/device/qr/release-charge', data: payload));
@@ -606,8 +641,12 @@ class PosApiService {
       .map((row) => Map<String, dynamic>.from(row as Map))
       .toList();
 
-  Future<Map<String, dynamic>> fetchQuickInbox() async =>
-      (await _send(() => _dio.get('/device/qr/pending-orders'))).dataMap;
+  Future<Map<String, dynamic>> fetchQuickInbox() async => (await _send(
+    () => _dio.get(
+      '/device/qr/pending-orders',
+      queryParameters: {'workspace': 1},
+    ),
+  )).dataMap;
 
   Future<Map<String, dynamic>> fetchOrderAttention() async =>
       (await _send(() => _dio.get('/device/order-attention'))).dataMap;
@@ -616,12 +655,23 @@ class PosApiService {
     await moveQrPendingToCounter(uuid);
   }
 
+  Future<Map<String, dynamic>> changeQuickWorkspace(
+    String uuid,
+    Map<String, dynamic> payload,
+  ) async => (await _send(
+    () => _dio.post(
+      '/device/qr/pending-orders/${Uri.encodeComponent(uuid)}/workspace',
+      data: payload,
+    ),
+  )).dataMap;
+
   Future<Map<String, dynamic>> appendQuickInbox(
     String uuid,
     Map<String, dynamic> payload,
   ) async => (await _send(
     () => _dio.post(
       '/device/qr/pending-orders/${Uri.encodeComponent(uuid)}/items',
+      queryParameters: {'workspace': 1},
       data: payload,
     ),
   )).dataMap;

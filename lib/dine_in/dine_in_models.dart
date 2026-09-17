@@ -65,6 +65,14 @@ class DineInDetail {
               seating?['temp_reference'] ??
               '')
           .toString();
+  bool get canClearEmpty =>
+      occupied &&
+      seatingUuid != null &&
+      bill == null &&
+      rounds.isEmpty &&
+      !orphaned &&
+      primaryTableId == tableId &&
+      ((seating?['joined_table_ids'] as List?) ?? const []).isEmpty;
   bool get occupied => json['occupied'] == true;
   bool get orphaned => json['orphaned'] == true;
   bool get pendingReview =>
@@ -95,6 +103,64 @@ class DineInRequest {
     required Map<String, dynamic> payload,
   }) : encoded = jsonEncode(payload) {
     final p = this.payload;
+    if (p['cancellation'] is Map) {
+      final cancel = tableMap(p['cancellation']);
+      if (tableId < 1 ||
+          seatingUuid.isEmpty ||
+          billUuid == null ||
+          p['table_id'] is! int ||
+          p['seating_key'] is! String ||
+          p['client_request_id'] is! String ||
+          p['queued_offline'] != false ||
+          p.keys.any(
+            (k) => !const {
+              'table_id',
+              'seating_key',
+              'client_request_id',
+              'queued_offline',
+              'staff_id',
+              'cancellation',
+            }.contains(k),
+          ) ||
+          cancel.keys.any(
+            (k) => !const {
+              'product_id',
+              'qty',
+              'addon_ids',
+              'notes',
+              'prepared',
+              'authorized_by',
+              'reason',
+              'cancelled_at',
+              'waste_event_id',
+            }.contains(k),
+          ) ||
+          cancel['prepared'] is! bool ||
+          cancel['authorized_by'] != 'Manager' ||
+          cancel['cancelled_at'] is! String ||
+          cancel['waste_event_id'] is! String) {
+        throw const FormatException('Invalid cancellation intent');
+      }
+      final addons = cancel['addon_ids'];
+      if (cancel['product_id'] is! int ||
+          (cancel['product_id'] as int) < 1 ||
+          cancel['qty'] is! int ||
+          (cancel['qty'] as int) < 1 ||
+          (cancel['qty'] as int) > 999 ||
+          addons is! List ||
+          addons.length > 50 ||
+          addons.any((id) => id is! int) ||
+          addons.toSet().length != addons.length ||
+          (cancel['notes'] != null &&
+              (cancel['notes'] is! String ||
+                  (cancel['notes'] as String).length > 1000)) ||
+          (cancel['reason'] != null &&
+              (cancel['reason'] is! String ||
+                  (cancel['reason'] as String).length > 200))) {
+        throw const FormatException('Invalid cancellation selector');
+      }
+      return;
+    }
     if (tableId < 1 ||
         seatingUuid.isEmpty ||
         p['table_id'] is! int ||
@@ -153,4 +219,12 @@ class DineInRequest {
   final String encoded;
   Map<String, dynamic> get payload => tableMap(jsonDecode(encoded));
   String get id => payload['client_request_id'] as String;
+  bool get isCancellation => payload['cancellation'] is Map;
+  Map<String, dynamic> get cancellation => tableMap(payload['cancellation']);
+  Map<String, dynamic> get cancellationPayload => {
+    for (final entry in payload.entries)
+      if (entry.key != 'cancellation') entry.key: entry.value,
+    for (final entry in cancellation.entries)
+      if (entry.key != 'waste_event_id') entry.key: entry.value,
+  };
 }

@@ -26,7 +26,7 @@ String quickDeviceScope(
 }
 
 /// Uses the app's existing authenticated client; never a server lookup for prices.
-class ApiQrQuickGateway implements QrQuickGateway {
+class ApiQrQuickGateway implements QrQuickGateway, QrQuickWorkspaceGateway {
   ApiQrQuickGateway(this.api, this.currentScope, {this.mutationGuard})
     : scope = currentScope(),
       token = api.tokenGetter();
@@ -64,6 +64,8 @@ class ApiQrQuickGateway implements QrQuickGateway {
             status >= 400 &&
             status < 500 &&
             const {
+              'order_changed',
+              'transfer_unavailable',
               'order_not_found',
               'device_not_attended',
               'order_not_editable',
@@ -79,6 +81,12 @@ class ApiQrQuickGateway implements QrQuickGateway {
       );
     }
   }
+
+  @override
+  Future<Map<String, dynamic>> change(QrQuickRequest request) => _call(
+    () => api.changeQuickWorkspace(request.orderUuid, request.payload),
+    writes: true,
+  );
 
   @override
   Future<List<QrQuickOrder>> fetch() => _call(() async {

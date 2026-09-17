@@ -324,7 +324,20 @@ class QrCheckoutController extends ChangeNotifier {
             return;
           }
           if (capture.state != CheckoutCaptureState.approved) {
-            await _captureStopped('cancelled', tenders);
+            final terminalBusy =
+                const {
+                  CheckoutCaptureState.notDispatched,
+                  CheckoutCaptureState.cancelled,
+                }.contains(capture.state) &&
+                capture.evidence['bank_response'] is Map &&
+                checkoutMap(
+                      capture.evidence['bank_response'],
+                    )['code']?.toString().toUpperCase() ==
+                    'BUSY';
+            await _captureStopped(
+              terminalBusy ? 'terminal_busy' : 'cancelled',
+              tenders,
+            );
             return;
           }
           final tender = {

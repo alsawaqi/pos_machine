@@ -40,6 +40,17 @@ class PresentationService {
           'stale': true,
           'items': <Map<String, dynamic>>[],
         };
+    if (owner is CurrentOrderWorkspace && owner.mainCart) {
+      _billDisplay =
+          bill?.cartDisplay(stale: stale, arabic: arabic) ??
+          {
+            ...OrderSnapshot.initial().toMap(),
+            'type': 'order_snapshot',
+            'note': arabic
+                ? 'بانتظار تحديث الفاتورة'
+                : 'Waiting for a bill update',
+          };
+    }
     _billDisplay!['language'] = arabic ? 'ar' : 'en';
     await _sendWorkspace();
   }

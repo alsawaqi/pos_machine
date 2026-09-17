@@ -11,6 +11,7 @@ class AppOrderAttention extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => OrderAttentionHost(
+    showBanner: false,
     signal: staffAttentionHosts,
     createController: () => OrderAttentionController(
       identity: () {

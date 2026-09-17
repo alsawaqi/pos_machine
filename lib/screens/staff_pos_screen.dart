@@ -1,3 +1,5 @@
+import '../services/table_round_validation.dart';
+import '../services/qr_settlement_coordinator.dart' show PreparedQrLocation;
 import 'dart:async';
 import 'card_reversal_sheet.dart';
 import 'card_reversal_factory.dart';
@@ -56,6 +58,7 @@ import '../widgets/animated_feedback_widgets.dart';
 import '../qr_quick/qr_quick_copy.dart';
 import '../qr_quick/qr_quick_gateway.dart';
 import '../qr_quick/qr_quick_store.dart';
+import '../qr_quick/qr_quick_models.dart';
 import '../qr_checkout/qr_checkout_controller.dart';
 import '../qr_checkout/qr_checkout_gateway.dart';
 import '../qr_checkout/qr_checkout_models.dart';
@@ -76,6 +79,7 @@ import 'restock_request_screen.dart';
 import 'qr_tables_screen.dart';
 import '../dine_in/dine_in_screen.dart';
 import '../dine_in/dine_in_controller.dart';
+import '../dine_in/dine_in_models.dart';
 import '../dine_in/dine_in_gateway.dart';
 import '../dine_in/dine_in_store.dart';
 import 'stock_count_screen.dart';
@@ -232,7 +236,9 @@ bool customerOccupiesDiningTable({
   RemoteTableState? remote,
 }) =>
     mode != 'off' &&
-    (session == null || remote?.billSource == 'qr_web') &&
+    (session == null ||
+        remote?.billSource == 'qr_web' ||
+        (remote?.needsReviewCount ?? 0) > 0) &&
     const {'open', 'billing'}.contains(remote?.seatingStatus);
 
 bool customerBillEntryBlocked({
@@ -341,7 +347,8 @@ Future<String?> showCustomerDiningTableActions(
 bool tableBillNeedsSheet(String mode, RemoteTableState? bill) =>
     mode == 'live' &&
     bill?.billOrderUuid != null &&
-    (bill?.billSource == 'qr_web' ||
+    ((bill?.needsReviewCount ?? 0) > 0 ||
+        bill?.billSource == 'qr_web' ||
         (const {'main_pos', 'handheld'}.contains(bill?.billSource) &&
             (bill?.billCustomerRounds ?? 0) > 0));
 
@@ -478,6 +485,7 @@ class TableKitchenBridge implements DiningTableSyncHooks {
       return true;
     };
     coordinator.printRound = _print;
+    coordinator.validateRound = validateSelections;
     coordinator.stockModeForProduct = (id) => controller.allProducts
         .where((product) => product.id == id.toString())
         .firstOrNull
@@ -499,6 +507,25 @@ class TableKitchenBridge implements DiningTableSyncHooks {
     controller.onDiningTableFinalRound = null;
     coordinator.bindBillIdentity = null;
     coordinator.stockModeForProduct = null;
+    coordinator.validateRound = null;
+  }
+
+  void validateSelections(List<Map<String, dynamic>> lines) {
+    validateTableRoundSelections(
+      lines,
+      productForId: (id) => controller.allProducts
+          .where((product) => product.id == id.toString())
+          .firstOrNull,
+      groupsForProduct: controller.addonGroupsForProduct,
+    );
+  }
+
+  Future<void> validatePending(DiningTableSession session) async {
+    await coordinator.settled;
+    if ((await coordinator.heldRounds(session)).isNotEmpty) {
+      throw const TableRoundReviewRequired();
+    }
+    validateSelections(await coordinator.delta(session));
   }
 
   DiningTableSession? activeSession() {
@@ -937,12 +964,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Map<String, dynamic>? _claimedTransferPendingLoad;
   bool _showPaymentPage = false;
   bool _normalQrCheckoutOpen = false;
+  bool _qrTransferBusy = false;
+  bool _qrOrdersListOpen = false;
+  CurrentOrderWorkspace? _transferredQrWorkspace;
   CurrentOrderWorkspace? _workspace;
   Widget Function(CurrentOrderWorkspace)? _workspaceEditor;
 
   void _workspaceChanged() {
     final workspace = _workspace;
     if (workspace == null || !mounted) return;
+    _applyAudienceGate();
     void update() {
       if (!mounted || !identical(workspace, _workspace)) return;
       setState(() {});
@@ -950,7 +981,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         unawaited(
           PresentationService.instance.showWorkspaceBill(
             workspace,
-            workspace.bill,
+            workspace.cartBill,
             stale: workspace.stale,
             arabic: ref.read(settingsControllerProvider).language == 'ar',
           ),
@@ -970,6 +1001,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   void openServerWorkspace(
     Widget Function(CurrentOrderWorkspace) editor, {
     bool quick = false,
+    String? tableLabel,
   }) {
     if (_workspace != null ||
         _showPaymentPage ||
@@ -982,6 +1014,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
     late final CurrentOrderWorkspace workspace;
     workspace = CurrentOrderWorkspace(
+      mainCart: quick || tableLabel != null,
+      tableLabel: tableLabel,
+      editOptions: _editQrCartOptions,
       onExit: () {
         if (!mounted || !identical(_workspace, workspace)) return;
         workspace.removeListener(_workspaceChanged);
@@ -992,7 +1027,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           _workspaceEditor = null;
           _customerBillRouteOpen = false;
         });
-        if (quick) unawaited(_openQuickOrders());
+        _applyAudienceGate();
+        if (quick && workspace.returnToList) unawaited(_openQuickOrders());
       },
     )..addListener(_workspaceChanged);
     setState(() {
@@ -1003,6 +1039,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openQuickOrders() async {
+    final location = ref.read(qrLocationProvider);
+    if (location is PreparedQrLocation) unawaited(location.prepare());
+    if (_workspace?.mainCart == true) {
+      await _workspace!.requestClose();
+      return;
+    }
     if (_workspace != null ||
         _showPaymentPage ||
         _normalQrCheckoutOpen ||
@@ -1010,14 +1052,22 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         controller.hasRecordedSplitPayments) {
       return;
     }
-    final uuid = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder: (routeContext) => QrQuickOrdersScreen(
-          openCheckout: _launchQrCheckout,
-          onOpen: (uuid) async => Navigator.pop(routeContext, uuid),
+    _qrOrdersListOpen = true;
+    _applyAudienceGate();
+    String? uuid;
+    try {
+      uuid = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          builder: (routeContext) => QrQuickOrdersScreen(
+            openCheckout: _launchQrCheckout,
+            onOpen: (uuid) async => Navigator.pop(routeContext, uuid),
+          ),
         ),
-      ),
-    );
+      );
+    } finally {
+      _qrOrdersListOpen = false;
+      if (mounted) _applyAudienceGate();
+    }
     if (!mounted || uuid == null) return;
     openServerWorkspace(
       (workspace) => QrQuickOrdersScreen(
@@ -1042,6 +1092,53 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     if (!controller.isUnorderable(product)) controller.addProduct(product);
+  }
+
+  Future<QrQuickLine?> _editQrCartOptions(Map<String, dynamic> line) async {
+    final product = ref
+        .read(catalogProvider)
+        .asData
+        ?.value
+        .products
+        .where((p) => p.id == '${line['product_id']}')
+        .firstOrNull;
+    if (product == null) return null;
+    // Server orders use only the merchant's catalogue, never demo option IDs.
+    final groups = controller.addonGroups.isEmpty
+        ? const <_ModifierGroupDefinition>[]
+        : _resolveModifierGroups(product);
+    final ids = (line['addons'] as List? ?? const [])
+        .map((a) => '${qrMap(a)['add_on_id']}')
+        .toSet();
+    final item = CartItem(
+      product: product,
+      qty: (line['qty'] as num).toInt(),
+      notes: line['notes'] as String? ?? '',
+      modifiers: [
+        for (final group in groups)
+          for (final option in group.options)
+            if (ids.contains(option.id))
+              CartItemModifier(
+                id: option.id,
+                group: group.title,
+                label: option.label,
+                labelAr: option.labelAr,
+                price: option.price,
+              ),
+      ],
+    );
+    final result = await showDialog<_CartItemCustomizationResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _CustomizeCartItemDialog(item: item, groups: groups),
+    );
+    if (!mounted || result == null) return null;
+    return QrQuickLine(
+      int.parse(product.id),
+      item.qty,
+      result.modifiers.map((m) => int.parse(m.id)).toList(),
+      notes: result.notes,
+    );
   }
 
   String _cashTenderInput = '';
@@ -1484,7 +1581,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   /// The Transfer card: send the current order to another device at this
   /// branch, or receive one waiting in the inbox. Online-only by design.
-  Future<void> _openTransferDialog() async {
+  Future<void> _openTransferDialog({
+    QrCheckoutController? checkout,
+    VoidCallback? exit,
+  }) async {
+    if (_qrTransferBusy) return;
+    final workspace = _workspace?.mainCart == true ? _workspace : null;
+    if (workspace != null && workspace.cartControls?.transfer == null) return;
     final l10n = L10n.of(context);
 
     List<Map<String, dynamic>> devices;
@@ -1513,15 +1616,38 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       barrierDismissible: true,
       builder: (context) => _TransferDialog(
         devices: devices,
-        incoming: _incomingTransfers,
-        canSend: controller.cart.isNotEmpty,
+        incoming: workspace == null ? _incomingTransfers : const [],
+        canSend: workspace == null
+            ? controller.cart.isNotEmpty
+            : (workspace.bill?.total ?? 0) > 0,
       ),
     );
     if (!mounted || result == null) return;
 
     switch (result) {
       case _TransferSend(:final device):
-        await _sendTransferTo(device);
+        if (workspace == null) {
+          await _sendTransferTo(device);
+          break;
+        }
+        _qrTransferBusy = true;
+        try {
+          if (checkout != null) {
+            await checkout.cancel();
+            if (!checkout.canLeave) return;
+          }
+          final ok = await workspace.cartControls!.transfer!(
+            (device['id'] as num).toInt(),
+          );
+          if (checkout != null) {
+            if (ok) _transferredQrWorkspace = workspace;
+            exit?.call();
+          } else if (ok && mounted && identical(_workspace, workspace)) {
+            workspace.onExit();
+          }
+        } finally {
+          _qrTransferBusy = false;
+        }
       case _TransferReceive(:final transfer):
         await _receiveTransfer(transfer);
     }
@@ -1727,6 +1853,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     try {
       final order = await ref.read(apiServiceProvider).claimTransfer(uuid);
       if (!mounted) return;
+      if (order['source'] == 'qr_web' && order['order_type'] == 'quick') {
+        openServerWorkspace(
+          (w) => QrQuickOrdersScreen(
+            workspace: w,
+            workspaceUuid: uuid,
+            openCheckout: _launchQrCheckout,
+          ),
+          quick: true,
+        );
+        unawaited(_refreshTransferInbox());
+        return;
+      }
       final loaded = _hydrateFromTransfer(order);
       setState(() {
         _incomingTransfers = _incomingTransfers
@@ -2160,12 +2298,53 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// SUPERSEDES the device-local Settings toggle; the local switch only
   /// matters while the server hasn't stated a policy (older pos_api).
   /// start()/stop() are both idempotent, so re-applying is always safe.
+  bool _audienceHostActive = true;
+  bool? _audienceDesired;
+  Future<void> _audienceTransition = Future.value();
+
   void _applyAudienceGate() {
+    if (!mounted || !_audienceHostActive) return;
     final server = ref.read(sessionServiceProvider).serverAudienceMeasurement;
-    final enabled =
+    final consent =
         server ?? ref.read(settingsControllerProvider).audienceMeasurement;
+    final operating =
+        _workspace != null ||
+        _qrOrdersListOpen ||
+        _normalQrCheckoutOpen ||
+        _showPaymentPage ||
+        controller.cart.isNotEmpty ||
+        controller.isProcessingPayment;
+    final enabled = consent && !operating;
+    if (_audienceDesired == enabled) return;
+    _audienceDesired = enabled;
     final audience = ref.read(audienceServiceProvider);
-    unawaited(enabled ? audience.start() : audience.stop());
+    // Serialize camera transitions so a slow start cannot reopen it after a
+    // checkout pause; queued transitions always use the latest desired state.
+    _audienceTransition = _audienceTransition
+        .then((_) async {
+          if (!mounted) return;
+          if (_audienceDesired == true) {
+            await audience.start();
+          } else {
+            await audience.stop();
+          }
+        })
+        .catchError((Object error) {
+          debugPrint('Audience gate: $error');
+        });
+  }
+
+  @override
+  void deactivate() {
+    _audienceHostActive = false;
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    _audienceHostActive = true;
+    _applyAudienceGate();
   }
 
   @override
@@ -2249,96 +2428,98 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               !_showPaymentPage &&
               (ModalRoute.of(context)?.isCurrent ?? true),
         );
-        return Scaffold(
-          backgroundColor: const Color(0xFF12232B),
-          body: Stack(
-            children: [
-              const Positioned.fill(
-                child: RepaintBoundary(child: _BackgroundScene()),
-              ),
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.22),
-                        Colors.black.withValues(alpha: 0.34),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              SafeArea(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final outerPadding = constraints.maxWidth < 1400
-                        ? 10.0
-                        : 16.0;
-                    final availableWidth =
-                        constraints.maxWidth - (outerPadding * 2);
-                    final availableHeight =
-                        constraints.maxHeight - (outerPadding * 2);
-                    final contentHeight =
-                        _designHeight -
-                        _topBarHeight -
-                        _bottomBarHeight -
-                        (_panelGap * 2);
-
-                    return Padding(
-                      padding: EdgeInsets.all(outerPadding),
-                      child: SizedBox(
-                        width: availableWidth,
-                        height: availableHeight,
-                        child: FittedBox(
-                          fit: BoxFit.contain,
-                          alignment: Alignment.center,
-                          child: SizedBox(
-                            width: _designWidth,
-                            height: _designHeight,
-                            child: _buildTableAwareSurface(
-                              contentHeight,
-                              tableDegraded,
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              PositionedDirectional(
-                top: 12,
-                start: 12,
-                end: 12,
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: QrRoundPrintStatusIndicator(
-                    unavailable: qrRoundPrintPollingUnavailable,
-                    arabic: arabic,
-                  ),
-                ),
-              ),
-              if (controller.showCharityRoundUpPrompt)
-                Positioned.fill(child: _buildStaffCharityFallbackOverlay()),
-              if (controller.showPaymentLaunchOverlay &&
-                  !controller.showCharityRoundUpPrompt)
-                Positioned.fill(child: _buildStaffPaymentLaunchOverlay()),
-              if (controller.isProcessingPayment &&
-                  controller.selectedPaymentMethod == 'Cash' &&
-                  !controller.showCharityRoundUpPrompt &&
-                  !controller.showPaymentLaunchOverlay)
-                Positioned.fill(child: _buildStaffCashProcessingOverlay()),
-              if (controller.showPendingReconciliationPrompt)
-                Positioned.fill(child: _buildPendingReconciliationOverlay()),
-              _buildPopupMessageOverlay(),
-            ],
+        return _buildPosShell(
+          surface: _buildTableAwareSurface(
+            _designHeight - _topBarHeight - _bottomBarHeight - (_panelGap * 2),
+            tableDegraded,
           ),
+          overlays: [
+            PositionedDirectional(
+              top: 12,
+              start: 12,
+              end: 12,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: QrRoundPrintStatusIndicator(
+                  unavailable: qrRoundPrintPollingUnavailable,
+                  arabic: arabic,
+                ),
+              ),
+            ),
+            if (controller.showCharityRoundUpPrompt)
+              Positioned.fill(child: _buildStaffCharityFallbackOverlay()),
+            if (controller.showPaymentLaunchOverlay &&
+                !controller.showCharityRoundUpPrompt)
+              Positioned.fill(child: _buildStaffPaymentLaunchOverlay()),
+            if (controller.isProcessingPayment &&
+                controller.selectedPaymentMethod == 'Cash' &&
+                !controller.showCharityRoundUpPrompt &&
+                !controller.showPaymentLaunchOverlay)
+              Positioned.fill(child: _buildStaffCashProcessingOverlay()),
+            if (controller.showPendingReconciliationPrompt)
+              Positioned.fill(child: _buildPendingReconciliationOverlay()),
+            _buildPopupMessageOverlay(),
+          ],
         );
       },
     );
   }
+
+  /// The original till shell is shared by local and server-owned orders.
+  Widget _buildPosShell({
+    required Widget surface,
+    List<Widget> overlays = const [],
+  }) => Scaffold(
+    backgroundColor: const Color(0xFF12232B),
+    body: Stack(
+      children: [
+        const Positioned.fill(
+          child: RepaintBoundary(child: _BackgroundScene()),
+        ),
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.22),
+                  Colors.black.withValues(alpha: 0.34),
+                ],
+              ),
+            ),
+          ),
+        ),
+        SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final outerPadding = constraints.maxWidth < 1400 ? 10.0 : 16.0;
+              final availableWidth = constraints.maxWidth - (outerPadding * 2);
+              final availableHeight =
+                  constraints.maxHeight - (outerPadding * 2);
+              return Padding(
+                padding: EdgeInsets.all(outerPadding),
+                child: SizedBox(
+                  width: availableWidth,
+                  height: availableHeight,
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    alignment: Alignment.center,
+                    child: SizedBox(
+                      width: _designWidth,
+                      height: _designHeight,
+                      child: surface,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        ...overlays,
+      ],
+    ),
+  );
 
   bool get _showDineInFloorPlan =>
       _workspace == null &&
@@ -2522,6 +2703,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   void _onTableCartChanged() {
+    if (mounted) _applyAudienceGate();
     _updateTableSearch();
     if (_liveTable) {
       unawaited(_refreshTableSentState().catchError((Object _) {}));
@@ -2551,6 +2733,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     setState(() {
+      _heldTableRounds = rounds.where((round) => round.status == 'held').length;
       _tableUnsent = {
         for (final line in delta)
           tableLineFingerprint(line): line['qty'] as int,
@@ -2561,6 +2744,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             'bill_terminal',
             'bill_unpaid',
             'failed',
+            'held',
+            'rejected',
           }.contains(round.status))
             for (final line in round.lines)
               tableLineFingerprint(line): round.submittedAt.toLocal(),
@@ -2576,6 +2761,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       final session = _tableKitchen?.activeSession();
       if (session != null) await _tableKitchen!.send(session);
       await _refreshTableSentState();
+    } on TableRoundSelectionException catch (error) {
+      _showTableSelectionFailure(error);
+    } on TableRoundReviewRequired catch (error) {
+      _showHeldReviewFailure(error);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2587,10 +2776,153 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
   }
 
+  int _heldTableRounds = 0;
+
+  void _showHeldReviewFailure(TableRoundReviewRequired error) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error.message(
+            arabic: ref.read(settingsControllerProvider).language == 'ar',
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool _hasHeldLocalTable(String id) =>
+      controller.diningSessionFor(id) != null &&
+      ((_remoteTables.tables[int.tryParse(id)]?.needsReviewCount ?? 0) > 0 ||
+          _tableKitchen?.coordinator.cachedSession(id)?.lastVerdict == 'held' ||
+          (controller.activeDiningTableId == id && _heldTableRounds > 0));
+
+  Future<void> _correctHeldTableRounds({String? tableId}) async {
+    if (ref.read(tableSessionsModeProvider) != 'live' || _tableSendBusy) return;
+    await _ensureTableKitchen();
+    final bridge = _tableKitchen;
+    final id = tableId ?? controller.activeDiningTableId;
+    final session = id == controller.activeDiningTableId
+        ? bridge?.activeSession()
+        : controller.diningSessionFor(id ?? '');
+    if (bridge == null || session == null) return;
+    final identity = _tablePayContext;
+    bool current() {
+      final saved = controller.diningSessionFor(session.tableId);
+      return mounted &&
+          identity == _tablePayContext &&
+          saved?.orderReference == session.orderReference &&
+          saved?.occupiedAt == session.occupiedAt;
+    }
+
+    if ((await bridge.coordinator.heldRounds(session)).isEmpty || !current()) {
+      return;
+    }
+    if (!mounted) return;
+    final arabic = ref.read(settingsControllerProvider).language == 'ar';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(arabic ? 'تصحيح الجولة المعلّقة؟' : 'Correct held round?'),
+        content: Text(
+          arabic
+              ? 'سيتم رفض الجولة المعلّقة فقط مع الاحتفاظ بالسجل. ستبقى الأصناف في السلة لتصحيحها. قد تكون تذكرة المطبخ قد طُبعت؛ لن تتم إعادة الطباعة تلقائياً.'
+              : 'Reject the held round and keep its audit record. Items stay in your cart for correction. A kitchen ticket may already have printed; this action will not print or resend it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(arabic ? 'إلغاء' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(arabic ? 'رفض وتصحيح' : 'Reject and correct'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !current()) return;
+    setState(() => _tableSendBusy = true);
+    try {
+      await controller.assertNoPendingCombine();
+      final api = ref.read(apiServiceProvider);
+      await bridge.coordinator.rejectHeldRounds(
+        session,
+        readDetail: () => api.dineInDetail(int.parse(session.tableId)),
+        reject: (seat, round) =>
+            api.dineInReview(seat, round, staff: true, accept: false),
+        isCurrent: current,
+      );
+      await _refreshTableSentState();
+      if (mounted) _workspace?.onExit();
+    } catch (_) {
+      if (mounted) _showTableActionFailure();
+    } finally {
+      if (mounted) setState(() => _tableSendBusy = false);
+    }
+  }
+
+  void _showTableSelectionFailure(TableRoundSelectionException error) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error.message(
+            arabic: ref.read(settingsControllerProvider).language == 'ar',
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _allowTableSelections() async {
+    if (!_liveTable) return true;
+    await _ensureTableKitchen();
+    final bridge = _tableKitchen;
+    final session = bridge?.activeSession();
+    if (bridge == null || session == null) return false;
+    final identity = _tablePayContext;
+    try {
+      await bridge.validatePending(session);
+      return mounted && identity == _tablePayContext;
+    } on TableRoundSelectionException catch (error) {
+      _showTableSelectionFailure(error);
+      return false;
+    } on TableRoundReviewRequired catch (error) {
+      _showHeldReviewFailure(error);
+      return false;
+    }
+  }
+
   bool get _hasTableUnsent {
     final session = _tableKitchen?.activeSession();
     return _tableUnsent.values.any((qty) => qty > 0) ||
         (session != null && _tableKitchen!.hasLocalOnlyDelta(session));
+  }
+
+  String? get _tableSelectionMessage {
+    if (!_liveTable || _tableKitchen == null) return null;
+    if (_heldTableRounds > 0) {
+      return const TableRoundReviewRequired().message(
+        arabic: ref.read(settingsControllerProvider).language == 'ar',
+      );
+    }
+    final lines = buildTableRoundLines(controller.cart)
+        .map(
+          (line) => <String, dynamic>{
+            ...line,
+            'qty': _tableUnsent[tableLineFingerprint(line)] ?? 0,
+          },
+        )
+        .toList();
+    try {
+      _tableKitchen!.validateSelections(lines);
+      return null;
+    } on TableRoundSelectionException catch (error) {
+      return error.message(
+        arabic: ref.read(settingsControllerProvider).language == 'ar',
+      );
+    }
   }
 
   DateTime? _sentTimeFor(CartItem item) {
@@ -2668,7 +3000,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
   }
 
-  Future<bool> _clearSharedTable(String tableId) async {
+  Future<bool> _clearSharedTable(
+    String tableId, {
+    bool emptyOnly = false,
+  }) async {
+    if (emptyOnly && ref.read(tableSessionsModeProvider) != 'live') {
+      return false;
+    }
     if (ref.read(tableSessionsModeProvider) == 'live') {
       await _ensureTableKitchen();
       final coordinator = _tableKitchen!.coordinator;
@@ -2683,6 +3021,65 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           : await coordinator.store.readLocalTableRounds(
               seatingKey: session!.seatingKey,
             );
+      if (emptyOnly &&
+          (rounds.isNotEmpty ||
+              session == null ||
+              (session.draft?.items.isNotEmpty ?? false) ||
+              (controller.activeDiningTableId == tableId &&
+                  controller.cart.isNotEmpty))) {
+        return false;
+      }
+      if (emptyOnly &&
+          rounds.isEmpty &&
+          session != null &&
+          !(session.draft?.items.isNotEmpty ?? false) &&
+          !(controller.activeDiningTableId == tableId &&
+              controller.cart.isNotEmpty)) {
+        try {
+          final id = int.tryParse(headId);
+          if (id == null) return false;
+          final api = ref.read(apiServiceProvider);
+          final detail = DineInDetail(await api.dineInDetail(id));
+          if (!detail.canClearEmpty) return false;
+          if (detail.canClearEmpty) {
+            if (!mounted) return false;
+            final confirmed =
+                await showDialog<bool>(
+                  context: context,
+                  builder: (dialog) => AlertDialog(
+                    title: const Text('Clear empty session?'),
+                    content: const Text(
+                      'Close this empty session and free the table? No order will be cancelled.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialog, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(dialog, true),
+                        child: const Text('Clear session'),
+                      ),
+                    ],
+                  ),
+                ) ??
+                false;
+            if (!mounted || !confirmed) return false;
+            await api.dineInClear(id, seatingUuid: detail.seatingUuid!);
+          }
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Could not clear the session. Refresh the table and try again.',
+                ),
+              ),
+            );
+          }
+          return false;
+        }
+      }
       if (rounds.isNotEmpty && source?.status != DiningTableStatus.paid) {
         if (!mounted ||
             !await _authorizeManager(
@@ -2731,6 +3128,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     openServerWorkspace(
       (workspace) => DineInScreen(
         workspace: workspace,
+        onCorrectHeldRound: _hasHeldLocalTable(tableId)
+            ? () => _correctHeldTableRounds(tableId: tableId)
+            : null,
         label: tableLabel ?? table?.name ?? tableId,
         arabic: ref.read(settingsControllerProvider).language == 'ar',
         writesAllowed: ref.read(tableSessionsModeProvider) == 'live',
@@ -2761,6 +3161,39 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             await SqliteDineInStore.open(gateway.scope),
             id,
             staffId: session.staff?.id,
+            recordCancellationWaste: (request, qty) async {
+              gateway.check();
+              final cancel = request.cancellation;
+              final product = controller.allProducts
+                  .where((p) => p.id == '${cancel['product_id']}')
+                  .firstOrNull;
+              if (product?.stockMode != 'unit' &&
+                  product?.stockMode != 'cooked') {
+                return;
+              }
+              await ref.read(orderSyncRepositoryProvider).enqueueEvent(
+                'table-cancel-waste:${request.id}',
+                {
+                  'client_event_id': cancel['waste_event_id'],
+                  'event_type': 'product.waste',
+                  'client_timestamp': cancel['cancelled_at'],
+                  'payload': {
+                    'lines': [
+                      {
+                        'product_id': cancel['product_id'],
+                        'qty': qty,
+                        'reason': 'other',
+                      },
+                    ],
+                    'note': 'cancelled after preparation — table $tableId',
+                    'staff_id': request.payload['staff_id'],
+                    'wasted_at': cancel['cancelled_at'],
+                  },
+                },
+                createdAt: DateTime.parse(cancel['cancelled_at'] as String),
+              );
+              gateway.check();
+            },
             printAccepted: (detail, round) async {
               gateway.check();
               if (!ref.read(settingsControllerProvider).printKitchenTickets) {
@@ -2800,9 +3233,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             machineQuickCatalogue(ref.read(catalogProvider).asData?.value),
         onPay: _launchQrCheckout,
         onVoid: (uuid) => openMachineWorkspaceVoid(context, ref, uuid),
+        approveCancellation: () async {
+          final approval = await requestSentLineCancellation(
+            context,
+            authorizeManager: () => _authorizeManager(
+              subtitle: L10n.of(context).tableCancelSentApproval,
+            ),
+          );
+          if (!mounted || approval == null) return null;
+          return {'prepared': approval.prepared, 'reason': approval.reason};
+        },
         onCombine: () => _openBillCombine(id),
         onRecover: () => _openDraftRecovery(id),
       ),
+      tableLabel: tableLabel ?? table?.name ?? tableId,
     );
     _customerBillRouteOpen = _workspace != null;
   }
@@ -3091,7 +3535,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         SizedBox(
           height: _topBarHeight,
           child: IgnorePointer(
-            ignoring: _workspace != null,
+            ignoring: _workspace != null && !_workspace!.mainCart,
             child: _buildTopBar(),
           ),
         ),
@@ -3491,6 +3935,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openPaymentPage() async {
+    if (_workspace case final workspace? when workspace.mainCart) {
+      await workspace.requestPay();
+      return;
+    }
     final mode = ref.read(tableSessionsModeProvider);
     final tableId = int.tryParse(controller.activeDiningTableId ?? '');
     if (mode != 'live' || tableId == null) {
@@ -3526,7 +3974,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openLocalPaymentPage({bool Function()? stillCurrent}) async {
-    if (_liveTable) await _ensureTableKitchen();
+    if (!await _allowTableSelections()) return;
     if (stillCurrent != null && !stillCurrent()) return;
     if (stillCurrent != null &&
         tableBillNeedsSheet(_tableShadowMode, _cartBill)) {
@@ -3584,7 +4032,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         if (mounted) setState(() {});
       },
       openLocal: () async {
-        allowed = true;
+        allowed = await _allowTableSelections();
       },
       openSheet: () async {
         if (controller.hasRecordedSplitPayments && controller.cart.isNotEmpty) {
@@ -4005,19 +4453,40 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           child: _OrderHistoryPanel(
             records: controller.orderHistory,
             onReversal: (record) async {
-              await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) =>
-                CardReversalScreen(
-                  controller: createMachineReversalController(ref,
-                    header: controller.receiptTemplate?.headerLines ?? const [],
-                    reference: record.snapshot.staffReference ?? record.orderNumber.toString(),
-                    receipt: record.snapshot.receiptNumber),
-                  orderUuid: record.snapshot.serverOrderUuid.isEmpty ? record.id : record.snapshot.serverOrderUuid,
-                  operatorName: ref.read(sessionServiceProvider).staff?.name ?? '',
-                  voidReasons: [for (final reason in controller.voidReasons)
-                    {'id': reason.id, 'name': Localizations.localeOf(context).languageCode == 'ar'
-                      ? reason.nameAr ?? reason.name : reason.name}],
-                )));
-              final refreshed = await ref.read(apiServiceProvider).fetchBranchOrders();
+              await Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => CardReversalScreen(
+                    controller: createMachineReversalController(
+                      ref,
+                      header:
+                          controller.receiptTemplate?.headerLines ?? const [],
+                      reference:
+                          record.snapshot.staffReference ??
+                          record.orderNumber.toString(),
+                      receipt: record.snapshot.receiptNumber,
+                    ),
+                    orderUuid: record.snapshot.serverOrderUuid.isEmpty
+                        ? record.id
+                        : record.snapshot.serverOrderUuid,
+                    operatorName:
+                        ref.read(sessionServiceProvider).staff?.name ?? '',
+                    voidReasons: [
+                      for (final reason in controller.voidReasons)
+                        {
+                          'id': reason.id,
+                          'name':
+                              Localizations.localeOf(context).languageCode ==
+                                  'ar'
+                              ? reason.nameAr ?? reason.name
+                              : reason.name,
+                        },
+                    ],
+                  ),
+                ),
+              );
+              final refreshed = await ref
+                  .read(apiServiceProvider)
+                  .fetchBranchOrders();
               controller.applyServerOrderHistory(refreshed);
               if (mounted) setState(() {});
             },
@@ -4666,6 +5135,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _handleOrderTypeTap(OrderType type) async {
+    final workspace = _workspace;
+    if (workspace != null) {
+      workspace.returnToList = false;
+      await workspace.requestClose();
+      if (_workspace != null) {
+        workspace.returnToList = true;
+        return;
+      }
+    }
     await controller.selectOrderType(type);
     if (!mounted) return;
     // Entering delivery: pick the provider first — its prices drive the menu.
@@ -4757,6 +5235,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 title: Text(l10n.tableCustomerBillTitle),
                 onTap: () => Navigator.pop(ctx, 'customer_bill'),
               ),
+            if (!session.hasJoinedTables &&
+                session.total == 0 &&
+                !(session.draft?.items.isNotEmpty ?? false))
+              ListTile(
+                key: const ValueKey('table-action-clear-empty'),
+                leading: const Icon(Icons.cleaning_services_outlined),
+                title: Text(
+                  ref.read(settingsControllerProvider).language == 'ar'
+                      ? 'إخلاء الجلسة الفارغة'
+                      : 'Clear empty session',
+                ),
+                onTap: () => Navigator.pop(ctx, 'clear_empty'),
+              ),
             // A joined party can't be moved piecemeal — Move only shows for a
             // standalone occupied table.
             if (!session.hasJoinedTables)
@@ -4784,6 +5275,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (!mounted || action == null) return;
 
     switch (action) {
+      case 'clear_empty':
+        await _clearSharedTable(table.id, emptyOnly: true);
       case 'customer_bill':
         await _openCustomerBill(table.id);
       case 'open':
@@ -5605,8 +6098,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       _tenderedCashAmount > 0 &&
       _tenderedCashAmount + 0.0005 < controller.activePaymentBaseTotal;
 
-  List<int> _quickCashAmounts() {
-    final base = controller.activePaymentBaseTotal.ceil();
+  List<int> _quickCashAmounts({double? total}) {
+    final base = (total ?? controller.activePaymentBaseTotal).ceil();
     final values = <int>{if (base > 0) base, if (base > 0) base + 1, 5, 10};
     final sorted = values.toList()..sort();
     return sorted.take(4).toList();
@@ -6055,6 +6548,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     _normalQrCheckoutOpen = true;
+    _applyAudienceGate();
     QrCheckoutController? checkout;
     VoidCallback? displayListener;
     try {
@@ -6197,16 +6691,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         payment.addListener(displayListener);
       }
       unawaited(payment.open(uuid));
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => QrCheckoutBoundary(
-            controller: payment,
-            authorizeManager: () =>
-                _authorizeManager(subtitle: checkoutText(context, 'manager')),
-            paymentPage: (_, exit) => buildQrPaymentPage(payment, exit),
-          ),
-        ),
-      );
+      await showQrCheckout(payment);
     } catch (_) {
       if (mounted) {
         _showPopupMessage(
@@ -6219,32 +6704,97 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       if (displayListener != null) checkout?.removeListener(displayListener);
       checkout?.dispose();
       _normalQrCheckoutOpen = false;
+      if (mounted) _applyAudienceGate();
+      final transferred = _transferredQrWorkspace;
+      _transferredQrWorkspace = null;
+      if (transferred != null &&
+          identical(_workspace, transferred) &&
+          mounted) {
+        transferred.onExit();
+      }
     }
   }
 
-  /// Reuses the normal payment layout without handing a QR bill to the cart.
+  /// Close the selected quick bill only after checkout confirms payment and
+  /// the cashier dismisses its result. Cancel/recovery keeps the bill open.
+  Future<void> showQrCheckout(QrCheckoutController payment) async {
+    final workspace = _workspace;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => QrCheckoutBoundary(
+          controller: payment,
+          authorizeManager: () =>
+              _authorizeManager(subtitle: checkoutText(context, 'manager')),
+          paymentPage: (_, exit) => buildQrPaymentPage(payment, exit),
+          statusPage: (_, exit, status) =>
+              buildQrPaymentStatus(payment, exit, status),
+        ),
+      ),
+    );
+    if (!mounted ||
+        payment.phase != CheckoutPhase.paid ||
+        workspace == null ||
+        !workspace.mainCart ||
+        !identical(_workspace, workspace) ||
+        workspace.bill?.uuid != payment.snapshot?.order['uuid']) {
+      return;
+    }
+    workspace.returnToList = false;
+    workspace.onExit();
+    if (workspace.dineIn) {
+      await controller.selectOrderType(OrderType.dineIn);
+      await controller.returnToDiningFloorPlan();
+    } else {
+      await controller.selectOrderType(OrderType.quickOrder);
+    }
+  }
+
+  /// Only the data and supported callbacks differ for a server-owned bill.
   Widget buildQrPaymentPage(QrCheckoutController payment, VoidCallback exit) =>
-      Scaffold(
-        resizeToAvoidBottomInset: false,
-        body: SafeArea(
-          child: ColoredBox(
-            color: const Color(0xFFEAF3F5),
-            child: Center(
-              child: FittedBox(
-                fit: BoxFit.contain,
-                child: SizedBox(
-                  width: _designWidth,
-                  height: _designHeight,
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: _buildPaymentPageSurface(qr: payment, exit: exit),
-                  ),
+      _buildPosShell(
+        surface: _buildPaymentPageSurface(qr: payment, exit: exit),
+      );
+
+  Widget buildQrPaymentStatus(
+    QrCheckoutController payment,
+    VoidCallback exit,
+    Widget status,
+  ) => _buildPosShell(
+    surface: IgnorePointer(
+      child: payment.snapshot == null
+          ? Column(
+              children: [
+                SizedBox(
+                  height: _paymentHeaderHeight,
+                  child: _buildPaymentHeader(qr: payment, exit: exit),
                 ),
+                const SizedBox(height: _panelGap),
+                Expanded(child: _glassPanel(child: const SizedBox.expand())),
+              ],
+            )
+          : _buildPaymentPageSurface(qr: payment, exit: exit),
+    ),
+    overlays: [
+      Positioned.fill(
+        child: Material(
+          color: Colors.black.withValues(alpha: 0.62),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 540),
+              child: Container(
+                margin: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: status,
               ),
             ),
           ),
         ),
-      );
+      ),
+    ],
+  );
 
   Future<void> _payQr(QrCheckoutController qr, String method) async {
     if (!qr.ready) return;
@@ -6351,7 +6901,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           const Spacer(),
           _buildTimeBlock(),
           const SizedBox(width: 12),
-          if (qr == null) _buildProfileBlock(),
+          IgnorePointer(ignoring: qr != null, child: _buildProfileBlock()),
         ],
       ),
     );
@@ -6372,12 +6922,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            width: 330,
-            child: qr == null
-                ? _buildPaymentOrderPanel()
-                : _buildQrPaymentOrderPanel(qr),
-          ),
+          SizedBox(width: 330, child: _buildPaymentOrderPanel(qr: qr)),
           const SizedBox(width: 18),
           Expanded(
             child: _buildPaymentConsole(qr: qr, exit: exit),
@@ -6387,94 +6932,24 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  Widget _buildQrPaymentOrderPanel(QrCheckoutController qr) {
-    final order = qr.snapshot!;
+  Widget _buildPaymentOrderPanel({QrCheckoutController? qr}) {
     final l10n = L10n.of(context);
-    return _glassPanel(
-      tint: Colors.white.withValues(alpha: 0.72),
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            l10n.posPaymentOrderItems,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 18),
-          Expanded(
-            child: ListView.separated(
-              itemCount: order.lines.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (_, index) {
-                final line = order.lines[index];
-                return _glassPanel(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${line['qty']} × ${line['product_name']}',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      Text(
-                        SunmiReceiptService.money(
-                          (line['line_total_baisas'] as int) / 1000,
-                        ),
-                      ),
-                      for (final addon in (line['addons'] as List? ?? const []))
-                        Text(
-                          checkoutMap(addon)['add_on_name']?.toString() ?? '',
-                        ),
-                      if (line['notes'] != null) Text(line['notes'].toString()),
-                      if (line['status'] != 'open')
-                        Text(line['status']?.toString() ?? ''),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 16),
-          if (order.customerLabel.isNotEmpty)
-            Text(
-              order.customerLabel,
-              key: const ValueKey('qr-checkout-customer'),
-            ),
-          if (order.order['plate_number'] != null)
-            Text(order.order['plate_number'].toString()),
-          const SizedBox(height: 16),
-          _paymentTotalRow(
-            l10n.posPaymentSubtotal,
-            (order.order['subtotal_baisas'] as int) / 1000,
-          ),
-          _paymentTotalRow(
-            l10n.posPaymentDiscountFallback,
-            -(order.order['discount_total_baisas'] as int) / 1000,
-          ),
-          _paymentTotalRow(
-            checkoutText(context, 'comp'),
-            -(order.order['comp_total_baisas'] as int) / 1000,
-          ),
-          _paymentTotalRow(
-            checkoutText(context, 'tax'),
-            (order.order['tax_total_baisas'] as int) / 1000,
-          ),
-          const Divider(),
-          Text(
-            SunmiReceiptService.money(order.total / 1000),
-            key: const ValueKey('qr-checkout-total'),
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-          ),
-        ],
-      ),
-    );
-  }
+    final bill = qr == null ? null : WorkspaceBill(qr.snapshot!.order);
+    final cart = bill?.cartItems ?? controller.cart;
+    final rawSubtotal = bill == null
+        ? controller.rawSubtotal
+        : bill.subtotal / 1000;
+    final discount = bill == null
+        ? controller.discountAmount
+        : bill.discount / 1000;
+    final comp = bill == null ? controller.compAmount : bill.comp / 1000;
+    final subtotal = bill == null
+        ? controller.subtotal
+        : rawSubtotal - discount;
+    final total = bill == null
+        ? controller.activePaymentBaseTotal
+        : bill.total / 1000;
 
-  Widget _buildPaymentOrderPanel() {
-    final l10n = L10n.of(context);
     return _glassPanel(
       tint: Colors.white.withValues(alpha: 0.72),
       padding: const EdgeInsets.all(18),
@@ -6494,26 +6969,27 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             child: Scrollbar(
               child: ListView.separated(
                 physics: const BouncingScrollPhysics(),
-                itemCount: controller.cart.length,
+                itemCount: cart.length,
                 separatorBuilder: (_, index) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
-                  final item = controller.cart[index];
+                  final item = cart[index];
                   return _PaymentOrderItemCard(item: item);
                 },
               ),
             ),
           ),
           const SizedBox(height: 16),
-          if (controller.selectedOrderType == OrderType.delivery) ...[
+          if (bill == null &&
+              controller.selectedOrderType == OrderType.delivery) ...[
             _buildDeliveryProviderField(),
             const SizedBox(height: 16),
           ],
-          if (_liveTable)
+          if (qr == null && _liveTable)
             Text(l10n.tableSharedAdjustmentsUnavailable)
           else
-            _buildCustomerReferenceField(),
+            _buildCustomerReferenceField(qr: qr),
           const SizedBox(height: 16),
-          _buildVehiclePlateField(),
+          _buildVehiclePlateField(qr: qr),
           const SizedBox(height: 16),
           Container(
             width: double.infinity,
@@ -6526,46 +7002,50 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ),
             child: Column(
               children: [
-                _paymentTotalRow(
-                  l10n.posPaymentSubtotal,
-                  controller.rawSubtotal,
-                ),
-                if (controller.discountAmount > 0) ...[
+                _paymentTotalRow(l10n.posPaymentSubtotal, rawSubtotal),
+                if (discount > 0) ...[
                   const SizedBox(height: 10),
                   _paymentTotalRow(
-                    controller.discount.label.isEmpty
+                    bill != null || controller.discount.label.isEmpty
                         ? l10n.posPaymentDiscountFallback
                         : controller.discount.label,
-                    -controller.discountAmount,
+                    -discount,
                   ),
                 ],
                 const SizedBox(height: 10),
-                _paymentTotalRow(
-                  l10n.posPaymentNetSubtotal,
-                  controller.subtotal,
-                ),
+                _paymentTotalRow(l10n.posPaymentNetSubtotal, subtotal),
                 // Phase B — the manager comp write-off (given away, not sold).
-                if (controller.compAmount > 0) ...[
+                if (comp > 0) ...[
                   const SizedBox(height: 10),
                   _paymentTotalRow(
                     l10n.posPaymentCompRow(
-                      controller.appliedComp?.reasonName ?? '',
+                      bill == null
+                          ? controller.appliedComp?.reasonName ?? ''
+                          : '',
                     ),
-                    -controller.compAmount,
+                    -comp,
                   ),
                 ],
-                for (final t in controller.taxLines) ...[
+                if (bill != null && bill.tax != 0) ...[
                   const SizedBox(height: 10),
                   _paymentTotalRow(
-                    l10n.posPaymentTaxLine(t.name, t.rateLabel),
-                    t.amount,
+                    checkoutText(context, 'tax'),
+                    bill.tax / 1000,
                   ),
                 ],
-                if (controller.splitCount > 1) ...[
+                if (bill == null)
+                  for (final t in controller.taxLines) ...[
+                    const SizedBox(height: 10),
+                    _paymentTotalRow(
+                      l10n.posPaymentTaxLine(t.name, t.rateLabel),
+                      t.amount,
+                    ),
+                  ],
+                if (bill == null && controller.splitCount > 1) ...[
                   const SizedBox(height: 10),
                   _paymentTotalRow(
                     l10n.posPaymentGuestShareRow(controller.activeSplitIndex),
-                    controller.activePaymentBaseTotal,
+                    total,
                   ),
                 ],
                 const SizedBox(height: 14),
@@ -6575,9 +7055,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        controller.splitCount > 1
+                        bill == null && controller.splitCount > 1
                             ? l10n.posPaymentShareDue
                             : l10n.posPaymentTotalDue,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
@@ -6586,9 +7068,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       ),
                     ),
                     Text(
-                      SunmiReceiptService.money(
-                        controller.activePaymentBaseTotal,
-                      ),
+                      SunmiReceiptService.money(total),
+                      key: bill == null
+                          ? null
+                          : const ValueKey('qr-checkout-total'),
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w900,
@@ -6610,7 +7093,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Widget _fieldTrailingAction({
     required IconData icon,
     required String tooltip,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
     Key? key,
   }) => Tooltip(
     message: tooltip,
@@ -6630,16 +7113,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     ),
   );
 
-  Widget _buildCustomerReferenceField() {
+  Widget _buildCustomerReferenceField({QrCheckoutController? qr}) {
     final l10n = L10n.of(context);
+    final value = qr?.snapshot?.customerLabel ?? _customerNumberController.text;
     final hasValue =
-        _customerNumberController.text.isNotEmpty ||
-        controller.selectedCustomer != null;
+        value.isNotEmpty || (qr == null && controller.selectedCustomer != null);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           l10n.posPaymentCustomerNumberLabel,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w900,
@@ -6651,7 +7136,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         // chooser popup); search and details are the trailing buttons.
         InkWell(
           key: const ValueKey('payment-customer-number'),
-          onTap: () => unawaited(_openCustomerNumberKeyboard()),
+          onTap: qr == null
+              ? () => unawaited(_openCustomerNumberKeyboard())
+              : null,
           borderRadius: BorderRadius.circular(18),
           child: Container(
             width: double.infinity,
@@ -6668,13 +7155,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    _customerNumberController.text.isEmpty
-                        ? l10n.posPaymentCustomerNumberHint
-                        : _customerNumberController.text,
+                    value.isEmpty ? l10n.posPaymentCustomerNumberHint : value,
+                    key: qr == null
+                        ? null
+                        : const ValueKey('qr-checkout-customer'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: _customerNumberController.text.isEmpty
+                      color: value.isEmpty
                           ? const Color(0xFF91A0AB)
                           : const Color(0xFF22323B),
                     ),
@@ -6685,7 +7175,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   _fieldTrailingAction(
                     icon: Icons.badge_outlined,
                     tooltip: l10n.posCustomerDetailsTooltip,
-                    onTap: () => unawaited(_openCustomerDetails()),
+                    onTap: qr == null
+                        ? () => unawaited(_openCustomerDetails())
+                        : null,
                     key: const ValueKey('payment-customer-details'),
                   ),
                   const SizedBox(width: 6),
@@ -6693,17 +7185,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 _fieldTrailingAction(
                   icon: Icons.person_search_rounded,
                   tooltip: l10n.posCustomerSearchOption,
-                  onTap: () => unawaited(_openCustomerSearch()),
+                  onTap: qr == null
+                      ? () => unawaited(_openCustomerSearch())
+                      : null,
                 ),
                 if (hasValue) ...[
                   const SizedBox(width: 6),
                   _fieldTrailingAction(
                     icon: Icons.close_rounded,
                     tooltip: l10n.posCustomerClearOption,
-                    onTap: () {
-                      setState(() => _customerNumberController.clear());
-                      controller.setCustomerReferenceNumber('');
-                    },
+                    onTap: qr == null
+                        ? () {
+                            setState(() => _customerNumberController.clear());
+                            controller.setCustomerReferenceNumber('');
+                          }
+                        : null,
                   ),
                 ],
               ],
@@ -6714,13 +7210,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  Widget _buildVehiclePlateField() {
+  Widget _buildVehiclePlateField({QrCheckoutController? qr}) {
     final l10n = L10n.of(context);
+    final value = qr == null
+        ? _vehiclePlateController.text
+        : qr.snapshot?.order['plate_number']?.toString() ?? '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           l10n.posPaymentVehiclePlateLabel,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w900,
@@ -6730,7 +7231,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         const SizedBox(height: 8),
         InkWell(
           key: const ValueKey('payment-vehicle-plate'),
-          onTap: _openVehiclePlateKeyboard,
+          onTap: qr == null ? _openVehiclePlateKeyboard : null,
           borderRadius: BorderRadius.circular(18),
           child: Container(
             width: double.infinity,
@@ -6750,13 +7251,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    _vehiclePlateController.text.isEmpty
-                        ? l10n.posPaymentVehiclePlateHint
-                        : _vehiclePlateController.text,
+                    value.isEmpty ? l10n.posPaymentVehiclePlateHint : value,
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: _vehiclePlateController.text.isEmpty
+                      color: value.isEmpty
                           ? const Color(0xFF91A0AB)
                           : const Color(0xFF22323B),
                     ),
@@ -6767,7 +7266,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 _fieldTrailingAction(
                   icon: Icons.person_search_rounded,
                   tooltip: l10n.posPlateSearchTooltip,
-                  onTap: () => unawaited(_openPlateCustomerSearch()),
+                  onTap: qr == null
+                      ? () => unawaited(_openPlateCustomerSearch())
+                      : null,
                   key: const ValueKey('payment-plate-search'),
                 ),
               ],
@@ -6839,83 +7340,75 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Widget _buildPaymentConsole({QrCheckoutController? qr, VoidCallback? exit}) {
     final l10n = L10n.of(context);
-    final quickAmounts = qr == null
-        ? _quickCashAmounts()
-        : (<int>{
-            (qr.total / 1000).ceil(),
-            (qr.total / 1000).ceil() + 1,
-            5,
-            10,
-          }.toList()..sort());
+    final quickAmounts = _quickCashAmounts(
+      total: qr == null ? null : qr.total / 1000,
+    );
+    final liveTable = qr == null && _liveTable;
     final qrMixed = qr != null && qr.cashBaisas > 0 && qr.cashBaisas < qr.total;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (qr != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Text(checkoutText(context, 'frozen')),
-          ),
-        if (qr == null)
-          Row(
-            children: [
-              // Device↔device order transfer (replaced the Loyalty shortcut —
-              // loyalty redemption stays reachable from the customer panel).
-              // The count is the incoming inbox waiting to be received.
+        Row(
+          children: [
+            // Device↔device order transfer (replaced the Loyalty shortcut —
+            // loyalty redemption stays reachable from the customer panel).
+            // The count is the incoming inbox waiting to be received.
+            Expanded(
+              child: _PaymentTopActionCard(
+                icon: Icons.swap_horiz_rounded,
+                title: _incomingTransfers.isEmpty
+                    ? l10n.posPaymentTransfer
+                    : '${l10n.posPaymentTransfer} (${_incomingTransfers.length})',
+                accent: const Color(0xFF0FA3B1),
+                onTap: qr == null
+                    ? () => unawaited(_openTransferDialog())
+                    : (_workspace?.cartControls?.transfer != null && qr.ready
+                          ? () => unawaited(
+                              _openTransferDialog(checkout: qr, exit: exit),
+                            )
+                          : null),
+              ),
+            ),
+            SizedBox(width: 16),
+            if (!liveTable)
               Expanded(
                 child: _PaymentTopActionCard(
-                  icon: Icons.swap_horiz_rounded,
-                  title: _incomingTransfers.isEmpty
-                      ? l10n.posPaymentTransfer
-                      : '${l10n.posPaymentTransfer} (${_incomingTransfers.length})',
-                  accent: const Color(0xFF0FA3B1),
-                  onTap: () {
-                    unawaited(_openTransferDialog());
-                  },
+                  icon: Icons.percent_rounded,
+                  title: l10n.posPaymentAddDiscount,
+                  accent: const Color(0xFFFF8A2B),
+                  onTap: qr == null
+                      ? () => unawaited(_openDiscountDialog())
+                      : null,
                 ),
               ),
-              SizedBox(width: 16),
-              if (!_liveTable)
-                Expanded(
-                  child: _PaymentTopActionCard(
-                    icon: Icons.percent_rounded,
-                    title: l10n.posPaymentAddDiscount,
-                    accent: const Color(0xFFFF8A2B),
-                    onTap: () {
-                      unawaited(_openDiscountDialog());
-                    },
-                  ),
-                ),
-              SizedBox(width: 16),
+            SizedBox(width: 16),
+            Expanded(
+              child: _PaymentTopActionCard(
+                icon: Icons.call_split_rounded,
+                title: l10n.posPaymentSplitBill,
+                onTap: qr == null
+                    ? () => unawaited(_openSplitBillDialog())
+                    : null,
+              ),
+            ),
+            // Phase B — manager comp (write-off a line / the whole order).
+            // Shown only when the company configured comp reasons.
+            if (!liveTable && controller.compReasons.isNotEmpty) ...[
+              const SizedBox(width: 16),
               Expanded(
                 child: _PaymentTopActionCard(
-                  icon: Icons.call_split_rounded,
-                  title: l10n.posPaymentSplitBill,
-                  onTap: () {
-                    unawaited(_openSplitBillDialog());
-                  },
+                  icon: Icons.volunteer_activism_rounded,
+                  title: qr != null || controller.appliedComp == null
+                      ? l10n.posPaymentComp
+                      : l10n.posPaymentCompApplied,
+                  accent: const Color(0xFF7C5CCB),
+                  onTap: qr == null ? () => unawaited(_openCompDialog()) : null,
                 ),
               ),
-              // Phase B — manager comp (write-off a line / the whole order).
-              // Shown only when the company configured comp reasons.
-              if (!_liveTable && controller.compReasons.isNotEmpty) ...[
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _PaymentTopActionCard(
-                    icon: Icons.volunteer_activism_rounded,
-                    title: controller.appliedComp == null
-                        ? l10n.posPaymentComp
-                        : l10n.posPaymentCompApplied,
-                    accent: const Color(0xFF7C5CCB),
-                    onTap: () {
-                      unawaited(_openCompDialog());
-                    },
-                  ),
-                ),
-              ],
             ],
-          ),
+          ],
+        ),
         const SizedBox(height: 20),
         Expanded(
           child: Align(
@@ -7221,13 +7714,37 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 Expanded(
                                   child: _PaymentMethodActionButton(
                                     label: l10n.posPaymentCard,
-                                    subtitle: ref.read(sessionServiceProvider).softpos.canPay(
-                                      terminalId: ref.read(sessionServiceProvider).terminalId,
-                                      terminalPin: ref.read(sessionServiceProvider).terminalPin)
-                                      ? '${softposText(context, 'payingVia')} ${ref.read(sessionServiceProvider).softpos.bankName}'
-                                      : softposText(context, ref.read(sessionServiceProvider).softpos.unavailableReason(
-                                          terminalId: ref.read(sessionServiceProvider).terminalId,
-                                          terminalPin: ref.read(sessionServiceProvider).terminalPin)!),
+                                    subtitle:
+                                        ref
+                                            .read(sessionServiceProvider)
+                                            .softpos
+                                            .canPay(
+                                              terminalId: ref
+                                                  .read(sessionServiceProvider)
+                                                  .terminalId,
+                                              terminalPin: ref
+                                                  .read(sessionServiceProvider)
+                                                  .terminalPin,
+                                            )
+                                        ? '${softposText(context, 'payingVia')} ${ref.read(sessionServiceProvider).softpos.bankName}'
+                                        : softposText(
+                                            context,
+                                            ref
+                                                .read(sessionServiceProvider)
+                                                .softpos
+                                                .unavailableReason(
+                                                  terminalId: ref
+                                                      .read(
+                                                        sessionServiceProvider,
+                                                      )
+                                                      .terminalId,
+                                                  terminalPin: ref
+                                                      .read(
+                                                        sessionServiceProvider,
+                                                      )
+                                                      .terminalPin,
+                                                )!,
+                                          ),
                                     icon: Icons.credit_card_rounded,
                                     gradient: const LinearGradient(
                                       begin: Alignment.topLeft,
@@ -7237,10 +7754,22 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                         Color(0xFF1F7236),
                                       ],
                                     ),
-                                    onTap: !ref.read(sessionServiceProvider).softpos.canPay(
-                                        terminalId: ref.read(sessionServiceProvider).terminalId,
-                                        terminalPin: ref.read(sessionServiceProvider).terminalPin)
-                                      ? null : qr == null ? _submitCardPayment : () => _payQr(qr, 'card'),
+                                    onTap:
+                                        !ref
+                                            .read(sessionServiceProvider)
+                                            .softpos
+                                            .canPay(
+                                              terminalId: ref
+                                                  .read(sessionServiceProvider)
+                                                  .terminalId,
+                                              terminalPin: ref
+                                                  .read(sessionServiceProvider)
+                                                  .terminalPin,
+                                            )
+                                        ? null
+                                        : qr == null
+                                        ? _submitCardPayment
+                                        : () => _payQr(qr, 'card'),
                                   ),
                                 ),
                                 const SizedBox(height: 14),
@@ -7377,6 +7906,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         Expanded(
           child: Text(
             title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w700,
@@ -8548,7 +9079,34 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Widget _buildCurrentOrderPanel() {
     final l10n = L10n.of(context);
-    if (_workspaceEditor != null) {
+    final workspace = _workspace?.mainCart == true ? _workspace : null;
+    final bill = workspace?.cartBill;
+    final cart = workspace == null
+        ? controller.cart
+        : bill?.cartItems ?? <CartItem>[];
+    final rawSubtotal = workspace == null
+        ? controller.rawSubtotal
+        : (bill?.subtotal ?? 0) / 1000;
+    final discount = workspace == null
+        ? controller.discountAmount
+        : (bill?.discount ?? 0) / 1000;
+    final comp = workspace == null
+        ? controller.compAmount
+        : (bill?.comp ?? 0) / 1000;
+    final subtotal = workspace == null
+        ? controller.subtotal
+        : rawSubtotal - discount;
+    final total = workspace == null
+        ? controller.total
+        : (bill?.total ?? 0) / 1000;
+    final dining =
+        workspace?.dineIn == true ||
+        (workspace == null && _isEditingDiningTable);
+    final liveTable = workspace == null && _liveTable;
+    final reference = workspace == null
+        ? controller.currentOrderReference
+        : bill?.reference ?? '';
+    if (_workspaceEditor != null && workspace == null) {
       return _glassPanel(
         tint: const Color(0xCCB9F1F4),
         padding: const EdgeInsets.all(16),
@@ -8572,6 +9130,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // The QR controller supplies state/actions; the cart below is shared.
+          if (workspace != null) _workspaceEditor!(workspace),
           Row(
             children: [
               Expanded(
@@ -8588,7 +9148,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       ),
                     ),
                     Text(
-                      '(${controller.cart.length})',
+                      '(${cart.length})',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -8597,15 +9157,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     ),
                     _OrderMetaChip(
                       label:
-                          '${controller.currentOrderReference.isEmpty ? l10n.posOrderPanelNewOrder : l10n.posOrderPanelRef(controller.currentOrderReference)} | ${localizedOrderType(l10n, controller.selectedOrderType)}',
+                          '${reference.isEmpty ? l10n.posOrderPanelNewOrder : l10n.posOrderPanelRef(reference)} | ${localizedOrderType(l10n, workspace == null
+                              ? controller.selectedOrderType
+                              : workspace.dineIn
+                              ? OrderType.dineIn
+                              : OrderType.quickOrder)}',
                     ),
-                    if (_isEditingDiningTable) ...[
+                    if (dining) ...[
                       _OrderMetaChip(
                         label: l10n.posOrderPanelTableChip(
-                          _activeDiningTableLabel,
+                          workspace?.tableLabel ?? _activeDiningTableLabel,
                         ),
                       ),
-                      if (controller.activeDiningTableDefinition != null)
+                      if (workspace == null &&
+                          controller.activeDiningTableDefinition != null)
                         _OrderMetaChip(
                           label: controller.diningFloors
                               .where(
@@ -8624,13 +9189,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               ),
               const SizedBox(width: 12),
               _OutlinePillButton(
-                icon: _isEditingDiningTable
+                icon: dining
                     ? Icons.grid_view_rounded
                     : Icons.cleaning_services_outlined,
-                label: _isEditingDiningTable
+                label: dining
                     ? l10n.posOrderPanelFloorPlan
                     : l10n.posOrderPanelClear,
-                onTap: _isEditingDiningTable
+                onTap: workspace != null
+                    ? workspace.cartControls?.clear
+                    : dining
                     ? () {
                         unawaited(controller.returnToDiningFloorPlan());
                       }
@@ -8639,7 +9206,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          if (_isEditingDiningTable &&
+          if (dining &&
               _tableShadowMode != 'off' &&
               (_cartBill?.billSource == 'qr_web' ||
                   tableBillNeedsSheet(_tableShadowMode, _cartBill)))
@@ -8651,22 +9218,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               label: Text(l10n.tableCustomerBillTitle),
             ),
           Expanded(
-            child: controller.cart.isEmpty
+            child: cart.isEmpty
                 ? const _EmptyOrderState()
                 : Scrollbar(
                     controller: _currentOrderScrollController,
-                    thumbVisibility: controller.cart.length > 3,
+                    thumbVisibility: cart.length > 3,
                     child: ListView.separated(
                       controller: _currentOrderScrollController,
                       primary: false,
-                      itemCount: controller.cart.length,
+                      itemCount: cart.length,
                       physics: const BouncingScrollPhysics(),
                       separatorBuilder: (_, index) =>
                           const SizedBox(height: 10),
                       itemBuilder: (context, index) {
-                        final item = controller.cart[index];
+                        final item = cart[index];
                         final pulseNonce =
-                            controller.recentProductId == item.product.id
+                            workspace == null &&
+                                controller.recentProductId == item.product.id
                             ? controller.orderUpdateNonce
                             : 0;
                         return AnimatedSwitcher(
@@ -8689,22 +9257,70 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                               '${item.product.id}_${item.qty}_${item.lineTotal}_${item.mergeSignature}',
                             ),
                             item: item,
-                            onAdd: () => controller.incrementCartItem(item),
-                            onRemove: () => _liveTable
-                                ? unawaited(_reduceTableItem(item))
-                                : controller.decreaseCartItem(item),
-                            onDelete: () => _liveTable
-                                ? unawaited(
-                                    _reduceTableItem(item, remove: true),
+                            deleteKey:
+                                workspace != null &&
+                                    bill!.items[index]['draft_index'] is int
+                                ? ValueKey(
+                                    'workspace-remove-draft-${bill.items[index]['draft_index']}',
                                   )
-                                : controller.removeCartItem(item),
-                            onCustomize: () {
-                              unawaited(_openCustomizeDialog(item));
-                            },
-                            onGift: () =>
-                                unawaited(_handleGiftItemToggle(item)),
-                            allowGift: !_liveTable,
-                            sentAt: _liveTable ? _sentTimeFor(item) : null,
+                                : null,
+                            onAdd: workspace != null
+                                ? (workspace.cartControls?.quantity == null ||
+                                          bill!.items[index]['pending_round_id'] !=
+                                              null ||
+                                          bill.items[index]['product_id']
+                                              is! int
+                                      ? null
+                                      : () => workspace.cartControls!.quantity!(
+                                          bill.items[index],
+                                          item.qty + 1,
+                                        ))
+                                : () => controller.incrementCartItem(item),
+                            onRemove: workspace != null
+                                ? (workspace.cartControls?.quantity == null ||
+                                          bill!.items[index]['pending_round_id'] !=
+                                              null
+                                      ? null
+                                      : () => workspace.cartControls!.quantity!(
+                                          bill.items[index],
+                                          item.qty - 1,
+                                        ))
+                                : () => liveTable
+                                      ? unawaited(_reduceTableItem(item))
+                                      : controller.decreaseCartItem(item),
+                            onDelete: workspace != null
+                                ? (workspace.cartControls?.quantity == null ||
+                                          bill!.items[index]['pending_round_id'] !=
+                                              null
+                                      ? null
+                                      : () => workspace.cartControls!.quantity!(
+                                          bill.items[index],
+                                          0,
+                                        ))
+                                : () => liveTable
+                                      ? unawaited(
+                                          _reduceTableItem(item, remove: true),
+                                        )
+                                      : controller.removeCartItem(item),
+                            onCustomize: workspace != null
+                                ? (workspace.cartControls?.customize == null ||
+                                          bill!.items[index]['pending_round_id'] !=
+                                              null ||
+                                          bill.items[index]['product_id']
+                                              is! int
+                                      ? null
+                                      : () =>
+                                            workspace.cartControls!.customize!(
+                                              bill.items[index],
+                                            ))
+                                : () {
+                                    unawaited(_openCustomizeDialog(item));
+                                  },
+                            onGift: workspace != null
+                                ? null
+                                : () => unawaited(_handleGiftItemToggle(item)),
+                            allowGift: !liveTable,
+                            sentAt: liveTable ? _sentTimeFor(item) : null,
                             highlighted: pulseNonce > 0,
                             pulseNonce: pulseNonce,
                           ),
@@ -8714,11 +9330,34 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   ),
           ),
           const SizedBox(height: 12),
-          if (_liveTable) ...[
+          if (workspace != null) _buildWorkspaceCartStatus(workspace),
+          if (liveTable || workspace?.dineIn == true) ...[
+            if (workspace == null && (_cartBill?.needsReviewCount ?? 0) > 0)
+              Text(
+                ref.read(settingsControllerProvider).language == 'ar'
+                    ? 'الجولة معلّقة للمراجعة. افتح فاتورة الطاولة قبل الدفع.'
+                    : 'Round held for review. Open the table bill before payment.',
+              )
+            else if (workspace == null && _tableSelectionMessage != null)
+              Text(_tableSelectionMessage!),
+            if (workspace == null && _heldTableRounds > 0)
+              TextButton(
+                key: const ValueKey('table-correct-held-round'),
+                onPressed: _tableSendBusy ? null : _correctHeldTableRounds,
+                child: Text(
+                  ref.read(settingsControllerProvider).language == 'ar'
+                      ? 'تصحيح الجولة المعلّقة'
+                      : 'Correct held round',
+                ),
+              ),
             Text(l10n.tableSharedAdjustmentsUnavailable),
             FilledButton.icon(
               key: const ValueKey('table-send-to-kitchen'),
-              onPressed: !_tableSendBusy && _hasTableUnsent
+              onPressed: workspace != null
+                  ? workspace.cartControls?.submit
+                  : !_tableSendBusy &&
+                        _hasTableUnsent &&
+                        _tableSelectionMessage == null
                   ? _sendTableRound
                   : null,
               icon: const Icon(Icons.soup_kitchen_outlined),
@@ -8729,33 +9368,40 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           _glassInsetCard(
             child: Column(
               children: [
-                _summaryRow(l10n.posOrderPanelSubtotal, controller.rawSubtotal),
-                if (controller.discountAmount > 0) ...[
+                _summaryRow(l10n.posOrderPanelSubtotal, rawSubtotal),
+                if (discount > 0) ...[
                   const SizedBox(height: 6),
                   _summaryRow(
-                    controller.discount.label.isEmpty
+                    workspace != null || controller.discount.label.isEmpty
                         ? l10n.posOrderPanelDiscount
                         : controller.discount.label,
-                    -controller.discountAmount,
+                    -discount,
                   ),
                 ],
                 const SizedBox(height: 6),
-                _summaryRow(l10n.posOrderPanelNetSubtotal, controller.subtotal),
+                _summaryRow(l10n.posOrderPanelNetSubtotal, subtotal),
                 // Phase B — the manager comp write-off (given away, not sold).
-                if (controller.compAmount > 0) ...[
+                if (comp > 0) ...[
                   const SizedBox(height: 6),
                   _summaryRow(
                     l10n.posOrderPanelComp(
-                      controller.appliedComp?.reasonName ?? '',
+                      workspace == null
+                          ? controller.appliedComp?.reasonName ?? ''
+                          : '',
                     ),
-                    -controller.compAmount,
+                    -comp,
                   ),
                 ],
-                for (final t in controller.taxLines) ...[
+                if (workspace != null && (bill?.tax ?? 0) != 0) ...[
                   const SizedBox(height: 6),
-                  _summaryRow('${t.name} (${t.rateLabel}%)', t.amount),
+                  _summaryRow(checkoutText(context, 'tax'), bill!.tax / 1000),
                 ],
-                if (controller.splitCount > 1) ...[
+                if (workspace == null)
+                  for (final t in controller.taxLines) ...[
+                    const SizedBox(height: 6),
+                    _summaryRow('${t.name} (${t.rateLabel}%)', t.amount),
+                  ],
+                if (workspace == null && controller.splitCount > 1) ...[
                   const SizedBox(height: 6),
                   _summaryRow(
                     l10n.posOrderPanelPerShare(controller.splitCount),
@@ -8763,11 +9409,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   ),
                 ],
                 const SizedBox(height: 6),
-                _summaryRow(
-                  l10n.posOrderPanelTotal,
-                  controller.total,
-                  emphasize: true,
-                ),
+                _summaryRow(l10n.posOrderPanelTotal, total, emphasize: true),
               ],
             ),
           ),
@@ -8775,7 +9417,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           Row(
             children: [
               Expanded(
-                child: _isEditingDiningTable
+                child: dining
                     ? _ActionSquareCard(
                         icon: Icons.grid_view_rounded,
                         title: l10n.posOrderPanelBackToFloor,
@@ -8783,34 +9425,52 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                         foreground: Color(0xFF1C4257),
                         iconColor: Color(0xFF1B6B91),
                         onTap: () {
-                          unawaited(controller.returnToDiningFloorPlan());
+                          if (workspace != null) {
+                            unawaited(workspace.requestClose());
+                          } else {
+                            unawaited(controller.returnToDiningFloorPlan());
+                          }
                         },
                       )
                     : _ActionSquareCard(
                         icon: Icons.pause_circle_outline_rounded,
-                        title: l10n.posOrderPanelHold,
+                        title: workspace == null
+                            ? l10n.posOrderPanelHold
+                            : (Localizations.localeOf(context).languageCode ==
+                                      'ar'
+                                  ? 'العودة إلى طلبات QR'
+                                  : 'Back to QR Orders'),
                         tint: Color(0xFFFFD7A4),
                         iconColor: Color(0xFFA56A15),
                         onTap: () {
-                          unawaited(_handleHoldOrder());
+                          unawaited(
+                            workspace != null
+                                ? workspace.requestClose()
+                                : _handleHoldOrder(),
+                          );
                         },
                       ),
               ),
               SizedBox(width: 10),
               Expanded(
                 child: _ActionSquareCard(
-                  icon: _isEditingDiningTable
+                  key: workspace != null
+                      ? const ValueKey('workspace-void')
+                      : null,
+                  icon: dining
                       ? Icons.delete_sweep_rounded
                       : Icons.delete_outline_rounded,
-                  title: _isEditingDiningTable
+                  title: dining
                       ? l10n.posOrderPanelClearTable
                       : l10n.posOrderPanelVoid,
                   tint: Color(0xFFF6F0F0),
                   foreground: Color(0xFF1F2A31),
                   iconColor: Color(0xFF6B757C),
-                  onTap: _isEditingDiningTable
+                  onTap: workspace != null
+                      ? workspace.cartControls?.voidBill
+                      : dining
                       ? () {
-                          if (_liveTable) {
+                          if (liveTable) {
                             unawaited(
                               _clearSharedTable(
                                 controller.activeDiningTableId!,
@@ -8827,6 +9487,101 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildWorkspaceCartStatus(CurrentOrderWorkspace workspace) {
+    final controls = workspace.cartControls;
+    final copy = QuickCopy(
+      Localizations.localeOf(context).languageCode == 'ar',
+    );
+    final notices =
+        controls?.notices ?? (workspace.stale ? [copy.stale] : <String>[]);
+    if (notices.isEmpty &&
+        controls?.drafts.isNotEmpty != true &&
+        controls?.actions.isNotEmpty != true) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (notices.isNotEmpty || controls?.drafts.isNotEmpty == true)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 90),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final notice in notices.toSet()) Text(notice),
+                  if (controls?.drafts.isNotEmpty == true &&
+                      controls?.draftRows.isNotEmpty != true)
+                    Text(copy.draft),
+                  for (
+                    var i = 0;
+                    i <
+                        (controls?.draftRows.isNotEmpty == true
+                            ? 0
+                            : controls?.drafts.length ?? 0);
+                    i++
+                  )
+                    Row(
+                      children: [
+                        Expanded(child: Text(controls!.drafts[i])),
+                        IconButton(
+                          key: ValueKey('workspace-remove-draft-$i'),
+                          tooltip: copy.pair(
+                            'Remove unsent item',
+                            'إزالة صنف غير مرسل',
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: controls.removeDraft == null
+                              ? null
+                              : () => controls.removeDraft!(i),
+                          icon: const Icon(Icons.close, size: 18),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+        if (controls != null &&
+            (controls.draftRows.isEmpty ||
+                controls.submit != null ||
+                controls.retry != null ||
+                workspace.stale))
+          Wrap(
+            spacing: 8,
+            children: [
+              TextButton.icon(
+                key: const ValueKey('workspace-refresh'),
+                onPressed: controls.refresh,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: Text(copy.refresh),
+              ),
+              if (controls.retry != null)
+                TextButton(
+                  onPressed: controls.retry,
+                  key: const ValueKey('workspace-retry'),
+                  child: Text(copy.retry),
+                ),
+              if (controls.submit != null && !workspace.dineIn)
+                TextButton(
+                  onPressed: controls.submit,
+                  key: const ValueKey('workspace-submit'),
+                  child: Text(copy.submit),
+                ),
+              for (final action in controls.actions)
+                TextButton(onPressed: action.run, child: Text(action.label)),
+              if (controls.move != null)
+                TextButton(
+                  onPressed: controls.move,
+                  key: const ValueKey('workspace-move'),
+                  child: Text(copy.move),
+                ),
+            ],
+          ),
+      ],
     );
   }
 
@@ -9037,7 +9792,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Widget _buildBottomBar() {
     final l10n = L10n.of(context);
-    if (_workspace case final workspace?) {
+    if (_workspace case final workspace? when !workspace.mainCart) {
       return Row(
         children: [
           Expanded(
@@ -9064,14 +9819,22 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         ],
       );
     }
+    final workspace = _workspace?.mainCart == true ? _workspace : null;
     return Row(
       children: [
         SizedBox(
           width: _currentOrderPanelWidth,
           child: _PayButton(
-            total: controller.activePaymentBaseTotal,
-            busy: controller.isProcessingPayment || _tableCartPay.busy,
-            settleBill: tableBillNeedsSheet(_tableShadowMode, _cartBill),
+            total: workspace == null
+                ? controller.activePaymentBaseTotal
+                : (workspace.cartBill?.total ?? 0) / 1000,
+            enabled: workspace?.canPay ?? true,
+            busy: workspace == null
+                ? controller.isProcessingPayment || _tableCartPay.busy
+                : workspace.cartControls?.busy ?? false,
+            settleBill:
+                workspace == null &&
+                tableBillNeedsSheet(_tableShadowMode, _cartBill),
             onTap: () {
               unawaited(_openPaymentPage());
             },
@@ -9079,73 +9842,86 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         ),
         const SizedBox(width: _panelGap),
         Expanded(
-          child: _glassPanel(
-            height: 120,
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _FooterActionCard(
-                    icon: Icons.print_outlined,
-                    title: l10n.commonPrint,
-                    onTap: () async {
-                      final printed = await controller.printOnly();
-                      if (!mounted || !printed) return;
-                      _showPopupMessage(
-                        title: l10n.posNavReceiptPrintedTitle,
-                        message: l10n.posNavReceiptPrintedBody,
-                        tone: FeedbackTone.success,
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _FooterActionCard(
-                    icon: Icons.history_rounded,
-                    title: l10n.posNavOrderHistory,
-                    onTap: () {
-                      unawaited(_openOrderHistoryDialog());
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _FooterActionCard(
-                    icon: Icons.pause_circle_outline_rounded,
-                    title: l10n.posNavHeldOrders,
-                    onTap: () {
-                      unawaited(_openHeldOrdersDialog());
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                if (!_liveTable)
-                  Expanded(
-                    child: _FooterActionCard(
-                      icon: Icons.loyalty_outlined,
-                      title: l10n.posNavLoyalty,
-                      onTap: () {
-                        unawaited(_openLoyaltyRedeem());
-                      },
+          child: IgnorePointer(
+            ignoring: false,
+            child: Opacity(
+              opacity: 1,
+              child: _glassPanel(
+                height: 120,
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _FooterActionCard(
+                        enabled: workspace == null,
+                        icon: Icons.print_outlined,
+                        title: l10n.commonPrint,
+                        onTap: () async {
+                          final printed = await controller.printOnly();
+                          if (!mounted || !printed) return;
+                          _showPopupMessage(
+                            title: l10n.posNavReceiptPrintedTitle,
+                            message: l10n.posNavReceiptPrintedBody,
+                            tone: FeedbackTone.success,
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                const SizedBox(width: 12),
-                // Device↔device transfer must be reachable with an EMPTY cart
-                // too (the payment console needs items), or this terminal
-                // could never RECEIVE a handheld's order.
-                Expanded(
-                  child: _FooterActionCard(
-                    icon: Icons.swap_horiz_rounded,
-                    title: _incomingTransfers.isEmpty
-                        ? l10n.posPaymentTransfer
-                        : '${l10n.posPaymentTransfer} (${_incomingTransfers.length})',
-                    onTap: () {
-                      unawaited(_openTransferDialog());
-                    },
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _FooterActionCard(
+                        enabled: workspace == null,
+                        icon: Icons.history_rounded,
+                        title: l10n.posNavOrderHistory,
+                        onTap: () {
+                          unawaited(_openOrderHistoryDialog());
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _FooterActionCard(
+                        enabled: workspace == null,
+                        icon: Icons.pause_circle_outline_rounded,
+                        title: l10n.posNavHeldOrders,
+                        onTap: () {
+                          unawaited(_openHeldOrdersDialog());
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    if (!_liveTable)
+                      Expanded(
+                        child: _FooterActionCard(
+                          enabled: workspace == null,
+                          icon: Icons.loyalty_outlined,
+                          title: l10n.posNavLoyalty,
+                          onTap: () {
+                            unawaited(_openLoyaltyRedeem());
+                          },
+                        ),
+                      ),
+                    const SizedBox(width: 12),
+                    // Device↔device transfer must be reachable with an EMPTY cart
+                    // too (the payment console needs items), or this terminal
+                    // could never RECEIVE a handheld's order.
+                    Expanded(
+                      child: _FooterActionCard(
+                        enabled:
+                            workspace == null ||
+                            workspace.cartControls?.transfer != null,
+                        icon: Icons.swap_horiz_rounded,
+                        title: _incomingTransfers.isEmpty
+                            ? l10n.posPaymentTransfer
+                            : '${l10n.posPaymentTransfer} (${_incomingTransfers.length})',
+                        onTap: () {
+                          unawaited(_openTransferDialog());
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -9454,7 +10230,7 @@ class _CircleGlassButton extends StatelessWidget {
 class _OutlinePillButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _OutlinePillButton({
     required this.icon,
@@ -9552,13 +10328,14 @@ class _EmptyOrderState extends StatelessWidget {
 }
 
 class _OrderItemCard extends StatelessWidget {
+  final Key? deleteKey;
   final CartItem item;
-  final VoidCallback onAdd;
-  final VoidCallback onRemove;
-  final VoidCallback onDelete;
-  final VoidCallback onCustomize;
+  final VoidCallback? onAdd;
+  final VoidCallback? onRemove;
+  final VoidCallback? onDelete;
+  final VoidCallback? onCustomize;
   // P-F5 — toggle this line as a GIFT (manager-gated at the call site).
-  final VoidCallback onGift;
+  final VoidCallback? onGift;
   final bool allowGift;
   final DateTime? sentAt;
   final bool highlighted;
@@ -9566,6 +10343,7 @@ class _OrderItemCard extends StatelessWidget {
 
   const _OrderItemCard({
     super.key,
+    this.deleteKey,
     required this.item,
     required this.onAdd,
     required this.onRemove,
@@ -9658,6 +10436,7 @@ class _OrderItemCard extends StatelessWidget {
                       ),
                     ),
                     InkWell(
+                      key: deleteKey,
                       onTap: onDelete,
                       borderRadius: BorderRadius.circular(16),
                       child: const Padding(
@@ -9812,7 +10591,7 @@ class _OrderItemCard extends StatelessWidget {
                       width: 24,
                       alignment: Alignment.center,
                       child: Text(
-                        '${item.qty}',
+                        '${item is WorkspaceCartItem && (item as WorkspaceCartItem).serverQuantity % 1 != 0 ? (item as WorkspaceCartItem).serverQuantity : item.qty}',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
@@ -10593,7 +11372,7 @@ class _CustomizationOptionTile extends StatelessWidget {
 
 class _CounterButton extends StatelessWidget {
   final IconData icon;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _CounterButton({required this.icon, required this.onTap});
 
@@ -10610,7 +11389,11 @@ class _CounterButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: _softShadow,
         ),
-        child: Icon(icon, size: 16, color: const Color(0xFF2E3D45)),
+        child: Icon(
+          icon,
+          size: 16,
+          color: onTap == null ? Colors.grey : const Color(0xFF2E3D45),
+        ),
       ),
     );
   }
@@ -10622,9 +11405,10 @@ class _ActionSquareCard extends StatelessWidget {
   final Color tint;
   final Color foreground;
   final Color iconColor;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _ActionSquareCard({
+    super.key,
     required this.icon,
     required this.title,
     required this.onTap,
@@ -11632,7 +12416,7 @@ class _PaymentTopActionCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final Color accent;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _PaymentTopActionCard({
     required this.icon,
@@ -11643,33 +12427,36 @@ class _PaymentTopActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(24),
-      child: Container(
-        height: 110,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.78),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.84)),
-          boxShadow: _softShadow,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 32, color: accent),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF4E5E6A),
+    return Opacity(
+      opacity: onTap == null ? 0.45 : 1,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          height: 110,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.78),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.84)),
+            boxShadow: _softShadow,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 32, color: accent),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF4E5E6A),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -11802,22 +12589,37 @@ class _PaymentMethodActionButton extends StatelessWidget {
                 ],
               );
             }
-            return Center(child: FittedBox(fit: BoxFit.scaleDown, child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 42, color: Colors.white),
-                const SizedBox(height: 8),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
+            return Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, size: 42, color: Colors.white),
+                    const SizedBox(height: 8),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                    if (subtitle != null)
+                      Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Text(
+                          subtitle!,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                if (subtitle != null) Padding(padding: const EdgeInsets.all(6), child: Text(subtitle!, style: const TextStyle(fontSize:12,color:Colors.white))),
-              ],
-            )));
+              ),
+            );
           },
         ),
       ),
@@ -12026,11 +12828,13 @@ class _WideActionTile extends StatelessWidget {
 }
 
 class _FooterActionCard extends StatelessWidget {
+  final bool enabled;
   final IconData icon;
   final String title;
   final VoidCallback onTap;
 
   const _FooterActionCard({
+    this.enabled = true,
     required this.icon,
     required this.title,
     required this.onTap,
@@ -12039,7 +12843,7 @@ class _FooterActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(22),
       child: Container(
         height: double.infinity,
@@ -12073,6 +12877,7 @@ class _FooterActionCard extends StatelessWidget {
 class _PayButton extends StatelessWidget {
   final double total;
   final bool busy;
+  final bool enabled;
   final bool settleBill;
   final VoidCallback onTap;
 
@@ -12081,13 +12886,14 @@ class _PayButton extends StatelessWidget {
     required this.busy,
     required this.onTap,
     this.settleBill = false,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
     return InkWell(
-      onTap: busy ? null : onTap,
+      onTap: busy || !enabled ? null : onTap,
       borderRadius: BorderRadius.circular(26),
       child: Container(
         height: double.infinity,
@@ -12096,7 +12902,7 @@ class _PayButton extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: busy
+            colors: busy || !enabled
                 ? const [Color(0xFF5E8995), Color(0xFF48656F)]
                 : const [Color(0xFF0B6D8A), Color(0xFF0F5167)],
           ),
@@ -13804,8 +14610,10 @@ class _OrderHistoryCard extends StatelessWidget {
                     onTap: onPrint,
                   ),
                 ),
-                TextButton(onPressed: onReversal,
-                  child: Text(softposText(context, 'title'))),
+                TextButton(
+                  onPressed: onReversal,
+                  child: Text(softposText(context, 'title')),
+                ),
                 const SizedBox(height: 10),
                 // Phase C1 — manager-gated kitchen-ticket reprint (§6.10).
                 SizedBox(

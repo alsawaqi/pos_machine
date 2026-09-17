@@ -52,7 +52,7 @@ String dineInText(bool ar, String key) {
     'confirm': ['Confirm round', 'تأكيد الجولة'],
     'reject': ['Reject round', 'رفض الجولة'],
     'reopen': ['Reopen for more rounds', 'إعادة الفتح لجولات إضافية'],
-    'clear': ['Clear empty seating', 'إخلاء الجلسة الفارغة'],
+    'clear': ['Clear empty session', 'إخلاء الجلسة الفارغة'],
     'occupied': ['Occupied', 'مشغولة'],
     'free': ['Free', 'متاحة'],
     'round': ['Round', 'الجولة'],
@@ -101,8 +101,10 @@ class DineInScreen extends StatefulWidget {
     this.arabic = false,
     this.writesAllowed = true,
     this.localDraftBlocked = false,
+    this.onCorrectHeldRound,
     this.workspace,
     this.onVoid,
+    this.approveCancellation,
     this.onCombine,
     this.onRecover,
     this.localDraftBlockedNow,
@@ -113,10 +115,12 @@ class DineInScreen extends StatefulWidget {
   final Future<void> Function(String) onPay;
   final Future<void> Function()? onCombine;
   final Future<void> Function()? onRecover;
+  final Future<void> Function()? onCorrectHeldRound;
   final bool Function()? localDraftBlockedNow;
   final bool arabic, writesAllowed, localDraftBlocked;
   final CurrentOrderWorkspace? workspace;
   final Future<bool> Function(String uuid)? onVoid;
+  final Future<Map<String, dynamic>?> Function()? approveCancellation;
   @override
   State<DineInScreen> createState() => _DineInScreenState();
 }
@@ -190,7 +194,16 @@ class _DineInScreenState extends State<DineInScreen>
           widget.writesAllowed &&
           c?.canAdd == true &&
           drafts.length < 50,
-      canPay: !blocked && !childOpen && drafts.isEmpty && c?.canPay == true,
+      canPay:
+          !blocked &&
+          !childOpen &&
+          (drafts.isEmpty
+              ? c?.canPay == true
+              : widget.workspace?.mainCart == true &&
+                    _editDrafts &&
+                    _validDrafts &&
+                    c?.detail?.pendingReview != true),
+      cartControls: _cartControls,
     );
   }
 
@@ -283,6 +296,11 @@ class _DineInScreenState extends State<DineInScreen>
   Future<void> _pick([QuickProduct? product]) async {
     final c = controller!;
     if (!c.canAdd || childOpen) return;
+    if (widget.workspace?.mainCart == true && product != null) {
+      if (!product.available) return;
+      _addDraft(product, const [], null);
+      return;
+    }
     final seating = c.detail!.seatingUuid, bill = c.detail!.billUuid;
     childOpen = true;
     _schedule();
@@ -332,6 +350,323 @@ class _DineInScreenState extends State<DineInScreen>
     }
   }
 
+  bool get _editDrafts =>
+      controller?.canAdd == true &&
+      !childOpen &&
+      !leaving &&
+      widget.writesAllowed &&
+      !(widget.localDraftBlockedNow?.call() ?? widget.localDraftBlocked);
+  QuickProduct? _product(int id) =>
+      widget.catalogue().where((p) => p.id == id).firstOrNull;
+
+  void _addDraft(
+    QuickProduct product,
+    List<int> addons,
+    String? notes, {
+    int qty = 1,
+  }) {
+    if (!_editDrafts) return;
+    final selected = [...addons]..sort();
+    final index = drafts.indexWhere((d) {
+      final existing = [...d.$2.addonIds]..sort();
+      return d.$2.productId == product.id &&
+          existing.join(',') == selected.join(',') &&
+          (d.$2.notes ?? '') == (notes ?? '');
+    });
+    final quantity = qty + (index < 0 ? 0 : drafts[index].$2.quantity);
+    if (quantity > 99 || (index < 0 && drafts.length >= 50)) return;
+    if (drafts.isEmpty) {
+      draftSeating = controller!.detail!.seatingUuid;
+      draftBill = controller!.detail!.billUuid;
+    }
+    setState(() {
+      final entry = (
+        widget.arabic ? product.nameAr : product.name,
+        QrQuickLine(product.id, quantity, selected, notes: notes),
+      );
+      if (index < 0) {
+        drafts.add(entry);
+      } else {
+        drafts[index] = entry;
+      }
+    });
+    _publish();
+  }
+
+  Map<String, dynamic> _draftRow(int index) {
+    final line = drafts[index].$2,
+        product = _product(drafts[index].$2.productId);
+    final addons = [
+      for (final group in product?.groups ?? <QuickGroup>[])
+        for (final choice in group.choices)
+          if (line.addonIds.contains(choice.id)) choice,
+    ];
+    return {
+      'id': 'draft-$index',
+      'draft_index': index,
+      'product_id': line.productId,
+      'product_name': product?.name ?? drafts[index].$1,
+      'product_name_ar': product?.nameAr ?? '',
+      'qty': line.quantity,
+      'line_total_baisas':
+          ((product?.priceBaisas ?? 0) +
+              addons.fold<int>(0, (n, a) => n + a.priceBaisas)) *
+          line.quantity,
+      'notes': line.notes,
+      'addons': [
+        for (final a in addons)
+          {
+            'add_on_id': a.id,
+            'add_on_name': a.name,
+            'add_on_name_ar': a.nameAr,
+          },
+      ],
+    };
+  }
+
+  bool get _validDrafts => drafts.every((d) {
+    final product = _product(d.$2.productId);
+    return product?.available == true &&
+        product!.groups.every((g) {
+          final count = g.choices
+              .where((a) => d.$2.addonIds.contains(a.id))
+              .length;
+          return count >= g.min && count <= g.max;
+        });
+  });
+
+  Future<void> _quantity(Map<String, dynamic> row, int qty) async {
+    if (row['pending_round_id'] != null) return;
+    if (!_editDrafts || qty < 0 || qty > 99) return;
+    if (row['draft_index'] case final int index) {
+      if (index >= drafts.length) return;
+      final old = drafts[index];
+      setState(() {
+        if (qty == 0) {
+          drafts.removeAt(index);
+        } else {
+          drafts[index] = (
+            old.$1,
+            QrQuickLine(
+              old.$2.productId,
+              qty,
+              old.$2.addonIds,
+              notes: old.$2.notes,
+            ),
+          );
+        }
+      });
+      _publish();
+    } else if (qty > (row['qty'] as num)) {
+      final product = _product(row['product_id'] as int);
+      if (product != null) {
+        _addDraft(
+          product,
+          [
+            for (final a in row['addons'] as List? ?? [])
+              if (qrMap(a)['add_on_id'] is int) qrMap(a)['add_on_id'] as int,
+          ],
+          row['notes'] as String?,
+          qty: qty - (row['qty'] as num).toInt(),
+        );
+      }
+    } else if (qty < (row['qty'] as num) &&
+        widget.approveCancellation != null) {
+      await controller!.cancelLine(
+        row,
+        (row['qty'] as num).toInt() - qty,
+        approve: widget.approveCancellation!,
+      );
+    }
+  }
+
+  Future<void> _customize(Map<String, dynamic> row) async {
+    if (row['pending_round_id'] != null) return;
+    if (!_editDrafts || widget.workspace?.editOptions == null) {
+      return;
+    }
+    final index = row['draft_index'] as int?;
+    if (index == null && widget.approveCancellation == null) return;
+    childOpen = true;
+    _publish();
+    try {
+      final changed = await widget.workspace!.editOptions!(row);
+      if (mounted &&
+          changed != null &&
+          index != null &&
+          index < drafts.length) {
+        setState(() => drafts[index] = (drafts[index].$1, changed));
+      } else if (mounted && changed != null && index == null) {
+        final ok = await controller!.cancelLine(
+          row,
+          (row['qty'] as num).toInt(),
+          approve: widget.approveCancellation!,
+        );
+        if (mounted && ok) {
+          childOpen = false;
+          final product = _product(changed.productId);
+          if (product != null) {
+            _addDraft(
+              product,
+              changed.addonIds,
+              changed.notes,
+              qty: changed.quantity,
+            );
+          }
+        }
+      }
+    } finally {
+      childOpen = false;
+      if (mounted) _publish();
+    }
+  }
+
+  Future<void> _clearCart() async {
+    if (!_editDrafts) return;
+    final rows =
+        widget.workspace?.bill?.groupedItems ?? <Map<String, dynamic>>[];
+    if (rows.isEmpty) {
+      setState(drafts.clear);
+      _publish();
+      return;
+    }
+    if (widget.approveCancellation == null) return;
+    childOpen = true;
+    _publish();
+    try {
+      final approval = await widget.approveCancellation!();
+      if (!mounted || approval == null) return;
+      setState(drafts.clear);
+      for (final row in rows) {
+        if (!mounted ||
+            !await controller!.cancelLine(
+              row,
+              (row['qty'] as num).toInt(),
+              approve: () async => approval,
+            )) {
+          break;
+        }
+      }
+    } finally {
+      childOpen = false;
+      if (mounted) _publish();
+    }
+  }
+
+  WorkspaceCartControls get _cartControls {
+    final c = controller, detail = c?.detail;
+    final enabled =
+        _editDrafts &&
+        !(widget.localDraftBlockedNow?.call() ?? widget.localDraftBlocked);
+    final canReview =
+        c?.available == true &&
+        !childOpen &&
+        drafts.isEmpty &&
+        !(widget.localDraftBlockedNow?.call() ?? widget.localDraftBlocked);
+    return WorkspaceCartControls(
+      busy: c?.busy == true || childOpen,
+      pendingRows: [
+        if (detail != null)
+          for (final round in detail.rounds)
+            if (round['status'] == 'pending_confirmation')
+              for (final raw in round['priced_lines'] as List)
+                {
+                  ...tableMap(raw),
+                  'pending_round_id': round['id'],
+                  'notes': [
+                    '${text('pending_confirmation')} — ${round['round_no']}',
+                    if (tableMap(raw)['notes'] != null) tableMap(raw)['notes'],
+                  ].join(' · '),
+                },
+      ],
+      pendingTax:
+          detail?.rounds
+              .where((r) => r['status'] == 'pending_confirmation')
+              .fold<int>(0, (sum, r) => sum + (r['tax_baisas'] as int? ?? 0)) ??
+          0,
+      notices: [
+        if (detail?.pendingReview == true)
+          widget.arabic
+              ? 'إجمالي تقديري — الجولة بانتظار التأكيد'
+              : 'Estimated total — round awaiting confirmation',
+
+        if (error != null) text(error!),
+        if (c?.stale == true) text('refresh'),
+        if (c?.notice != null)
+          c?.pending?.isCancellation == true && c?.notice == 'uncertain'
+              ? (widget.arabic
+                    ? 'التعديل محفوظ. أعد محاولة نفس التعديل.'
+                    : 'The change is saved. Retry this same change.')
+              : text(c!.notice!),
+        if (drafts.isNotEmpty && !_validDrafts)
+          widget.arabic
+              ? 'راجع الإضافات المطلوبة أو الأصناف غير المتاحة'
+              : 'Review required add-ons or unavailable items',
+      ],
+      drafts: [for (final d in drafts) '${d.$2.quantity} × ${d.$1}'],
+      draftRows: [for (var i = 0; i < drafts.length; i++) _draftRow(i)],
+      quantity: enabled ? _quantity : null,
+      customize: enabled ? _customize : null,
+      clear: enabled ? _clearCart : null,
+      refresh: c?.busy == true
+          ? null
+          : () async {
+              await c?.refresh();
+            },
+      submit: enabled && drafts.isNotEmpty && _validDrafts ? _send : null,
+      retry: c?.pending != null && c?.busy != true
+          ? () async {
+              await c?.retry();
+            }
+          : null,
+      voidBill: _canVoid ? _void : null,
+      actions: [
+        if (widget.onCorrectHeldRound != null)
+          WorkspaceAction(
+            widget.arabic ? 'تصحيح الجولة المعلّقة' : 'Correct held round',
+            widget.writesAllowed &&
+                    c?.busy != true &&
+                    c?.pending == null &&
+                    !childOpen
+                ? widget.onCorrectHeldRound
+                : null,
+          ),
+        if (detail?.canClearEmpty == true)
+          WorkspaceAction(
+            text('clear'),
+            canReview && widget.writesAllowed ? _clearEmptySession : null,
+          ),
+        if (detail != null)
+          for (final round in detail.rounds)
+            if (round['status'] == 'pending_confirmation') ...[
+              WorkspaceAction(
+                '${text('confirm')} ${round['round_no']}',
+                canReview ? () => c!.review(round['id'] as int, true) : null,
+              ),
+              WorkspaceAction(
+                '${text('reject')} ${round['round_no']}',
+                canReview ? () => c!.review(round['id'] as int, false) : null,
+              ),
+            ],
+        if (detail?.protectedCheckout == true && detail?.canAppend == false)
+          WorkspaceAction(
+            text('reopen'),
+            c?.available == true && drafts.isEmpty ? c!.reopen : null,
+          ),
+        if (c?.notice == 'print_failed' && detail != null)
+          for (final round in detail.rounds)
+            if (round['status'] == 'accepted' &&
+                round['kitchen_printed_at'] == null)
+              WorkspaceAction(
+                text('print'),
+                c?.available == true
+                    ? () => c!.retryPrint(round['id'] as int)
+                    : null,
+              ),
+      ],
+    );
+  }
+
   Future<void> _send() async {
     final c = controller!;
     final ok = await c.add(
@@ -345,6 +680,11 @@ class _DineInScreenState extends State<DineInScreen>
 
   Future<void> _pay() async {
     final c = controller!;
+    if (widget.workspace?.mainCart == true && drafts.isNotEmpty) {
+      if (!_editDrafts || !_validDrafts) return;
+      await _send();
+      if (!mounted) return;
+    }
     if (!c.canPay || drafts.isNotEmpty || childOpen) return;
     final uuid = c.detail!.billUuid!;
     childOpen = true;
@@ -357,7 +697,14 @@ class _DineInScreenState extends State<DineInScreen>
       if (mounted) {
         c.setForeground(foreground);
         await c.refresh();
-        _schedule();
+        if (mounted &&
+            !c.stale &&
+            (c.detail?.occupied == false ||
+                const {'paid', 'void'}.contains(c.detail?.bill?['status']))) {
+          widget.workspace?.onExit();
+        } else {
+          _schedule();
+        }
       }
     }
   }
@@ -378,6 +725,61 @@ class _DineInScreenState extends State<DineInScreen>
     padding: const EdgeInsets.symmetric(vertical: 8),
     child: Text(text(key)),
   );
+  Future<void> _clearEmptySession() async {
+    final c = controller;
+    if (c?.available != true ||
+        c?.detail?.canClearEmpty != true ||
+        drafts.isNotEmpty ||
+        childOpen ||
+        widget.localDraftBlocked) {
+      return;
+    }
+    childOpen = true;
+    _publish();
+    try {
+      final confirmed =
+          await showDialog<bool>(
+            context: context,
+            builder: (dialog) => AlertDialog(
+              title: Text(text('clear')),
+              content: Text(
+                widget.arabic
+                    ? 'إغلاق الجلسة الفارغة وإتاحة الطاولة؟ لن يتم إلغاء أي طلب.'
+                    : 'Close this empty session and free the table? No order will be cancelled.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialog, false),
+                  child: Text(text('cancel')),
+                ),
+                FilledButton(
+                  key: const ValueKey('dine-clear-confirm'),
+                  onPressed: () => Navigator.pop(dialog, true),
+                  child: Text(text('clear')),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!mounted || !confirmed) return;
+      await c!.clear();
+      if (mounted && c.detail?.occupied == false && !c.stale) {
+        if (widget.workspace != null) {
+          widget.workspace!.onExit();
+        } else {
+          setState(() => leaving = true);
+          Navigator.of(context).pop();
+        }
+      }
+    } finally {
+      childOpen = false;
+      if (mounted) {
+        setState(() {});
+        _publish();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = controller, detail = c?.detail;
@@ -391,218 +793,257 @@ class _DineInScreenState extends State<DineInScreen>
       },
       child: Directionality(
         textDirection: widget.arabic ? TextDirection.rtl : TextDirection.ltr,
-        child: Scaffold(
-          key: const ValueKey('unified-dine-in'),
-          appBar: AppBar(
-            leading: IconButton(
-              onPressed: _leave,
-              icon: const Icon(Icons.arrow_back),
-            ),
-            title: Text('${text('title')} · ${widget.label}'),
-            actions: [
-              if (widget.workspace != null && widget.onVoid != null)
-                TextButton.icon(
-                  key: const ValueKey('workspace-void'),
-                  onPressed: _canVoid ? _void : null,
-                  icon: const Icon(Icons.delete_outline),
-                  label: Text(widget.arabic ? 'إلغاء الفاتورة' : 'Void bill'),
-                ),
-              IconButton(
-                key: const ValueKey('dine-refresh'),
-                onPressed: c?.busy == true ? null : () => c?.refresh(),
-                icon: const Icon(Icons.refresh),
-              ),
-            ],
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              if (c == null || c.busy) const LinearProgressIndicator(),
-              if (error != null) note(error!),
-              if (c?.stale == true) note('refresh'),
-              if (c?.notice != null) note(c!.notice!),
-              if (widget.onCombine != null)
-                OutlinedButton(
-                  key: const ValueKey('dine-combine'),
-                  onPressed:
-                      c?.busy == true ||
-                          c?.pending != null ||
-                          drafts.isNotEmpty ||
-                          childOpen
-                      ? null
-                      : _combine,
-                  child: Text(
-                    widget.arabic
-                        ? 'مراجعة دمج فاتورة محلية / استعادة'
-                        : 'Review local bill combine / recovery',
+        child: widget.workspace?.mainCart == true
+            ? const SizedBox.shrink(key: ValueKey('dine-in-cart-controller'))
+            : Scaffold(
+                key: const ValueKey('unified-dine-in'),
+                appBar: AppBar(
+                  leading: IconButton(
+                    onPressed: _leave,
+                    icon: const Icon(Icons.arrow_back),
                   ),
+                  title: Text('${text('title')} · ${widget.label}'),
+                  actions: [
+                    if (widget.workspace != null && widget.onVoid != null)
+                      TextButton.icon(
+                        key: const ValueKey('workspace-void'),
+                        onPressed: _canVoid ? _void : null,
+                        icon: const Icon(Icons.delete_outline),
+                        label: Text(
+                          widget.arabic ? 'إلغاء الفاتورة' : 'Void bill',
+                        ),
+                      ),
+                    IconButton(
+                      key: const ValueKey('dine-refresh'),
+                      onPressed: c?.busy == true ? null : () => c?.refresh(),
+                      icon: const Icon(Icons.refresh),
+                    ),
+                  ],
                 ),
-              if (widget.onRecover != null)
-                OutlinedButton(
-                  key: const ValueKey('dine-recover-draft'),
-                  onPressed:
-                      c?.busy == true ||
-                          c?.pending != null ||
-                          drafts.isNotEmpty ||
-                          childOpen
-                      ? null
-                      : () => _openLocalAction(widget.onRecover!),
-                  child: Text(
-                    widget.arabic
-                        ? 'استعادة مسودة هذه الفاتورة'
-                        : 'Recover this bill draft',
-                  ),
-                ),
-              if (localBlocked || c?.hasLocalConflict == true)
-                note(
-                  widget.arabic
-                      ? 'يوجد طلب محلي غير مرسل. عالجه أولاً دون إنشاء فاتورة ثانية.'
-                      : 'A local draft is unresolved. Resolve it first without creating a second bill.',
-                ),
-              if (detail != null) ...[
-                Text(
-                  '${widget.label} · ${text(detail.occupied ? 'occupied' : 'free')}',
-                  key: const ValueKey('dine-occupancy'),
-                ),
-                Text(detail.reference, key: const ValueKey('dine-reference')),
-                if (detail.orphaned) note('orphan'),
-                if (detail.bill != null) ...[
-                  Text(
-                    '${text('total')}: ${money(detail.bill!['grand_total_baisas'])}',
-                    key: const ValueKey('dine-total'),
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  for (final raw in detail.bill!['items'] as List)
-                    _line(tableMap(raw)),
-                ],
-                for (final round in detail.rounds)
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            '${text('round')} ${round['round_no']} · ${text(round['entered_by'] as String)} · ${text(round['status'] as String)}',
-                            key: ValueKey('dine-round-${round['id']}'),
-                          ),
-                          for (final line in round['priced_lines'] as List)
-                            _line(tableMap(line)),
-                          if (round['status'] == 'accepted' &&
-                              round['kitchen_printed_at'] == null &&
-                              c?.printAccepted != null)
-                            TextButton(
-                              key: ValueKey('dine-print-${round['id']}'),
-                              onPressed: enabled
-                                  ? () => c!.retryPrint(round['id'] as int)
-                                  : null,
-                              child: Text(text('print')),
-                            ),
-                          if (round['status'] == 'pending_confirmation')
-                            Wrap(
-                              spacing: 8,
+                body: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    if (c == null || c.busy) const LinearProgressIndicator(),
+                    if (error != null) note(error!),
+                    if (c?.stale == true) note('refresh'),
+                    if (c?.notice != null) note(c!.notice!),
+                    if (widget.onCorrectHeldRound != null)
+                      OutlinedButton(
+                        key: const ValueKey('dine-correct-held-round'),
+                        onPressed:
+                            widget.writesAllowed &&
+                                c?.busy != true &&
+                                c?.pending == null &&
+                                !childOpen
+                            ? widget.onCorrectHeldRound
+                            : null,
+                        child: Text(
+                          widget.arabic
+                              ? 'تصحيح الجولة المعلّقة'
+                              : 'Correct held round',
+                        ),
+                      ),
+                    if (widget.onCombine != null)
+                      OutlinedButton(
+                        key: const ValueKey('dine-combine'),
+                        onPressed:
+                            c?.busy == true ||
+                                c?.pending != null ||
+                                drafts.isNotEmpty ||
+                                childOpen
+                            ? null
+                            : _combine,
+                        child: Text(
+                          widget.arabic
+                              ? 'مراجعة دمج فاتورة محلية / استعادة'
+                              : 'Review local bill combine / recovery',
+                        ),
+                      ),
+                    if (widget.onRecover != null)
+                      OutlinedButton(
+                        key: const ValueKey('dine-recover-draft'),
+                        onPressed:
+                            c?.busy == true ||
+                                c?.pending != null ||
+                                drafts.isNotEmpty ||
+                                childOpen
+                            ? null
+                            : () => _openLocalAction(widget.onRecover!),
+                        child: Text(
+                          widget.arabic
+                              ? 'استعادة مسودة هذه الفاتورة'
+                              : 'Recover this bill draft',
+                        ),
+                      ),
+                    if (localBlocked || c?.hasLocalConflict == true)
+                      note(
+                        widget.arabic
+                            ? 'يوجد طلب محلي غير مرسل. عالجه أولاً دون إنشاء فاتورة ثانية.'
+                            : 'A local draft is unresolved. Resolve it first without creating a second bill.',
+                      ),
+                    if (detail != null) ...[
+                      Text(
+                        '${widget.label} · ${text(detail.occupied ? 'occupied' : 'free')}',
+                        key: const ValueKey('dine-occupancy'),
+                      ),
+                      Text(
+                        detail.reference,
+                        key: const ValueKey('dine-reference'),
+                      ),
+                      if (detail.orphaned) note('orphan'),
+                      if (detail.bill != null) ...[
+                        Text(
+                          '${text('total')}: ${money(detail.bill!['grand_total_baisas'])}',
+                          key: const ValueKey('dine-total'),
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        for (final raw in detail.bill!['items'] as List)
+                          _line(tableMap(raw)),
+                      ],
+                      for (final round in detail.rounds)
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                FilledButton(
-                                  key: ValueKey('dine-confirm-${round['id']}'),
-                                  onPressed: enabled && drafts.isEmpty
-                                      ? () =>
-                                            c!.review(round['id'] as int, true)
-                                      : null,
-                                  child: Text(text('confirm')),
+                                Text(
+                                  '${text('round')} ${round['round_no']} · ${text(round['entered_by'] as String)} · ${text(round['status'] as String)}',
+                                  key: ValueKey('dine-round-${round['id']}'),
                                 ),
-                                OutlinedButton(
-                                  key: ValueKey('dine-reject-${round['id']}'),
-                                  onPressed: enabled && drafts.isEmpty
-                                      ? () =>
-                                            c!.review(round['id'] as int, false)
-                                      : null,
-                                  child: Text(text('reject')),
-                                ),
+                                for (final line
+                                    in round['priced_lines'] as List)
+                                  _line(tableMap(line)),
+                                if (round['status'] == 'accepted' &&
+                                    round['kitchen_printed_at'] == null &&
+                                    c?.printAccepted != null)
+                                  TextButton(
+                                    key: ValueKey('dine-print-${round['id']}'),
+                                    onPressed: enabled
+                                        ? () =>
+                                              c!.retryPrint(round['id'] as int)
+                                        : null,
+                                    child: Text(text('print')),
+                                  ),
+                                if (round['status'] == 'pending_confirmation')
+                                  Wrap(
+                                    spacing: 8,
+                                    children: [
+                                      FilledButton(
+                                        key: ValueKey(
+                                          'dine-confirm-${round['id']}',
+                                        ),
+                                        onPressed: enabled && drafts.isEmpty
+                                            ? () => c!.review(
+                                                round['id'] as int,
+                                                true,
+                                              )
+                                            : null,
+                                        child: Text(text('confirm')),
+                                      ),
+                                      OutlinedButton(
+                                        key: ValueKey(
+                                          'dine-reject-${round['id']}',
+                                        ),
+                                        onPressed: enabled && drafts.isEmpty
+                                            ? () => c!.review(
+                                                round['id'] as int,
+                                                false,
+                                              )
+                                            : null,
+                                        child: Text(text('reject')),
+                                      ),
+                                    ],
+                                  ),
                               ],
+                            ),
+                          ),
+                        ),
+                    ],
+                    if (c?.pending != null) ...[
+                      note('uncertain'),
+                      Text('Table #${c!.pending!.tableId}'),
+                      FilledButton(
+                        key: const ValueKey('dine-retry'),
+                        onPressed: c.busy ? null : c.retry,
+                        child: Text(text('retry')),
+                      ),
+                    ] else if (detail != null) ...[
+                      note('pricing'),
+                      for (var i = 0; i < drafts.length; i++)
+                        ListTile(
+                          title: Text(
+                            '${drafts[i].$2.quantity} × ${drafts[i].$1}',
+                          ),
+                          trailing: IconButton(
+                            key: ValueKey('dine-remove-$i'),
+                            onPressed: c?.busy == true
+                                ? null
+                                : () {
+                                    setState(() => drafts.removeAt(i));
+                                    _publish();
+                                  },
+                            icon: const Icon(Icons.close),
+                          ),
+                        ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton(
+                            key: const ValueKey('dine-add'),
+                            onPressed:
+                                enabled &&
+                                    widget.writesAllowed &&
+                                    c!.canAdd &&
+                                    drafts.length < 50
+                                ? _pick
+                                : null,
+                            child: Text(text('add')),
+                          ),
+                          FilledButton(
+                            key: const ValueKey('dine-send'),
+                            onPressed:
+                                enabled &&
+                                    widget.writesAllowed &&
+                                    c!.canAdd &&
+                                    drafts.isNotEmpty
+                                ? _send
+                                : null,
+                            child: Text(text('send')),
+                          ),
+                          if (detail.protectedCheckout && !detail.canAppend)
+                            OutlinedButton(
+                              key: const ValueKey('dine-reopen'),
+                              onPressed: enabled && drafts.isEmpty
+                                  ? c!.reopen
+                                  : null,
+                              child: Text(text('reopen')),
+                            ),
+                          if (detail.protectedCheckout)
+                            FilledButton(
+                              key: const ValueKey('dine-pay'),
+                              onPressed: enabled && c!.canPay && drafts.isEmpty
+                                  ? _pay
+                                  : null,
+                              child: Text(text('pay')),
+                            ),
+                          if (detail.canClearEmpty)
+                            OutlinedButton(
+                              key: const ValueKey('dine-clear'),
+                              onPressed: enabled && drafts.isEmpty
+                                  ? _clearEmptySession
+                                  : null,
+                              child: Text(text('clear')),
                             ),
                         ],
                       ),
-                    ),
-                  ),
-              ],
-              if (c?.pending != null) ...[
-                note('uncertain'),
-                Text('Table #${c!.pending!.tableId}'),
-                FilledButton(
-                  key: const ValueKey('dine-retry'),
-                  onPressed: c.busy ? null : c.retry,
-                  child: Text(text('retry')),
-                ),
-              ] else if (detail != null) ...[
-                note('pricing'),
-                for (var i = 0; i < drafts.length; i++)
-                  ListTile(
-                    title: Text('${drafts[i].$2.quantity} × ${drafts[i].$1}'),
-                    trailing: IconButton(
-                      key: ValueKey('dine-remove-$i'),
-                      onPressed: c?.busy == true
-                          ? null
-                          : () {
-                              setState(() => drafts.removeAt(i));
-                              _publish();
-                            },
-                      icon: const Icon(Icons.close),
-                    ),
-                  ),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    OutlinedButton(
-                      key: const ValueKey('dine-add'),
-                      onPressed:
-                          enabled &&
-                              widget.writesAllowed &&
-                              c!.canAdd &&
-                              drafts.length < 50
-                          ? _pick
-                          : null,
-                      child: Text(text('add')),
-                    ),
-                    FilledButton(
-                      key: const ValueKey('dine-send'),
-                      onPressed:
-                          enabled &&
-                              widget.writesAllowed &&
-                              c!.canAdd &&
-                              drafts.isNotEmpty
-                          ? _send
-                          : null,
-                      child: Text(text('send')),
-                    ),
-                    if (detail.protectedCheckout && !detail.canAppend)
-                      OutlinedButton(
-                        key: const ValueKey('dine-reopen'),
-                        onPressed: enabled && drafts.isEmpty ? c!.reopen : null,
-                        child: Text(text('reopen')),
-                      ),
-                    if (detail.protectedCheckout)
-                      FilledButton(
-                        key: const ValueKey('dine-pay'),
-                        onPressed: enabled && c!.canPay && drafts.isEmpty
-                            ? _pay
-                            : null,
-                        child: Text(text('pay')),
-                      ),
-                    if (detail.occupied && detail.bill == null)
-                      OutlinedButton(
-                        key: const ValueKey('dine-clear'),
-                        onPressed: enabled && drafts.isEmpty ? c!.clear : null,
-                        child: Text(text('clear')),
-                      ),
+                      if (detail.bill != null && !detail.protectedCheckout)
+                        note('staff_pay'),
+                    ],
                   ],
                 ),
-                if (detail.bill != null && !detail.protectedCheckout)
-                  note('staff_pay'),
-              ],
-            ],
-          ),
-        ),
+              ),
       ),
     );
   }

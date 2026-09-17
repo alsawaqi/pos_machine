@@ -95,5 +95,21 @@ fun main() {
   h2.core.handleActivityResult(h2.activity,h2.launches.last().second,Activity.RESULT_CANCELED,Intent().putExtra("status","cancelled"))
   check(r2.json().getString("status")=="cancelled")
  }
+
+ test("initial login failure proves no payment was dispatched") {
+  val h=Harness();val r=h.call("loginAndPay");h.respond("51")
+  check(r.json().getBoolean("paymentDispatched")==false);check(h.launches.size==1)
+ }
+ test("payment 99 then login failure retains dispatch provenance") {
+  val h=Harness();h.prime();val r=h.call("payWithPreparedSession")
+  h.respond("99");h.respond("51")
+  check(r.json().getBoolean("paymentDispatched"));check(h.launches.size==3)
+ }
+ test("initial login watchdog proves no payment but payment watchdog does not") {
+  val h=Harness();val r=h.call("loginAndPay");Handler.fire()
+  check(!r.json().getBoolean("paymentDispatched"));check(h.launches.size==1)
+  val h2=Harness();h2.prime();val r2=h2.call("payWithPreparedSession");Handler.fire()
+  check(r2.json().getBoolean("paymentDispatched"));check(h2.launches.size==2)
+ }
  println("OK ("+passed+" JVM core contract tests)")
 }

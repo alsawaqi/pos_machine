@@ -81,6 +81,11 @@ String tableReconciliationCopy(L10n l10n, TableSyncVerdict row) {
                 ? _int((lines[index] as Map)['qty'])
                 : 0),
       );
+      if (reasons.contains('addon_selection_invalid')) {
+        return l10n.localeName.startsWith('ar')
+            ? 'الطاولة $table: $count صنف معلّق بسبب خيارات الإضافات. افتح فاتورة الطاولة للمراجعة؛ لم تُقبل هذه الأصناف للدفع.'
+            : 'Table $table: $count items held because add-on choices need review. Open the table bill; these items are not accepted for payment.';
+      }
       final reason = reasons.isEmpty
           ? l10n.tableReviewReasonUnknown
           : reasons.join(', ');

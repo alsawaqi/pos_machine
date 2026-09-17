@@ -34,6 +34,7 @@ class SoftPosBridgeCore(
     private var operation = ""
     private var args: Map<String, Any?> = emptyMap()
     private var retryCount = 0
+    private var paymentDispatched = false
     private var preparedSession: String? = null
     private var preparedAt = 0L
     private var preparedIdentity = ""
@@ -62,6 +63,7 @@ class SoftPosBridgeCore(
                             result = reply
                             owner = activity
                             retryCount = 0
+                            paymentDispatched = false
                             operation = when (call.method) {
                                 "prepareLogin" -> "login"
                                 "voidTransaction" -> "void"
@@ -191,6 +193,9 @@ class SoftPosBridgeCore(
         owner = activity
         requestCode = code
         try {
+            // Retain this across the one permitted expired-session login retry.
+            // A launch exception can occur after dispatch, so mark before calling Android.
+            if (nextStage in listOf("payment", "void", "refund")) paymentDispatched = true
             launch(activity, intent, code, nextStage)
             val timer = Runnable { if (requestCode == code && result != null) cancelPendingOperation() }
             watchdog = timer
@@ -263,6 +268,7 @@ class SoftPosBridgeCore(
     }
 
     private fun complete(payload: JSONObject) {
+        payload.put("paymentDispatched", paymentDispatched)
         val reply = result
         cancelWatchdog()
         result = null

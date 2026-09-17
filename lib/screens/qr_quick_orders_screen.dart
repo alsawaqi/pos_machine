@@ -37,6 +37,7 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
           int.parse(p.id),
           p.name,
           nameAr: p.nameAr,
+          priceBaisas: (p.price * 1000).round(),
           available:
               p.isAvailableAt(DateTime.now()) &&
               inStock(p) &&
@@ -53,6 +54,7 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
                         o.label,
                         nameAr: o.labelAr ?? '',
                         selected: o.isDefault,
+                        priceBaisas: (o.priceDelta * 1000).round(),
                       ),
                   ],
                   nameAr: g.nameAr ?? '',

@@ -145,7 +145,7 @@ class _QrQuickScreenState extends State<QrQuickScreen>
     paying = true;
     final c = controller!;
     try {
-      await c.refresh();
+      if (c.stale) await c.refresh();
       if (!mounted || !c.canPay(uuid) || widget.onPay == null) return;
       await _child(() => widget.onPay!(context, c.find(uuid)!));
     } finally {
@@ -178,6 +178,14 @@ class _QrQuickScreenState extends State<QrQuickScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.workspace?.mainCart == true && controller == null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: failed
+            ? Text(copy.message('storage'))
+            : const LinearProgressIndicator(),
+      );
+    }
     if (widget.workspace != null) {
       return controller == null
           ? Scaffold(
@@ -371,6 +379,10 @@ class _QuickEditor extends StatefulWidget {
 
 class _QuickEditorState extends State<_QuickEditor> {
   final drafts = <(String, QrQuickLine)>[];
+  final _pickedProducts = <int, QuickProduct>{};
+  QuickProduct? _product(int id) =>
+      widget.catalogue().where((p) => p.id == id).firstOrNull ??
+      _pickedProducts[id];
   bool closing = false;
   bool childOpen = false;
   QuickCopy get copy => widget.copy;
@@ -386,12 +398,95 @@ class _QuickEditorState extends State<_QuickEditor> {
       pay: _pay,
     );
     _publish();
+    // Opening a safe QR order for editing explicitly takes it to the counter.
+    // Live/uncertain claims and orders addressed to another device stay blocked.
+    if (widget.workspace?.mainCart == true &&
+        widget.controller.find(widget.uuid)?.canMove == true) {
+      unawaited(widget.controller.move(widget.uuid));
+    }
   }
 
   void _publish() => widget.workspace?.publish(
     this,
     order: widget.controller.find(widget.uuid)?.json,
     stale: widget.controller.stale,
+    cartControls: WorkspaceCartControls(
+      busy: childOpen || widget.controller.busy,
+      notices: [
+        if (drafts.isNotEmpty && !_draftsValid)
+          copy.pair(
+            'Choose the required options with Add On before payment or transfer.',
+            'اختر الخيارات المطلوبة من الإضافات قبل الدفع أو التحويل.',
+          ),
+        if (drafts.isNotEmpty &&
+            _draftsValid &&
+            widget.workspace?.mainCart == true)
+          copy.pair(
+            'Unsent item prices are estimates until saved.',
+            'أسعار الأصناف غير المرسلة تقديرية حتى الحفظ.',
+          ),
+        if (widget.controller.stale) copy.stale,
+        if (widget.controller.notice != null &&
+            widget.controller.notice != 'added')
+          copy.message(widget.controller.notice!),
+        if (widget.controller.find(widget.uuid)?.refusal case final refusal?)
+          copy.message(refusal),
+        if (widget.controller.pending.containsKey(widget.uuid)) copy.uncertain,
+      ],
+      drafts: [
+        for (final draft in drafts) '${draft.$2.quantity} × ${draft.$1}',
+      ],
+      draftRows: widget.workspace?.mainCart == true ? _draftRows : const [],
+      removeDraft: _canEditDrafts ? _removeDraft : null,
+      refresh: !childOpen && !widget.controller.busy
+          ? widget.controller.refresh
+          : null,
+      retry:
+          !childOpen &&
+              !widget.controller.busy &&
+              widget.controller.pending.containsKey(widget.uuid)
+          ? () async {
+              await widget.controller.retry(widget.uuid);
+            }
+          : null,
+      submit:
+          !childOpen &&
+              widget.controller.canAdd(widget.uuid) &&
+              _draftsValid &&
+              drafts.isNotEmpty
+          ? _submit
+          : null,
+      move:
+          !childOpen &&
+              !widget.controller.busy &&
+              !widget.controller.stale &&
+              drafts.isEmpty &&
+              widget.controller.find(widget.uuid)?.canMove == true
+          ? () => widget.controller.move(widget.uuid)
+          : null,
+      voidBill: _canVoid ? _void : null,
+      clear: !childOpen && widget.controller.canEdit(widget.uuid)
+          ? _clear
+          : null,
+      quantity:
+          !childOpen &&
+              (widget.controller.canEdit(widget.uuid) ||
+                  (drafts.isNotEmpty && _canEditDrafts))
+          ? _quantity
+          : null,
+      customize:
+          !childOpen &&
+              (widget.controller.canEdit(widget.uuid) ||
+                  (drafts.isNotEmpty && _canEditDrafts))
+          ? _customize
+          : null,
+      transfer: widget.controller.canEdit(widget.uuid) && drafts.isEmpty
+          ? (device) => widget.controller.change(widget.uuid, {
+              'operation': 'transfer',
+              'target_device_id': device,
+            })
+          : null,
+    ),
     canAdd:
         !childOpen &&
         widget.controller.canAdd(widget.uuid) &&
@@ -524,6 +619,33 @@ class _QuickEditorState extends State<_QuickEditor> {
           ),
         );
     if (product == null || !mounted) return;
+    _pickedProducts[product.id] = product;
+    if (widget.workspace?.mainCart == true && selected != null) {
+      final index = drafts.indexWhere(
+        (d) =>
+            d.$2.productId == product.id &&
+            d.$2.addonIds.isEmpty &&
+            (d.$2.notes ?? '').isEmpty,
+      );
+      if (index >= 0 && drafts[index].$2.quantity >= 99) return;
+      setState(() {
+        final line = QrQuickLine(
+          product.id,
+          index < 0 ? 1 : drafts[index].$2.quantity + 1,
+          [],
+        );
+        final entry = (copy.name(product.name, product.nameAr), line);
+        if (index < 0) {
+          drafts.add(entry);
+        } else {
+          drafts[index] = entry;
+        }
+      });
+      widget.controller.reviewDraft(widget.uuid);
+      _publish();
+      if (_draftsValid) await _submit();
+      return;
+    }
     final line = await showDialog<QrQuickLine>(
       context: context,
       builder: (_) => Directionality(
@@ -536,13 +658,185 @@ class _QuickEditorState extends State<_QuickEditor> {
         () => drafts.add((copy.name(product.name, product.nameAr), line)),
       );
       _publish();
+      if (widget.workspace?.mainCart == true) await _submit();
+    }
+  }
+
+  bool get _canEditDrafts =>
+      !childOpen &&
+      !closing &&
+      widget.controller.ready &&
+      !widget.controller.busy &&
+      !widget.controller.pending.containsKey(widget.uuid);
+
+  bool get _draftsValid => drafts.every((draft) {
+    final product = _product(draft.$2.productId);
+    return product != null &&
+        product.groups.every((group) {
+          final count = group.choices
+              .where((choice) => draft.$2.addonIds.contains(choice.id))
+              .length;
+          return count >= group.min && count <= group.max;
+        });
+  });
+
+  List<Map<String, dynamic>> get _draftRows => [
+    for (var index = 0; index < drafts.length; index++) _draftRow(index),
+  ];
+
+  Map<String, dynamic> _draftRow(int index) {
+    final line = drafts[index].$2;
+    final product = _product(line.productId);
+    final choices = [
+      for (final group in product?.groups ?? <QuickGroup>[])
+        for (final choice in group.choices)
+          if (line.addonIds.contains(choice.id)) choice,
+    ];
+    final unit =
+        (product?.priceBaisas ?? 0) +
+        choices.fold<int>(0, (sum, c) => sum + c.priceBaisas);
+    return {
+      'id': 'draft-$index',
+      'draft_index': index,
+      'product_id': line.productId,
+      'product_name': product?.name ?? drafts[index].$1,
+      'product_name_ar': product?.nameAr ?? '',
+      'qty': line.quantity,
+      'line_total_baisas': unit * line.quantity,
+      'notes': line.notes,
+      'addons': [
+        for (final choice in choices)
+          {
+            'add_on_id': choice.id,
+            'add_on_name': choice.name,
+            'add_on_name_ar': choice.nameAr,
+          },
+      ],
+    };
+  }
+
+  void _removeDraft(int index) {
+    if (!_canEditDrafts || index < 0 || index >= drafts.length) return;
+    setState(() => drafts.removeAt(index));
+    widget.controller.reviewDraft(widget.uuid);
+    _publish();
+  }
+
+  Future<void> _clear() async {
+    if (!widget.controller.canEdit(widget.uuid)) return;
+    // These lines were definitively rejected or never sent. The durable
+    // uncertain-request journal is separate and canEdit protects it.
+    setState(drafts.clear);
+    _publish();
+    await widget.controller.change(widget.uuid, {'operation': 'clear'});
+  }
+
+  Future<void> _quantity(Map<String, dynamic> line, int quantity) async {
+    final c = widget.controller;
+    if (quantity < 0 || quantity > 99) return;
+    if (line['draft_index'] case final int index) {
+      if (!_canEditDrafts || index >= drafts.length) return;
+      if (quantity == 0) {
+        _removeDraft(index);
+        return;
+      }
+      final old = drafts[index];
+      setState(
+        () => drafts[index] = (
+          old.$1,
+          QrQuickLine(
+            old.$2.productId,
+            quantity,
+            old.$2.addonIds,
+            notes: old.$2.notes,
+          ),
+        ),
+      );
+      c.reviewDraft(widget.uuid);
+      _publish();
+      return;
+    }
+    if (!c.canEdit(widget.uuid)) return;
+    final old = (line['qty'] as num).toInt();
+    if (quantity > old) {
+      final productId = line['product_id'];
+      if (productId is! int) return;
+      await c.add(widget.uuid, [
+        QrQuickLine(productId, quantity - old, [
+          for (final a in line['addons'] as List? ?? const [])
+            if (qrMap(a)['add_on_id'] is int) qrMap(a)['add_on_id'] as int,
+        ], notes: line['notes'] as String?),
+      ]);
+    } else {
+      await c.change(widget.uuid, {
+        'operation': 'quantity',
+        'item_id': line['id'],
+        if ((line['item_ids'] as List?)?.length case final int count
+            when count > 1)
+          'item_ids': line['item_ids'],
+        'qty': quantity,
+      });
+    }
+  }
+
+  Future<void> _customize(Map<String, dynamic> line) async {
+    if (line['draft_index'] is int
+        ? !_canEditDrafts
+        : !widget.controller.canEdit(widget.uuid)) {
+      return;
+    }
+    final product = _product(line['product_id'] as int);
+    if (product == null) return;
+    final revision = widget.controller.find(widget.uuid)?.json['edit_revision'];
+    childOpen = true;
+    _publish();
+    QrQuickLine? replacement;
+    try {
+      replacement = widget.workspace?.editOptions != null
+          ? await widget.workspace!.editOptions!(line)
+          : await showDialog<QrQuickLine>(
+              context: context,
+              builder: (_) => _ProductOptions(product, copy, initial: line),
+            );
+    } finally {
+      childOpen = false;
+      if (mounted) _publish();
+    }
+    if (replacement != null && mounted) {
+      if (line['draft_index'] case final int index) {
+        if (!_canEditDrafts || index >= drafts.length) return;
+        final updated = replacement;
+        setState(() => drafts[index] = (drafts[index].$1, updated));
+        widget.controller.reviewDraft(widget.uuid);
+        _publish();
+        if (_draftsValid) await _submit();
+        return;
+      }
+      if (revision !=
+          widget.controller.find(widget.uuid)?.json['edit_revision']) {
+        widget.controller.notice = 'order_changed';
+        _publish();
+        return;
+      }
+      await widget.controller.change(
+        widget.uuid,
+        {
+          'operation': 'replace',
+          'item_id': line['id'],
+          if ((line['item_ids'] as List?)?.length case final int count
+              when count > 1)
+            'item_ids': line['item_ids'],
+        },
+        lines: [replacement],
+      );
     }
   }
 
   Future<void> _submit() async {
     final c = widget.controller;
-    await c.refresh();
-    if (!mounted || !c.canAdd(widget.uuid)) return;
+    if (!_draftsValid) return;
+    if (c.stale) await c.refresh();
+    if (!mounted || drafts.isEmpty || !c.canAdd(widget.uuid)) return;
     final ok = await c.add(widget.uuid, drafts.map((d) => d.$2).toList());
     if (mounted && (ok || c.pending.containsKey(widget.uuid))) {
       setState(drafts.clear);
@@ -563,144 +857,154 @@ class _QuickEditorState extends State<_QuickEditor> {
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) unawaited(_leave());
         },
-        child: Directionality(
-          textDirection: copy.arabic ? TextDirection.rtl : TextDirection.ltr,
-          child: Scaffold(
-            appBar: AppBar(
-              leading: widget.workspace == null
-                  ? null
-                  : IconButton(
-                      tooltip: copy.pair(
-                        'Back to QR Quick Orders',
-                        'العودة إلى طلبات QR السريعة',
-                      ),
-                      onPressed: _leave,
-                      icon: const Icon(Icons.arrow_back),
-                    ),
-              title: Text(order?.reference ?? widget.uuid),
-              actions: [
-                if (widget.workspace != null && widget.onVoid != null)
-                  TextButton.icon(
-                    key: const ValueKey('workspace-void'),
-                    onPressed: _canVoid ? _void : null,
-                    icon: const Icon(Icons.delete_outline),
-                    label: Text(copy.pair('Void bill', 'إلغاء الفاتورة')),
-                  ),
-                IconButton(
-                  onPressed: c.busy ? null : c.refresh,
-                  icon: const Icon(Icons.refresh),
-                  tooltip: copy.refresh,
-                ),
-              ],
-            ),
-            body: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                if (c.busy) const LinearProgressIndicator(),
-                if (c.stale) _notice(copy.stale),
-                if (c.notice != null) _notice(copy.message(c.notice!)),
-                if (order != null) ...[
-                  Text(
-                    '${copy.total}: ${_money(order.total)}',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  Text(copy.state(order.charge, order.session)),
-                  if (order.refusal != null)
-                    _notice(copy.message(order.refusal!)),
-                  if (order.phoneTail.isNotEmpty)
-                    Text('•••• ${order.phoneTail}'),
-                  _notice(copy.existing),
-                  for (final item in order.items)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text('${item['qty']} × ${item['product_name']}'),
-                      subtitle: Text(
-                        [
-                          for (final addon
-                              in (item['addons'] as List? ?? const []))
-                            qrMap(addon)['add_on_name'].toString(),
-                          if (item['notes'] != null) item['notes'].toString(),
-                        ].join(' · '),
-                      ),
-                      trailing: Text(_money(item['line_total_baisas'] as int)),
-                    ),
-                  const Divider(),
-                ],
-                if (pending != null) ...[
-                  _notice(copy.uncertain),
-                  for (final line in pending.lines)
-                    Text('${line.quantity} × #${line.productId}'),
-                  FilledButton(
-                    key: const ValueKey('quick-retry'),
-                    onPressed: c.busy ? null : () => c.retry(widget.uuid),
-                    child: Text(copy.retry),
-                  ),
-                ] else ...[
-                  _notice(copy.pricing),
-                  if (drafts.isNotEmpty) _notice(copy.draft),
-                  for (var i = 0; i < drafts.length; i++)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text('${drafts[i].$2.quantity} × ${drafts[i].$1}'),
-                      trailing: IconButton(
-                        tooltip: copy.pair(
-                          'Remove unsent item',
-                          'إزالة صنف غير مرسل',
+        child: widget.workspace?.mainCart == true
+            ? const SizedBox.shrink()
+            : Directionality(
+                textDirection: copy.arabic
+                    ? TextDirection.rtl
+                    : TextDirection.ltr,
+                child: Scaffold(
+                  appBar: AppBar(
+                    leading: widget.workspace == null
+                        ? null
+                        : IconButton(
+                            tooltip: copy.pair(
+                              'Back to QR Quick Orders',
+                              'العودة إلى طلبات QR السريعة',
+                            ),
+                            onPressed: _leave,
+                            icon: const Icon(Icons.arrow_back),
+                          ),
+                    title: Text(order?.reference ?? widget.uuid),
+                    actions: [
+                      if (widget.workspace != null && widget.onVoid != null)
+                        TextButton.icon(
+                          key: const ValueKey('workspace-void'),
+                          onPressed: _canVoid ? _void : null,
+                          icon: const Icon(Icons.delete_outline),
+                          label: Text(copy.pair('Void bill', 'إلغاء الفاتورة')),
                         ),
-                        onPressed: c.busy
-                            ? null
-                            : () {
-                                setState(() => drafts.removeAt(i));
-                                _publish();
-                              },
-                        icon: const Icon(Icons.close),
-                      ),
-                    ),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      OutlinedButton(
-                        key: const ValueKey('quick-add-items'),
-                        onPressed: c.canAdd(widget.uuid) && drafts.length < 50
-                            ? _pick
-                            : null,
-                        child: Text(copy.add),
-                      ),
-                      FilledButton(
-                        key: const ValueKey('quick-submit'),
-                        onPressed: c.canAdd(widget.uuid) && drafts.isNotEmpty
-                            ? _submit
-                            : null,
-                        child: Text(copy.submit),
+                      IconButton(
+                        onPressed: c.busy ? null : c.refresh,
+                        icon: const Icon(Icons.refresh),
+                        tooltip: copy.refresh,
                       ),
                     ],
                   ),
-                  if (order?.canMove == true)
-                    TextButton(
-                      key: const ValueKey('quick-move'),
-                      onPressed: !c.stale && !c.busy && drafts.isEmpty
-                          ? () => c.move(widget.uuid)
-                          : null,
-                      child: Text(copy.move),
-                    ),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    key: const ValueKey('quick-pay'),
-                    onPressed:
-                        c.canPay(widget.uuid) &&
-                            drafts.isEmpty &&
-                            widget.onPay != null
-                        ? _pay
-                        : null,
-                    child: Text(copy.pay),
+                  body: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      if (c.busy) const LinearProgressIndicator(),
+                      if (c.stale) _notice(copy.stale),
+                      if (c.notice != null) _notice(copy.message(c.notice!)),
+                      if (order != null) ...[
+                        Text(
+                          '${copy.total}: ${_money(order.total)}',
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        Text(copy.state(order.charge, order.session)),
+                        if (order.refusal != null)
+                          _notice(copy.message(order.refusal!)),
+                        if (order.phoneTail.isNotEmpty)
+                          Text('•••• ${order.phoneTail}'),
+                        _notice(copy.existing),
+                        for (final item in order.items)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              '${item['qty']} × ${item['product_name']}',
+                            ),
+                            subtitle: Text(
+                              [
+                                for (final addon
+                                    in (item['addons'] as List? ?? const []))
+                                  qrMap(addon)['add_on_name'].toString(),
+                                if (item['notes'] != null)
+                                  item['notes'].toString(),
+                              ].join(' · '),
+                            ),
+                            trailing: Text(
+                              _money(item['line_total_baisas'] as int),
+                            ),
+                          ),
+                        const Divider(),
+                      ],
+                      if (pending != null) ...[
+                        _notice(copy.uncertain),
+                        for (final line in pending.lines)
+                          Text('${line.quantity} × #${line.productId}'),
+                        FilledButton(
+                          key: const ValueKey('quick-retry'),
+                          onPressed: c.busy ? null : () => c.retry(widget.uuid),
+                          child: Text(copy.retry),
+                        ),
+                      ] else ...[
+                        _notice(copy.pricing),
+                        if (drafts.isNotEmpty) _notice(copy.draft),
+                        for (var i = 0; i < drafts.length; i++)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              '${drafts[i].$2.quantity} × ${drafts[i].$1}',
+                            ),
+                            trailing: IconButton(
+                              tooltip: copy.pair(
+                                'Remove unsent item',
+                                'إزالة صنف غير مرسل',
+                              ),
+                              onPressed: _canEditDrafts
+                                  ? () => _removeDraft(i)
+                                  : null,
+                              icon: const Icon(Icons.close),
+                            ),
+                          ),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            OutlinedButton(
+                              key: const ValueKey('quick-add-items'),
+                              onPressed:
+                                  c.canAdd(widget.uuid) && drafts.length < 50
+                                  ? _pick
+                                  : null,
+                              child: Text(copy.add),
+                            ),
+                            FilledButton(
+                              key: const ValueKey('quick-submit'),
+                              onPressed:
+                                  c.canAdd(widget.uuid) && drafts.isNotEmpty
+                                  ? _submit
+                                  : null,
+                              child: Text(copy.submit),
+                            ),
+                          ],
+                        ),
+                        if (order?.canMove == true)
+                          TextButton(
+                            key: const ValueKey('quick-move'),
+                            onPressed: !c.stale && !c.busy && drafts.isEmpty
+                                ? () => c.move(widget.uuid)
+                                : null,
+                            child: Text(copy.move),
+                          ),
+                        const SizedBox(height: 16),
+                        FilledButton(
+                          key: const ValueKey('quick-pay'),
+                          onPressed:
+                              c.canPay(widget.uuid) &&
+                                  drafts.isEmpty &&
+                                  widget.onPay != null
+                              ? _pay
+                              : null,
+                          child: Text(copy.pay),
+                        ),
+                        if (widget.onPay == null) _notice(copy.noPayment),
+                      ],
+                    ],
                   ),
-                  if (widget.onPay == null) _notice(copy.noPayment),
-                ],
-              ],
-            ),
-          ),
-        ),
+                ),
+              ),
       );
     },
   );
@@ -767,7 +1071,8 @@ class _ProductPickerState extends State<_ProductPicker> {
 }
 
 class _ProductOptions extends StatefulWidget {
-  const _ProductOptions(this.product, this.copy);
+  const _ProductOptions(this.product, this.copy, {this.initial});
+  final Map<String, dynamic>? initial;
   final QuickProduct product;
   final QuickCopy copy;
   @override
@@ -775,13 +1080,18 @@ class _ProductOptions extends StatefulWidget {
 }
 
 class _ProductOptionsState extends State<_ProductOptions> {
-  int qty = 1;
-  String notes = '';
-  late final selected = <int>{
-    for (final g in widget.product.groups)
-      for (final o in g.choices)
-        if (o.selected) o.id,
-  };
+  late int qty = (widget.initial?['qty'] as num?)?.toInt() ?? 1;
+  late String notes = widget.initial?['notes'] as String? ?? '';
+  late final selected = widget.initial != null
+      ? <int>{
+          for (final a in widget.initial!['addons'] as List? ?? const [])
+            if (qrMap(a)['add_on_id'] is int) qrMap(a)['add_on_id'] as int,
+        }
+      : <int>{
+          for (final g in widget.product.groups)
+            for (final o in g.choices)
+              if (o.selected) o.id,
+        };
   bool get valid =>
       selected.length <= 30 &&
       widget.product.groups.every((g) {
@@ -834,7 +1144,8 @@ class _ProductOptionsState extends State<_ProductOptions> {
                     }),
                   ),
               ],
-              TextField(
+              TextFormField(
+                initialValue: notes,
                 key: const ValueKey('quick-notes'),
                 maxLength: 500,
                 decoration: InputDecoration(

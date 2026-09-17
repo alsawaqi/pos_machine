@@ -63,21 +63,59 @@ void main() {
     },
   );
 
-  test('first board samples an empty latest probe and closes its race without history', () async {
-    store.meta = const RemoteSyncMeta();
-    gateway.latest = 40;
-    await repository.pollNow();
-    expect(gateway.calls, [
-      'board',
-      'feed:${TableShadowRepository.emptyFeedAfter}',
-      'board',
-      'feed:40',
-    ]);
-    expect(store.meta.feedCursor, 40);
-    expect(store.meta.lastFeedOkAt, now);
-    expect(store.boardWrites, 2);
-    expect(repository.snapshot.tables.keys, [1]);
-  });
+  test(
+    'first board samples an empty latest probe and closes its race without history',
+    () async {
+      store.meta = const RemoteSyncMeta();
+      gateway.latest = 40;
+      await repository.pollNow();
+      expect(gateway.calls, [
+        'board',
+        'feed:${TableShadowRepository.emptyFeedAfter}',
+        'board',
+        'feed:40',
+      ]);
+      expect(store.meta.feedCursor, 40);
+      expect(store.meta.lastFeedOkAt, now);
+      expect(store.boardWrites, 2);
+      expect(repository.snapshot.tables.keys, [1]);
+    },
+  );
+
+  test(
+    'another device payment closure refreshes occupied table to free',
+    () async {
+      configure(mode: 'live');
+      gateway.board = [
+        {
+          'table_id': 1,
+          'seating': {'uuid': 'seat', 'status': 'open'},
+          'bill': {'order_uuid': 'bill', 'source': 'qr_web'},
+        },
+      ];
+      await repository.pollNow();
+      expect(repository.snapshot.tables[1]!.occupied, isTrue);
+      gateway.board = [_row(1)];
+      gateway.pages = [
+        const TableShadowFeed(
+          events: [
+            TableShadowEvent(
+              id: 11,
+              tableId: 1,
+              eventType: 'closed',
+              payload: {'order_uuid': 'bill', 'close_reason': 'paid'},
+            ),
+          ],
+          latestId: 11,
+          hasMore: false,
+        ),
+      ];
+      await repository.pollNow();
+      expect(repository.snapshot.tables[1]!.occupied, isFalse);
+      expect(repository.snapshot.tables[1]!.serverStatus, 'free');
+      expect(store.meta.feedCursor, 11);
+    },
+  );
 
   test('feed hints refresh once after a batch and persist max id', () async {
     gateway.pages = [

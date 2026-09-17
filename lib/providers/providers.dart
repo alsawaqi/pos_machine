@@ -529,7 +529,7 @@ final qrCardTerminalProvider = Provider<QrCardTerminalGateway>(
 );
 
 final qrLocationProvider = Provider<QrLocationGateway>(
-  (ref) => const GeolocatorQrLocation(),
+  (ref) => PreparedQrLocation(),
 );
 
 final qrSettlementOutboxProvider = Provider<QrSettlementOutbox>(

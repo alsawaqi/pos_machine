@@ -197,7 +197,7 @@ class RecoveryFake implements DraftRecoveryGateway, DineInGateway {
   }
 
   @override
-  Future<void> clear(int tableId) async =>
+  Future<void> clear(int tableId, {String? seatingUuid}) async =>
       fail('Recovery never clears a table');
   @override
   Future<void> reopen(String uuid) async =>

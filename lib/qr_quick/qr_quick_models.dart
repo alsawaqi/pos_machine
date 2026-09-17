@@ -28,11 +28,17 @@ class QrQuickOrder {
   String? get refusal => json['refusal_code'] as String?;
   String get phoneTail => json['phone_tail'] as String? ?? '';
   int get ageSeconds => (json['age_seconds'] as num?)?.toInt() ?? 0;
-  List<Map<String, dynamic>> get items =>
-      (json['items'] as List).map(qrMap).toList();
+  // Replaced/deleted rows remain in json for history, not the current bill.
+  List<Map<String, dynamic>> get items => (json['items'] as List)
+      .map(qrMap)
+      .where((line) => line['status'] != 'void' && (line['qty'] as num) > 0)
+      .toList();
   bool get canPay => (json['actions'] as Map?)?['settle'] == true;
   bool get canMove => (json['actions'] as Map?)?['to_counter'] == true;
-  bool get canAdd => status == 'held' && charge == 'none' && canPay;
+  bool get canAdd =>
+      status == 'held' &&
+      charge == 'none' &&
+      json['transferred_to_device_id'] == null;
 }
 
 /// The only outbound line shape. Intentionally has no price/discount/tax field.
@@ -75,18 +81,29 @@ class QrQuickLine {
 }
 
 class QrQuickRequest {
-  QrQuickRequest(this.orderUuid, this.id, List<QrQuickLine> lines)
-    : lines = List.unmodifiable(lines) {
-    if (orderUuid.isEmpty || id.isEmpty || lines.isEmpty || lines.length > 50) {
+  QrQuickRequest(
+    this.orderUuid,
+    this.id,
+    List<QrQuickLine> lines, {
+    Map<String, dynamic>? change,
+  }) : change = change == null ? null : Map.unmodifiable(change),
+       lines = List.unmodifiable(lines) {
+    if (orderUuid.isEmpty ||
+        id.isEmpty ||
+        (lines.isEmpty && change == null) ||
+        lines.length > 50) {
       throw const FormatException('Invalid addition request');
     }
   }
   final String orderUuid;
   final String id;
   final List<QrQuickLine> lines;
+  final Map<String, dynamic>? change;
   Map<String, dynamic> get payload => {
     'client_request_id': id,
-    'lines': lines.map((line) => line.toJson()).toList(),
+    ...?change,
+    if (change == null || lines.isNotEmpty)
+      'lines': lines.map((line) => line.toJson()).toList(),
   };
   static String newId() {
     final random = Random.secure();
@@ -113,11 +130,13 @@ class QuickChoice {
     this.name, {
     this.nameAr = '',
     this.selected = false,
+    this.priceBaisas = 0,
   });
   final int id;
   final String name;
   final String nameAr;
   final bool selected;
+  final int priceBaisas;
 }
 
 class QuickGroup {
@@ -142,10 +161,12 @@ class QuickProduct {
     this.nameAr = '',
     this.groups = const [],
     this.available = true,
+    this.priceBaisas = 0,
   });
   final int id;
   final String name;
   final String nameAr;
   final List<QuickGroup> groups;
   final bool available;
+  final int priceBaisas;
 }
