@@ -6521,17 +6521,22 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openCustomizeDialog(CartItem item) async {
-    final result = await showDialog<_CartItemCustomizationResult>(
+    await showDialog<_CartItemCustomizationResult>(
       context: context,
       barrierDismissible: false,
       builder: (context) => _CustomizeCartItemDialog(
         item: item,
         groups: _resolveModifierGroups(item.product),
+        apply: (result) => _applyCartCustomization(item, result),
       ),
     );
+  }
 
-    if (!mounted || result == null) return;
-
+  Future<bool> _applyCartCustomization(
+    CartItem item,
+    _CartItemCustomizationResult result,
+  ) async {
+    if (!mounted || !controller.cart.contains(item)) return false;
     if (_liveTable) {
       final before = buildTableRoundLines([item]);
       final after = buildTableRoundLines([
@@ -6547,13 +6552,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           after.isNotEmpty &&
           tableLineFingerprint(before.single) !=
               tableLineFingerprint(after.single);
-      if (changed && !await _approveSentReduction(item, item.qty)) return;
+      if (changed && !await _approveSentReduction(item, item.qty)) return false;
     }
     controller.updateCartItemCustomization(
       item,
       modifiers: result.modifiers,
       notes: result.notes,
     );
+    await _refreshTableSentState();
+    return true;
   }
 
   double get _tenderedCashAmount =>
@@ -11328,7 +11335,12 @@ class _CustomizeCartItemDialog extends StatefulWidget {
   final CartItem item;
   final List<_ModifierGroupDefinition> groups;
 
-  const _CustomizeCartItemDialog({required this.item, required this.groups});
+  final Future<bool> Function(_CartItemCustomizationResult)? apply;
+  const _CustomizeCartItemDialog({
+    required this.item,
+    required this.groups,
+    this.apply,
+  });
 
   @override
   State<_CustomizeCartItemDialog> createState() =>
@@ -11338,6 +11350,8 @@ class _CustomizeCartItemDialog extends StatefulWidget {
 class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
   late final TextEditingController _notesController;
   late final Map<String, Set<String>> _selectedByGroup;
+  bool _applying = false;
+  bool _applyFailed = false;
 
   @override
   void initState() {
@@ -11462,184 +11476,214 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
     });
   }
 
-  void _submit() {
-    if (!_canSubmit) return;
-
-    Navigator.of(context).pop(
-      _CartItemCustomizationResult(
-        modifiers: _selectedModifiers,
-        notes: _notesController.text.trim(),
-      ),
+  Future<void> _submit() async {
+    if (!_canSubmit || _applying) return;
+    final result = _CartItemCustomizationResult(
+      modifiers: _selectedModifiers,
+      notes: _notesController.text.trim(),
     );
+    setState(() {
+      _applying = true;
+      _applyFailed = false;
+    });
+    try {
+      if (widget.apply != null && !await widget.apply!(result)) return;
+      if (mounted) Navigator.of(context).pop(result);
+    } catch (_) {
+      if (mounted) setState(() => _applyFailed = true);
+    } finally {
+      if (mounted) setState(() => _applying = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
     final isAr = Localizations.localeOf(context).languageCode == 'ar';
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 56, vertical: 40),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 812, maxHeight: 690),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFDFEFE),
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x24000000),
-                blurRadius: 36,
-                offset: Offset(0, 18),
-              ),
-            ],
+    return PopScope(
+      canPop: !_applying,
+      child: AbsorbPointer(
+        absorbing: _applying,
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 56,
+            vertical: 40,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          l10n.posCustomizeTitle(
-                            widget.item.product.displayName(isAr),
-                          ),
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF17252C),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          l10n.posCustomizeSubtitle,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF73828E),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  InkWell(
-                    onTap: () => Navigator.of(context).pop(),
-                    borderRadius: BorderRadius.circular(18),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF3F7F8),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Icon(
-                        Icons.close_rounded,
-                        size: 25,
-                        color: Color(0xFF52626B),
-                      ),
-                    ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 812, maxHeight: 690),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFDFEFE),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x24000000),
+                    blurRadius: 36,
+                    offset: Offset(0, 18),
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      for (final group in widget.groups) ...[
-                        _CustomizeGroupSection(
-                          group: group,
-                          selectedIds:
-                              _selectedByGroup[group.title] ?? const <String>{},
-                          onToggle: (option) => _toggleOption(group, option),
-                        ),
-                        const SizedBox(height: 18),
-                      ],
-                      Text(
-                        l10n.posCustomizeNotesLabel,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF17252C),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              l10n.posCustomizeTitle(
+                                widget.item.product.displayName(isAr),
+                              ),
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF17252C),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              l10n.posCustomizeSubtitle,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF73828E),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        key: const ValueKey('customize-notes'),
-                        controller: _notesController,
-                        maxLines: 3,
-                        minLines: 3,
-                        decoration: InputDecoration(
-                          hintText: l10n.posCustomizeNotesHint,
-                          hintStyle: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF90A0AB),
-                          ),
-                          filled: true,
-                          fillColor: const Color(0xFFF7FAFB),
-                          contentPadding: const EdgeInsets.all(14),
-                          border: OutlineInputBorder(
+                      InkWell(
+                        onTap: () => Navigator.of(context).pop(),
+                        borderRadius: BorderRadius.circular(18),
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF3F7F8),
                             borderRadius: BorderRadius.circular(20),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFDCE8EC),
-                            ),
                           ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(20),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFDCE8EC),
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(20),
-                            borderSide: const BorderSide(
-                              color: Color(0xFF1A8A52),
-                              width: 1.4,
-                            ),
+                          child: const Icon(
+                            Icons.close_rounded,
+                            size: 25,
+                            color: Color(0xFF52626B),
                           ),
                         ),
                       ),
                     ],
                   ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
+                  const SizedBox(height: 18),
                   Expanded(
-                    child: SizedBox(
-                      height: 70,
-                      child: _OutlineActionButton(
-                        label: l10n.commonCancel,
-                        icon: Icons.close_rounded,
-                        onTap: () => Navigator.of(context).pop(),
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (final group in widget.groups) ...[
+                            _CustomizeGroupSection(
+                              group: group,
+                              selectedIds:
+                                  _selectedByGroup[group.title] ??
+                                  const <String>{},
+                              onToggle: (option) =>
+                                  _toggleOption(group, option),
+                            ),
+                            const SizedBox(height: 18),
+                          ],
+                          Text(
+                            l10n.posCustomizeNotesLabel,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF17252C),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            key: const ValueKey('customize-notes'),
+                            controller: _notesController,
+                            maxLines: 3,
+                            minLines: 3,
+                            decoration: InputDecoration(
+                              hintText: l10n.posCustomizeNotesHint,
+                              hintStyle: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF90A0AB),
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFFF7FAFB),
+                              contentPadding: const EdgeInsets.all(14),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFDCE8EC),
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFDCE8EC),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFF1A8A52),
+                                  width: 1.4,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: SizedBox(
-                      height: 70,
-                      child: _FilledActionButton(
-                        buttonKey: const ValueKey('customize-confirm'),
-                        label: l10n.posCustomizeApply(
-                          SunmiReceiptService.money(_previewLineTotal),
-                        ),
-                        onTap: _canSubmit ? _submit : null,
-                      ),
+                  if (_applyFailed)
+                    Text(
+                      isAr
+                          ? 'تعذر تطبيق التغييرات. أعد المحاولة.'
+                          : 'Could not apply changes. Try again.',
                     ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 70,
+                          child: _OutlineActionButton(
+                            label: l10n.commonCancel,
+                            icon: Icons.close_rounded,
+                            onTap: () => Navigator.of(context).pop(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SizedBox(
+                          height: 70,
+                          child: _FilledActionButton(
+                            buttonKey: const ValueKey('customize-confirm'),
+                            label: _applying
+                                ? (isAr ? 'جارٍ التطبيق…' : 'Applying…')
+                                : l10n.posCustomizeApply(
+                                    SunmiReceiptService.money(
+                                      _previewLineTotal,
+                                    ),
+                                  ),
+                            onTap: _canSubmit ? _submit : null,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),
