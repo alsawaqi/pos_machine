@@ -3053,15 +3053,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             return true;
           }
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  ref.read(settingsControllerProvider).language == 'ar'
-                      ? 'لم تتم أرشفة النسخة. احتفظ بالإضافات غير المرسلة، وأكمل أي دفع أو مزامنة معلّقة ثم أعد المحاولة. لا تدفع هذه الفاتورة مجدداً.'
-                      : 'The copy was not archived. Keep unsent additions, finish pending payment or sync work and retry. Do not pay this bill again.',
-                ),
-              ),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(_closedCopyReason(tableId))));
           }
         }
         return false;
@@ -3492,24 +3486,96 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   bool _retiringClosedCopies = false;
   final Map<String, DateTime> _closedCopyChecks = {};
+  final Map<String, String> _closedCopyBlockers = {};
+
+  String _closedCopyReason(String tableId) {
+    final arabic = ref.read(settingsControllerProvider).language == 'ar';
+    final key =
+        _closedCopyBusyReason ?? _closedCopyBlockers[tableId] ?? 'proof';
+    final messages = <String, (String, String)>{
+      'loading': (
+        'Wait for saved table data to finish loading.',
+        'انتظر اكتمال تحميل بيانات الطاولة المحفوظة.',
+      ),
+      'checking': (
+        'The saved copy is being checked. Wait, then retry.',
+        'يتم التحقق من النسخة المحفوظة. انتظر ثم أعد المحاولة.',
+      ),
+      'mode': (
+        'Reconnect in live table mode before clearing this copy.',
+        'أعد الاتصال بوضع الطاولات المباشر قبل مسح هذه النسخة.',
+      ),
+      'workspace': (
+        'Close the open bill and return to the floor plan first.',
+        'أغلق الفاتورة المفتوحة وعد إلى مخطط الطاولات أولاً.',
+      ),
+      'payment': (
+        'Finish or check the open payment result first. Do not take payment again.',
+        'أكمل عملية الدفع المفتوحة أو تحقق من نتيجتها أولاً. لا تأخذ دفعة أخرى.',
+      ),
+      'cart': (
+        'Return to the floor plan with no active cart first. Unsent items remain saved.',
+        'عد إلى مخطط الطاولات دون سلة نشطة أولاً. تبقى العناصر غير المرسلة محفوظة.',
+      ),
+      'sending': (
+        'Wait for the current kitchen request to finish, then retry.',
+        'انتظر اكتمال طلب المطبخ الحالي ثم أعد المحاولة.',
+      ),
+      'sync': (
+        'A table or outbox operation is still pending. Finish its sync, then retry.',
+        'لا تزال عملية طاولة أو إرسال معلقة. أكمل مزامنتها ثم أعد المحاولة.',
+      ),
+      'local': (
+        'The saved local records cannot be reconciled. Keep this copy and ask a manager to review it.',
+        'تعذر مطابقة السجلات المحلية المحفوظة. احتفظ بهذه النسخة واطلب من المشرف مراجعتها.',
+      ),
+      'server': (
+        'Could not verify this bill with the server. Reconnect and retry.',
+        'تعذر التحقق من هذه الفاتورة مع الخادم. أعد الاتصال والمحاولة.',
+      ),
+      'occupied': (
+        'The server still has an open seating or bill for this table.',
+        'لا يزال لدى الخادم جلسة أو فاتورة مفتوحة لهذه الطاولة.',
+      ),
+      'unsent': (
+        'Local items differ from the acknowledged kitchen rounds. Review the unsent or changed items; this copy is kept.',
+        'تختلف العناصر المحلية عن جولات المطبخ المؤكدة. راجع العناصر غير المرسلة أو المعدلة؛ تم الاحتفاظ بالنسخة.',
+      ),
+      'journals': (
+        'Resolve saved checkout or order requests before archiving this copy. Use Check payment result for an uncertain payment.',
+        'أكمل طلبات الدفع أو الطلبات المحفوظة قبل أرشفة النسخة. استخدم التحقق من نتيجة الدفع لأي دفعة غير مؤكدة.',
+      ),
+      'proof': (
+        'The saved copy has no verified closed bill identity. Keep it for manager review.',
+        'لا تحتوي النسخة المحفوظة على هوية فاتورة مغلقة تم التحقق منها. احتفظ بها لمراجعة المشرف.',
+      ),
+    };
+    final message = messages[key] ?? messages['local']!;
+    return arabic ? message.$2 : message.$1;
+  }
+
+  String? get _closedCopyBusyReason {
+    if (controller.isLoadingStorage) return 'loading';
+    if (_retiringClosedCopies) return 'checking';
+    if (_tableShadowMode != 'live') return 'mode';
+    if (_workspace != null) return 'workspace';
+    if (_normalQrCheckoutOpen ||
+        _showPaymentPage ||
+        controller.isProcessingPayment) {
+      return 'payment';
+    }
+    if (controller.activeDiningTableId != null || controller.cart.isNotEmpty) {
+      return 'cart';
+    }
+    if (_tableSendBusy) return 'sending';
+    return null;
+  }
 
   Future<bool> _retireClosedTableCopies({
     String? tableId,
     bool force = false,
   }) async {
-    if (!mounted ||
-        controller.isLoadingStorage ||
-        _retiringClosedCopies ||
-        _tableShadowMode != 'live' ||
-        _workspace != null ||
-        _normalQrCheckoutOpen ||
-        _showPaymentPage ||
-        controller.activeDiningTableId != null ||
-        controller.cart.isNotEmpty ||
-        controller.isProcessingPayment ||
-        _tableSendBusy) {
-      return false;
-    }
+    if (!mounted || _closedCopyBusyReason != null) return false;
     final storage =
         debugOrderStorageOverride ?? LocalOrderStorageService.instance;
     if (storage is! LocalOrderStorageService) return false;
@@ -3546,6 +3612,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       final coordinator = ref.read(tableSyncCoordinatorProvider);
       for (final candidate in controller.diningTableSessions.toList()) {
         if (tableId != null && candidate.tableId != tableId) continue;
+        _closedCopyBlockers[candidate.tableId] = 'proof';
         final id = int.tryParse(candidate.tableId);
         if (id == null ||
             candidate.seatingUuid == null ||
@@ -3560,6 +3627,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           continue;
         }
         _closedCopyChecks[candidate.tableId] = DateTime.now();
+        var stage = 'sync';
         try {
           _orderPreparations.assertIdle();
           await controller.assertIdleForCombine();
@@ -3567,6 +3635,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           await coordinator.settled;
           await outbox.assertIdleForCombine();
           sameScope();
+          stage = 'local';
           final db = await storage.database;
           final local = await loadRecoveryLocal(
             db,
@@ -3574,18 +3643,25 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             outboxRow: outbox.rowForKey,
             currentGenerationOnly: true,
           );
+          stage = 'server';
           final detail = DineInDetail(await api.dineInDetail(id));
           if (detail.occupied ||
               detail.orphaned ||
               detail.seating != null ||
               detail.bill != null) {
+            _closedCopyBlockers[candidate.tableId] = 'occupied';
             continue;
           }
           final bill = await api.closedTableBill(local.uuid, id);
-          if (bill == null ||
-              !RecoveryStore.closedSentProof(local, bill, detail.json)) {
+          if (bill == null) {
+            _closedCopyBlockers[candidate.tableId] = 'proof';
             continue;
           }
+          if (!RecoveryStore.closedSentProof(local, bill, detail.json)) {
+            _closedCopyBlockers[candidate.tableId] = 'unsent';
+            continue;
+          }
+          stage = 'journals';
           sameScope();
           final checkout = await SqliteCheckoutStore.open(captured);
           final dine = await SqliteDineInStore.open(captured);
@@ -3603,6 +3679,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 currentScope: captured,
               );
               sameScope();
+              stage = 'local';
               if (await RecoveryStore(
                 db,
                 captured,
@@ -3634,6 +3711,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             await controller.refreshDiningTables();
           }
         } catch (_) {
+          _closedCopyBlockers[candidate.tableId] = stage;
           // No proof/admission: retain all originals. F-10 still blocks tender.
         }
       }
@@ -7103,7 +7181,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       if (displayListener != null) checkout?.removeListener(displayListener);
       checkout?.dispose();
       _normalQrCheckoutOpen = false;
-      if (mounted) _applyAudienceGate();
+      if (mounted) {
+        _applyAudienceGate();
+        // onExit may have attempted retirement while this route still owned
+        // checkout. Retry after its guard is released, in the same session.
+        setState(() {});
+        await _retireClosedTableCopies(force: true);
+      }
       final transferred = _transferredQrWorkspace;
       _transferredQrWorkspace = null;
       if (transferred != null &&

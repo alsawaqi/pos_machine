@@ -4209,6 +4209,17 @@ class PosController extends ChangeNotifier
       // the active table is the head; its linked seats must survive an edit.
       primaryTableId: existing?.primaryTableId,
       linkedTableIds: existing?.linkedTableIds ?? const [],
+      // The in-memory draft must retain the same acknowledged generation as
+      // storage. Otherwise Done leaves a copy that cleanup cannot identify
+      // until the next app launch reloads these fields from SQLite.
+      seatingKey: existing?.seatingKey,
+      seatingUuid: existing?.seatingUuid,
+      seatingState: existing?.seatingState,
+      serverOrderUuid: existing?.serverOrderUuid,
+      tempReference: existing?.tempReference,
+      winnerSeatingUuid: existing?.winnerSeatingUuid,
+      lastVerdict: existing?.lastVerdict,
+      lastVerdictAt: existing?.lastVerdictAt,
     );
   }
 
