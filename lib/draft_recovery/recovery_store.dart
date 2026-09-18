@@ -15,6 +15,7 @@ class RecoveryStore {
   static const journalColumns = ['id', 'scope', 'state', 'payload'];
 
   static Future<void> createSchema(DatabaseExecutor db) async {
+    await createClosedSchema(db);
     await db.execute(
       '''CREATE TABLE draft_recovery_journal (
       id TEXT PRIMARY KEY, scope TEXT NOT NULL, state TEXT NOT NULL, payload TEXT NOT NULL)''',
@@ -25,6 +26,103 @@ class RecoveryStore {
       recovery_id TEXT NOT NULL, order_uuid TEXT NOT NULL, table_id TEXT NOT NULL,
       order_reference TEXT, occupied_at TEXT, seating_key TEXT,
       PRIMARY KEY (recovery_id, table_id))''');
+  }
+
+  static Future<void> createClosedSchema(DatabaseExecutor db) async {
+    await db.execute(
+      '''CREATE TABLE IF NOT EXISTS draft_recovery_closed_archive (
+      order_uuid TEXT PRIMARY KEY, scope TEXT NOT NULL, local_json TEXT NOT NULL,
+      proof_json TEXT NOT NULL, archived_at TEXT NOT NULL)''',
+    );
+  }
+
+  /// No server write, payment, receipt or local void. Original rows + proof and
+  /// the retirement fence commit together, before UI state can forget the copy.
+  Future<bool> retireClosed(
+    RecoveryLocal local, {
+    required Map<String, dynamic> bill,
+    required Map<String, dynamic> table,
+  }) async {
+    if (!closedSentProof(local, bill, table)) return false;
+    await db.transaction((txn) async {
+      await assertNoCombine(txn);
+      await assertNonePending(txn);
+      await verifyLocal(local, executor: txn);
+      await createClosedSchema(txn);
+      await txn.insert('draft_recovery_closed_archive', {
+        'order_uuid': local.uuid,
+        'scope': scope,
+        'local_json': local.encoded,
+        'proof_json': recoveryJson({'bill': bill, 'table': table}),
+        'archived_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      for (final original in local.rows) {
+        final raw = recoveryMap(original['row']);
+        await txn.insert('draft_recovery_retired', {
+          'recovery_id': 'closed:${local.uuid}',
+          'order_uuid': local.uuid,
+          'table_id': '${local.tableId}',
+          'order_reference': local.json['draft']['orderReference'],
+          'occupied_at': raw['occupied_at'],
+          'seating_key': raw['seating_key'],
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        final count = await txn.delete(
+          original['table'] as String,
+          where: '${original['pk']} = ?',
+          whereArgs: [original['value']],
+        );
+        if (count != 1) throw StateError('Original table copy changed');
+      }
+    });
+    await onChanged?.call();
+    return true;
+  }
+
+  static bool closedSentProof(
+    RecoveryLocal local,
+    Map<String, dynamic> bill,
+    Map<String, dynamic> table,
+  ) {
+    if (local.kind != 'staff_rounds' ||
+        bill['uuid'] != local.uuid ||
+        bill['table_id'] != local.tableId ||
+        bill['order_type'] != 'dine_in' ||
+        !const {'paid', 'void', 'refunded'}.contains(bill['status']) ||
+        recoveryMap(table['table'])['id'] != local.tableId ||
+        table['occupied'] != false ||
+        table['orphaned'] != false ||
+        table['seating'] != null ||
+        table['bill'] != null) {
+      return false;
+    }
+    Map<String, int> quantities(Iterable<Map<String, dynamic>> lines) {
+      final sums = <String, int>{};
+      for (final line in lines) {
+        final wire = recoveryWire(line);
+        final qty = wire.remove('qty') as int;
+        final key = recoveryJson(wire);
+        sums[key] = (sums[key] ?? 0) + qty;
+      }
+      return sums;
+    }
+
+    final sent = quantities(
+      local.rounds.expand(
+        (r) => recoveryMaps(jsonDecode(r['lines_json'] as String)),
+      ),
+    );
+    final draft = quantities(
+      local.items.map((raw) {
+        final line = recoveryLocalLine(raw);
+        return {
+          ...line,
+          'addon_ids': recoveryMaps(
+            line['addons'],
+          ).map((a) => a['id']).toList(),
+        };
+      }),
+    );
+    return recoveryJson(sent) == recoveryJson(draft);
   }
 
   static Future<bool> pending(DatabaseExecutor db) async {
@@ -109,6 +207,36 @@ class RecoveryStore {
           'occupied_at': row['occupied_at'],
           'seating_key': row['seating_key'],
         });
+      }
+    }
+    // Older test databases may predate the additive archive table. Production
+    // upgrades create it; the originals remain authoritative for the fence.
+    if ((await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='draft_recovery_closed_archive'",
+    )).isNotEmpty) {
+      for (final record in await db.query('draft_recovery_closed_archive')) {
+        final local = RecoveryLocal(
+          recoveryMap(jsonDecode(record['local_json'] as String)),
+        );
+        final proof = recoveryMap(jsonDecode(record['proof_json'] as String));
+        if (record['order_uuid'] != local.uuid ||
+            !closedSentProof(
+              local,
+              recoveryMap(proof['bill']),
+              recoveryMap(proof['table']),
+            )) {
+          throw const FormatException('Cannot verify closed-table archive');
+        }
+        for (final original in local.rows) {
+          final row = recoveryMap(original['row']);
+          retired.add({
+            'order_uuid': local.uuid,
+            'table_id': '${local.tableId}',
+            'order_reference': local.json['draft']['orderReference'],
+            'occupied_at': row['occupied_at'],
+            'seating_key': row['seating_key'],
+          });
+        }
       }
     }
     // Immutable originals are authoritative even if an auxiliary fence row is
@@ -239,8 +367,18 @@ class RecoveryStore {
     }.entries) {
       final rows = await target.query(
         entry.key,
-        where: 'table_id = ?',
-        whereArgs: ['${local.tableId}'],
+        where: local.json['generation_scoped'] == true
+            ? 'table_id = ? AND seating_key = ?'
+            : 'table_id = ?',
+        whereArgs: [
+          '${local.tableId}',
+          if (local.json['generation_scoped'] == true)
+            recoveryMap(
+              local.rows.singleWhere(
+                (r) => r['table'] == 'dining_tables',
+              )['row'],
+            )['seating_key'],
+        ],
         orderBy: entry.value == 'rounds'
             ? 'local_round_no, client_request_id'
             : 'cancelled_at, client_request_id',

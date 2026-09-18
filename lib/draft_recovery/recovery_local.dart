@@ -64,6 +64,7 @@ Future<RecoveryLocal> loadRecoveryLocal(
   Database db,
   int tableId, {
   required Future<OrderOutboxRow?> Function(String) outboxRow,
+  bool currentGenerationOnly = false,
 }) async {
   await assertRecoveryUnjoinedCopies(db, tableId);
   final records = <Map<String, dynamic>>[];
@@ -123,16 +124,28 @@ Future<RecoveryLocal> loadRecoveryLocal(
       table!['server_order_uuid'] != uuid) {
     throw StateError('The local bill identities disagree.');
   }
+  // Closed copies keep their ledger. A later occupancy of this table must
+  // prove only its own generation, without deleting earlier round history.
+  if (currentGenerationOnly && !combineUuid(table?['seating_key'])) {
+    throw StateError('Missing original table generation.');
+  }
+  final ledgerWhere = currentGenerationOnly
+      ? 'table_id = ? AND seating_key = ?'
+      : 'table_id = ?';
+  final ledgerArgs = <Object?>[
+    '$tableId',
+    if (currentGenerationOnly) table!['seating_key'],
+  ];
   final rounds = await db.query(
     'local_table_rounds',
-    where: 'table_id = ?',
-    whereArgs: ['$tableId'],
+    where: ledgerWhere,
+    whereArgs: ledgerArgs,
     orderBy: 'local_round_no, client_request_id',
   );
   final cancellations = await db.query(
     'local_line_cancellations',
-    where: 'table_id = ?',
-    whereArgs: ['$tableId'],
+    where: ledgerWhere,
+    whereArgs: ledgerArgs,
     orderBy: 'cancelled_at, client_request_id',
   );
   if (cancellations.isNotEmpty) {
@@ -213,6 +226,7 @@ Future<RecoveryLocal> loadRecoveryLocal(
     }
   }
   return RecoveryLocal({
+    if (currentGenerationOnly) 'generation_scoped': true,
     'table_id': tableId,
     'uuid': uuid,
     'kind': rounds.isEmpty ? 'legacy_hold' : 'staff_rounds',

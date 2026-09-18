@@ -134,7 +134,9 @@ void main() {
           await tester.pump();
           await tester.pump();
           expect(
-            find.textContaining('paid or closed elsewhere'),
+            find.text(
+              'This bill was paid or closed. Any unsent local items remain saved. Use Clear Table to review the saved copy.',
+            ),
             findsOneWidget,
           );
           final dynamic pay = tester.widget(
@@ -176,7 +178,11 @@ void main() {
         expect(controller.paymentStatus, isNot('Paid'));
         expect(
           result,
-          contains(offline ? 'verify' : 'paid or closed elsewhere'),
+          contains(
+            offline
+                ? 'verify'
+                : 'This bill was paid or closed. Any unsent local items remain saved. Use Clear Table to review the saved copy.',
+          ),
         );
         await disposeWorkspaceMachine(tester);
       },

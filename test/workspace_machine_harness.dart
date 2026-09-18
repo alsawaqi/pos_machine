@@ -142,6 +142,7 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
   required CatalogSnapshot catalog,
   AudienceService? audience,
   PosApiService? api,
+  OrderSyncRepository? outbox,
   TableSyncCoordinator? coordinator,
   Stream<RemoteTableSnapshot>? boards,
   bool? audienceConsent,
@@ -187,7 +188,7 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
           ),
         ),
         tableSessionsModeProvider.overrideWithValue(mode),
-        orderSyncRepositoryProvider.overrideWithValue(_Outbox()),
+        orderSyncRepositoryProvider.overrideWithValue(outbox ?? _Outbox()),
         tableSyncCoordinatorProvider.overrideWithValue(
           coordinator ?? WorkspaceTableCoordinator(),
         ),

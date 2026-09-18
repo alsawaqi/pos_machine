@@ -1037,7 +1037,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         _applyAudienceGate();
         if (quick && workspace.returnToList) unawaited(_openQuickOrders());
         if (tableLabel != null && controller.activeDiningTableId != null) {
-          unawaited(controller.returnToDiningFloorPlan());
+          unawaited(
+            controller.returnToDiningFloorPlan().then((_) async {
+              await _retireClosedTableCopies(force: true);
+            }),
+          );
         }
       },
     )..addListener(_workspaceChanged);
@@ -2416,6 +2420,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         ? const RemoteTableSnapshot()
         : ref.watch(remoteBoardProvider).asData?.value ??
               const RemoteTableSnapshot();
+    if (_tableShadowMode == 'live') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_retireClosedTableCopies());
+      });
+    }
     if (_tableShadowMode != 'off') {
       if (_liveTable &&
           _workspace == null &&
@@ -3040,7 +3049,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           if (controller.activeDiningTableId != null) {
             await controller.returnToDiningFloorPlan();
           }
-          if (mounted) await _openDraftRecovery(int.parse(tableId));
+          if (await _retireClosedTableCopies(tableId: tableId, force: true)) {
+            return true;
+          }
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  ref.read(settingsControllerProvider).language == 'ar'
+                      ? 'لم تتم أرشفة النسخة. احتفظ بالإضافات غير المرسلة، وأكمل أي دفع أو مزامنة معلّقة ثم أعد المحاولة. لا تدفع هذه الفاتورة مجدداً.'
+                      : 'The copy was not archived. Keep unsent additions, finish pending payment or sync work and retry. Do not pay this bill again.',
+                ),
+              ),
+            );
+          }
         }
         return false;
       }
@@ -3466,6 +3488,161 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
     await controller.refreshHeldOrders();
     await controller.refreshDiningTables();
+  }
+
+  bool _retiringClosedCopies = false;
+  final Map<String, DateTime> _closedCopyChecks = {};
+
+  Future<bool> _retireClosedTableCopies({
+    String? tableId,
+    bool force = false,
+  }) async {
+    if (!mounted ||
+        controller.isLoadingStorage ||
+        _retiringClosedCopies ||
+        _tableShadowMode != 'live' ||
+        _workspace != null ||
+        _normalQrCheckoutOpen ||
+        _showPaymentPage ||
+        controller.activeDiningTableId != null ||
+        controller.cart.isNotEmpty ||
+        controller.isProcessingPayment ||
+        _tableSendBusy) {
+      return false;
+    }
+    final storage =
+        debugOrderStorageOverride ?? LocalOrderStorageService.instance;
+    if (storage is! LocalOrderStorageService) return false;
+    _retiringClosedCopies = true;
+    var retired = false;
+    try {
+      final api = ref.read(apiServiceProvider),
+          session = ref.read(sessionServiceProvider);
+      String scope() => quickDeviceScope(
+        api.quickOrderBaseUrl,
+        session.companyId,
+        session.branchId,
+        session.kioskId,
+      );
+      final captured = scope(), token = api.tokenGetter();
+      void sameScope() {
+        if (!mounted || scope() != captured || token != api.tokenGetter()) {
+          throw StateError('Device changed');
+        }
+        if (_workspace != null ||
+            _showPaymentPage ||
+            _normalQrCheckoutOpen ||
+            controller.activeDiningTableId != null ||
+            controller.cart.isNotEmpty ||
+            controller.isProcessingPayment ||
+            _tableSendBusy) {
+          throw StateError(
+            'Wait until the till returns to the idle floor plan',
+          );
+        }
+      }
+
+      final outbox = ref.read(orderSyncRepositoryProvider);
+      final coordinator = ref.read(tableSyncCoordinatorProvider);
+      for (final candidate in controller.diningTableSessions.toList()) {
+        if (tableId != null && candidate.tableId != tableId) continue;
+        final id = int.tryParse(candidate.tableId);
+        if (id == null ||
+            candidate.seatingUuid == null ||
+            candidate.serverOrderUuid == null ||
+            _remoteTables.tables[id]?.occupied != false) {
+          continue;
+        }
+        final last = _closedCopyChecks[candidate.tableId];
+        if (!force &&
+            last != null &&
+            DateTime.now().difference(last).inSeconds < 15) {
+          continue;
+        }
+        _closedCopyChecks[candidate.tableId] = DateTime.now();
+        try {
+          _orderPreparations.assertIdle();
+          await controller.assertIdleForCombine();
+          await _tableKitchen?.settled;
+          await coordinator.settled;
+          await outbox.assertIdleForCombine();
+          sameScope();
+          final db = await storage.database;
+          final local = await loadRecoveryLocal(
+            db,
+            id,
+            outboxRow: outbox.rowForKey,
+            currentGenerationOnly: true,
+          );
+          final detail = DineInDetail(await api.dineInDetail(id));
+          if (detail.occupied ||
+              detail.orphaned ||
+              detail.seating != null ||
+              detail.bill != null) {
+            continue;
+          }
+          final bill = await api.closedTableBill(local.uuid, id);
+          if (bill == null ||
+              !RecoveryStore.closedSentProof(local, bill, detail.json)) {
+            continue;
+          }
+          sameScope();
+          final checkout = await SqliteCheckoutStore.open(captured);
+          final dine = await SqliteDineInStore.open(captured);
+          final quick = await SqliteQrQuickStore.open(captured);
+          storage.beginRecoveryAdmission();
+          try {
+            await outbox.admitDraftRecovery(() async {
+              sameScope();
+              await controller.assertIdleForCombine();
+              _orderPreparations.assertIdle();
+              await assertRecoveryJournalsIdle(
+                checkout: checkout.db,
+                dineIn: dine.db,
+                quick: quick.database,
+                currentScope: captured,
+              );
+              sameScope();
+              if (await RecoveryStore(
+                db,
+                captured,
+              ).retireClosed(local, bill: bill, table: detail.json)) {
+                retired = true;
+                for (final original in local.rows.where(
+                  (r) => r['table'] == 'dining_tables',
+                )) {
+                  final row = recoveryMap(original['row']);
+                  coordinator.forgetRecoveredSession(
+                    tableId: '$id',
+                    uuid: local.uuid,
+                    occupiedAt: row['occupied_at'] as String?,
+                    seatingKey: row['seating_key'] as String?,
+                  );
+                  controller.forgetRecoveredOccupancy(
+                    '$id',
+                    local.json['draft']['orderReference'] as String,
+                    row['occupied_at'] as String?,
+                  );
+                }
+              }
+            });
+          } finally {
+            await storage.endRecoveryAdmission();
+          }
+          if (retired) {
+            await controller.refreshHeldOrders();
+            await controller.refreshDiningTables();
+          }
+        } catch (_) {
+          // No proof/admission: retain all originals. F-10 still blocks tender.
+        }
+      }
+    } catch (_) {
+      // Scope/storage unavailable: retry on the next fresh board, never delete.
+    } finally {
+      _retiringClosedCopies = false;
+    }
+    return retired;
   }
 
   Future<void> _openDraftRecovery(int tableId) async {
@@ -4045,7 +4222,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   static const _closedTableMessage =
-      'This bill was paid or closed elsewhere. Use Clear Table to review and clear the saved copy.';
+      'This bill was paid or closed. Any unsent local items remain saved. Use Clear Table to review the saved copy.';
   final Map<String, String> _tableBillRefusals = {};
 
   String _localBillKey(DiningTableSession? session) =>

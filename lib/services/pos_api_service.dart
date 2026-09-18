@@ -921,6 +921,34 @@ class PosApiService {
         .toList();
   }
 
+  /// Read-only terminal-bill proof for retiring an acknowledged local copy.
+  Future<Map<String, dynamic>?> closedTableBill(
+    String uuid,
+    int tableId,
+  ) async {
+    for (var page = 1; page <= 50; page++) {
+      final body = await _send(
+        () => _dio.get(
+          '/device/orders/history',
+          queryParameters: {'per_page': 100, 'page': page},
+        ),
+      );
+      final rows = body.dataMap['orders'];
+      if (rows is! List) throw const FormatException('Missing bill history');
+      for (final row in rows.whereType<Map>()) {
+        if (row['uuid'] == uuid &&
+            row['table_id'] == tableId &&
+            row['order_type'] == 'dine_in' &&
+            const {'paid', 'void', 'refunded'}.contains(row['status'])) {
+          return Map<String, dynamic>.from(row);
+        }
+      }
+      final last = body.metaMap['last_page'];
+      if (last is! int || page >= last || rows.isEmpty) return null;
+    }
+    return null; // Bounded lookup: no proof means keep the local copy.
+  }
+
   /// GET /device/shift/current — the device's currently-open shift on the server,
   /// or null. Lets the open-shift screen ADOPT an existing shift (recovering from
   /// a local↔server desync) instead of failing to open a duplicate. HH-2: pass

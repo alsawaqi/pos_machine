@@ -377,7 +377,7 @@ class LocalOrderStorageService
 
     return openDatabase(
       path,
-      version: 9,
+      version: 10,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE order_history (
@@ -423,6 +423,7 @@ class LocalOrderStorageService
         await RecoveryStore.createSchema(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 10) await RecoveryStore.createClosedSchema(db);
         if (oldVersion < 9) await RecoveryStore.createSchema(db);
         if (oldVersion < 2) {
           await db.execute('''

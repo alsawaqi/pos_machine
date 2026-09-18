@@ -282,16 +282,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: [
               if (widget.showOperations) ...[
                 _sectionLabel(l10n.settingsSectionOperations),
-                _operationTile(
-                  icon: Icons.restore,
-                  title: l10n.localeName.startsWith('ar')
-                      ? 'استعادة عمليات الدفع المحفوظة'
-                      : 'Saved checkout recovery',
-                  subtitle: l10n.localeName.startsWith('ar')
-                      ? 'مراجعة حجوزات الخوادم السابقة بأمان'
-                      : 'Review reservations from an old server safely',
-                  action: 'checkout_recovery',
-                ),
                 const SizedBox(height: 4),
                 if (attentionItems.isNotEmpty) ...[
                   _syncAttentionTile(l10n, attentionItems),
@@ -554,6 +544,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ),
               ),
+              if (widget.showOperations) ...[
+                const Divider(color: Colors.white12, height: 36),
+                _operationTile(
+                  icon: Icons.restore,
+                  title: l10n.localeName.startsWith('ar')
+                      ? 'استعادة عمليات الدفع المحفوظة'
+                      : 'Saved checkout recovery',
+                  subtitle: l10n.localeName.startsWith('ar')
+                      ? 'مراجعة حجوزات الخوادم السابقة بأمان'
+                      : 'Review reservations from an old server safely',
+                  action: 'checkout_recovery',
+                ),
+              ],
             ],
           ),
         ),
