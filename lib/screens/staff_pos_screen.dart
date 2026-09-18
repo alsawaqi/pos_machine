@@ -13264,6 +13264,12 @@ class _DiningTableCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
+    final staffOpened = const {'main_pos', 'handheld'}.contains(remote?.origin);
+    final occupiedLabel = staffOpened
+        ? (Localizations.localeOf(context).languageCode == 'ar'
+              ? 'مشغولة · فتحها الموظف'
+              : 'Occupied · opened by staff')
+        : l10n.tableCustomerOccupied;
     final displayStatus = customerOccupied
         ? DiningTableStatus.occupied
         : status;
@@ -13376,7 +13382,7 @@ class _DiningTableCard extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        customerOccupied
+                        customerOccupied && !staffOpened
                             ? Icons.phone_android_rounded
                             : Icons.receipt_long_rounded,
                         size: 11,
@@ -13486,7 +13492,7 @@ class _DiningTableCard extends StatelessWidget {
                     const SizedBox(height: 14),
                     if (customerOccupied)
                       _StatusCapsule(
-                        label: l10n.tableCustomerOccupied,
+                        label: occupiedLabel,
                         color: const Color(0xFFFFE0C5),
                         foreground: const Color(0xFF9E3410),
                       )
@@ -13640,10 +13646,7 @@ class _DiningTableCard extends StatelessWidget {
       ),
     );
     return customerOccupied
-        ? Semantics(
-            label: '${table.name} · ${l10n.tableCustomerOccupied}',
-            child: card,
-          )
+        ? Semantics(label: '${table.name} · $occupiedLabel', child: card)
         : card;
   }
 }
