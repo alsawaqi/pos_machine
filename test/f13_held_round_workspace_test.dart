@@ -52,7 +52,8 @@ void main() {
             child: child,
           ),
         );
-        final api = TableFake()..value = tableFixture(selected: 3, pending: mixed);
+        final api = TableFake()
+          ..value = tableFixture(selected: 3, pending: mixed);
         (api.value['rounds'] as List).add({
           'id': 108,
           'round_no': 3,
