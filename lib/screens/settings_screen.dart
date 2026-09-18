@@ -796,6 +796,19 @@ class TableSoakPanel extends StatelessWidget {
   final RemoteSyncMeta meta;
   final List<Map<String, Object?>> rows;
 
+  String _status(Object? value, BuildContext context) {
+    final ar = Localizations.localeOf(context).languageCode == 'ar';
+    return switch (value) {
+      'available' || 'free' => ar ? 'متاحة' : 'Free',
+      'occupied' || 'open' || 'active' => ar ? 'مشغولة' : 'Occupied',
+      'billing' ||
+      'awaiting_payment' => ar ? 'بانتظار الدفع' : 'Awaiting payment',
+      'paid' => ar ? 'مدفوعة' : 'Paid',
+      'closed' => ar ? 'مغلقة' : 'Closed',
+      _ => ar ? 'غير معروف' : 'Unknown',
+    };
+  }
+
   static const _columns = [
     'observed_at',
     'table_id',
@@ -867,7 +880,11 @@ class TableSoakPanel extends StatelessWidget {
                 itemCount: visible.length,
                 itemBuilder: (context, index) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: SelectableText(lines[index]),
+                  child: Text(
+                    '${Localizations.localeOf(context).languageCode == 'ar' ? 'الطاولة' : 'Table'} ${visible[index]['table_id']} · '
+                    '${Localizations.localeOf(context).languageCode == 'ar' ? 'محلي' : 'Local'}: ${_status(visible[index]['local_status'], context)} · '
+                    '${Localizations.localeOf(context).languageCode == 'ar' ? 'الخادم' : 'Server'}: ${_status(visible[index]['server_status'], context)}',
+                  ),
                 ),
               ),
             ),
