@@ -142,6 +142,7 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
   required CatalogSnapshot catalog,
   AudienceService? audience,
   bool? audienceConsent,
+  Widget Function(Widget child)? wrapStaff,
 }) async {
   SharedPreferences.setMockInitialValues({
     'app_language': arabic ? 'ar' : 'en',
@@ -212,7 +213,9 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
         locale: Locale(arabic ? 'ar' : 'en'),
         localizationsDelegates: L10n.localizationsDelegates,
         supportedLocales: L10n.supportedLocales,
-        home: RepaintBoundary(key: quickEvidenceKey, child: StaffPosScreen()),
+        home:
+            wrapStaff?.call(StaffPosScreen()) ??
+            RepaintBoundary(key: quickEvidenceKey, child: StaffPosScreen()),
       ),
     ),
   );

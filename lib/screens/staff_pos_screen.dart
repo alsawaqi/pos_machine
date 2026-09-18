@@ -28,6 +28,7 @@ import 'package:flutter/scheduler.dart';
 import '../order_workspace/current_order_workspace.dart';
 import '../services/presentation_service.dart';
 import '../order_attention/order_attention.dart';
+import '../order_attention/order_attention_host.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8049,6 +8050,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           ),
           const SizedBox(width: 8),
           _buildTimeBlock(),
+          const SizedBox(width: 8),
+          OrderAttentionBell(
+            onQuickOrders: () => unawaited(_openQuickOrders()),
+            onTables: () => unawaited(_handleOrderTypeTap(OrderType.dineIn)),
+          ),
           const SizedBox(width: 8),
           // P-F1 — the gear opens Settings (which now hosts the operational
           // actions that used to crowd the logout sheet).

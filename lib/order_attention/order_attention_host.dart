@@ -79,7 +79,7 @@ class _OrderAttentionHostState extends State<OrderAttentionHost>
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: controller,
-    child: widget.child,
+    child: OrderAttentionScope(controller: controller, child: widget.child),
     builder: (context, child) {
       if (!widget.showBanner) return child!;
       final snap = controller.snapshot;
@@ -171,4 +171,113 @@ class _OrderAttentionHostState extends State<OrderAttentionHost>
       );
     },
   );
+}
+
+/// Shares the existing foreground poller and durable once-per-order sound ledger.
+class OrderAttentionScope extends InheritedNotifier<OrderAttentionController> {
+  const OrderAttentionScope({
+    super.key,
+    required OrderAttentionController controller,
+    required super.child,
+  }) : super(notifier: controller);
+  static OrderAttentionController? of(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<OrderAttentionScope>()
+      ?.notifier;
+}
+
+class OrderAttentionBell extends StatelessWidget {
+  const OrderAttentionBell({
+    super.key,
+    required this.onQuickOrders,
+    required this.onTables,
+    this.color,
+  });
+  final VoidCallback? onQuickOrders;
+  final VoidCallback? onTables;
+  final Color? color;
+  @override
+  Widget build(BuildContext context) {
+    final controller = OrderAttentionScope.of(context);
+    if (controller == null) return const SizedBox.shrink();
+    final count = controller.snapshot?.keys.length ?? 0;
+    final ar = Localizations.localeOf(context).languageCode == 'ar';
+    return IconButton(
+      key: const ValueKey('order-attention-bell'),
+      tooltip: ar
+          ? 'طلبات تحتاج متابعة: $count'
+          : 'Orders needing attention: $count',
+      onPressed: () => showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AnimatedBuilder(
+          animation: controller,
+          builder: (_, _) {
+            final quick = controller.snapshot?.quick.length ?? 0;
+            final rounds = controller.snapshot?.rounds.length ?? 0;
+            void open(VoidCallback action) {
+              Navigator.of(dialogContext).pop();
+              action();
+            }
+
+            return AlertDialog(
+              title: Text(
+                ar ? 'طلبات تحتاج متابعة' : 'Orders needing attention',
+              ),
+              content: SizedBox(
+                width: 320,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (controller.stale)
+                      Text(
+                        ar
+                            ? 'تعذر تحديث التنبيهات — تحقق من الاتصال'
+                            : 'Alerts not updating — check connection',
+                      ),
+                    if (quick > 0)
+                      ListTile(
+                        key: const ValueKey('order-attention-quick'),
+                        leading: const Icon(Icons.qr_code),
+                        title: Text(
+                          ar ? 'طلبات QR عند الكاونتر' : 'QR counter orders',
+                        ),
+                        trailing: Text('$quick'),
+                        onTap: onQuickOrders == null
+                            ? null
+                            : () => open(onQuickOrders!),
+                      ),
+                    if (rounds > 0)
+                      ListTile(
+                        key: const ValueKey('order-attention-tables'),
+                        leading: const Icon(Icons.table_restaurant_outlined),
+                        title: Text(ar ? 'جولات الطاولات' : 'Table rounds'),
+                        trailing: Text('$rounds'),
+                        onTap: onTables == null ? null : () => open(onTables!),
+                      ),
+                    if (quick + rounds == 0)
+                      Text(
+                        ar
+                            ? 'لا توجد طلبات تحتاج متابعة'
+                            : 'No orders need attention',
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text(ar ? 'إغلاق' : 'Close'),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+      icon: Badge(
+        key: const ValueKey('order-attention-count'),
+        isLabelVisible: count > 0,
+        label: Text('$count'),
+        child: Icon(Icons.notifications_outlined, color: color),
+      ),
+    );
+  }
 }
