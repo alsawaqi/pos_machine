@@ -185,6 +185,12 @@ class CurrentOrderWorkspace extends ChangeNotifier {
     final drafts = cartControls?.draftRows ?? const <Map<String, dynamic>>[];
     final pending = cartControls?.pendingRows ?? const <Map<String, dynamic>>[];
     final pendingTax = cartControls?.pendingTax ?? 0;
+    // Display estimate only. The server still prices the submitted ID-only round.
+    final draftSubtotal = drafts.fold<int>(
+      0,
+      (sum, line) => sum + (line['line_total_baisas'] as int),
+    );
+    final draftTax = (taxTotalFor(draftSubtotal / 1000) * 1000).round();
     final preview = [
       ...drafts,
       ...pending,
@@ -195,8 +201,8 @@ class CurrentOrderWorkspace extends ChangeNotifier {
       'preview_pending': drafts.isNotEmpty || pending.isNotEmpty,
       'items': [...saved.groupedItems, ...pending, ...drafts],
       'subtotal_baisas': saved.subtotal + preview,
-      'grand_total_baisas': saved.total + preview + pendingTax,
-      'tax_total_baisas': saved.tax + pendingTax,
+      'grand_total_baisas': saved.total + preview + pendingTax + draftTax,
+      'tax_total_baisas': saved.tax + pendingTax + draftTax,
     });
   }
 
