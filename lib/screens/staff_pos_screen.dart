@@ -9356,7 +9356,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       : 'Correct held round',
                 ),
               ),
-            Text(l10n.tableSharedAdjustmentsUnavailable),
             FilledButton.icon(
               key: const ValueKey('table-send-to-kitchen'),
               onPressed: workspace != null

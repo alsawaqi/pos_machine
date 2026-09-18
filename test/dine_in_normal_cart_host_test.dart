@@ -44,6 +44,46 @@ void main() {
     }
   });
 
+  testWidgets('W09 kitchen action has no unrelated unavailable caption', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await pumpWorkspaceMachine(
+      tester,
+      mode: 'live',
+      toggle: false,
+      catalog: const CatalogSnapshot(
+        categories: [],
+        products: [],
+        floors: [],
+        tables: [],
+        taxes: [],
+      ),
+    );
+    final dynamic state = tester.state(find.byType(StaffPosScreen));
+    final gateway = EmptyGateway();
+    late CurrentOrderWorkspace workspace;
+    state.openServerWorkspace((CurrentOrderWorkspace w) {
+      workspace = w;
+      return DineInScreen(
+        workspace: w,
+        label: 'T1',
+        createController: () async =>
+            DineInController(gateway, TableMemory(), 1),
+        catalogue: () => [],
+        onPay: (_) async {},
+      );
+    }, tableLabel: 'T1');
+    await tester.pumpAndSettle();
+    final button = find.byKey(const ValueKey('table-send-to-kitchen'));
+    expect(button, findsOneWidget);
+    expect(find.text('Not available on shared tables yet'), findsNothing);
+    expect(workspace.cartControls, isNotNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('normal machine cart exposes clear empty session', (
     tester,
   ) async {
