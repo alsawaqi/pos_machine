@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/sentry.dart';
+import 'core/render_error_logging.dart';
 import 'order_attention/app_order_attention.dart';
 import 'l10n/l10n.dart';
 import 'providers/providers.dart';
@@ -45,6 +46,7 @@ Future<void> main() async {
 
   // Phase C5 (§9.12) — crash reporting. No DSN → run exactly as before.
   if (!SentryConfig.enabled) {
+    installRenderErrorLogging();
     runApp(app);
     return;
   }
@@ -80,6 +82,7 @@ Future<void> main() async {
           position: staff.position,
         );
       }
+      installRenderErrorLogging();
       runApp(app);
     },
   );
@@ -101,10 +104,7 @@ Future<void> applyServerAddressPolicyAtStartup({
 @pragma('vm:entry-point')
 Future<void> secondaryDisplayMain() async {
   WidgetsFlutterBinding.ensureInitialized();
-  developer.log(
-    'Launching customer display entrypoint.',
-    name: 'POSBootstrap',
-  );
+  developer.log('Launching customer display entrypoint.', name: 'POSBootstrap');
   // Phase C4 — this is a SEPARATE Flutter engine with no ProviderScope
   // overrides, so it reads the persisted language itself at startup (a live
   // switch reaches it the next time the rear display engine starts).

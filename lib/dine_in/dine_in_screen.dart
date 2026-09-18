@@ -615,6 +615,18 @@ class _DineInScreenState extends State<DineInScreen>
     }
   }
 
+  String _heldDescription(Map<String, dynamic> line) {
+    final reason = switch (line['held_reason']) {
+      'out_of_stock' => widget.arabic ? 'نفد المخزون' : 'Out of stock',
+      'addon_selection_invalid' =>
+        widget.arabic ? 'اختيار الإضافة غير صالح' : 'Invalid add-on selection',
+      'product_unavailable' =>
+        widget.arabic ? 'الصنف غير متاح' : 'Item unavailable',
+      _ => widget.arabic ? 'تحتاج للمراجعة' : 'Needs review',
+    };
+    return '${widget.arabic ? 'معلّق — لا يوجد سعر بعد' : 'Held — no price yet'} · $reason';
+  }
+
   WorkspaceCartControls get _cartControls {
     final c = controller, detail = c?.detail;
     final enabled =
@@ -632,14 +644,16 @@ class _DineInScreenState extends State<DineInScreen>
           for (final round in detail.rounds)
             if (round['status'] == 'pending_confirmation')
               for (final raw in round['priced_lines'] as List)
-                {
-                  ...tableMap(raw),
-                  'pending_round_id': round['id'],
-                  'notes': [
-                    '${text('pending_confirmation')} — ${round['round_no']}',
-                    if (tableMap(raw)['notes'] != null) tableMap(raw)['notes'],
-                  ].join(' · '),
-                },
+                if (!tableLineHeld(tableMap(raw)))
+                  {
+                    ...tableMap(raw),
+                    'pending_round_id': round['id'],
+                    'notes': [
+                      '${text('pending_confirmation')} — ${round['round_no']}',
+                      if (tableMap(raw)['notes'] != null)
+                        tableMap(raw)['notes'],
+                    ].join(' · '),
+                  },
       ],
       pendingTax:
           detail?.rounds
@@ -647,6 +661,12 @@ class _DineInScreenState extends State<DineInScreen>
               .fold<int>(0, (sum, r) => sum + (r['tax_baisas'] as int? ?? 0)) ??
           0,
       notices: [
+        if (detail != null)
+          for (final round in detail.rounds)
+            if (round['status'] == 'pending_confirmation')
+              for (final raw in round['priced_lines'] as List)
+                if (tableLineHeld(tableMap(raw)))
+                  '${tableMap(raw)['qty']} × ${(widget.arabic ? tableMap(raw)['product_name_ar'] : null) ?? tableMap(raw)['product_name']} · ${_heldDescription(tableMap(raw))}',
         if ((widget.localDraftBlockedNow?.call() ?? widget.localDraftBlocked) ||
             c?.hasLocalConflict == true)
           widget.arabic
@@ -1133,11 +1153,13 @@ class _DineInScreenState extends State<DineInScreen>
         if (line['notes'] != null && line['notes'] != '') line['notes'],
         for (final raw in (line['addons'] as List? ?? const []))
           tableMap(raw)['name'] ?? tableMap(raw)['add_on_name'],
-        if (line['held_reason'] != null) text('held_line'),
+        if (tableLineHeld(line)) _heldDescription(line),
         if (line['cancelled_qty'] != null)
           '${widget.arabic ? 'ملغي' : 'Cancelled'}: ${line['cancelled_qty']}',
       ].whereType<String>().join(' · '),
     ),
-    trailing: Text(money(line['line_total_baisas'])),
+    trailing: tableLineHeld(line)
+        ? null
+        : Text(money(line['line_total_baisas'])),
   );
 }

@@ -2,6 +2,14 @@ import 'dart:convert';
 import '../qr_checkout/qr_checkout_models.dart';
 import '../qr_quick/qr_quick_models.dart';
 
+/// Unpriced/rejected input is review evidence, never a priced cart line.
+bool tableLineHeld(Map<String, dynamic> line) =>
+    line['held_reason'] != null ||
+    line['line_total_baisas'] is! int ||
+    line['qty'] is! num ||
+    !(line['qty'] as num).isFinite ||
+    (line['qty'] as num) <= 0;
+
 Map<String, dynamic> tableMap(Object? value) {
   if (value is! Map) throw const FormatException('Expected table object');
   return Map<String, dynamic>.from(value);
@@ -28,7 +36,7 @@ class DineInDetail {
             bill!['items'] is! List)) {
       throw const FormatException('Invalid table bill');
     }
-    for (final round in rounds) {
+    for (final round in (json['rounds'] as List).map(tableMap)) {
       if (round['id'] is! int ||
           round['round_no'] is! int ||
           round['priced_lines'] is! List ||
