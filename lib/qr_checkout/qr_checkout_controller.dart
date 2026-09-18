@@ -42,6 +42,7 @@ class QrCheckoutController extends ChangeNotifier {
     required this.captureCard,
     required this.captureBank,
     required this.authorizeGift,
+    this.projectReceipt,
     DateTime Function()? now,
     String Function()? newId,
   }) : now = now ?? DateTime.now,
@@ -51,6 +52,11 @@ class QrCheckoutController extends ChangeNotifier {
   final CheckoutCaptureFn captureCard;
   final CheckoutCaptureFn captureBank;
   final Future<bool> Function() authorizeGift;
+  final Future<void> Function(
+    CheckoutSnapshot? snapshot,
+    CheckoutAttempt attempt,
+  )?
+  projectReceipt;
   final DateTime Function() now;
   final String Function() newId;
   CheckoutAttempt? _attempt;
@@ -409,6 +415,7 @@ class QrCheckoutController extends ChangeNotifier {
   Future<void> _push() async {
     phase = CheckoutPhase.pending;
     try {
+      await projectReceipt?.call(snapshot, _attempt!);
       final responses = await gateway.push(_attempt!.event!);
       if (responses.length != 1 ||
           responses.single['client_event_id'] != _attempt!.id) {
@@ -422,12 +429,14 @@ class QrCheckoutController extends ChangeNotifier {
             result['orphan_tender'] == true) {
           return;
         }
-        await _save(
-          _attempt!.copy(
-            state: 'paid',
-            receiptNumber: result['receipt_number'] as String?,
-          ),
+        final confirmed = _attempt!.copy(
+          state: 'paid',
+          receiptNumber: result['receipt_number'] as String?,
         );
+        // Persist the official display/history before making the journal
+        // terminal. A failed projection retries the same payment event.
+        await projectReceipt?.call(snapshot, confirmed);
+        await _save(confirmed);
         phase = CheckoutPhase.paid;
         notice = null;
       } else if (ack['status'] == 'failed') {

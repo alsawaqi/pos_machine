@@ -116,7 +116,11 @@ class DiningTableDefinition {
 /// A company tax fetched from the API config (name + percentage). Applied on
 /// top of the order subtotal (exclusive).
 class CompanyTax {
-  const CompanyTax({required this.name, this.nameAr, required this.ratePercent});
+  const CompanyTax({
+    required this.name,
+    this.nameAr,
+    required this.ratePercent,
+  });
   final String name;
   final String? nameAr;
   final double ratePercent; // 5.0 == 5%
@@ -149,11 +153,13 @@ double _roundTax(double v) => double.parse(v.toStringAsFixed(3));
 /// Per-tax amounts for [subtotal] — each active company rate applied to the
 /// subtotal (exclusive), rounded to 3 decimals (baisas precision).
 List<TaxLineAmount> taxLinesFor(double subtotal) => activeCompanyTaxes
-    .map((t) => TaxLineAmount(
-          name: t.name,
-          ratePercent: t.ratePercent,
-          amount: _roundTax(subtotal * t.ratePercent / 100),
-        ))
+    .map(
+      (t) => TaxLineAmount(
+        name: t.name,
+        ratePercent: t.ratePercent,
+        amount: _roundTax(subtotal * t.ratePercent / 100),
+      ),
+    )
     .toList(growable: false);
 
 /// Summed tax for [subtotal] across all active company taxes.
@@ -242,8 +248,7 @@ class AddonGroup {
   }
 
   /// The effective maximum (single-select is implicitly capped at 1).
-  int get effectiveMax =>
-      maxSelections ?? (multiSelect ? options.length : 1);
+  int get effectiveMax => maxSelections ?? (multiSelect ? options.length : 1);
 
   bool get isRequired => effectiveMin >= 1;
 }
@@ -305,12 +310,12 @@ class AppliedComp {
   final String? note;
 
   Map<String, dynamic> toMap() => {
-        'reasonId': reasonId,
-        'reasonName': reasonName,
-        'lineIndex': lineIndex,
-        'qty': qty,
-        'note': note,
-      };
+    'reasonId': reasonId,
+    'reasonName': reasonName,
+    'lineIndex': lineIndex,
+    'qty': qty,
+    'note': note,
+  };
 
   factory AppliedComp.fromMap(Map<String, dynamic> map) {
     final lineIndex = (map['lineIndex'] as num?)?.toInt();
@@ -395,9 +400,9 @@ class ReceiptTemplate {
 
     List<String> lines(Object? v) => v is List
         ? v
-            .map((e) => e?.toString().trim() ?? '')
-            .where((e) => e.isNotEmpty)
-            .toList()
+              .map((e) => e?.toString().trim() ?? '')
+              .where((e) => e.isNotEmpty)
+              .toList()
         : const <String>[];
 
     return ReceiptTemplate(
@@ -522,23 +527,23 @@ class Product {
   /// but the device only ever sets it to a non-null decremented value, so a
   /// nullable override with a sentinel-free fallback is enough here).
   Product copyWith({double? price, double? setBranchStockQty}) => Product(
-        id: id,
-        name: name,
-        nameAr: nameAr,
-        category: category,
-        categoryId: categoryId,
-        price: price ?? this.price,
-        imageAsset: imageAsset,
-        lowStock: lowStock,
-        addonGroupIds: addonGroupIds,
-        deliveryPrice: deliveryPrice,
-        deliveryPriceByProvider: deliveryPriceByProvider,
-        stockMode: stockMode,
-        recipe: recipe,
-        branchStockQty: setBranchStockQty ?? branchStockQty,
-        availableFrom: availableFrom,
-        availableUntil: availableUntil,
-      );
+    id: id,
+    name: name,
+    nameAr: nameAr,
+    category: category,
+    categoryId: categoryId,
+    price: price ?? this.price,
+    imageAsset: imageAsset,
+    lowStock: lowStock,
+    addonGroupIds: addonGroupIds,
+    deliveryPrice: deliveryPrice,
+    deliveryPriceByProvider: deliveryPriceByProvider,
+    stockMode: stockMode,
+    recipe: recipe,
+    branchStockQty: setBranchStockQty ?? branchStockQty,
+    availableFrom: availableFrom,
+    availableUntil: availableUntil,
+  );
 
   factory Product.fromMap(Map<String, dynamic> map) {
     return Product(
@@ -766,10 +771,10 @@ class DiscountConfiguration {
 
   /// The server amount_type for this discount ('percent' | 'fixed' | null).
   String? get amountType => switch (kind) {
-        DiscountKind.percentage => 'percent',
-        DiscountKind.fixedAmount => 'fixed',
-        DiscountKind.none => null,
-      };
+    DiscountKind.percentage => 'percent',
+    DiscountKind.fixedAmount => 'fixed',
+    DiscountKind.none => null,
+  };
 
   factory DiscountConfiguration.fromMap(Map<String, dynamic> map) {
     return DiscountConfiguration(
@@ -858,11 +863,15 @@ class MerchantDiscount {
   bool appliesToProduct(int? productId, int? categoryId) {
     if (scope == 'product') {
       return productId != null &&
-          targets.any((t) => t.targetType == 'product' && t.targetId == productId);
+          targets.any(
+            (t) => t.targetType == 'product' && t.targetId == productId,
+          );
     }
     if (scope == 'category') {
       return categoryId != null &&
-          targets.any((t) => t.targetType == 'category' && t.targetId == categoryId);
+          targets.any(
+            (t) => t.targetType == 'category' && t.targetId == categoryId,
+          );
     }
     return false;
   }
@@ -917,13 +926,13 @@ class MerchantDiscount {
   /// The DiscountConfiguration this rule applies as (carries the rule id +
   /// amount_type so order.pay can snapshot it for the by-rule report).
   DiscountConfiguration toConfiguration() => DiscountConfiguration(
-        kind: amountType == 'percent'
-            ? DiscountKind.percentage
-            : DiscountKind.fixedAmount,
-        value: amountType == 'percent' ? (percent ?? 0) : (fixedAmount ?? 0),
-        label: name,
-        discountId: id,
-      );
+    kind: amountType == 'percent'
+        ? DiscountKind.percentage
+        : DiscountKind.fixedAmount,
+    value: amountType == 'percent' ? (percent ?? 0) : (fixedAmount ?? 0),
+    label: name,
+    discountId: id,
+  );
 }
 
 /// P-F9 — a merchant OFFER (promotion) from the config bundle. `type` is one
@@ -1061,26 +1070,26 @@ class SliderSlide {
   bool get isVideo => type == 'video';
 
   Map<String, dynamic> toJson() => {
-        'item_id': itemId,
-        'slider_id': sliderId,
-        'content_asset_id': contentAssetId,
-        'advertiser_id': advertiserId,
-        'type': type,
-        'url': url,
-        'thumbnail_url': thumbnailUrl,
-        'duration_seconds': durationSeconds,
-      };
+    'item_id': itemId,
+    'slider_id': sliderId,
+    'content_asset_id': contentAssetId,
+    'advertiser_id': advertiserId,
+    'type': type,
+    'url': url,
+    'thumbnail_url': thumbnailUrl,
+    'duration_seconds': durationSeconds,
+  };
 
   factory SliderSlide.fromJson(Map<String, dynamic> j) => SliderSlide(
-        itemId: (j['item_id'] as num?)?.toInt() ?? 0,
-        sliderId: (j['slider_id'] as num?)?.toInt() ?? 0,
-        contentAssetId: (j['content_asset_id'] as num?)?.toInt() ?? 0,
-        advertiserId: (j['advertiser_id'] as num?)?.toInt(),
-        type: j['type']?.toString() ?? 'image',
-        url: j['url']?.toString() ?? '',
-        thumbnailUrl: j['thumbnail_url']?.toString(),
-        durationSeconds: (j['duration_seconds'] as num?)?.toInt() ?? 6,
-      );
+    itemId: (j['item_id'] as num?)?.toInt() ?? 0,
+    sliderId: (j['slider_id'] as num?)?.toInt() ?? 0,
+    contentAssetId: (j['content_asset_id'] as num?)?.toInt() ?? 0,
+    advertiserId: (j['advertiser_id'] as num?)?.toInt(),
+    type: j['type']?.toString() ?? 'image',
+    url: j['url']?.toString() ?? '',
+    thumbnailUrl: j['thumbnail_url']?.toString(),
+    durationSeconds: (j['duration_seconds'] as num?)?.toInt() ?? 6,
+  );
 }
 
 /// P-F8 — the merchant's order-numbering config (settings.order_numbering).
@@ -1175,10 +1184,10 @@ class LoyaltyBalance {
   });
 
   factory LoyaltyBalance.fromJson(Map<String, dynamic> j) => LoyaltyBalance(
-        ruleId: (j['rule_id'] as num?)?.toInt() ?? 0,
-        points: (j['points'] as num?)?.toInt() ?? 0,
-        stamps: (j['stamps'] as num?)?.toInt() ?? 0,
-      );
+    ruleId: (j['rule_id'] as num?)?.toInt() ?? 0,
+    points: (j['points'] as num?)?.toInt() ?? 0,
+    stamps: (j['stamps'] as num?)?.toInt() ?? 0,
+  );
 }
 
 /// A live customer search result (from /device/customers/search) — includes the
@@ -1207,8 +1216,8 @@ class CustomerSearchResult {
         id: (j['id'] as num?)?.toInt() ?? 0,
         name: (j['name'] ?? '').toString(),
         phone: (j['phone'] ?? '').toString(),
-        walletBalance: ((j['wallet_balance_baisas'] as num?)?.toDouble() ?? 0) /
-            1000.0,
+        walletBalance:
+            ((j['wallet_balance_baisas'] as num?)?.toDouble() ?? 0) / 1000.0,
         loyalty: ((j['loyalty'] as List?) ?? const [])
             .whereType<Map>()
             .map((m) => LoyaltyBalance.fromJson(m.cast<String, dynamic>()))
@@ -1249,13 +1258,13 @@ class CustomerRef {
   /// Convert to the [CustomerSearchResult] shape the attach/redeem flow uses, so
   /// an offline cache hit reuses the same selectedCustomer / _redeemable path.
   CustomerSearchResult toSearchResult() => CustomerSearchResult(
-        id: id,
-        name: name,
-        phone: phone,
-        walletBalance: walletBalance,
-        loyalty: loyalty,
-        plates: plates,
-      );
+    id: id,
+    name: name,
+    phone: phone,
+    walletBalance: walletBalance,
+    loyalty: loyalty,
+    plates: plates,
+  );
 }
 
 /// A company ingredient (id + name + unit) for the device restock-request
@@ -1310,7 +1319,9 @@ class CardCharge {
   final String status;
 
   const CardCharge({
-    this.transactionId, this.rrn, this.authCode,
+    this.transactionId,
+    this.rrn,
+    this.authCode,
     this.softposReference,
     this.softposAuthCode,
     this.bankResponse,
@@ -1633,6 +1644,8 @@ class OrderSnapshot {
   // allocated server-side at payment time. '' = none (numbering disabled or
   // the device was offline → the local [orderNumber] stands alone).
   final String receiptNumber;
+  final bool serverReceipt;
+  final bool serverReceiptConfirmed;
   final String tempReference;
   // P-F9 — the applied offers frozen at snapshot time: flattened entries
   // {offer_id, name, amount (OMR), line_index?} — per-line allocations plus
@@ -1725,6 +1738,8 @@ class OrderSnapshot {
     this.discountAmountType,
     this.discountReason = '',
     this.receiptNumber = '',
+    this.serverReceipt = false,
+    this.serverReceiptConfirmed = false,
     this.tempReference = '',
     this.offers = const <Map<String, dynamic>>[],
     this.loyaltyRedeemRuleId,
@@ -1798,16 +1813,16 @@ class OrderSnapshot {
       discountId: (map['discountId'] as num?)?.toInt(),
       discountAmountType: map['discountAmountType']?.toString(),
       loyaltyRedeemRuleId: (map['loyaltyRedeemRuleId'] as num?)?.toInt(),
-      loyaltyRedeemPoints:
-          (map['loyaltyRedeemPoints'] as num?)?.toInt() ?? 0,
-      loyaltyRedeemStamps:
-          (map['loyaltyRedeemStamps'] as num?)?.toInt() ?? 0,
+      loyaltyRedeemPoints: (map['loyaltyRedeemPoints'] as num?)?.toInt() ?? 0,
+      loyaltyRedeemStamps: (map['loyaltyRedeemStamps'] as num?)?.toInt() ?? 0,
       compAmount: (map['compAmount'] as num?)?.toDouble() ?? 0,
       compReasonId: (map['compReasonId'] as num?)?.toInt(),
       compReasonName: map['compReasonName']?.toString() ?? '',
       compLineIndex: (map['compLineIndex'] as num?)?.toInt(),
       compQty: (map['compQty'] as num?)?.toInt(),
       receiptNumber: map['receiptNumber']?.toString() ?? '',
+      serverReceipt: map['serverReceipt'] == true,
+      serverReceiptConfirmed: map['serverReceiptConfirmed'] == true,
       tempReference: map['tempReference']?.toString() ?? '',
       offers: ((map['offers'] as List?) ?? const [])
           .whereType<Map>()
@@ -1877,20 +1892,19 @@ class OrderSnapshot {
       'discountLabel': discountLabel,
       if (discountReason.isNotEmpty) 'discountReason': discountReason,
       if (discountId != null) 'discountId': discountId,
-      if (discountAmountType != null)
-        'discountAmountType': discountAmountType,
+      if (discountAmountType != null) 'discountAmountType': discountAmountType,
       if (loyaltyRedeemRuleId != null)
         'loyaltyRedeemRuleId': loyaltyRedeemRuleId,
-      if (loyaltyRedeemPoints > 0)
-        'loyaltyRedeemPoints': loyaltyRedeemPoints,
-      if (loyaltyRedeemStamps > 0)
-        'loyaltyRedeemStamps': loyaltyRedeemStamps,
+      if (loyaltyRedeemPoints > 0) 'loyaltyRedeemPoints': loyaltyRedeemPoints,
+      if (loyaltyRedeemStamps > 0) 'loyaltyRedeemStamps': loyaltyRedeemStamps,
       if (compAmount > 0) 'compAmount': compAmount,
       if (compReasonId != null) 'compReasonId': compReasonId,
       if (compReasonName.isNotEmpty) 'compReasonName': compReasonName,
       if (compLineIndex != null) 'compLineIndex': compLineIndex,
       if (compQty != null) 'compQty': compQty,
       if (receiptNumber.isNotEmpty) 'receiptNumber': receiptNumber,
+      if (serverReceipt) 'serverReceipt': true,
+      if (serverReceiptConfirmed) 'serverReceiptConfirmed': true,
       if (tempReference.isNotEmpty) 'tempReference': tempReference,
       if (offers.isNotEmpty) 'offers': offers,
       'subtotal': subtotal,
@@ -1941,6 +1955,8 @@ class OrderSnapshot {
     String? discountAmountType,
     String? discountReason,
     String? receiptNumber,
+    bool? serverReceipt,
+    bool? serverReceiptConfirmed,
     String? tempReference,
     List<Map<String, dynamic>>? offers,
     int? loyaltyRedeemRuleId,
@@ -1993,6 +2009,9 @@ class OrderSnapshot {
       discountAmountType: discountAmountType ?? this.discountAmountType,
       discountReason: discountReason ?? this.discountReason,
       receiptNumber: receiptNumber ?? this.receiptNumber,
+      serverReceipt: serverReceipt ?? this.serverReceipt,
+      serverReceiptConfirmed:
+          serverReceiptConfirmed ?? this.serverReceiptConfirmed,
       tempReference: tempReference ?? this.tempReference,
       offers: offers ?? this.offers,
       loyaltyRedeemRuleId: loyaltyRedeemRuleId ?? this.loyaltyRedeemRuleId,
@@ -2056,8 +2075,14 @@ class OrderSnapshot {
 
   /// P-F8 — what receipts/tickets/history show: the merchant's sequential
   /// number when one was allocated, else the device-local '#N'.
-  String get displayOrderNumber =>
-      receiptNumber.isNotEmpty ? receiptNumber : '#$orderNumber';
+  String get displayOrderNumber => receiptNumber.isNotEmpty
+      ? receiptNumber
+      : serverReceipt
+      ? tempReference
+      : '#$orderNumber';
+
+  bool get receiptPending =>
+      serverReceipt && !serverReceiptConfirmed && receiptNumber.isEmpty;
 
   String? get staffReference => receiptNumber.isNotEmpty
       ? receiptNumber
@@ -2171,33 +2196,55 @@ class DiningTableSession {
       paidAt: paidAt ?? this.paidAt,
       draft: clearDraft ? null : (draft ?? this.draft),
       paidSnapshot: paidSnapshot ?? this.paidSnapshot,
-      primaryTableId: clearPrimary ? null : (primaryTableId ?? this.primaryTableId),
+      primaryTableId: clearPrimary
+          ? null
+          : (primaryTableId ?? this.primaryTableId),
       linkedTableIds: linkedTableIds ?? this.linkedTableIds,
       seatingKey: clearSeating ? null : (seatingKey ?? this.seatingKey),
       seatingUuid: clearSeating ? null : (seatingUuid ?? this.seatingUuid),
       seatingState: clearSeating ? null : (seatingState ?? this.seatingState),
-      serverOrderUuid: clearSeating ? null : (serverOrderUuid ?? this.serverOrderUuid),
-      tempReference: clearSeating ? null : (tempReference ?? this.tempReference),
-      winnerSeatingUuid: clearSeating ? null : (winnerSeatingUuid ?? this.winnerSeatingUuid),
+      serverOrderUuid: clearSeating
+          ? null
+          : (serverOrderUuid ?? this.serverOrderUuid),
+      tempReference: clearSeating
+          ? null
+          : (tempReference ?? this.tempReference),
+      winnerSeatingUuid: clearSeating
+          ? null
+          : (winnerSeatingUuid ?? this.winnerSeatingUuid),
       lastVerdict: clearSeating ? null : (lastVerdict ?? this.lastVerdict),
-      lastVerdictAt: clearSeating ? null : (lastVerdictAt ?? this.lastVerdictAt),
+      lastVerdictAt: clearSeating
+          ? null
+          : (lastVerdictAt ?? this.lastVerdictAt),
     );
   }
 
   Map<String, dynamic> toMap() => {
-    'tableId': tableId, 'floorId': floorId, 'status': status.storageValue,
-    'orderNumber': orderNumber, 'orderReference': orderReference,
+    'tableId': tableId,
+    'floorId': floorId,
+    'status': status.storageValue,
+    'orderNumber': orderNumber,
+    'orderReference': orderReference,
     'updatedAt': updatedAt.toIso8601String(),
-    'occupiedAt': occupiedAt?.toIso8601String(), 'paidAt': paidAt?.toIso8601String(),
-    'draft': draft?.toMap(), 'paidSnapshot': paidSnapshot?.toMap(),
-    'primaryTableId': primaryTableId, 'linkedTableIds': linkedTableIds,
-    'seatingKey': seatingKey, 'seatingUuid': seatingUuid, 'seatingState': seatingState,
-    'serverOrderUuid': serverOrderUuid, 'tempReference': tempReference,
-    'winnerSeatingUuid': winnerSeatingUuid, 'lastVerdict': lastVerdict,
+    'occupiedAt': occupiedAt?.toIso8601String(),
+    'paidAt': paidAt?.toIso8601String(),
+    'draft': draft?.toMap(),
+    'paidSnapshot': paidSnapshot?.toMap(),
+    'primaryTableId': primaryTableId,
+    'linkedTableIds': linkedTableIds,
+    'seatingKey': seatingKey,
+    'seatingUuid': seatingUuid,
+    'seatingState': seatingState,
+    'serverOrderUuid': serverOrderUuid,
+    'tempReference': tempReference,
+    'winnerSeatingUuid': winnerSeatingUuid,
+    'lastVerdict': lastVerdict,
     'lastVerdictAt': lastVerdictAt?.toIso8601String(),
   };
 
-  factory DiningTableSession.fromMap(Map<String, dynamic> map) => DiningTableSession(
+  factory DiningTableSession.fromMap(
+    Map<String, dynamic> map,
+  ) => DiningTableSession(
     tableId: map['tableId']?.toString() ?? '',
     floorId: map['floorId']?.toString() ?? '',
     status: DiningTableStatusLabel.fromStorage(map['status']?.toString()),
@@ -2206,13 +2253,24 @@ class DiningTableSession {
     updatedAt: DateTime.parse(map['updatedAt'] as String),
     occupiedAt: DateTime.tryParse(map['occupiedAt']?.toString() ?? ''),
     paidAt: DateTime.tryParse(map['paidAt']?.toString() ?? ''),
-    draft: map['draft'] is Map ? OrderSessionDraft.fromMap(Map<String, dynamic>.from(map['draft'] as Map)) : null,
-    paidSnapshot: map['paidSnapshot'] is Map ? OrderSnapshot.fromMap(Map<String, dynamic>.from(map['paidSnapshot'] as Map)) : null,
+    draft: map['draft'] is Map
+        ? OrderSessionDraft.fromMap(
+            Map<String, dynamic>.from(map['draft'] as Map),
+          )
+        : null,
+    paidSnapshot: map['paidSnapshot'] is Map
+        ? OrderSnapshot.fromMap(
+            Map<String, dynamic>.from(map['paidSnapshot'] as Map),
+          )
+        : null,
     primaryTableId: map['primaryTableId'] as String?,
     linkedTableIds: (map['linkedTableIds'] as List? ?? const []).cast<String>(),
-    seatingKey: map['seatingKey'] as String?, seatingUuid: map['seatingUuid'] as String?,
-    seatingState: map['seatingState'] as String?, serverOrderUuid: map['serverOrderUuid'] as String?,
-    tempReference: map['tempReference'] as String?, winnerSeatingUuid: map['winnerSeatingUuid'] as String?,
+    seatingKey: map['seatingKey'] as String?,
+    seatingUuid: map['seatingUuid'] as String?,
+    seatingState: map['seatingState'] as String?,
+    serverOrderUuid: map['serverOrderUuid'] as String?,
+    tempReference: map['tempReference'] as String?,
+    winnerSeatingUuid: map['winnerSeatingUuid'] as String?,
     lastVerdict: map['lastVerdict'] as String?,
     lastVerdictAt: DateTime.tryParse(map['lastVerdictAt']?.toString() ?? ''),
   );
@@ -2270,8 +2328,9 @@ class OrderHistoryRecord {
     final total = omr('grand_total_baisas');
     final rawSubtotal = omr('subtotal_baisas');
     final discountAmount = omr('discount_total_baisas');
-    final subtotal =
-        (rawSubtotal - discountAmount).clamp(0.0, double.infinity).toDouble();
+    final subtotal = (rawSubtotal - discountAmount)
+        .clamp(0.0, double.infinity)
+        .toDouble();
 
     final compFields = <String, dynamic>{};
     final rawComps = json['comps'];
@@ -2280,9 +2339,8 @@ class OrderHistoryRecord {
         if (raw['is_gift'] == true || raw['comp_reason_id'] == null) continue;
         compFields.addAll(<String, dynamic>{
           'compReasonId': (raw['comp_reason_id'] as num?)?.toInt(),
-          'compReasonName': raw['reason_name']?.toString() ??
-              raw['note']?.toString() ??
-              '',
+          'compReasonName':
+              raw['reason_name']?.toString() ?? raw['note']?.toString() ?? '',
           'compLineIndex': (raw['line_index'] as num?)?.toInt(),
           'compQty': (raw['qty'] as num?)?.toInt(),
         });
@@ -2292,28 +2350,32 @@ class OrderHistoryRecord {
 
     final items = ((json['items'] as List?) ?? const [])
         .whereType<Map>()
-        .map((raw) => <String, dynamic>{
-              'name': raw['product_name']?.toString() ?? 'Item',
-              'qty': (raw['qty'] as num?)?.toDouble() ?? 0,
-              'lineTotal':
-                  ((raw['line_total_baisas'] as num?)?.toDouble() ?? 0) / 1000.0,
-              'notes': raw['notes']?.toString() ?? '',
-              // Phase C1 — the server's add-ons, mapped to the CartItem
-              // modifier shape so kitchen-ticket reprints of cross-device
-              // orders show them (the server sends no group label).
-              'modifiers': ((raw['addons'] as List?) ?? const [])
-                  .whereType<Map>()
-                  .map((addon) => <String, dynamic>{
-                        'id': 'addon_${addon['add_on_id']}',
-                        'group': '',
-                        'label': addon['add_on_name']?.toString() ?? '',
-                        'price':
-                            ((addon['price_delta_baisas'] as num?)?.toDouble() ??
-                                    0) /
-                                1000.0,
-                      })
-                  .toList(),
-            })
+        .map(
+          (raw) => <String, dynamic>{
+            'name': raw['product_name']?.toString() ?? 'Item',
+            'qty': (raw['qty'] as num?)?.toDouble() ?? 0,
+            'lineTotal':
+                ((raw['line_total_baisas'] as num?)?.toDouble() ?? 0) / 1000.0,
+            'notes': raw['notes']?.toString() ?? '',
+            // Phase C1 — the server's add-ons, mapped to the CartItem
+            // modifier shape so kitchen-ticket reprints of cross-device
+            // orders show them (the server sends no group label).
+            'modifiers': ((raw['addons'] as List?) ?? const [])
+                .whereType<Map>()
+                .map(
+                  (addon) => <String, dynamic>{
+                    'id': 'addon_${addon['add_on_id']}',
+                    'group': '',
+                    'label': addon['add_on_name']?.toString() ?? '',
+                    'price':
+                        ((addon['price_delta_baisas'] as num?)?.toDouble() ??
+                            0) /
+                        1000.0,
+                  },
+                )
+                .toList(),
+          },
+        )
         .toList();
 
     final snapshot = OrderSnapshot.fromMap(<String, dynamic>{
@@ -2341,8 +2403,8 @@ class OrderHistoryRecord {
       'tempReference': json['temp_reference']?.toString() ?? '',
       // P-G7 — provider linkage for delivery orders (null otherwise).
       if (json['delivery'] is Map) ...{
-        'deliveryProviderId':
-            ((json['delivery'] as Map)['provider_id'] as num?)?.toInt(),
+        'deliveryProviderId': ((json['delivery'] as Map)['provider_id'] as num?)
+            ?.toInt(),
         'deliveryProviderName':
             (json['delivery'] as Map)['provider_name']?.toString() ?? '',
         'deliveryReference':
@@ -2355,7 +2417,8 @@ class OrderHistoryRecord {
       orderNumber: serverId,
       orderType: OrderTypeLabel.fromStorage(orderTypeStr),
       createdAt:
-          DateTime.tryParse(json['opened_at']?.toString() ?? '') ?? DateTime.now(),
+          DateTime.tryParse(json['opened_at']?.toString() ?? '') ??
+          DateTime.now(),
       snapshot: snapshot,
       fromServer: true,
     );

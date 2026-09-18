@@ -29,7 +29,26 @@ class _Store extends LocalOrderStorageService {
   @override
   Future<List<HeldOrderRecord>> loadHeldOrders() async => [];
   @override
-  Future<List<OrderHistoryRecord>> loadOrderHistory() async => [];
+  Future<List<OrderHistoryRecord>> loadOrderHistory() async =>
+      List.of(receipts);
+  final receipts = <OrderHistoryRecord>[];
+  @override
+  Future<void> saveCompletedOrder(OrderSnapshot snapshot) async {
+    receipts.add(
+      OrderHistoryRecord(
+        id: snapshot.serverOrderUuid,
+        orderNumber: snapshot.orderNumber,
+        orderType: OrderTypeLabel.fromStorage(snapshot.orderType),
+        createdAt: DateTime.now(),
+        snapshot: snapshot,
+      ),
+    );
+  }
+
+  @override
+  Future<void> updateCompletedOrder(OrderHistoryRecord record) async {
+    receipts[receipts.indexWhere((r) => r.id == record.id)] = record;
+  }
 }
 
 class _Outbox implements OrderSyncRepository {

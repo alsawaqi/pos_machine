@@ -1,3 +1,4 @@
+import '../services/server_receipt_history.dart';
 import 'dart:async';
 import 'dart:ui' show Locale;
 
@@ -696,6 +697,8 @@ class PosController extends ChangeNotifier
   /// outbox so the order reaches pos_api. Fire-and-forget — it must never block
   /// or fail order completion.
   void Function(OrderSnapshot snapshot)? onOrderCompleted;
+  String? Function()? canonicalDiningBillUuid;
+  Future<OrderSnapshot> Function(OrderSnapshot)? refreshServerReceipt;
 
   /// Phase 3C — invoked for each advertising-slide play reported by the
   /// customer screen, carrying a ready-to-push `slider.display` sync event
@@ -3118,7 +3121,8 @@ class PosController extends ChangeNotifier
     // number ONCE per order (the first tender of a split wins), short-fused
     // so an offline/slow till never stalls the sale — the fallback is the
     // device-local number (receiptNumber stays '').
-    if (orderNumbering.enabled &&
+    if (!(isDineInPayment && isLiveSharedTable?.call() == true) &&
+        orderNumbering.enabled &&
         receiptNumber.isEmpty &&
         allocateReceiptNumber != null) {
       try {
@@ -3572,11 +3576,14 @@ class PosController extends ChangeNotifier
     // push share it — a later full-cancel can then emit a matching order.void.
     // A cart resumed from hold keeps its mirror's uuid (Phase C2), so the
     // server upserts the held row open instead of duplicating it.
-    final completedSnapshot = snapshot().copyWith(
+    final serverOwned = isDineInPayment && isLiveSharedTable?.call() == true;
+    var completedSnapshot = snapshot().copyWith(
       serverOrderUuid: _activeServerOrderUuid ?? uuidV4(),
+      serverReceipt: serverOwned,
+      receiptNumber: serverOwned ? '' : receiptNumber,
+      tempReference: serverOwned ? currentOrderReference : '',
     );
-    _activeServerOrderUuid = null;
-    if (printReceipts) {
+    if (printReceipts && !serverOwned) {
       // Fail-safe: a printer error must never abort the local save or the
       // pos_api push below — it only surfaces a staff alert (Phase G4).
       final ok = await SunmiReceiptService.printReceipt(
@@ -3589,6 +3596,18 @@ class PosController extends ChangeNotifier
         isDineInPayment &&
         await (onDiningTableFinalRound?.call(completedSnapshot) ??
             Future<bool>.value(false));
+    if (serverOwned) {
+      final canonical =
+          canonicalDiningBillUuid?.call() ??
+          diningSessionFor(activeDiningTableId ?? '')?.serverOrderUuid ??
+          _activeServerOrderUuid;
+      if (canonical != null && canonical.isNotEmpty) {
+        completedSnapshot = completedSnapshot.copyWith(
+          serverOrderUuid: canonical,
+        );
+      }
+    }
+    _activeServerOrderUuid = null;
     if (printKitchenTickets && !tableRoundHandled) {
       // Phase C1 — the kitchen copy: items + add-ons + notes, no prices. The
       // service itself swallows printer errors.
@@ -3603,6 +3622,20 @@ class PosController extends ChangeNotifier
     onOrderCompleted?.call(completedSnapshot);
     if (isDineInPayment) {
       await _markActiveDiningTablePaid(completedSnapshot);
+    }
+    if (serverOwned && refreshServerReceipt != null) {
+      try {
+        completedSnapshot = await refreshServerReceipt!(completedSnapshot);
+      } catch (_) {
+        /* Durable provisional copy remains on lost ACK. */
+      }
+    }
+    if (printReceipts && serverOwned) {
+      final ok = await SunmiReceiptService.printReceipt(
+        completedSnapshot,
+        template: receiptTemplate,
+      );
+      if (!ok) _reportPrintFailure('receipt');
     }
 
     // #3 — decrement finite shelf stock (unit/cooked) locally before the cart
@@ -4051,7 +4084,11 @@ class PosController extends ChangeNotifier
 
   Future<void> _saveCompletedOrder(OrderSnapshot completedSnapshot) async {
     try {
-      await _orderStorage.saveCompletedOrder(completedSnapshot);
+      if (completedSnapshot.serverReceipt) {
+        await ServerReceiptHistory(_orderStorage).record(completedSnapshot);
+      } else {
+        await _orderStorage.saveCompletedOrder(completedSnapshot);
+      }
       await refreshOrderHistory();
     } catch (error) {
       debugPrint('Failed to save completed order: $error');

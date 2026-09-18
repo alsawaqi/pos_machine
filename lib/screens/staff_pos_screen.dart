@@ -1,3 +1,5 @@
+import '../qr_checkout/qr_checkout_receipt.dart';
+import '../services/server_receipt_history.dart';
 import '../services/table_round_validation.dart';
 import '../services/qr_settlement_coordinator.dart' show PreparedQrLocation;
 import 'dart:async';
@@ -1236,6 +1238,25 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // The shadow feed still projects tables/printing but cannot ring twice.
     _qrRoundAutoPrintController = ref.read(qrRoundAutoPrintControllerProvider);
     controller.onOrderCompleted = _handleOrderCompleted;
+    controller.canonicalDiningBillUuid = () => _tableKitchen?.coordinator
+        .cachedSession(controller.activeDiningTableId ?? '')
+        ?.serverOrderUuid;
+    controller.refreshServerReceipt = (snapshot) async {
+      try {
+        await ref
+            .read(tableSyncCoordinatorProvider)
+            .settled
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {
+        /* The durable outbox retains the event for normal retry. */
+      }
+      final history = ServerReceiptHistory(
+        debugOrderStorageOverride ?? LocalOrderStorageService.instance,
+      );
+      final current = await history.find(snapshot.serverOrderUuid);
+      await controller.refreshOrderHistory();
+      return current ?? snapshot;
+    };
     // Phase 3C — push advertising-slide play-time telemetry (best-effort).
     controller.onSliderDisplay = (event) => unawaited(
       ref
@@ -7089,6 +7110,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       checkout = QrCheckoutController(
         gateway: gateway,
         store: store,
+        projectReceipt: (snapshot, attempt) => projectMachineCheckoutReceipt(
+          ServerReceiptHistory(
+            debugOrderStorageOverride ?? LocalOrderStorageService.instance,
+          ),
+          snapshot,
+          attempt,
+        ),
         authorizeGift: () async {
           if (!mounted ||
               !await _authorizeManager(

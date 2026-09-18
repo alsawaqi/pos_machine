@@ -1,3 +1,4 @@
+import 'server_receipt_history.dart';
 import 'package:mithqal_softpos/mithqal_softpos.dart';
 import 'dart:convert';
 
@@ -9,10 +10,15 @@ import 'kitchen_ticket.dart';
 import 'shift_summary.dart';
 
 class SunmiReceiptService {
-  static Future<bool> printReversalSlip(List<SlipLine> lines) =>
-      _printLines([for (final line in lines)
-        KitchenTicketLine(line.text, bold: line.bold, center: true,
-          fontSize: line.large ? 32 : 24)]);
+  static Future<bool> printReversalSlip(List<SlipLine> lines) => _printLines([
+    for (final line in lines)
+      KitchenTicketLine(
+        line.text,
+        bold: line.bold,
+        center: true,
+        fontSize: line.large ? 32 : 24,
+      ),
+  ]);
 
   /// Phase G4 — false once a print hit MissingPluginException (non-Sunmi /
   /// dev hardware: there IS no printer). Callers use it to stay silent on
@@ -51,7 +57,10 @@ class SunmiReceiptService {
   /// Phase G4 — NEVER throws; returns false on a printer failure so callers
   /// can alert staff (paper out / cover open) without ever blocking the sale.
   /// MissingPluginException (dev hardware) is a silent false.
-  static Future<bool> printReceipt(OrderSnapshot order, {ReceiptTemplate? template}) async {
+  static Future<bool> printReceipt(
+    OrderSnapshot order, {
+    ReceiptTemplate? template,
+  }) async {
     try {
       await _printReceiptBody(order, template: template);
       return true;
@@ -64,7 +73,10 @@ class SunmiReceiptService {
     }
   }
 
-  static Future<void> _printReceiptBody(OrderSnapshot order, {ReceiptTemplate? template}) async {
+  static Future<void> _printReceiptBody(
+    OrderSnapshot order, {
+    ReceiptTemplate? template,
+  }) async {
     final orderType = OrderTypeLabel.fromStorage(order.orderType).label;
     final t = (template != null && !template.isEmpty) ? template : null;
 
@@ -75,7 +87,8 @@ class SunmiReceiptService {
       await _printLogo(t!.logoBase64!);
     }
 
-    final headerName = t?.businessName ?? (t?.logoBase64 == null ? 'MITHQAL 2.0' : null);
+    final headerName =
+        t?.businessName ?? (t?.logoBase64 == null ? 'MITHQAL 2.0' : null);
     if (headerName != null) {
       await SunmiPrinter.printText(
         headerName,
@@ -94,22 +107,47 @@ class SunmiReceiptService {
         );
       }
       for (final line in t.headerLines) {
-        await SunmiPrinter.printText(line, style: SunmiTextStyle(align: SunmiPrintAlign.CENTER));
+        await SunmiPrinter.printText(
+          line,
+          style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
+        );
       }
       if (t.address != null) {
-        await SunmiPrinter.printText(t.address!, style: SunmiTextStyle(align: SunmiPrintAlign.CENTER));
+        await SunmiPrinter.printText(
+          t.address!,
+          style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
+        );
       }
       if (t.phone != null) {
-        await SunmiPrinter.printText('Tel: ${t.phone}', style: SunmiTextStyle(align: SunmiPrintAlign.CENTER));
+        await SunmiPrinter.printText(
+          'Tel: ${t.phone}',
+          style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
+        );
       }
       if (t.crNumber != null) {
-        await SunmiPrinter.printText('CR No.: ${t.crNumber}', style: SunmiTextStyle(align: SunmiPrintAlign.CENTER));
+        await SunmiPrinter.printText(
+          'CR No.: ${t.crNumber}',
+          style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
+        );
       }
       if (t.vatNumber != null) {
-        await SunmiPrinter.printText('VAT No.: ${t.vatNumber}', style: SunmiTextStyle(align: SunmiPrintAlign.CENTER));
+        await SunmiPrinter.printText(
+          'VAT No.: ${t.vatNumber}',
+          style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
+        );
       }
     }
 
+    if (order.receiptPending) {
+      await SunmiPrinter.printText(
+        pendingReceiptEn,
+        style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.CENTER),
+      );
+      await SunmiPrinter.printText(
+        pendingReceiptAr,
+        style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.CENTER),
+      );
+    }
     await SunmiPrinter.printText(
       '$orderType Receipt',
       style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.CENTER),
@@ -233,7 +271,10 @@ class SunmiReceiptService {
     if (t != null && t.footerLines.isNotEmpty) {
       await SunmiPrinter.lineWrap(1);
       for (final line in t.footerLines) {
-        await SunmiPrinter.printText(line, style: SunmiTextStyle(align: SunmiPrintAlign.CENTER));
+        await SunmiPrinter.printText(
+          line,
+          style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
+        );
       }
     }
 
@@ -265,8 +306,9 @@ class SunmiReceiptService {
   static Future<bool> _printLines(List<KitchenTicketLine> lines) async {
     try {
       for (final line in lines) {
-        final align =
-            line.center ? SunmiPrintAlign.CENTER : SunmiPrintAlign.LEFT;
+        final align = line.center
+            ? SunmiPrintAlign.CENTER
+            : SunmiPrintAlign.LEFT;
         await SunmiPrinter.printText(
           line.text,
           style: line.fontSize == null

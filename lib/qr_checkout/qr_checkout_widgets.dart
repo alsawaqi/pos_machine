@@ -93,6 +93,10 @@ String checkoutText(BuildContext context, String key) {
     'unknown': ('Result unknown', 'النتيجة غير معروفة'),
     'recovery_link': ('Payment recovery', 'تسوية دفعة معلّقة'),
     'attention': ('Payment needs a manager', 'الدفع يحتاج إلى مشرف'),
+    'provisional': (
+      'PAYMENT PENDING — NOT A FINAL RECEIPT',
+      'الدفع قيد التحقق — ليس إيصالاً نهائياً',
+    ),
     'receipt': ('Receipt', 'الإيصال'),
     'history_receipt': (
       'The receipt is stored with the server order.',
@@ -265,6 +269,11 @@ class _QrCheckoutBoundaryState extends State<QrCheckoutBoundary> {
                 checkoutText(context, notice),
                 textAlign: TextAlign.center,
               ),
+            ),
+          if (controller.phase == CheckoutPhase.pending)
+            Text(
+              checkoutText(context, 'provisional'),
+              key: const ValueKey('qr-receipt-provisional'),
             ),
           if (controller.phase == CheckoutPhase.paid) ...[
             const SizedBox(height: 16),

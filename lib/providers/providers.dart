@@ -1,3 +1,4 @@
+import '../services/server_receipt_history.dart';
 import 'dart:async';
 import 'dart:ui' show Locale;
 
@@ -281,6 +282,11 @@ final orderSyncRepositoryProvider = Provider<OrderSyncRepository>((ref) {
     mutationGuard: () =>
         (debugOrderStorageOverride ?? LocalOrderStorageService.instance)
             .assertNoPendingCombine(),
+  );
+  repository.addAckListener(
+    ServerReceiptHistory(
+      debugOrderStorageOverride ?? LocalOrderStorageService.instance,
+    ).acknowledge,
   );
   ref.onDispose(repository.dispose);
   return repository;
