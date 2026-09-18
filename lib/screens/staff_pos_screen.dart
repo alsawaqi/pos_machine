@@ -13264,7 +13264,12 @@ class _DiningTableCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
-    final staffOpened = const {'main_pos', 'handheld'}.contains(remote?.origin);
+    final staffOpened = const {
+      'main_pos',
+      'handheld',
+      'staff_till',
+      'staff_handheld',
+    }.contains(remote?.origin);
     final occupiedLabel = staffOpened
         ? (Localizations.localeOf(context).languageCode == 'ar'
               ? 'مشغولة · فتحها الموظف'
