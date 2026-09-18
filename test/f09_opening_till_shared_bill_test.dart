@@ -1,3 +1,7 @@
+import 'package:flutter/material.dart';
+import 'package:pos_machine/dine_in/dine_in_controller.dart';
+import 'package:pos_machine/dine_in/dine_in_models.dart';
+import 'unified_dine_in_test.dart' show TableFake, TableMemory, tableFixture;
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -37,6 +41,27 @@ class _Coordinator extends WorkspaceTableCoordinator {
   void onTableDraftPersisted(DiningTableSession session) {}
   @override
   void onTableOccupied(DiningTableSession session) {}
+}
+
+class _ReviewGateway extends TableFake {
+  @override
+  Future<void> review(
+    DineInDetail detail,
+    Map<String, dynamic> round,
+    bool accept,
+  ) async {
+    await super.review(detail, round, accept);
+    (value['rounds'] as List).last['status'] = accept ? 'accepted' : 'rejected';
+    if (accept) {
+      (value['bill'] as Map)['grand_total_baisas'] = 5250;
+      (value['bill'] as Map)['items'].add({
+        'id': 100,
+        'product_name': 'Water',
+        'qty': 1,
+        'line_total_baisas': 500,
+      });
+    }
+  }
 }
 
 void main() {
@@ -157,6 +182,44 @@ void main() {
           final screen = tester.widget<DineInScreen>(find.byType(DineInScreen));
           expect(screen.localDraftBlocked, isFalse);
           expect(screen.localDraftBlockedNow!(), isFalse);
+          // Exercise the editor with exactly the admission flags produced by
+          // the real opening-till host. Only HTTP/storage are memory adapters.
+          final gateway = _ReviewGateway()
+            ..value = tableFixture(selected: 3, pending: true);
+          final shared = DineInController(gateway, TableMemory(), 3);
+          final paid = <String>[];
+          unawaited(
+            Navigator.of(
+              tester.element(find.byType(StaffPosScreen)),
+            ).push<void>(
+              MaterialPageRoute(
+                builder: (_) => DineInScreen(
+                  createController: () async => shared,
+                  catalogue: () => [],
+                  label: 'Table 3',
+                  localDraftBlocked: screen.localDraftBlocked,
+                  localDraftBlockedNow: screen.localDraftBlockedNow,
+                  onPay: (uuid) async => paid.add(uuid),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final confirm = find.byKey(const ValueKey('dine-confirm-8'));
+          expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
+          expect(shared.canPay, isFalse);
+          await tester.ensureVisible(confirm);
+          await tester.tap(confirm);
+          await tester.pumpAndSettle();
+          expect(gateway.calls, contains('review:customer:8:true'));
+          expect(shared.canPay, isTrue);
+          expect(find.textContaining('5.250'), findsWidgets);
+          final pay = find.byKey(const ValueKey('dine-pay'));
+          expect(tester.widget<FilledButton>(pay).onPressed, isNotNull);
+          await tester.ensureVisible(pay);
+          await tester.tap(pay);
+          await tester.pumpAndSettle();
+          expect(paid, ['bill-1']);
         }
         // The server workspace is a projection: never discard the local evidence.
         expect(controller.cart.single.qty, unsent ? 2 : 1);

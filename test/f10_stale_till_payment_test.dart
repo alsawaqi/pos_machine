@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:pos_machine/models/remote_table_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,11 +70,14 @@ void main() {
         final storage = FakeOrderStorage();
         debugOrderStorageOverride = storage;
         final api = _Api(offline);
+        final boards = StreamController<RemoteTableSnapshot>.broadcast();
+        addTearDown(boards.close);
         await pumpWorkspaceMachine(
           tester,
           mode: 'live',
           toggle: false,
           api: api,
+          boards: boards.stream,
           wrapStaff: (child) => MediaQuery(
             data: const MediaQueryData(textScaler: TextScaler.linear(0.8)),
             child: child,
@@ -104,6 +109,49 @@ void main() {
         controller.onDiningTableFinalRound = (_) async => true;
         controller.diningTableSyncHooks = null;
         controller.onOrderCompleted = null;
+        if (!offline) {
+          final at = DateTime.utc(2026, 9, 18);
+          controller.diningTableSessions = [
+            DiningTableSession(
+              tableId: '3',
+              floorId: '1',
+              status: DiningTableStatus.occupied,
+              orderReference: controller.currentOrderReference,
+              occupiedAt: at,
+              updatedAt: at,
+              seatingUuid: '22222222-2222-4222-8222-222222222222',
+              serverOrderUuid: controller.activeDiningTableBillUuid,
+              draft: controller.createDraft(),
+            ),
+          ];
+          boards.add(
+            RemoteTableSnapshot(
+              tables: {
+                3: RemoteTableState(tableId: 3, fetchedAt: DateTime.now()),
+              },
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+          expect(
+            find.textContaining('paid or closed elsewhere'),
+            findsOneWidget,
+          );
+          final dynamic pay = tester.widget(
+            find.byWidgetPredicate(
+              (w) => w.runtimeType.toString() == '_PayButton',
+            ),
+          );
+          expect(pay.enabled, isFalse);
+          expect(
+            tester
+                .widget<FilledButton>(
+                  find.byKey(const ValueKey('table-send-to-kitchen')),
+                )
+                .onPressed,
+            isNull,
+          );
+        }
         final before = controller.cart.length;
         final payment = controller.payAndPrint(cashTenderedAmount: 1);
         for (var tick = 0; tick < 5; tick++) {

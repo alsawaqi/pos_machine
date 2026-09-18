@@ -3149,8 +3149,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   ]);
 
   bool _tableDraftBlocks(String id) {
-    if (controller.recoveryBlocked || _pendingTableIds.contains(id))
+    if (controller.recoveryBlocked || _pendingTableIds.contains(id)) {
       return true;
+    }
     final local = _tableDraft(id);
     if (local == null ||
         local.status == DiningTableStatus.paid ||
