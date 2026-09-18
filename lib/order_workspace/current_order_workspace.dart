@@ -175,6 +175,7 @@ class CurrentOrderWorkspace extends ChangeNotifier {
         (dineIn
             ? WorkspaceBill({
                 'uuid': 'unsent-table-display',
+                'temp_reference': tableLabel,
                 'order_type': 'dine_in',
                 'grand_total_baisas': 0,
                 'subtotal_baisas': 0,
