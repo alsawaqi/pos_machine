@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'recovery_controller.dart';
 import 'recovery_models.dart';
+import 'recovery_admission.dart';
 
 class RecoveryScreen extends StatefulWidget {
   const RecoveryScreen({
@@ -129,7 +130,8 @@ class _RecoveryScreenState extends State<RecoveryScreen>
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              if (controller == null || controller.busy)
+              if ((controller == null && setupError == null) ||
+                  controller?.busy == true)
                 const LinearProgressIndicator(),
               Text(
                 t(
@@ -139,7 +141,10 @@ class _RecoveryScreenState extends State<RecoveryScreen>
               ),
               if (setupError != null || controller?.error != null)
                 Text(
-                  setupError ?? controller!.error!,
+                  recoveryMessage(
+                    setupError ?? controller!.error!,
+                    arabic: widget.arabic,
+                  ),
                   key: const ValueKey('draft-recovery-error'),
                 ),
               if (local != null)

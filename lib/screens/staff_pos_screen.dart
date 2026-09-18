@@ -11,6 +11,8 @@ import '../bill_combine/combine_screen.dart';
 import '../bill_combine/combine_store.dart';
 import '../bill_combine/combine_models.dart';
 import '../draft_recovery/recovery_admission.dart';
+import '../draft_recovery/checkout_recovery.dart';
+import '../draft_recovery/checkout_recovery_dialog.dart';
 import '../draft_recovery/recovery_controller.dart';
 import '../draft_recovery/recovery_gateway.dart';
 import '../draft_recovery/recovery_local.dart';
@@ -3528,6 +3530,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               await RecoveryStore.assertNoCombine(db);
               await assertRecoveryJournalsIdle(
                 checkout: checkout.db,
+                currentScope: gateway.scope,
                 dineIn: rounds.db,
                 quick: quick.database,
               );
@@ -8636,6 +8639,51 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// actions (close shift, expense, restock, stock count, shift summary).
   /// The screen pops an action key so the flows keep running with this
   /// screen's controller/session context.
+  Future<void> _openCheckoutRecovery() async {
+    final api = ref.read(apiServiceProvider),
+        session = ref.read(sessionServiceProvider);
+    String scope() => quickDeviceScope(
+      api.quickOrderBaseUrl,
+      session.companyId,
+      session.branchId,
+      session.kioskId,
+    );
+    final captured = scope();
+    try {
+      final checkout = await SqliteCheckoutStore.open(captured);
+      if (!mounted || scope() != captured) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => CheckoutRecoveryDialog(
+          recovery: CheckoutRecovery(checkout.db, scope),
+          staffId: session.staff?.id ?? 0,
+          arabic: ref.read(settingsControllerProvider).language == 'ar',
+          authorize: () async {
+            _orderPreparations.assertIdle();
+            await controller.assertIdleForCombine();
+            if (!mounted || _normalQrCheckoutOpen || _showPaymentPage) {
+              return false;
+            }
+            return _authorizeManager(subtitle: 'Archive old reservation');
+          },
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              recoveryMessage(
+                e,
+                arabic: ref.read(settingsControllerProvider).language == 'ar',
+              ),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _openSettings() async {
     final action = await Navigator.of(context).push<String>(
       MaterialPageRoute(
@@ -8644,6 +8692,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
     if (!mounted || action == null) return;
     switch (action) {
+      case 'checkout_recovery':
+        await _openCheckoutRecovery();
       case 'close_shift':
         // Closing a shift always ends the session (same policy as the
         // logout sheet) — the next staff member opens their own shift.
