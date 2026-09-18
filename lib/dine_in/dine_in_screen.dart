@@ -647,6 +647,11 @@ class _DineInScreenState extends State<DineInScreen>
               .fold<int>(0, (sum, r) => sum + (r['tax_baisas'] as int? ?? 0)) ??
           0,
       notices: [
+        if ((widget.localDraftBlockedNow?.call() ?? widget.localDraftBlocked) ||
+            c?.hasLocalConflict == true)
+          widget.arabic
+              ? 'أكمل إرسال أو إزالة الأصناف المحلية ومزامنتها، ثم أعد فتح الفاتورة.'
+              : 'Send or remove unsent local items and finish sync, then reopen the bill.',
         if (detail?.pendingReview == true)
           widget.arabic
               ? 'إجمالي تقديري — الجولة بانتظار التأكيد'

@@ -43,7 +43,7 @@ class _Outbox implements OrderSyncRepository {
       throw StateError('Unexpected outbox operation: ${invocation.memberName}');
 }
 
-class _Coordinator implements TableSyncCoordinator {
+class WorkspaceTableCoordinator implements TableSyncCoordinator {
   @override
   void Function(List<Map<String, dynamic>> lines)? validateRound;
   @override
@@ -142,6 +142,8 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
   required CatalogSnapshot catalog,
   AudienceService? audience,
   PosApiService? api,
+  TableSyncCoordinator? coordinator,
+  Stream<RemoteTableSnapshot>? boards,
   bool? audienceConsent,
   Widget Function(Widget child)? wrapStaff,
 }) async {
@@ -186,10 +188,12 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
         ),
         tableSessionsModeProvider.overrideWithValue(mode),
         orderSyncRepositoryProvider.overrideWithValue(_Outbox()),
-        tableSyncCoordinatorProvider.overrideWithValue(_Coordinator()),
+        tableSyncCoordinatorProvider.overrideWithValue(
+          coordinator ?? WorkspaceTableCoordinator(),
+        ),
         tableShadowRepositoryProvider.overrideWithValue(_Shadow()),
         remoteBoardProvider.overrideWith(
-          (ref) => Stream.value(const RemoteTableSnapshot()),
+          (ref) => boards ?? Stream.value(const RemoteTableSnapshot()),
         ),
         tableActivityNoticeProvider.overrideWith((ref) => const Stream.empty()),
         tableShadowConfigProvider.overrideWith((ref) => Stream.value(null)),

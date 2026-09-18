@@ -1034,6 +1034,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         });
         _applyAudienceGate();
         if (quick && workspace.returnToList) unawaited(_openQuickOrders());
+        if (tableLabel != null && controller.activeDiningTableId != null) {
+          unawaited(controller.returnToDiningFloorPlan());
+        }
       },
     )..addListener(_workspaceChanged);
     setState(() {
@@ -2412,6 +2415,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         : ref.watch(remoteBoardProvider).asData?.value ??
               const RemoteTableSnapshot();
     if (_tableShadowMode != 'off') {
+      if (_liveTable &&
+          _workspace == null &&
+          tableBillNeedsSheet(_tableShadowMode, _cartBill)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(_adoptOpenStaffBill().catchError((Object _) {}));
+        });
+      }
       _tableShadow = ref.read(tableShadowRepositoryProvider);
       _tableShadow!.localTables = () => [
         for (final table in controller.diningTableDefinitions)
@@ -2740,6 +2750,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         controller.currentOrderReference != session.orderReference) {
       return;
     }
+    await _proveSentDraft(session.tableId);
+    if (!mounted || refresh != _tableSentRefresh) return;
     setState(() {
       _heldTableRounds = rounds.where((round) => round.status == 'held').length;
       _tableUnsent = {
@@ -3122,6 +3134,96 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       _tableShadowMode != 'off' &&
       _remoteTables.tables[int.tryParse(tableId)]?.billOrderUuid != null;
 
+  final Map<String, String> _sentDraftProofs = {};
+  bool _adoptingStaffBill = false;
+
+  DiningTableSession? _tableDraft(String id) =>
+      controller.activeDiningTableId == id
+      ? _tableKitchen?.activeSession() ?? controller.diningSessionFor(id)
+      : controller.diningSessionFor(id);
+
+  String _draftProof(DiningTableSession session) => jsonEncode([
+    session.orderReference,
+    session.occupiedAt?.toIso8601String(),
+    session.draft?.toMap(),
+  ]);
+
+  bool _tableDraftBlocks(String id) {
+    if (controller.recoveryBlocked || _pendingTableIds.contains(id))
+      return true;
+    final local = _tableDraft(id);
+    if (local == null ||
+        local.status == DiningTableStatus.paid ||
+        !(local.draft?.items.isNotEmpty ?? false)) {
+      return false;
+    }
+    return _sentDraftProofs[id] != _draftProof(local);
+  }
+
+  Future<void> _proveSentDraft(String id) async {
+    final bridge = _tableKitchen;
+    if (bridge == null) return;
+    await bridge.coordinator.settled;
+    final local = _tableDraft(id);
+    if (local == null) return;
+    final proof = _draftProof(local);
+    final delta = await bridge.coordinator.delta(local);
+    final bound = bridge.coordinator.cachedSession(id);
+    final rounds = bound?.seatingKey == null
+        ? <LocalTableRound>[]
+        : await bridge.coordinator.store.readLocalTableRounds(
+            seatingKey: bound!.seatingKey,
+          );
+    final acknowledged =
+        rounds.any((r) => r.status == 'appended') &&
+        rounds.every(
+          (r) =>
+              r.status == 'rejected' ||
+              (r.status == 'appended' &&
+                  r.ackedAt != null &&
+                  r.serverRoundId != null &&
+                  r.orderUuid == bound?.serverOrderUuid),
+        );
+    if (!mounted ||
+        _tableDraft(id) == null ||
+        _draftProof(_tableDraft(id)!) != proof) {
+      return;
+    }
+    if (acknowledged && delta.isEmpty && !bridge.hasLocalOnlyDelta(local)) {
+      _sentDraftProofs[id] = proof;
+    } else {
+      _sentDraftProofs.remove(id);
+    }
+  }
+
+  Future<void> _adoptOpenStaffBill() async {
+    final id = controller.activeDiningTableId;
+    if (_adoptingStaffBill ||
+        !mounted ||
+        id == null ||
+        !_liveTable ||
+        _workspace != null ||
+        _showPaymentPage ||
+        _normalQrCheckoutOpen ||
+        controller.isProcessingPayment ||
+        _tableSendBusy ||
+        !tableBillNeedsSheet(_tableShadowMode, _cartBill)) {
+      return;
+    }
+    _adoptingStaffBill = true;
+    try {
+      await _ensureTableKitchen();
+      await _proveSentDraft(id);
+      if (mounted &&
+          controller.activeDiningTableId == id &&
+          !_tableDraftBlocks(id)) {
+        await _openCustomerBill(id);
+      }
+    } finally {
+      _adoptingStaffBill = false;
+    }
+  }
+
   Future<void> _openCustomerBill(String tableId, {String? tableLabel}) async {
     final id = int.tryParse(tableId);
     if (!mounted ||
@@ -3142,6 +3244,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     )) {
       return;
     }
+    await _ensureTableKitchen();
+    await _proveSentDraft(tableId);
+    if (!mounted || _workspace != null) return;
     final table = controller.diningTableDefinitionById(tableId);
     openServerWorkspace(
       (workspace) => DineInScreen(
@@ -3152,15 +3257,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         label: tableLabel ?? table?.name ?? tableId,
         arabic: ref.read(settingsControllerProvider).language == 'ar',
         writesAllowed: ref.read(tableSessionsModeProvider) == 'live',
-        localDraftBlocked:
-            _pendingTableIds.contains(tableId) ||
-            (controller.activeDiningTableId == tableId &&
-                controller.cart.isNotEmpty),
-        localDraftBlockedNow: () =>
-            controller.recoveryBlocked ||
-            _pendingTableIds.contains(tableId) ||
-            (controller.activeDiningTableId == tableId &&
-                controller.cart.isNotEmpty),
+        localDraftBlocked: _tableDraftBlocks(tableId),
+        localDraftBlockedNow: () => _tableDraftBlocks(tableId),
         createController: () async {
           final api = ref.read(apiServiceProvider);
           final session = ref.read(sessionServiceProvider);
@@ -3235,14 +3333,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             },
             localDraftTables: () => {
               for (final local in controller.diningTableSessions)
-                if (local.status != DiningTableStatus.paid &&
-                    (local.draft?.items.isNotEmpty ?? false)) ...{
+                if (_tableDraftBlocks(local.tableId)) ...{
                   ?int.tryParse(local.tableId),
                   ?int.tryParse(local.primaryTableId ?? ''),
                   ...local.linkedTableIds.map(int.tryParse).whereType<int>(),
                 },
-              if (controller.cart.isNotEmpty)
-                ?int.tryParse(controller.activeDiningTableId ?? ''),
+              if (controller.activeDiningTableId != null &&
+                  _tableDraftBlocks(controller.activeDiningTableId!))
+                ?int.tryParse(controller.activeDiningTableId!),
               ..._pendingTableIds.map(int.tryParse).whereType<int>(),
             },
           );
@@ -4057,6 +4155,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final tableId = int.tryParse(controller.activeDiningTableId ?? '');
     if (mode != 'live' || tableId == null) {
       await _openLocalPaymentPage();
+      return;
+    }
+    if (tableBillNeedsSheet(mode, _cartBill)) {
+      await _openCustomerBill(tableId.toString());
       return;
     }
     if (await _verifyLocalTableBill(tender: true) != null) return;
@@ -9460,7 +9562,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               Text(
                 ref.read(settingsControllerProvider).language == 'ar'
                     ? 'الجولة معلّقة للمراجعة. افتح فاتورة الطاولة قبل الدفع.'
-                    : 'Round held for review. Open the table bill before payment.',
+                    : (_tableDraftBlocks(controller.activeDiningTableId!)
+                          ? 'Send or remove unsent local items and finish sync before reviewing the customer round.'
+                          : 'Round held for review. Open the table bill before payment.'),
               )
             else if (workspace == null && _tableSelectionMessage != null)
               Text(_tableSelectionMessage!),
@@ -9954,7 +10058,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 : (workspace.cartBill?.total ?? 0) / 1000,
             enabled:
                 workspace?.canPay ??
-                (_localTableRefusal != _closedTableMessage),
+                (_localTableRefusal != _closedTableMessage &&
+                    (_cartBill?.needsReviewCount ?? 0) == 0),
             busy: workspace == null
                 ? controller.isProcessingPayment || _tableCartPay.busy
                 : workspace.cartControls?.busy ?? false,
