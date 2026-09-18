@@ -141,6 +141,7 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
   bool arabic = false,
   required CatalogSnapshot catalog,
   AudienceService? audience,
+  PosApiService? api,
   bool? audienceConsent,
   Widget Function(Widget child)? wrapStaff,
 }) async {
@@ -177,7 +178,7 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
         sharedPreferencesProvider.overrideWithValue(preferences),
         sessionServiceProvider.overrideWithValue(session),
         releaseBuildProvider.overrideWithValue(true),
-        apiServiceProvider.overrideWithValue(_Api()),
+        apiServiceProvider.overrideWithValue(api ?? _Api()),
         appDatabaseProvider.overrideWith(
           (ref) => throw StateError(
             'The legacy-tab widget harness must never open a DB',

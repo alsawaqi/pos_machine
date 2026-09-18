@@ -463,6 +463,7 @@ class TableKitchenBridge implements DiningTableSyncHooks {
     required this.printer,
     required this.l10n,
     required this.onPrintFailure,
+    this.verifySend,
   });
 
   final PosController controller;
@@ -471,6 +472,7 @@ class TableKitchenBridge implements DiningTableSyncHooks {
   final Future<bool> Function(KitchenTicketData) printer;
   final L10n Function() l10n;
   final void Function() onPrintFailure;
+  final Future<String?> Function(DiningTableSession)? verifySend;
   Future<void> _tail = Future.value();
   Future<void> get settled => _tail;
 
@@ -616,6 +618,8 @@ class TableKitchenBridge implements DiningTableSyncHooks {
   Future<void> send(DiningTableSession session) {
     final operation = _tail.then((_) async {
       if (!coordinator.live) return;
+      final refusal = await verifySend?.call(session);
+      if (refusal != null) throw StateError(refusal);
       final round = await coordinator.sendRound(session);
       if (round == null && hasLocalOnlyDelta(session)) {
         await _print(session, []);
@@ -1193,6 +1197,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     super.initState();
     _attentionLease = enterStaffAttention();
     controller = PosController();
+    controller.verifyDiningTableTender = () =>
+        _verifyLocalTableBill(tender: true);
     _tableSearch = TableSearchController(
       (q) => ref.read(apiServiceProvider).searchTables(q),
     )..addListener(_onTableSearchChanged);
@@ -2632,6 +2638,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         printer: SunmiReceiptService.printKitchenTicket,
         l10n: () => ref.read(l10nProvider),
         onPrintFailure: () => _handlePrintFailed('kitchen'),
+        verifySend: (session) => _verifyLocalTableBill(source: session),
       );
       coordinator.paymentContext = (snapshot) =>
           _tablePaymentContexts.remove(snapshot.serverOrderUuid)?.future ??
@@ -3013,6 +3020,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       final coordinator = _tableKitchen!.coordinator;
       await coordinator.settled;
       final source = controller.diningSessionFor(tableId);
+      final refusal = await _verifyLocalTableBill(source: source);
+      if (refusal != null) {
+        if (refusal == _closedTableMessage && mounted) {
+          if (controller.activeDiningTableId != null) {
+            await controller.returnToDiningFloorPlan();
+          }
+          if (mounted) await _openDraftRecovery(int.parse(tableId));
+        }
+        return false;
+      }
       final headId = source?.primaryTableId ?? tableId;
       final session =
           coordinator.cachedSession(headId) ??
@@ -3925,6 +3942,102 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     ]);
   }
 
+  static const _closedTableMessage =
+      'This bill was paid or closed elsewhere. Use Clear Table to review and clear the saved copy.';
+  final Map<String, String> _tableBillRefusals = {};
+
+  String _localBillKey(DiningTableSession? session) =>
+      '${session?.tableId}|${session?.orderReference}|${session?.occupiedAt}';
+
+  String? get _localTableRefusal {
+    if (!_liveTable || _workspace != null) return null;
+    final local = controller.diningSessionFor(controller.activeDiningTableId!);
+    final saved = _tableBillRefusals[_localBillKey(local)];
+    if (saved != null) return saved;
+    final bound =
+        _tableKitchen?.coordinator.cachedSession(local?.tableId ?? '') ?? local;
+    final row = _cartBill;
+    if (bound?.seatingUuid != null &&
+        (_remoteTables.meta.boardFetchedAt != null || row != null) &&
+        (row == null ||
+            !row.occupied ||
+            row.seatingUuid != bound!.seatingUuid ||
+            const {
+              'paid',
+              'voided',
+              'cancelled',
+              'closed',
+            }.contains(row.billStatus))) {
+      return _closedTableMessage;
+    }
+    return null;
+  }
+
+  Future<String?> _verifyLocalTableBill({
+    DiningTableSession? source,
+    bool tender = false,
+  }) async {
+    if (ref.read(tableSessionsModeProvider) != 'live') return null;
+    final id = source?.tableId ?? controller.activeDiningTableId;
+    if (id == null) return null;
+    final local = source ?? controller.diningSessionFor(id);
+    final bound = _tableKitchen?.coordinator.cachedSession(id) ?? local;
+    // Initial/offline drafts may still be queued. Once acknowledged, a send
+    // must never turn a closed generation into another order.
+    if (!tender && bound?.seatingUuid == null) return null;
+    final identity = _tablePayContext;
+    final key = _localBillKey(local);
+    String? refusal;
+    try {
+      final detail = DineInDetail(
+        await ref.read(apiServiceProvider).dineInDetail(int.parse(id)),
+      );
+      if (!mounted || (tender && identity != _tablePayContext)) {
+        return 'The active table changed. Reopen it before payment.';
+      }
+      final uuid =
+          bound?.serverOrderUuid ?? controller.activeDiningTableBillUuid;
+      if (!detail.occupied ||
+          (bound?.seatingUuid != null &&
+              detail.seatingUuid != bound!.seatingUuid) ||
+          (detail.billUuid != null &&
+              uuid.isNotEmpty &&
+              detail.billUuid != uuid) ||
+          const {
+            'paid',
+            'voided',
+            'cancelled',
+            'closed',
+          }.contains(detail.bill?['status']) ||
+          const {'closed', 'expired'}.contains(detail.seating?['status'])) {
+        refusal = _closedTableMessage;
+      } else if (tender && (detail.billUuid == null || detail.pendingReview)) {
+        refusal =
+            'Open the table bill and confirm or reject pending rounds before payment.';
+      } else if (tender &&
+          detail.bill?['grand_total_baisas'] !=
+              (controller.total * 1000).round()) {
+        refusal =
+            'The shared bill has changed. Open the table bill before payment.';
+      } else if (!detail.canAppend) {
+        refusal =
+            'This table bill is reserved or unavailable. Refresh it before continuing.';
+      }
+    } catch (_) {
+      refusal = 'Could not verify the table bill. Reconnect and try again.';
+    }
+    if (mounted) {
+      setState(() {
+        if (refusal == null) {
+          _tableBillRefusals.remove(key);
+        } else {
+          _tableBillRefusals[key] = refusal;
+        }
+      });
+    }
+    return refusal;
+  }
+
   RemoteTableState? get _cartBill {
     final id = int.tryParse(controller.activeDiningTableId ?? '');
     if (id == null || _tableShadowMode == 'off') return null;
@@ -3946,6 +4059,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await _openLocalPaymentPage();
       return;
     }
+    if (await _verifyLocalTableBill(tender: true) != null) return;
     final contextKey = _tablePayContext;
     bool current() =>
         mounted &&
@@ -4009,6 +4123,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final mode = ref.read(tableSessionsModeProvider);
     final tableId = int.tryParse(controller.activeDiningTableId ?? '');
     if (mode != 'live' || tableId == null) return true;
+    if (await _verifyLocalTableBill(tender: true) != null) return false;
     final contextKey = _tablePayContext;
     var allowed = false;
     bool current() =>
@@ -9338,7 +9453,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           const SizedBox(height: 12),
           if (workspace != null) _buildWorkspaceCartStatus(workspace),
           if (liveTable || workspace?.dineIn == true) ...[
-            if (workspace == null && (_cartBill?.needsReviewCount ?? 0) > 0)
+            if (workspace == null && _localTableRefusal != null)
+              Text(_localTableRefusal!)
+            else if (workspace == null &&
+                (_cartBill?.needsReviewCount ?? 0) > 0)
               Text(
                 ref.read(settingsControllerProvider).language == 'ar'
                     ? 'الجولة معلّقة للمراجعة. افتح فاتورة الطاولة قبل الدفع.'
@@ -9361,6 +9479,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               onPressed: workspace != null
                   ? workspace.cartControls?.submit
                   : !_tableSendBusy &&
+                        _localTableRefusal != _closedTableMessage &&
                         _hasTableUnsent &&
                         _tableSelectionMessage == null
                   ? _sendTableRound
@@ -9833,7 +9952,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             total: workspace == null
                 ? controller.activePaymentBaseTotal
                 : (workspace.cartBill?.total ?? 0) / 1000,
-            enabled: workspace?.canPay ?? true,
+            enabled:
+                workspace?.canPay ??
+                (_localTableRefusal != _closedTableMessage),
             busy: workspace == null
                 ? controller.isProcessingPayment || _tableCartPay.busy
                 : workspace.cartControls?.busy ?? false,

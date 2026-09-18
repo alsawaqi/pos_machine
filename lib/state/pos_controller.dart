@@ -57,6 +57,9 @@ class PosController extends ChangeNotifier
   /// T6 owner-approved eligibility seam; no change to card charge arithmetic.
   bool Function()? isLiveSharedTable;
   Future<bool> Function(OrderSnapshot)? onDiningTableFinalRound;
+
+  /// Live table tenders must be authorised before cash, native launch or print.
+  Future<String?> Function()? verifyDiningTableTender;
   final Map<String, String> _diningHookOccupancies = {};
   String? _activeDiningTableSeatingKey;
 
@@ -3090,6 +3093,25 @@ class PosController extends ChangeNotifier
     if (!await _combineMutationAllowed()) {
       isProcessingPayment = false;
       return lastPaymentMessage;
+    }
+
+    if (isDineInPayment && isLiveSharedTable?.call() == true) {
+      String? refusal;
+      try {
+        refusal = verifyDiningTableTender == null
+            ? 'Could not verify the table bill. Reconnect and try again.'
+            : await verifyDiningTableTender!();
+      } catch (_) {
+        refusal = 'Could not verify the table bill. Reconnect and try again.';
+      }
+      if (refusal != null) {
+        isProcessingPayment = false;
+        paymentStatus = 'Payment blocked';
+        lastPaymentMessage = refusal;
+        displayNote = refusal;
+        _notifySafely();
+        return refusal;
+      }
     }
 
     // P-F8 — merchant order numbering: allocate the official sequential
