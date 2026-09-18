@@ -5,6 +5,7 @@ import '../qr_quick/qr_quick_models.dart';
 import '../qr_quick/qr_quick_screen.dart';
 import 'dine_in_controller.dart';
 import 'dine_in_models.dart';
+import 'dine_in_store.dart';
 
 String dineInText(bool ar, String key) {
   const values = {
@@ -157,6 +158,28 @@ class _DineInScreenState extends State<DineInScreen>
         return;
       }
       controller = c;
+      if (c.store case final DineInDraftStore store) {
+        final saved = await store.loadDraft(c.tableId);
+        if (!mounted) {
+          c.dispose();
+          return;
+        }
+        if (saved != null) {
+          draftSeating = saved['seating_uuid'] as String?;
+          draftBill = saved['bill_uuid'] as String?;
+          drafts
+            ..clear()
+            ..addAll(
+              (saved['lines'] as List).map((raw) {
+                final row = tableMap(raw);
+                return (
+                  row['label'] as String,
+                  QrQuickLine.fromJson(tableMap(row['line'])),
+                );
+              }),
+            );
+        }
+      }
       c.addListener(_changed);
       c.setForeground(foreground);
       await c.start();
@@ -164,6 +187,34 @@ class _DineInScreenState extends State<DineInScreen>
     } catch (_) {
       if (mounted) setState(() => error = 'storage');
     }
+  }
+
+  Future<bool> _persistDrafts() async {
+    final c = controller;
+    if (c == null) return false;
+    if (c.store case final DineInDraftStore store) {
+      try {
+        await store.saveDraft(
+          c.tableId,
+          drafts.isEmpty
+              ? null
+              : {
+                  'seating_uuid': draftSeating,
+                  'bill_uuid': draftBill,
+                  'lines': [
+                    for (final d in drafts)
+                      {'label': d.$1, 'line': d.$2.toJson()},
+                  ],
+                },
+        );
+        if (error == 'storage') error = null;
+      } catch (_) {
+        if (mounted) setState(() => error = 'storage');
+        _publish();
+        return false;
+      }
+    }
+    return true;
   }
 
   void _changed() {
@@ -245,6 +296,8 @@ class _DineInScreenState extends State<DineInScreen>
         ),
       );
       if (ok != true || !mounted) return;
+      setState(drafts.clear);
+      if (!await _persistDrafts() || !mounted) return;
     }
     setState(() => leaving = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -298,7 +351,7 @@ class _DineInScreenState extends State<DineInScreen>
     if (!c.canAdd || childOpen) return;
     if (widget.workspace?.mainCart == true && product != null) {
       if (!product.available) return;
-      _addDraft(product, const [], null);
+      await _addDraft(product, const [], null);
       return;
     }
     final seating = c.detail!.seatingUuid, bill = c.detail!.billUuid;
@@ -322,6 +375,7 @@ class _DineInScreenState extends State<DineInScreen>
         drafts.add(picked);
       });
     }
+    await _persistDrafts();
     await c.refresh();
     _schedule();
   }
@@ -352,6 +406,9 @@ class _DineInScreenState extends State<DineInScreen>
 
   bool get _editDrafts =>
       controller?.canAdd == true &&
+      (drafts.isEmpty ||
+          (draftSeating == controller?.detail?.seatingUuid &&
+              draftBill == controller?.detail?.billUuid)) &&
       !childOpen &&
       !leaving &&
       widget.writesAllowed &&
@@ -359,12 +416,12 @@ class _DineInScreenState extends State<DineInScreen>
   QuickProduct? _product(int id) =>
       widget.catalogue().where((p) => p.id == id).firstOrNull;
 
-  void _addDraft(
+  Future<void> _addDraft(
     QuickProduct product,
     List<int> addons,
     String? notes, {
     int qty = 1,
-  }) {
+  }) async {
     if (!_editDrafts) return;
     final selected = [...addons]..sort();
     final index = drafts.indexWhere((d) {
@@ -390,6 +447,7 @@ class _DineInScreenState extends State<DineInScreen>
         drafts[index] = entry;
       }
     });
+    await _persistDrafts();
     _publish();
   }
 
@@ -456,11 +514,12 @@ class _DineInScreenState extends State<DineInScreen>
           );
         }
       });
+      await _persistDrafts();
       _publish();
     } else if (qty > (row['qty'] as num)) {
       final product = _product(row['product_id'] as int);
       if (product != null) {
-        _addDraft(
+        await _addDraft(
           product,
           [
             for (final a in row['addons'] as List? ?? [])
@@ -496,6 +555,7 @@ class _DineInScreenState extends State<DineInScreen>
           index != null &&
           index < drafts.length) {
         setState(() => drafts[index] = (drafts[index].$1, changed));
+        await _persistDrafts();
       } else if (mounted && changed != null && index == null) {
         final ok = await controller!.cancelLine(
           row,
@@ -506,7 +566,7 @@ class _DineInScreenState extends State<DineInScreen>
           childOpen = false;
           final product = _product(changed.productId);
           if (product != null) {
-            _addDraft(
+            await _addDraft(
               product,
               changed.addonIds,
               changed.notes,
@@ -527,6 +587,7 @@ class _DineInScreenState extends State<DineInScreen>
         widget.workspace?.bill?.groupedItems ?? <Map<String, dynamic>>[];
     if (rows.isEmpty) {
       setState(drafts.clear);
+      await _persistDrafts();
       _publish();
       return;
     }
@@ -537,6 +598,7 @@ class _DineInScreenState extends State<DineInScreen>
       final approval = await widget.approveCancellation!();
       if (!mounted || approval == null) return;
       setState(drafts.clear);
+      await _persistDrafts();
       for (final row in rows) {
         if (!mounted ||
             !await controller!.cancelLine(
@@ -591,6 +653,11 @@ class _DineInScreenState extends State<DineInScreen>
               : 'Estimated total — round awaiting confirmation',
 
         if (error != null) text(error!),
+        if (drafts.isNotEmpty &&
+            c?.stale == false &&
+            (draftSeating != detail?.seatingUuid ||
+                draftBill != detail?.billUuid))
+          text('changed'),
         if (c?.stale == true) text('refresh'),
         if (c?.notice != null)
           c?.pending?.isCancellation == true && c?.notice == 'uncertain'
@@ -669,12 +736,14 @@ class _DineInScreenState extends State<DineInScreen>
 
   Future<void> _send() async {
     final c = controller!;
+    if (!await _persistDrafts()) return;
     final ok = await c.add(
       drafts.map((d) => d.$2).toList(),
       expectedSeating: draftSeating,
       expectedBill: draftBill,
     );
     if (mounted && (ok || c.pending != null)) setState(drafts.clear);
+    if (mounted) await _persistDrafts();
     if (mounted) _publish();
   }
 
@@ -979,8 +1048,9 @@ class _DineInScreenState extends State<DineInScreen>
                             key: ValueKey('dine-remove-$i'),
                             onPressed: c?.busy == true
                                 ? null
-                                : () {
+                                : () async {
                                     setState(() => drafts.removeAt(i));
+                                    await _persistDrafts();
                                     _publish();
                                   },
                             icon: const Icon(Icons.close),

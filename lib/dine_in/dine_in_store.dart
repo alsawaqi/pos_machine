@@ -8,8 +8,13 @@ abstract interface class DineInStore {
   Future<void> remove(DineInRequest request);
 }
 
+abstract interface class DineInDraftStore {
+  Future<Map<String, dynamic>?> loadDraft(int tableId);
+  Future<void> saveDraft(int tableId, Map<String, dynamic>? draft);
+}
+
 /// One unresolved intent per device scope. No outbox sending or local table writes.
-class SqliteDineInStore implements DineInStore {
+class SqliteDineInStore implements DineInStore, DineInDraftStore {
   SqliteDineInStore(this.db, this.scope);
   final Database db;
   final String scope;
@@ -17,16 +22,55 @@ class SqliteDineInStore implements DineInStore {
     final directory = await getDatabasesPath();
     final db = await openDatabase(
       '$directory/dine_in_requests.db',
-      version: 1,
+      version: 2,
+      onUpgrade: (db, old, next) => _createDrafts(db),
       onCreate: (db, _) => createSchema(db),
     );
     return SqliteDineInStore(db, scope);
   }
 
-  static Future<void> createSchema(Database db) => db.execute('''
+  static Future<void> createSchema(Database db) async {
+    await db.execute('''
     CREATE TABLE dine_in_requests (scope TEXT PRIMARY KEY, table_id INTEGER NOT NULL,
       seating_uuid TEXT NOT NULL, bill_uuid TEXT, request_id TEXT NOT NULL, payload TEXT NOT NULL)
   ''');
+    await _createDrafts(db);
+  }
+
+  static Future<void> _createDrafts(Database db) => db.execute('''
+    CREATE TABLE IF NOT EXISTS dine_in_drafts (scope TEXT NOT NULL,
+      table_id INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(scope, table_id))
+  ''');
+
+  @override
+  Future<Map<String, dynamic>?> loadDraft(int tableId) async {
+    final rows = await db.query(
+      'dine_in_drafts',
+      where: 'scope = ? AND table_id = ?',
+      whereArgs: [scope, tableId],
+    );
+    return rows.isEmpty
+        ? null
+        : tableMap(jsonDecode(rows.single['payload'] as String));
+  }
+
+  @override
+  Future<void> saveDraft(int tableId, Map<String, dynamic>? draft) async {
+    if (draft == null) {
+      await db.delete(
+        'dine_in_drafts',
+        where: 'scope = ? AND table_id = ?',
+        whereArgs: [scope, tableId],
+      );
+    } else {
+      await db.insert('dine_in_drafts', {
+        'scope': scope,
+        'table_id': tableId,
+        'payload': jsonEncode(draft),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+  }
+
   @override
   Future<DineInRequest?> load() async {
     final rows = await db.query(
@@ -50,14 +94,23 @@ class SqliteDineInStore implements DineInStore {
 
   @override
   Future<void> save(DineInRequest request) async {
-    await db.insert('dine_in_requests', {
-      'scope': scope,
-      'table_id': request.tableId,
-      'seating_uuid': request.seatingUuid,
-      'bill_uuid': request.billUuid,
-      'request_id': request.id,
-      'payload': request.encoded,
-    }, conflictAlgorithm: ConflictAlgorithm.abort);
+    await db.transaction((txn) async {
+      await txn.insert('dine_in_requests', {
+        'scope': scope,
+        'table_id': request.tableId,
+        'seating_uuid': request.seatingUuid,
+        'bill_uuid': request.billUuid,
+        'request_id': request.id,
+        'payload': request.encoded,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+      // The durable send intent takes ownership atomically, even if the process
+      // dies before its response. Never restore these lines as a fresh draft.
+      await txn.delete(
+        'dine_in_drafts',
+        where: 'scope = ? AND table_id = ?',
+        whereArgs: [scope, request.tableId],
+      );
+    });
   }
 
   @override
