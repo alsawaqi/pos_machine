@@ -13698,7 +13698,10 @@ class DiningServerBadge extends StatelessWidget {
         !payment &&
         remote.occupied &&
         localStatus == DiningTableStatus.occupied &&
-        remote.reference != localReference) {
+        remote.reference != localReference &&
+        // Local REF aliases and server T references are different namespaces.
+        !(localReference?.startsWith('REF-') == true &&
+            remote.reference?.startsWith('T-') == true)) {
       label += l10n.tableServerReferenceDiffers;
     }
     if (remote.needsReviewCount > 0) {
