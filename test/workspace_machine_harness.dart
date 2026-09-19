@@ -51,6 +51,9 @@ class WorkspaceTableCoordinator implements TableSyncCoordinator {
   @override
   Future<TablePaymentContext> Function(OrderSnapshot)? paymentContext;
   @override
+  Future<void> Function(Map<String, dynamic>, Map<String, dynamic>)?
+  paymentAcknowledged;
+  @override
   Future<bool> Function(DiningTableSession, List<Map<String, dynamic>>)?
   printRound;
   @override
@@ -143,6 +146,7 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
   AudienceService? audience,
   PosApiService? api,
   OrderSyncRepository? outbox,
+  AppDatabase? database,
   TableSyncCoordinator? coordinator,
   Stream<RemoteTableSnapshot>? boards,
   bool? audienceConsent,
@@ -183,9 +187,11 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
         releaseBuildProvider.overrideWithValue(true),
         apiServiceProvider.overrideWithValue(api ?? _Api()),
         appDatabaseProvider.overrideWith(
-          (ref) => throw StateError(
-            'The legacy-tab widget harness must never open a DB',
-          ),
+          (ref) =>
+              database ??
+              (throw StateError(
+                'The legacy-tab widget harness must never open a DB',
+              )),
         ),
         tableSessionsModeProvider.overrideWithValue(mode),
         orderSyncRepositoryProvider.overrideWithValue(outbox ?? _Outbox()),

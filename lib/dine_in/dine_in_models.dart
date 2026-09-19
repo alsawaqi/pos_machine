@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'bill_adjustment_intent.dart';
 import '../qr_checkout/qr_checkout_models.dart';
 import '../qr_quick/qr_quick_models.dart';
 
@@ -117,6 +118,33 @@ class DineInRequest {
     required Map<String, dynamic> payload,
   }) : encoded = jsonEncode(payload) {
     final p = this.payload;
+    if (p['adjustment'] is Map) {
+      if (tableId < 1 ||
+          seatingUuid.isEmpty ||
+          billUuid?.isNotEmpty != true ||
+          p['table_id'] is! int ||
+          (p['table_id'] as int) < 1 ||
+          p['seating_key'] is! String ||
+          p['client_request_id'] is! String ||
+          !RegExp(
+            r'^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$',
+          ).hasMatch(p['client_request_id'] as String) ||
+          p['queued_offline'] != false ||
+          p.keys.any(
+            (key) => !const {
+              'table_id',
+              'seating_key',
+              'client_request_id',
+              'queued_offline',
+              'staff_id',
+              'adjustment',
+            }.contains(key),
+          )) {
+        throw const FormatException('Invalid adjustment identity');
+      }
+      validateBillAdjustment(tableMap(p['adjustment']));
+      return;
+    }
     if (p['cancellation'] is Map) {
       final cancel = tableMap(p['cancellation']);
       if (tableId < 1 ||
@@ -233,6 +261,8 @@ class DineInRequest {
   final String encoded;
   Map<String, dynamic> get payload => tableMap(jsonDecode(encoded));
   String get id => payload['client_request_id'] as String;
+  bool get isAdjustment => payload['adjustment'] is Map;
+  Map<String, dynamic> get adjustment => tableMap(payload['adjustment']);
   bool get isCancellation => payload['cancellation'] is Map;
   Map<String, dynamic> get cancellation => tableMap(payload['cancellation']);
   Map<String, dynamic> get cancellationPayload => {

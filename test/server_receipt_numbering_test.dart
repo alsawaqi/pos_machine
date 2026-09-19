@@ -13,6 +13,8 @@ void main() {
     c.printKitchenTickets = false;
     c.isLiveSharedTable = () => true;
     c.verifyDiningTableTender = () async => null;
+    c.prepareDiningTableTender =
+        null; // External claim is outside this existing regression.
     c.onDiningTableFinalRound = (_) async => true;
     c.orderNumbering = const OrderNumberingConfig(
       enabled: true,

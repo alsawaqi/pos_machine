@@ -45,6 +45,11 @@ class ApiDineInGateway implements DineInGateway {
     writes: true,
   );
   @override
+  Future<Map<String, dynamic>> adjust(DineInRequest request) => _call(
+    () => api.dineInAdjust(request.seatingUuid, request.payload),
+    writes: true,
+  );
+  @override
   Future<void> review(
     DineInDetail detail,
     Map<String, dynamic> round,

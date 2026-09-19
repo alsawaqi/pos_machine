@@ -23,7 +23,15 @@ class ApiRecoveryGateway implements DraftRecoveryGateway, DineInGateway {
 
   Future<T> _call<T>(Future<T> Function() operation) async {
     check();
-    final value = await operation();
+    late T value;
+    try {
+      value = await operation();
+    } on ApiException catch (error) {
+      if (error.code == 'adjusted_bill_not_supported') {
+        throw StateError('adjusted_bill_not_supported');
+      }
+      rethrow;
+    }
     check();
     return value;
   }
@@ -73,6 +81,11 @@ class ApiRecoveryGateway implements DraftRecoveryGateway, DineInGateway {
     return delegate.api.dineInAppend(exact.seatingUuid, exact.payload);
   });
 
+  @override
+  Future<Map<String, dynamic>> adjust(DineInRequest request) async =>
+      throw StateError(
+        'Adjust the canonical bill after finishing draft recovery.',
+      );
   @override
   Future<void> clear(int tableId, {String? seatingUuid}) async =>
       throw StateError('Recovery cannot clear tables.');

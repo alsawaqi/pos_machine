@@ -550,6 +550,16 @@ class PosApiService {
     ),
   )).dataMap;
 
+  Future<Map<String, dynamic>> dineInAdjust(
+    String uuid,
+    Map<String, dynamic> payload,
+  ) async => (await _send(
+    () => _dio.post(
+      '/device/tables/${Uri.encodeComponent(uuid)}/adjust',
+      data: payload,
+    ),
+  )).dataMap;
+
   Future<Map<String, dynamic>> dineInCancelLine(
     String uuid,
     Map<String, dynamic> payload,

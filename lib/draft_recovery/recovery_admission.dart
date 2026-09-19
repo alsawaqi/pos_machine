@@ -163,6 +163,11 @@ bool foreignReleaseCanRetire(Map<String, Object?> row, String? currentScope) {
 
 String recoveryMessage(Object? error, {required bool arabic}) {
   final raw = error.toString();
+  if (raw.contains('adjusted_bill_not_supported')) {
+    return arabic
+        ? 'لا تدعم استعادة المسودة فاتورة مفتوحة معدلة. تابع الفاتورة الأصلية من عرض الطاولة دون إنشاء نسخة أخرى.'
+        : 'Draft recovery does not support an adjusted open bill. Continue the original bill from the table view without creating another copy.';
+  }
   if (raw.contains('Check payment result') || raw.contains('saved checkouts')) {
     return arabic
         ? 'افتح الطلب المحفوظ وأعد محاولة تحرير الحجز أو اختر «التحقق من نتيجة الدفع». لا تأخذ دفعة أخرى. للحجز من خادم سابق، افتح «استعادة عمليات الدفع المحفوظة» في الإعدادات.'

@@ -488,7 +488,22 @@ class TableKitchenBridge implements DiningTableSyncHooks {
       if (session == null) {
         throw StateError('Missing Live table at final round.');
       }
-      await send(session);
+      if (controller.reservedDiningBillUuid != null) {
+        // A live claim freezes the bill. All lines were acknowledged before
+        // admission; finalization must verify that proof, never send again.
+        await coordinator.settled;
+        await validatePending(session);
+        if (coordinator.cachedSession(session.tableId)?.serverOrderUuid !=
+                controller.reservedDiningBillUuid ||
+            (await coordinator.delta(session)).isNotEmpty ||
+            hasLocalOnlyDelta(session)) {
+          throw StateError(
+            'Check payment result: the reserved table draft changed.',
+          );
+        }
+      } else {
+        await send(session);
+      }
       return true;
     };
     coordinator.printRound = _print;
@@ -1226,6 +1241,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.isLiveSharedTable = () =>
         ref.read(tableSessionsModeProvider) == 'live';
     controller.addListener(_onTableCartChanged);
+    controller.prepareDiningTableTender = _prepareLiveTableTender;
+    controller.liveDiningTotal = () => _liveBill?.total;
     ref.listenManual(tableSessionsModeProvider, (previous, next) {
       _scheduleTableSearch();
       if (previous != 'live' && next == 'live') {
@@ -1493,6 +1510,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // the controller's next-order reset clears it (split tenders carry their own
     // evidence on the snapshot's SplitPaymentRecords).
     final cardCharge = controller.lastCardCharge;
+    final tableCheckout = _tableCheckout;
     // Joined tables (v2) — the head party's joined seats, read NOW: the
     // controller frees them the instant the order is marked paid, just after
     // this callback returns its synchronous prefix.
@@ -1521,7 +1539,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
     if (sharedContext != null) {
       sharedContext.complete(
-        TablePaymentContext(lat: lat, lng: lng, cardCharge: cardCharge),
+        TablePaymentContext(
+          lat: lat,
+          lng: lng,
+          cardCharge: cardCharge,
+          eventId: tableCheckout?.attempt?.id,
+          prepareEvent: tableCheckout?.journalTablePay,
+        ),
       );
       return; // B2 onTablePaid emits pay only; no customer/create/donation path.
     }
@@ -2078,11 +2102,38 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// company comp reason (Additions §1.2). Manager fingerprint approval is
   /// ALWAYS required; the amount is derived (the line's discounted total, or
   /// the whole discounted subtotal) and validated against the reason's cap.
-  Future<void> _openCompDialog() async {
-    if (_liveTable) return;
+  Future<void> _openCompDialog({
+    DineInDetail? serverDetail,
+    void Function(Map<String, dynamic>)? picked,
+  }) async {
+    if (serverDetail == null && (_liveTable || _workspace?.dineIn == true)) {
+      await _adjustLiveBill('comp');
+      return;
+    }
+    final serverBill = serverDetail?.bill;
+    final serverLines = serverBill == null
+        ? <Map<String, dynamic>>[]
+        : (serverBill['items'] as List)
+              .map(tableMap)
+              .where(
+                (line) => (line['qty'] as num) > 0 && line['status'] != 'void',
+              )
+              .toList();
+    final cart = serverBill == null
+        ? controller.cart
+        : serverLines.map(WorkspaceCartItem.new).toList();
+    final existing = serverBill?['adjustment_state'] is Map
+        ? tableMap(tableMap(serverBill!['adjustment_state'])['comp'] ?? {})
+        : <String, dynamic>{};
+    final net = serverBill == null
+        ? controller.subtotal
+        : ((serverBill['grand_total_baisas'] as int) -
+                  (serverBill['tax_total_baisas'] as int)) /
+              1000;
+    var replaceExisting = false;
     final l10n = L10n.of(context);
     final isAr = Localizations.localeOf(context).languageCode == 'ar';
-    if (controller.cart.isEmpty) {
+    if (cart.isEmpty) {
       _showPopupMessage(
         title: l10n.posCompNothingTitle,
         message: l10n.posCompNothingMessage,
@@ -2093,18 +2144,34 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
     // An existing comp can be removed without re-authorization (it only
     // RESTORES money owed); applying one always needs the manager.
-    if (controller.appliedComp != null) {
+    if (serverBill == null
+        ? controller.appliedComp != null
+        : existing.isNotEmpty) {
       final keep = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(l10n.posCompAppliedTitle),
           content: Text(
             l10n.posCompExistingMessage(
-              controller.appliedComp!.reasonName,
-              SunmiReceiptService.money(controller.compAmount),
+              serverBill == null
+                  ? controller.appliedComp!.reasonName
+                  : (existing['reason_name'] ?? '').toString(),
+              SunmiReceiptService.money(
+                serverBill == null
+                    ? controller.compAmount
+                    : (serverBill['comp_total_baisas'] as int) / 1000,
+              ),
             ),
           ),
           actions: [
+            if (serverBill != null)
+              TextButton(
+                onPressed: () {
+                  replaceExisting = true;
+                  Navigator.pop(ctx, true);
+                },
+                child: Text(isAr ? 'استبدال' : 'Replace'),
+              ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: Text(l10n.posCompRemoveButton),
@@ -2118,6 +2185,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       );
       if (!mounted) return;
       if (keep == false) {
+        if (serverBill != null) {
+          picked?.call({'kind': 'comp', 'mode': 'clear'});
+          return;
+        }
         controller.removeComp();
         _showPopupMessage(
           title: l10n.posCompRemovedTitle,
@@ -2125,7 +2196,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           tone: FeedbackTone.info,
         );
       }
-      return;
+      if (!replaceExisting) return;
     }
 
     // P-F1 — fingerprint with manager-PIN fallback.
@@ -2148,19 +2219,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
-          final cart = controller.cart;
           double amountFor(int? index, int? qty) {
-            if (index == null) return controller.subtotal;
+            if (index == null) return net;
             final item = cart[index];
             final amountBaisas = machineLineCompPreviewBaisas(
-              lineTotalBaisas: (item.unitPrice * 1000).round() * item.qty,
-              lineDiscountBaisas:
-                  (controller.lineDiscountFor(item).amount * 1000).round(),
+              lineTotalBaisas: serverBill == null
+                  ? (item.unitPrice * 1000).round() * item.qty
+                  : serverLines[index]['line_total_baisas'] as int,
+              lineDiscountBaisas: serverBill == null
+                  ? (controller.lineDiscountFor(item).amount * 1000).round()
+                  : serverLines[index]['line_discount_baisas'] as int? ?? 0,
               lineQty: item.qty,
               compQty: qty,
             );
             return pricing.baisasToOmr(
-              amountBaisas.clamp(0, pricing.omrToBaisas(controller.subtotal)),
+              serverBill == null
+                  ? amountBaisas.clamp(0, pricing.omrToBaisas(net))
+                  : amountBaisas,
             );
           }
 
@@ -2296,6 +2371,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
     if (!mounted || applied != true || reason == null) return;
 
+    if (serverBill != null) {
+      picked?.call({
+        'kind': 'comp',
+        'mode': 'apply',
+        'comp_reason_id': reason!.id,
+        'authorized_by': 'Manager',
+        'target': selection.lineIndex == null
+            ? 'bill'
+            : {
+                'order_item_id': serverLines[selection.lineIndex!]['id'],
+                'qty':
+                    selection.normalizedQty(cart) ??
+                    cart[selection.lineIndex!].qty,
+              },
+      });
+      return;
+    }
     controller.applyComp(
       AppliedComp(
         reasonId: reason!.id,
@@ -2394,6 +2486,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   @override
   void dispose() {
+    _liveEditor?.removeListener(_liveEditorChanged);
+    _liveEditor?.dispose();
+    _tableCheckout?.dispose();
     controller.removeListener(_onTableCartChanged);
     if (_workspace case final workspace?) {
       workspace.removeListener(_workspaceChanged);
@@ -2401,6 +2496,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       unawaited(PresentationService.instance.clearWorkspaceBill(workspace));
     }
     leaveStaffAttention(_attentionLease);
+    if (_tableKitchen?.coordinator.paymentAcknowledged == _tablePaymentAck) {
+      _tableKitchen!.coordinator.paymentAcknowledged = null;
+    }
     _tableKitchen?.detach();
     unawaited(_tableKitchenChanges?.cancel());
     _tableReconciliation?.dispose();
@@ -2579,6 +2677,307 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   bool get _isEditingDiningTable => controller.isEditingDiningTable;
 
+  QrCheckoutController? _tableCheckout;
+  Future<Map<String, dynamic>> _prepareLiveTableTender(
+    double? cashTendered,
+  ) async {
+    final identity = _tablePayContext;
+    final editor = await _ensureLiveEditor();
+    if (editor?.detail?.billUuid == null ||
+        !editor!.canPay ||
+        _hasTableUnsent ||
+        controller.splitCount != 1) {
+      throw StateError(
+        'Open the canonical bill and finish pending items before payment.',
+      );
+    }
+    final checkout = await _newQrCheckout();
+    _tableCheckout?.dispose();
+    _tableCheckout = checkout;
+    await checkout.open(editor.detail!.billUuid);
+    if (!mounted || identity != _tablePayContext || !checkout.ready) {
+      if (checkout.ready) await checkout.cancel();
+      throw StateError('Check payment result before another payment.');
+    }
+    if (controller.selectedPaymentMethod == 'Cash' &&
+        cashTendered != null &&
+        (cashTendered * 1000).round() < checkout.total) {
+      await checkout.cancel();
+      throw StateError(
+        'The bill changed. Review the amount before taking cash.',
+      );
+    }
+    final snapshot = await checkout.beginTableTender();
+    if (snapshot == null) {
+      throw StateError('Check payment result before another payment.');
+    }
+    return Map<String, dynamic>.from(snapshot.order);
+  }
+
+  Future<void> _tablePaymentAck(
+    Map<String, dynamic> event,
+    Map<String, dynamic> ack,
+  ) async {
+    final existing = _tableCheckout;
+    final checkout = existing?.attempt?.id == event['client_event_id']
+        ? existing!
+        : await _newQrCheckout();
+    try {
+      await checkout.acceptTablePayAck(event, ack);
+    } finally {
+      if (!identical(checkout, existing)) checkout.dispose();
+    }
+  }
+
+  DineInController? _liveEditor;
+  String? _liveEditorKey;
+  Future<DineInController?>? _liveEditorLoading;
+  WorkspaceBill? get _liveBill {
+    final editor = _liveEditor;
+    if (!_liveTable ||
+        editor?.tableId.toString() != controller.activeDiningTableId ||
+        editor?.detail?.bill == null ||
+        !const {
+          'open',
+          'awaiting_payment',
+        }.contains(editor!.detail!.bill?['status']) ||
+        _liveEditorKey?.endsWith(
+              ':${controller.activeDiningTableId}:${controller.currentOrderReference}',
+            ) !=
+            true) {
+      return null;
+    }
+    final reserved = _tableCheckout?.snapshot;
+    return WorkspaceBill(
+      reserved?.uuid == editor.detail!.billUuid
+          ? {...reserved!.order, 'customer': reserved.customer}
+          : editor.detail!.bill!,
+    );
+  }
+
+  void _liveEditorChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<DineInController?> _ensureLiveEditor() async {
+    if (!_liveTable || _workspace != null) return null;
+    final pending = _liveEditorLoading;
+    if (pending != null) return pending;
+    final api = ref.read(apiServiceProvider);
+    final session = ref.read(sessionServiceProvider);
+    String scope() => quickDeviceScope(
+      api.quickOrderBaseUrl,
+      session.companyId,
+      session.branchId,
+      session.kioskId,
+    );
+    final id = int.tryParse(controller.activeDiningTableId ?? '');
+    if (id == null) return null;
+    final key = '${scope()}:$id:${controller.currentOrderReference}';
+    if (_liveEditorKey == key && _liveEditor != null) return _liveEditor;
+    final task = () async {
+      final gateway = ApiDineInGateway(
+        api,
+        scope,
+        mutationGuard: controller.assertNoPendingCombine,
+      );
+      final editor = DineInController(
+        gateway,
+        await SqliteDineInStore.open(gateway.scope),
+        id,
+        staffId: session.staff?.id,
+      );
+      await editor.start();
+      if (!mounted ||
+          !_liveTable ||
+          controller.activeDiningTableId != '$id' ||
+          key != '${scope()}:$id:${controller.currentOrderReference}') {
+        editor.dispose();
+        return null;
+      }
+      _liveEditor?.removeListener(_liveEditorChanged);
+      _liveEditor?.dispose();
+      _liveEditorKey = key;
+      _liveEditor = editor..addListener(_liveEditorChanged);
+      _liveEditorChanged();
+      return editor;
+    }();
+    _liveEditorLoading = task;
+    try {
+      return await task;
+    } finally {
+      _liveEditorLoading = null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _pickTableAdjustment(
+    DineInDetail detail,
+    String kind,
+  ) async {
+    Map<String, dynamic>? picked;
+    if (kind == 'discount') {
+      await _openDiscountDialog(
+        serverDetail: detail,
+        picked: (value) => picked = value,
+      );
+    } else if (kind == 'comp') {
+      await _openCompDialog(
+        serverDetail: detail,
+        picked: (value) => picked = value,
+      );
+    } else {
+      final l10n = L10n.of(context);
+      final current = detail.bill?['customer'] is Map
+          ? tableMap(detail.bill!['customer'])
+          : null;
+      if (current != null) {
+        final action = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(l10n.posCustomerAttachedTitle),
+            content: Text(
+              '${current['name'] ?? ''}\n${current['phone'] ?? ''}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'detach'),
+                child: Text(dineInText(_arabicTable, 'detach_customer')),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'replace'),
+                child: Text(dineInText(_arabicTable, 'replace')),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(l10n.commonCancel),
+              ),
+            ],
+          ),
+        );
+        if (!mounted || action == null) return null;
+        if (action == 'detach') return {'kind': 'customer', 'mode': 'detach'};
+      }
+      final customer = await showDialog<CustomerSearchResult>(
+        context: context,
+        builder: (_) => _CustomerSearchDialog(
+          search: ref.read(apiServiceProvider).searchCustomers,
+        ),
+      );
+      if (customer != null) {
+        picked = {
+          'kind': 'customer',
+          'mode': 'attach',
+          'customer_id': customer.id,
+        };
+      }
+    }
+    return picked;
+  }
+
+  bool get _arabicTable => Localizations.localeOf(context).languageCode == 'ar';
+
+  Future<void> _adjustLiveBill(String kind) async {
+    if (_workspace?.dineIn == true) {
+      final controls = _workspace?.cartControls;
+      await (switch (kind) {
+        'discount' => controls?.discount,
+        'comp' => controls?.comp,
+        _ => controls?.customer,
+      })?.call();
+      return;
+    }
+    if (!_liveTable) return;
+    try {
+      final editor = await _ensureLiveEditor();
+      await _refreshTableSentState();
+      if (!mounted || editor == null) return;
+      await editor.refresh();
+      if (_hasTableUnsent ||
+          _pendingTableIds.contains(controller.activeDiningTableId)) {
+        _showPopupMessage(
+          title: dineInText(_arabicTable, 'title'),
+          message: dineInText(_arabicTable, 'adjustment_unsent'),
+          tone: FeedbackTone.info,
+        );
+        return;
+      }
+      await editor.adjust((detail) => _pickTableAdjustment(detail, kind));
+      if (mounted && editor.notice != null) {
+        _showPopupMessage(
+          title: dineInText(_arabicTable, 'title'),
+          message: dineInText(_arabicTable, editor.notice!),
+          tone: FeedbackTone.info,
+        );
+      }
+    } catch (_) {
+      if (mounted) _showTableActionFailure();
+    }
+  }
+
+  Widget _billAdjustmentContext(WorkspaceBill bill) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      if (bill.customer case final customer?)
+        Chip(
+          key: const ValueKey('table-bill-customer'),
+          avatar: const Icon(Icons.person_outline),
+          label: Text('${customer['name'] ?? ''} · ${customer['phone'] ?? ''}'),
+        ),
+      if (bill.adjustmentStale)
+        Text(
+          dineInText(_arabicTable, 'adjustment_stale'),
+          key: const ValueKey('table-adjustment-stale'),
+        ),
+    ],
+  );
+
+  Widget _tableAdjustmentControls({WorkspaceCartControls? workspaceControls}) {
+    final editor = _liveEditor;
+    final enabled =
+        workspaceControls == null &&
+        editor?.canAdjust == true &&
+        !_hasTableUnsent &&
+        !_pendingTableIds.contains(controller.activeDiningTableId);
+    final blocked = workspaceControls == null
+        ? (_hasTableUnsent
+              ? 'adjustment_unsent'
+              : editor?.adjustmentBlocked ??
+                    (editor == null ? 'refresh' : null))
+        : workspaceControls.adjustmentBlocked;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final kind in ['discount', 'comp', 'customer'])
+              TextButton(
+                key: ValueKey('table-adjust-$kind'),
+                onPressed: workspaceControls != null
+                    ? switch (kind) {
+                        'discount' => workspaceControls.discount,
+                        'comp' => workspaceControls.comp,
+                        _ => workspaceControls.customer,
+                      }
+                    : enabled
+                    ? () => _adjustLiveBill(kind)
+                    : null,
+                child: Text(dineInText(_arabicTable, kind)),
+              ),
+            if (workspaceControls == null &&
+                editor?.pending?.isAdjustment == true)
+              TextButton(
+                key: const ValueKey('table-adjust-retry'),
+                onPressed: editor!.busy ? null : () => editor.retry(),
+                child: Text(dineInText(_arabicTable, 'retry_adjustment')),
+              ),
+          ],
+        ),
+        if (blocked != null) Text(dineInText(_arabicTable, blocked)),
+      ],
+    );
+  }
+
   bool get _liveTable =>
       ref.read(tableSessionsModeProvider) == 'live' &&
       controller.selectedOrderType == OrderType.dineIn &&
@@ -2718,6 +3117,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             if (mounted) setState(() => _pendingTableIds = ids);
           })
           .listen((_) {});
+      coordinator.paymentAcknowledged = _tablePaymentAck;
       _tableModeTransition = TableModeTransition(
         bridge,
         loadConfiguration: _loadTableReplayConfiguration,
@@ -2742,6 +3142,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         );
       });
       _tableKitchenChanges = coordinator.changes.listen((_) {
+        unawaited(
+          _ensureLiveEditor()
+              .then((editor) => editor?.refresh())
+              .catchError((Object _) {}),
+        );
         unawaited(_refreshTableSentState().catchError((Object _) {}));
       });
       await _refreshTableSentState();
@@ -2758,6 +3163,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (mounted) _applyAudienceGate();
     _updateTableSearch();
     if (_liveTable) {
+      unawaited(
+        _ensureLiveEditor()
+            .then((editor) => editor?.refresh())
+            .catchError((Object _) {}),
+      );
       unawaited(_refreshTableSentState().catchError((Object _) {}));
     } else {
       _tableSentRefresh++;
@@ -3407,6 +3817,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         catalogue: () =>
             machineQuickCatalogue(ref.read(catalogProvider).asData?.value),
         onPay: _launchQrCheckout,
+        pickAdjustment: _pickTableAdjustment,
         onVoid: (uuid) => openMachineWorkspaceVoid(context, ref, uuid),
         approveCancellation: () async {
           final approval = await requestSentLineCancellation(
@@ -4434,13 +4845,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         refusal =
             'Open the table bill and confirm or reject pending rounds before payment.';
       } else if (tender &&
-          detail.bill?['grand_total_baisas'] !=
-              (controller.total * 1000).round()) {
+          (detail.bill?['grand_total_baisas'] is! int ||
+              (detail.bill!['grand_total_baisas'] as int) < 1)) {
         refusal =
-            'The shared bill has changed. Open the table bill before payment.';
+            'The bill must have a positive server balance before payment.';
       } else if (!detail.canAppend) {
         refusal =
             'This table bill is reserved or unavailable. Refresh it before continuing.';
+      }
+      if (refusal == null && tender) {
+        final editor = await _ensureLiveEditor();
+        if (editor != null) {
+          editor.detail = detail;
+          editor.stale = false;
+        }
       }
     } catch (_) {
       refusal = 'Could not verify the table bill. Reconnect and try again.';
@@ -5377,7 +5795,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// server when reachable, attach them to the order, and open the details
   /// dialog (plates to pick from + per-rule loyalty + redeem).
   Future<void> _openCustomerDetails() async {
-    if (_liveTable) return;
+    if (_liveTable || _workspace?.dineIn == true) {
+      await _adjustLiveBill('customer');
+      return;
+    }
     final l10n = L10n.of(context);
     CustomerSearchResult? customer = controller.selectedCustomer;
     final q = _customerNumberController.text.trim();
@@ -5455,6 +5876,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// belong to several customers and vice versa.) Picking a match attaches
   /// the customer AND sets the plate on the order.
   Future<void> _openPlateCustomerSearch() async {
+    if (_liveTable || _workspace?.dineIn == true) {
+      await _adjustLiveBill('customer');
+      return;
+    }
     final l10n = L10n.of(context);
     final value = await showDialog<String>(
       context: context,
@@ -5539,7 +5964,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openCustomerSearch() async {
-    if (_liveTable) return;
+    if (_liveTable || _workspace?.dineIn == true) {
+      await _adjustLiveBill('customer');
+      return;
+    }
     final l10n = L10n.of(context);
     final result = await showDialog<CustomerSearchResult>(
       context: context,
@@ -5574,7 +6002,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openCustomerNumberKeyboard() async {
-    if (_liveTable) return;
+    if (_liveTable || _workspace?.dineIn == true) {
+      await _adjustLiveBill('customer');
+      return;
+    }
     final l10n = L10n.of(context);
     final value = await showDialog<String>(
       context: context,
@@ -6057,19 +6488,28 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// Discount entry point. Offers the currently-applicable merchant rules (from
   /// the cached catalog) first, plus a custom amount and a remove option. With
   /// no applicable rules it falls straight through to the manual editor.
-  Future<void> _openDiscountDialog() async {
-    if (_liveTable) return;
+  Future<void> _openDiscountDialog({
+    DineInDetail? serverDetail,
+    void Function(Map<String, dynamic>)? picked,
+  }) async {
+    if (serverDetail == null && (_liveTable || _workspace?.dineIn == true)) {
+      await _adjustLiveBill('discount');
+      return;
+    }
     final l10n = L10n.of(context);
     final branchId = ref.read(sessionControllerProvider).branchId ?? 0;
     final now = DateTime.now();
     final applicable = controller.availableDiscounts
         .where((d) => d.isOrderScope && d.appliesAt(now, branchId: branchId))
         .toList();
-    final redeem = _redeemable();
-    final redeemStamp = _redeemableStamp();
+    final redeem = serverDetail == null ? _redeemable() : null;
+    final redeemStamp = serverDetail == null ? _redeemableStamp() : null;
 
     if (applicable.isEmpty && redeem == null && redeemStamp == null) {
-      await _openManualDiscountDialog();
+      await _openManualDiscountDialog(
+        serverDetail: serverDetail,
+        picked: picked,
+      );
       return;
     }
 
@@ -6138,7 +6578,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   title: Text(l10n.posDiscountCustomAmountOption),
                   onTap: () => Navigator.pop(ctx, (type: 'custom', rule: null)),
                 ),
-                if (controller.discount.isActive)
+                if (serverDetail == null
+                    ? controller.discount.isActive
+                    : (serverDetail.bill?['manual_discount_baisas'] as int? ??
+                              0) >
+                          0)
                   ListTile(
                     leading: const Icon(Icons.delete_outline),
                     title: Text(l10n.posDiscountRemoveOption),
@@ -6153,8 +6597,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (!mounted || action == null) return;
     switch (action.type) {
       case 'custom':
-        await _openManualDiscountDialog();
+        await _openManualDiscountDialog(
+          serverDetail: serverDetail,
+          picked: picked,
+        );
       case 'remove':
+        if (serverDetail != null) {
+          picked?.call({'kind': 'discount', 'mode': 'clear'});
+          return;
+        }
         controller.clearDiscount();
         _showPopupMessage(
           title: l10n.posDiscountClearedTitle,
@@ -6162,7 +6613,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           tone: FeedbackTone.info,
         );
       case 'rule':
-        await _applyMerchantDiscount(action.rule!);
+        await _applyMerchantDiscount(action.rule!, picked: picked);
       case 'redeem':
         await _openRedeemDialog();
       case 'redeem_stamp':
@@ -6357,7 +6808,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           SunmiReceiptService.money(d.fixedAmount ?? 0),
         );
 
-  Future<void> _applyMerchantDiscount(MerchantDiscount d) async {
+  Future<void> _applyMerchantDiscount(
+    MerchantDiscount d, {
+    void Function(Map<String, dynamic>)? picked,
+  }) async {
     final l10n = L10n.of(context);
     if (d.requiresManagerApproval) {
       final ok = await _authorizeManager(
@@ -6374,6 +6828,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         return;
       }
     }
+    if (picked != null) {
+      picked({
+        'kind': 'discount',
+        'mode': 'rule',
+        'discount_id': d.id,
+        if (d.requiresManagerApproval) 'authorized_by': 'Manager',
+      });
+      return;
+    }
     controller.applyDiscount(d.toConfiguration());
     _showPopupMessage(
       title: l10n.posDiscountAppliedTitle,
@@ -6382,17 +6845,47 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  Future<void> _openManualDiscountDialog() async {
-    if (_liveTable) return;
+  Future<void> _openManualDiscountDialog({
+    DineInDetail? serverDetail,
+    void Function(Map<String, dynamic>)? picked,
+  }) async {
+    if (serverDetail == null && (_liveTable || _workspace?.dineIn == true)) {
+      await _adjustLiveBill('discount');
+      return;
+    }
     final l10n = L10n.of(context);
     final value = await showDialog<DiscountConfiguration>(
       context: context,
       barrierDismissible: true,
-      builder: (context) =>
-          _DiscountDialog(initialDiscount: controller.discount),
+      builder: (context) => _DiscountDialog(
+        initialDiscount: serverDetail == null
+            ? controller.discount
+            : const DiscountConfiguration(),
+      ),
     );
 
     if (value == null) return;
+    if (serverDetail != null) {
+      picked?.call(
+        !value.isActive
+            ? {'kind': 'discount', 'mode': 'clear'}
+            : {
+                'kind': 'discount',
+                'mode': value.kind == DiscountKind.percentage
+                    ? 'percent'
+                    : 'fixed',
+                if (value.kind == DiscountKind.percentage)
+                  'percent_bp': (value.value * 100).round()
+                else
+                  'amount_baisas': (value.value * 1000).round(),
+                'label': value.label.isEmpty
+                    ? l10n.posDiscountDefaultLabel
+                    : value.label,
+                if (value.reason.isNotEmpty) 'reason': value.reason,
+              },
+      );
+      return;
+    }
     if (value.isActive) {
       controller.applyDiscount(value);
       _showPopupMessage(
@@ -7086,6 +7579,128 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
+  Future<QrCheckoutController> _newQrCheckout() async {
+    final api = ref.read(apiServiceProvider);
+    final session = ref.read(sessionServiceProvider);
+    final gateway = ApiCheckoutGateway(
+      api: api,
+      mutationGuard: controller.assertNoPendingCombine,
+      currentScope: () => quickDeviceScope(
+        api.quickOrderBaseUrl,
+        session.companyId,
+        session.branchId,
+        session.kioskId,
+      ),
+      location: ref.read(qrLocationProvider).currentFix,
+      legacyGuard: (orderUuid) async {
+        await controller.assertNoPendingCombine();
+        if (ref
+                .read(qrSettlementCoordinatorProvider)
+                .pendingManagerRecoveries
+                .isNotEmpty ||
+            await ref
+                .read(orderSyncRepositoryProvider)
+                .hasUnresolvedStandaloneQrPay(orderUuid)) {
+          throw StateError('An earlier QR settlement requires recovery.');
+        }
+        final requests = await SqliteQrQuickStore.open(
+          quickDeviceScope(
+            api.quickOrderBaseUrl,
+            session.companyId,
+            session.branchId,
+            session.kioskId,
+          ),
+        );
+        if ((await requests.load()).any((r) => r.orderUuid == orderUuid)) {
+          throw StateError('Resolve the pending item addition before payment.');
+        }
+        final tableRequests = await SqliteDineInStore.open(
+          quickDeviceScope(
+            api.quickOrderBaseUrl,
+            session.companyId,
+            session.branchId,
+            session.kioskId,
+          ),
+        );
+        if (await tableRequests.load() != null) {
+          throw StateError('Resolve the saved table round before payment.');
+        }
+      },
+    );
+    final store = await SqliteCheckoutStore.open(gateway.scope);
+    late QrCheckoutController checkout;
+    checkout = QrCheckoutController(
+      gateway: gateway,
+      store: store,
+      projectReceipt: (snapshot, attempt) => projectMachineCheckoutReceipt(
+        ServerReceiptHistory(
+          debugOrderStorageOverride ?? LocalOrderStorageService.instance,
+        ),
+        snapshot,
+        attempt,
+      ),
+      authorizeGift: () async {
+        if (!mounted ||
+            !await _authorizeManager(
+              subtitle: L10n.of(context).posPayGiftManagerApprovalMessage,
+            )) {
+          return false;
+        }
+        if (!mounted) return false;
+        return await showDialog<bool>(
+              context: context,
+              builder: (dialog) => AlertDialog(
+                title: Text(L10n.of(context).posPayGiftConfirmTitle),
+                content: Text(
+                  L10n.of(context).posPayGiftConfirmMessage(
+                    SunmiReceiptService.money(checkout.total / 1000),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialog, false),
+                    child: Text(L10n.of(context).commonCancel),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(dialog, true),
+                    child: Text(L10n.of(context).posPaymentGift),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+      },
+      captureBank: (amount) {
+        gateway.checkScope();
+        return confirmCheckoutBank(context, amount);
+      },
+      captureCard: (amount) async {
+        gateway.checkScope();
+        final result = await ref
+            .read(qrCardTerminalProvider)
+            .captureBaisas(amount);
+        final state = result.isSuccess && !result.isCanceled
+            ? CheckoutCaptureState.approved
+            : result.isCanceled && !result.isSuccess
+            ? CheckoutCaptureState.cancelled
+            : result.failurePhase == MosambeeFailurePhase.preDispatch
+            ? CheckoutCaptureState.notDispatched
+            : CheckoutCaptureState.uncertain;
+        return CheckoutCapture(
+          state,
+          evidence: {
+            if (result.softposReference != null)
+              'softpos_reference': result.softposReference,
+            if (result.softposAuthCode != null)
+              'softpos_auth_code': result.softposAuthCode,
+            'bank_response': result.payload,
+          },
+        );
+      },
+    );
+    return checkout;
+  }
+
   Future<void> _launchQrCheckout(String? uuid) async {
     if (_normalQrCheckoutOpen ||
         controller.isProcessingPayment ||
@@ -7098,125 +7713,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     QrCheckoutController? checkout;
     VoidCallback? displayListener;
     try {
-      final api = ref.read(apiServiceProvider);
-      final session = ref.read(sessionServiceProvider);
-      final gateway = ApiCheckoutGateway(
-        api: api,
-        mutationGuard: controller.assertNoPendingCombine,
-        currentScope: () => quickDeviceScope(
-          api.quickOrderBaseUrl,
-          session.companyId,
-          session.branchId,
-          session.kioskId,
-        ),
-        location: ref.read(qrLocationProvider).currentFix,
-        legacyGuard: (orderUuid) async {
-          await controller.assertNoPendingCombine();
-          if (ref
-                  .read(qrSettlementCoordinatorProvider)
-                  .pendingManagerRecoveries
-                  .isNotEmpty ||
-              await ref
-                  .read(orderSyncRepositoryProvider)
-                  .hasUnresolvedStandaloneQrPay(orderUuid)) {
-            throw StateError('An earlier QR settlement requires recovery.');
-          }
-          final requests = await SqliteQrQuickStore.open(
-            quickDeviceScope(
-              api.quickOrderBaseUrl,
-              session.companyId,
-              session.branchId,
-              session.kioskId,
-            ),
-          );
-          if ((await requests.load()).any((r) => r.orderUuid == orderUuid)) {
-            throw StateError(
-              'Resolve the pending item addition before payment.',
-            );
-          }
-          final tableRequests = await SqliteDineInStore.open(
-            quickDeviceScope(
-              api.quickOrderBaseUrl,
-              session.companyId,
-              session.branchId,
-              session.kioskId,
-            ),
-          );
-          if (await tableRequests.load() != null) {
-            throw StateError('Resolve the saved table round before payment.');
-          }
-        },
-      );
-      final store = await SqliteCheckoutStore.open(gateway.scope);
-      checkout = QrCheckoutController(
-        gateway: gateway,
-        store: store,
-        projectReceipt: (snapshot, attempt) => projectMachineCheckoutReceipt(
-          ServerReceiptHistory(
-            debugOrderStorageOverride ?? LocalOrderStorageService.instance,
-          ),
-          snapshot,
-          attempt,
-        ),
-        authorizeGift: () async {
-          if (!mounted ||
-              !await _authorizeManager(
-                subtitle: L10n.of(context).posPayGiftManagerApprovalMessage,
-              )) {
-            return false;
-          }
-          if (!mounted) return false;
-          return await showDialog<bool>(
-                context: context,
-                builder: (dialog) => AlertDialog(
-                  title: Text(L10n.of(context).posPayGiftConfirmTitle),
-                  content: Text(
-                    L10n.of(context).posPayGiftConfirmMessage(
-                      SunmiReceiptService.money(checkout!.total / 1000),
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(dialog, false),
-                      child: Text(L10n.of(context).commonCancel),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(dialog, true),
-                      child: Text(L10n.of(context).posPaymentGift),
-                    ),
-                  ],
-                ),
-              ) ??
-              false;
-        },
-        captureBank: (amount) {
-          gateway.checkScope();
-          return confirmCheckoutBank(context, amount);
-        },
-        captureCard: (amount) async {
-          gateway.checkScope();
-          final result = await ref
-              .read(qrCardTerminalProvider)
-              .captureBaisas(amount);
-          final state = result.isSuccess && !result.isCanceled
-              ? CheckoutCaptureState.approved
-              : result.isCanceled && !result.isSuccess
-              ? CheckoutCaptureState.cancelled
-              : result.failurePhase == MosambeeFailurePhase.preDispatch
-              ? CheckoutCaptureState.notDispatched
-              : CheckoutCaptureState.uncertain;
-          return CheckoutCapture(
-            state,
-            evidence: {
-              if (result.softposReference != null)
-                'softpos_reference': result.softposReference,
-              if (result.softposAuthCode != null)
-                'softpos_auth_code': result.softposAuthCode,
-              'bank_response': result.payload,
-            },
-          );
-        },
-      );
+      checkout = await _newQrCheckout();
       if (!mounted) return;
       final payment = checkout;
       final workspace = _workspace;
@@ -7278,6 +7775,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// the cashier dismisses its result. Cancel/recovery keeps the bill open.
   Future<void> showQrCheckout(QrCheckoutController payment) async {
     final workspace = _workspace;
+    final originalBillUuid = workspace?.bill?.uuid;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => QrCheckoutBoundary(
@@ -7295,7 +7793,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         workspace == null ||
         !workspace.mainCart ||
         !identical(_workspace, workspace) ||
-        workspace.bill?.uuid != payment.snapshot?.order['uuid']) {
+        originalBillUuid != payment.snapshot?.order['uuid'] ||
+        (workspace.bill != null && workspace.bill!.uuid != originalBillUuid)) {
       return;
     }
     workspace.returnToList = false;
@@ -7493,7 +7992,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   Widget _buildPaymentOrderPanel({QrCheckoutController? qr}) {
     final l10n = L10n.of(context);
-    final bill = qr == null ? null : WorkspaceBill(qr.snapshot!.order);
+    final bill = qr == null
+        ? _liveBill
+        : WorkspaceBill({
+            ...qr.snapshot!.order,
+            'customer': qr.snapshot!.customer,
+          });
     final cart = bill?.cartItems ?? controller.cart;
     final rawSubtotal = bill == null
         ? controller.rawSubtotal
@@ -7544,9 +8048,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             const SizedBox(height: 16),
           ],
           if (qr == null && _liveTable)
-            Text(l10n.tableSharedAdjustmentsUnavailable)
+            _tableAdjustmentControls()
           else
             _buildCustomerReferenceField(qr: qr),
+          if (bill != null) _billAdjustmentContext(bill),
           const SizedBox(height: 16),
           _buildVehiclePlateField(qr: qr),
           const SizedBox(height: 16),
@@ -7580,7 +8085,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     l10n.posPaymentCompRow(
                       bill == null
                           ? controller.appliedComp?.reasonName ?? ''
-                          : '',
+                          : bill.compReason,
                     ),
                     -comp,
                   ),
@@ -9691,25 +10196,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Widget _buildCurrentOrderPanel() {
     final l10n = L10n.of(context);
     final workspace = _workspace?.mainCart == true ? _workspace : null;
-    final bill = workspace?.cartBill;
+    final bill = workspace?.cartBill ?? _liveBill;
     final cart = workspace == null
         ? controller.cart
         : bill?.cartItems ?? <CartItem>[];
-    final rawSubtotal = workspace == null
+    final rawSubtotal = bill == null
         ? controller.rawSubtotal
-        : (bill?.subtotal ?? 0) / 1000;
-    final discount = workspace == null
+        : bill.subtotal / 1000;
+    final discount = bill == null
         ? controller.discountAmount
-        : (bill?.discount ?? 0) / 1000;
-    final comp = workspace == null
-        ? controller.compAmount
-        : (bill?.comp ?? 0) / 1000;
-    final subtotal = workspace == null
+        : bill.discount / 1000;
+    final comp = bill == null ? controller.compAmount : bill.comp / 1000;
+    final subtotal = bill == null
         ? controller.subtotal
         : rawSubtotal - discount;
-    final total = workspace == null
-        ? controller.total
-        : (bill?.total ?? 0) / 1000;
+    final total = bill == null ? controller.total : bill.total / 1000;
     final dining =
         workspace?.dineIn == true ||
         (workspace == null && _isEditingDiningTable);
@@ -9942,6 +10443,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           ),
           const SizedBox(height: 12),
           if (workspace != null) _buildWorkspaceCartStatus(workspace),
+          if (liveTable || workspace?.dineIn == true)
+            _tableAdjustmentControls(
+              workspaceControls: workspace?.cartControls,
+            ),
           if (liveTable || workspace?.dineIn == true) ...[
             if (workspace == null && _localTableRefusal != null)
               Text(_localTableRefusal!)
@@ -9983,6 +10488,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ),
             const SizedBox(height: 8),
           ],
+          if (bill != null) _billAdjustmentContext(bill),
           _glassInsetCard(
             child: Column(
               children: [
@@ -9990,7 +10496,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 if (discount > 0) ...[
                   const SizedBox(height: 6),
                   _summaryRow(
-                    workspace != null || controller.discount.label.isEmpty
+                    bill != null
+                        ? (bill.discountLabel.isEmpty
+                              ? l10n.posOrderPanelDiscount
+                              : bill.discountLabel)
+                        : controller.discount.label.isEmpty
                         ? l10n.posOrderPanelDiscount
                         : controller.discount.label,
                     -discount,
@@ -10003,18 +10513,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   const SizedBox(height: 6),
                   _summaryRow(
                     l10n.posOrderPanelComp(
-                      workspace == null
+                      bill == null
                           ? controller.appliedComp?.reasonName ?? ''
-                          : '',
+                          : bill.compReason,
                     ),
                     -comp,
                   ),
                 ],
-                if (workspace != null && (bill?.tax ?? 0) != 0) ...[
+                if (bill != null && bill.tax != 0) ...[
                   const SizedBox(height: 6),
-                  _summaryRow(checkoutText(context, 'tax'), bill!.tax / 1000),
+                  _summaryRow(checkoutText(context, 'tax'), bill.tax / 1000),
                 ],
-                if (workspace == null)
+                if (bill == null)
                   for (final t in controller.taxLines) ...[
                     const SizedBox(height: 6),
                     _summaryRow('${t.name} (${t.rateLabel}%)', t.amount),

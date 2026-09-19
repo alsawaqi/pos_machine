@@ -10,7 +10,16 @@ import 'db/app_database.dart';
 import 'order_sync_repository.dart';
 
 class TablePaymentContext {
-  const TablePaymentContext({this.lat, this.lng, this.cardCharge});
+  const TablePaymentContext({
+    this.lat,
+    this.lng,
+    this.cardCharge,
+    this.prepareEvent,
+    this.eventId,
+  });
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic>)?
+  prepareEvent;
+  final String? eventId;
   final double? lat;
   final double? lng;
   final CardCharge? cardCharge;
@@ -70,6 +79,8 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
   Future<bool> Function(DiningTableSession, List<Map<String, dynamic>>)?
   printRound;
   Future<TablePaymentContext> Function(OrderSnapshot)? paymentContext;
+  Future<void> Function(Map<String, dynamic>, Map<String, dynamic>)?
+  paymentAcknowledged;
   TableVoidApproval? clearApproval;
 
   final _sessions = <String, DiningTableSession>{};
@@ -449,7 +460,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
         lng: payment.lng,
         cardCharge: payment.cardCharge,
         now: clock(),
-        newUuid: newUuid,
+        newUuid: payment.eventId == null ? newUuid : () => payment.eventId!,
       );
       // The original local UUID remains the key after an ACK rebind, so a
       // manager's later history-based void can resolve the canonical bill.
@@ -457,6 +468,9 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
         snapshot.serverOrderUuid.isEmpty ? bill : snapshot.serverOrderUuid,
         event,
         createdAt: clock(),
+        beforeFlush: payment.prepareEvent == null
+            ? null
+            : () => payment.prepareEvent!(event),
       );
     });
   }
@@ -734,6 +748,16 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
     List<Map<String, dynamic>> results,
   ) async {
     for (final event in events) {
+      if (event['event_type'] == 'order.pay') {
+        final paymentAck = results
+            .where(
+              (result) => result['client_event_id'] == event['client_event_id'],
+            )
+            .firstOrNull;
+        if (paymentAck != null) {
+          await paymentAcknowledged?.call(event, paymentAck);
+        }
+      }
       final ack = results
           .where(
             (r) =>

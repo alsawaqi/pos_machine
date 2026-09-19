@@ -61,6 +61,10 @@ class PosController extends ChangeNotifier
 
   /// Live table tenders must be authorised before cash, native launch or print.
   Future<String?> Function()? verifyDiningTableTender;
+  Future<Map<String, dynamic>> Function(double? cashTendered)?
+  prepareDiningTableTender;
+  int? Function()? liveDiningTotal;
+  Map<String, dynamic>? _reservedDiningBill;
   final Map<String, String> _diningHookOccupancies = {};
   String? _activeDiningTableSeatingKey;
 
@@ -1390,6 +1394,7 @@ class PosController extends ChangeNotifier
   /// the payment page opens (time windows re-checked then). Rules that
   /// require manager approval never auto-apply — nobody approved them.
   void maybeAutoApplyOrderDiscount() {
+    if (isLiveSharedTable?.call() == true) return;
     if (!_cartMutationAllowed()) return;
     if (_autoOrderDiscountSuppressed) return;
     if (discount.isActive || _cart.isEmpty) return;
@@ -1599,7 +1604,17 @@ class PosController extends ChangeNotifier
     _splitPayments.fold<double>(0, (sum, payment) => sum + payment.paidAmount),
   );
 
+  String? get reservedDiningBillUuid => _reservedDiningBill?['uuid'] as String?;
+
   double get activePaymentBaseTotal {
+    if (isLiveSharedTable?.call() == true) {
+      final server =
+          (isProcessingPayment
+              ? (_reservedDiningBill?['grand_total_baisas'] as int?)
+              : null) ??
+          liveDiningTotal?.call();
+      if (server != null) return server / 1000;
+    }
     final override = _activePaymentBaseOverride;
     if (override != null) return override;
 
@@ -3084,7 +3099,8 @@ class PosController extends ChangeNotifier
     final transactionMethod = selectedPaymentMethod;
     final transactionSplitCount = splitCount;
     final transactionSplitIndex = activeSplitIndex;
-    final transactionBaseAmount = activePaymentBaseTotal;
+    _reservedDiningBill = null;
+    var transactionBaseAmount = activePaymentBaseTotal;
     final isDineInPayment =
         selectedOrderType == OrderType.dineIn && activeDiningTableId != null;
 
@@ -3104,6 +3120,18 @@ class PosController extends ChangeNotifier
         refusal = verifyDiningTableTender == null
             ? 'Could not verify the table bill. Reconnect and try again.'
             : await verifyDiningTableTender!();
+        if (refusal == null && prepareDiningTableTender != null) {
+          _reservedDiningBill = await prepareDiningTableTender!(
+            cashTenderedAmount,
+          );
+          transactionBaseAmount = activePaymentBaseTotal;
+          if (cashTenderedAmount != null &&
+              selectedPaymentMethod == 'Cash' &&
+              cashTenderedAmount + 0.0005 < transactionBaseAmount) {
+            refusal =
+                'The bill changed. Check payment result before taking cash.';
+          }
+        }
       } catch (_) {
         refusal = 'Could not verify the table bill. Reconnect and try again.';
       }
@@ -3606,6 +3634,21 @@ class PosController extends ChangeNotifier
           serverOrderUuid: canonical,
         );
       }
+    }
+    final bill = _reservedDiningBill;
+    if (serverOwned && bill != null) {
+      final sub = (bill['subtotal_baisas'] as int) / 1000;
+      final discount = (bill['discount_total_baisas'] as int) / 1000;
+      completedSnapshot = completedSnapshot.copyWith(
+        rawSubtotal: sub,
+        discountAmount: discount,
+        subtotal: sub - discount,
+        compAmount: (bill['comp_total_baisas'] as int? ?? 0) / 1000,
+        tax: (bill['tax_total_baisas'] as int) / 1000,
+        total: (bill['grand_total_baisas'] as int) / 1000,
+        activePaymentBaseTotal: (bill['grand_total_baisas'] as int) / 1000,
+        payableTotal: (bill['grand_total_baisas'] as int) / 1000,
+      );
     }
     _activeServerOrderUuid = null;
     if (printKitchenTickets && !tableRoundHandled) {
@@ -4319,6 +4362,7 @@ class PosController extends ChangeNotifier
     bool clearActiveDiningTable = false,
     String note = '',
   }) {
+    _reservedDiningBill = null;
     _cart.clear();
     // Phase C2 — a leftover uuid (resumed-then-cleared cart) is dropped, not
     // voided: the server mirror stays held and remains resumable/discardable

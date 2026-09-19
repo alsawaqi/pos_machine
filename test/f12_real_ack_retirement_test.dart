@@ -316,6 +316,8 @@ void main() {
         // External tender preflight/printing are outside the defect. Neither
         // callback replaces payAndPrint, coordinator ACKs or any storage method.
         c.verifyDiningTableTender = () async => null;
+        c.prepareDiningTableTender =
+            null; // External claim is outside this existing regression.
         c.onOrderCompleted = (_) {};
         coordinator.paymentContext = (_) async => const TablePaymentContext();
         final shell = await SharedPreferences.getInstance();

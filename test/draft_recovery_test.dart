@@ -101,6 +101,9 @@ Map<String, dynamic> previewValue({bool legacy = false}) => {
 };
 
 class RecoveryFake implements DraftRecoveryGateway, DineInGateway {
+  @override
+  Future<Map<String, dynamic>> adjust(DineInRequest request) =>
+      throw UnsupportedError('Not used by recovery fixture');
   Map<String, dynamic> previewJson = previewValue();
   final confirmations = <Map<String, dynamic>>[];
   final sent = <DineInRequest>[];

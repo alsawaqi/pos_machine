@@ -105,11 +105,13 @@ class SqliteDineInStore implements DineInStore, DineInDraftStore {
       }, conflictAlgorithm: ConflictAlgorithm.abort);
       // The durable send intent takes ownership atomically, even if the process
       // dies before its response. Never restore these lines as a fresh draft.
-      await txn.delete(
-        'dine_in_drafts',
-        where: 'scope = ? AND table_id = ?',
-        whereArgs: [scope, request.tableId],
-      );
+      if (!request.isAdjustment) {
+        await txn.delete(
+          'dine_in_drafts',
+          where: 'scope = ? AND table_id = ?',
+          whereArgs: [scope, request.tableId],
+        );
+      }
     });
   }
 

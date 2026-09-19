@@ -85,6 +85,10 @@ class TableMemory implements DineInStore {
 }
 
 class TableFake implements DineInGateway {
+  @override
+  Future<Map<String, dynamic>> adjust(DineInRequest request) =>
+      throw UnsupportedError('Adjustment not used by this fixture');
+
   Map<String, dynamic> value = tableFixture();
   final calls = <String>[];
   final requests = <DineInRequest>[];

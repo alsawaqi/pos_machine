@@ -22,7 +22,15 @@ class ApiCombineGateway implements CombineGateway {
 
   Future<T> call<T>(Future<T> Function() operation) async {
     check();
-    final result = await operation();
+    late T result;
+    try {
+      result = await operation();
+    } on ApiException catch (error) {
+      if (error.code == 'adjusted_bill_not_supported') {
+        throw StateError('adjusted_bill_not_supported');
+      }
+      rethrow;
+    }
     check();
     return result;
   }

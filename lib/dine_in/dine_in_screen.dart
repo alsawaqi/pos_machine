@@ -10,6 +10,62 @@ import 'dine_in_store.dart';
 String dineInText(bool ar, String key) {
   const values = {
     'title': ['Dine-In', 'داخل المطعم'],
+    'discount': ['Discount', 'خصم'],
+    'comp': ['Complimentary', 'ضيافة'],
+    'replace': ['Replace', 'استبدال'],
+    'detach_customer': ['Remove customer', 'إزالة العميل'],
+    'pending_adjustment': [
+      'Resolve the saved request before adjusting this bill.',
+      'تحقق من الطلب المحفوظ قبل تعديل الفاتورة.',
+    ],
+    'adjustment_review': [
+      'Confirm or reject pending rounds before adjusting this bill.',
+      'أكد أو ارفض الجولات المعلقة قبل تعديل الفاتورة.',
+    ],
+    'adjustment_unsent': [
+      'Send or remove unsent items and finish sync before adjusting the bill.',
+      'أرسل أو أزل الأصناف غير المرسلة وأكمل المزامنة قبل تعديل الفاتورة.',
+    ],
+    'bill_reserved': [
+      'Reopen the bill and resolve its payment result before adjusting it.',
+      'أعد فتح الفاتورة وتحقق من نتيجة الدفع قبل تعديلها.',
+    ],
+    'bill_missing': [
+      'Open a table bill before adjusting it.',
+      'افتح فاتورة الطاولة قبل تعديلها.',
+    ],
+    'adjustment_exceeds_bill': [
+      'The adjustment must leave a positive amount to pay. Check the selected quantity.',
+      'يجب أن يترك التعديل مبلغاً موجباً للدفع. تحقق من الكمية المحددة.',
+    ],
+    'full_comp_not_supported': [
+      'Whole-bill complimentary payment is not supported. Leave an amount to pay.',
+      'ضيافة الفاتورة كاملة غير متاحة. يجب إبقاء مبلغ للدفع.',
+    ],
+    'comp_cap_exceeded': [
+      'Choose an active complimentary reason and stay within its limit.',
+      'اختر سبب ضيافة نشطاً والتزم بحده.',
+    ],
+    'discount_rule_not_applicable': [
+      'This discount is not available for this branch now.',
+      'هذا الخصم غير متاح لهذا الفرع الآن.',
+    ],
+    'approval_required': [
+      'Manager approval is required.',
+      'موافقة المدير مطلوبة.',
+    ],
+    'customer_not_found': [
+      'The customer was not found for this merchant.',
+      'لم يتم العثور على العميل لدى هذا التاجر.',
+    ],
+    'retry_adjustment': [
+      'Retry saved adjustment',
+      'إعادة محاولة التعديل المحفوظ',
+    ],
+    'adjustment_stale': [
+      'Calculated before the last change — re-apply to update.',
+      'تم الحساب قبل آخر تغيير — أعد التطبيق للتحديث.',
+    ],
     'add': ['Add items', 'إضافة أصناف'],
     'send': ['Send round', 'إرسال الجولة'],
     'pay': ['Proceed to pay', 'المتابعة للدفع'],
@@ -108,10 +164,13 @@ class DineInScreen extends StatefulWidget {
     this.workspace,
     this.onVoid,
     this.approveCancellation,
+    this.pickAdjustment,
     this.onCombine,
     this.onRecover,
     this.localDraftBlockedNow,
   });
+  final Future<Map<String, dynamic>?> Function(DineInDetail, String)?
+  pickAdjustment;
   final Future<DineInController> Function() createController;
   final List<QuickProduct> Function() catalogue;
   final String label;
@@ -631,6 +690,44 @@ class _DineInScreenState extends State<DineInScreen>
     return '${widget.arabic ? 'معلّق — لا يوجد سعر بعد' : 'Held — no price yet'} · $reason';
   }
 
+  List<Widget> _adjustedSummary(Map<String, dynamic> value) {
+    final bill = WorkspaceBill(value);
+    if ((value['manual_discount_baisas'] as int? ?? 0) == 0 &&
+        bill.comp == 0 &&
+        bill.customer == null) {
+      return [];
+    }
+    String label(String en, String ar) => widget.arabic ? ar : en;
+    return [
+      Text('${label('Subtotal', 'المجموع الفرعي')}: ${money(bill.subtotal)}'),
+      if (bill.discount > 0)
+        Text(
+          '${label('Discount', 'الخصم')} ${bill.discountLabel}: −${money(bill.discount)}',
+        ),
+      if (bill.comp > 0)
+        Text(
+          '${label('Complimentary', 'الضيافة')} ${bill.compReason}: −${money(bill.comp)}',
+        ),
+      Text('${label('Tax', 'الضريبة')}: ${money(bill.tax)}'),
+      if (bill.adjustmentStale) Text(text('adjustment_stale')),
+      if (bill.customer case final customer?)
+        Text('${customer['name'] ?? ''} · ${customer['phone'] ?? ''}'),
+    ];
+  }
+
+  bool get _canAdjust =>
+      widget.writesAllowed &&
+      widget.pickAdjustment != null &&
+      controller?.canAdjust == true &&
+      drafts.isEmpty &&
+      !childOpen &&
+      !(widget.localDraftBlockedNow?.call() ?? widget.localDraftBlocked);
+  Future<void> _adjust(String kind) async {
+    if (!_canAdjust) return;
+    await controller!.adjust((detail) => widget.pickAdjustment!(detail, kind));
+    if (mounted) _publish();
+  }
+
   WorkspaceCartControls get _cartControls {
     final c = controller, detail = c?.detail;
     final enabled =
@@ -642,6 +739,12 @@ class _DineInScreenState extends State<DineInScreen>
         drafts.isEmpty &&
         !(widget.localDraftBlockedNow?.call() ?? widget.localDraftBlocked);
     return WorkspaceCartControls(
+      discount: _canAdjust ? () => _adjust('discount') : null,
+      comp: _canAdjust ? () => _adjust('comp') : null,
+      customer: _canAdjust ? () => _adjust('customer') : null,
+      adjustmentBlocked: drafts.isNotEmpty
+          ? 'adjustment_unsent'
+          : c?.adjustmentBlocked,
       busy: c?.busy == true || childOpen,
       pendingRows: [
         if (detail != null)
@@ -689,7 +792,9 @@ class _DineInScreenState extends State<DineInScreen>
           text('changed'),
         if (c?.stale == true) text('refresh'),
         if (c?.notice != null)
-          c?.pending?.isCancellation == true && c?.notice == 'uncertain'
+          (c?.pending?.isCancellation == true ||
+                      c?.pending?.isAdjustment == true) &&
+                  c?.notice == 'uncertain'
               ? (widget.arabic
                     ? 'التعديل محفوظ. أعد محاولة نفس التعديل.'
                     : 'The change is saved. Retry this same change.')
@@ -1009,6 +1114,20 @@ class _DineInScreenState extends State<DineInScreen>
                             ? 'يوجد طلب محلي غير مرسل. عالجه أولاً دون إنشاء فاتورة ثانية.'
                             : 'A local draft is unresolved. Resolve it first without creating a second bill.',
                       ),
+                    if (widget.pickAdjustment != null && detail?.bill != null)
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          for (final kind in ['discount', 'comp', 'customer'])
+                            TextButton(
+                              key: ValueKey('dine-adjust-$kind'),
+                              onPressed: _canAdjust
+                                  ? () => _adjust(kind)
+                                  : null,
+                              child: Text(text(kind)),
+                            ),
+                        ],
+                      ),
                     if (detail != null) ...[
                       Text(
                         '${widget.label} · ${text(detail.occupied ? 'occupied' : 'free')}',
@@ -1020,6 +1139,7 @@ class _DineInScreenState extends State<DineInScreen>
                       ),
                       if (detail.orphaned) note('orphan'),
                       if (detail.bill != null) ...[
+                        ..._adjustedSummary(detail.bill!),
                         Text(
                           '${text('total')}: ${money(detail.bill!['grand_total_baisas'])}',
                           key: const ValueKey('dine-total'),

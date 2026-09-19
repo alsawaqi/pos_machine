@@ -154,7 +154,14 @@ class _CombineScreenState extends State<CombineScreen>
               ),
               if (setupError != null || controller?.error != null)
                 Text(
-                  setupError ?? controller!.error!,
+                  (setupError ?? controller!.error!).contains(
+                        'adjusted_bill_not_supported',
+                      )
+                      ? t(
+                          'Adjusted bills cannot be combined. Continue each original bill separately.',
+                          'لا يمكن دمج الفواتير المعدلة. تابع كل فاتورة أصلية بشكل منفصل.',
+                        )
+                      : setupError ?? controller!.error!,
                   key: const ValueKey('combine-error'),
                 ),
               if (preview != null) ...[

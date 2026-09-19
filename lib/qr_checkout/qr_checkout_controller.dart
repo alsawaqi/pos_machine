@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'qr_checkout_models.dart';
 import 'qr_checkout_store.dart';
@@ -397,6 +398,84 @@ class QrCheckoutController extends ChangeNotifier {
     }
   }
 
+  /// The normal staff table checkout retains payAndPrint + the real table
+  /// outbox. Reservation and crash evidence still use this checkout journal.
+  Future<CheckoutSnapshot?> beginTableTender() async {
+    if (!ready || snapshot == null || _claim == null) return null;
+    _busy = true;
+    try {
+      if (!await _revalidate()) {
+        await _releaseBeforeTender('claim_changed');
+        return null;
+      }
+      await _save(
+        _attempt!.copy(state: 'capturing', tenderMayHaveStarted: true),
+      );
+      phase = CheckoutPhase.busy;
+      return snapshot;
+    } catch (_) {
+      phase = CheckoutPhase.attention;
+      notice = 'recovery';
+      return null;
+    } finally {
+      _busy = false;
+      _changed();
+    }
+  }
+
+  /// Runs in the table outbox's beforeFlush hook. The one immutable pay event
+  /// is recoverable through Check payment result even if the process stops.
+  Future<Map<String, dynamic>> journalTablePay(
+    Map<String, dynamic> event,
+  ) async {
+    final attempt = _attempt;
+    if (attempt == null || attempt.state != 'capturing' || _claim == null) {
+      throw StateError('Check payment result before another table payment.');
+    }
+    final payload = checkoutMap(event['payload']);
+    final payments = (payload['payments'] as List).map(checkoutMap).toList();
+    if (event['event_type'] != 'order.pay' ||
+        payload['order_uuid'] != attempt.orderUuid ||
+        payments.fold<int>(
+              0,
+              (sum, row) => sum + (row['amount_baisas'] as int),
+            ) !=
+            _claim!.amount) {
+      throw const FormatException(
+        'Table payment differs from the reserved bill',
+      );
+    }
+    if (event['client_event_id'] != attempt.id) {
+      throw const FormatException('Table payment identity changed');
+    }
+    final frozen = Map<String, dynamic>.from(event);
+    await _save(
+      attempt.copy(state: 'pending', captures: payments, event: frozen),
+    );
+    phase = CheckoutPhase.pending;
+    _changed();
+    return frozen;
+  }
+
+  /// A real table-outbox ACK can finish the same journal after restart. It
+  /// cannot confirm any other event, total, bill, or payment status.
+  Future<void> acceptTablePayAck(
+    Map<String, dynamic> event,
+    Map<String, dynamic> ack,
+  ) async {
+    final saved = await store.active();
+    if (saved == null ||
+        saved.state != 'pending' ||
+        saved.event == null ||
+        jsonEncode(saved.event) != jsonEncode(event) ||
+        ack['client_event_id'] != saved.id) {
+      return;
+    }
+    _attempt = saved;
+    await _acceptPaymentAck(ack);
+    _changed();
+  }
+
   Future<void> _captureStopped(
     String reason,
     List<Map<String, dynamic>> collected,
@@ -436,45 +515,48 @@ class QrCheckoutController extends ChangeNotifier {
           responses.single['client_event_id'] != _attempt!.id) {
         return;
       }
-      final ack = responses.single;
-      if (ack['status'] == 'processed') {
-        final result = checkoutMap(ack['result']);
-        if (result['status'] != 'paid' ||
-            result['order_id'] != _attempt!.orderId ||
-            result['orphan_tender'] == true) {
-          return;
-        }
-        final confirmed = _attempt!.copy(
-          state: 'paid',
-          receiptNumber: result['receipt_number'] as String?,
-        );
-        // Persist the official display/history before making the journal
-        // terminal. A failed projection retries the same payment event.
-        await projectReceipt?.call(snapshot, confirmed);
-        await _save(confirmed);
-        phase = CheckoutPhase.paid;
-        notice = null;
-      } else if (ack['status'] == 'failed') {
-        await _save(_attempt!.copy(state: 'refused'));
-        phase = CheckoutPhase.attention;
-        final external = _attempt!.captures.any(
-          (v) => const ['card', 'bank_pos'].contains(v['method']),
-        );
-        notice = external ? 'recovery' : 'return_cash';
-        try {
-          await gateway.release(
-            _attempt!.orderUuid,
-            external ? 'uncertain' : 'cancelled',
-            _attempt!.captures,
-          );
-        } catch (_) {
-          notice = 'release_failed';
-        }
-      }
+      await _acceptPaymentAck(responses.single);
     } catch (_) {
       // No authoritative ACK, even when the transport throws an HTTP error.
       // Keep the SAME immutable event. Retry is a status replay, never a tender.
       phase = CheckoutPhase.pending;
+    }
+  }
+
+  Future<void> _acceptPaymentAck(Map<String, dynamic> ack) async {
+    if (ack['status'] == 'processed') {
+      final result = checkoutMap(ack['result']);
+      if (result['status'] != 'paid' ||
+          result['order_id'] != _attempt!.orderId ||
+          result['orphan_tender'] == true) {
+        return;
+      }
+      final confirmed = _attempt!.copy(
+        state: 'paid',
+        receiptNumber: result['receipt_number'] as String?,
+      );
+      // Persist the official display/history before making the journal
+      // terminal. A failed projection retries the same payment event.
+      await projectReceipt?.call(snapshot, confirmed);
+      await _save(confirmed);
+      phase = CheckoutPhase.paid;
+      notice = null;
+    } else if (ack['status'] == 'failed') {
+      await _save(_attempt!.copy(state: 'refused'));
+      phase = CheckoutPhase.attention;
+      final external = _attempt!.captures.any(
+        (v) => const ['card', 'bank_pos'].contains(v['method']),
+      );
+      notice = external ? 'recovery' : 'return_cash';
+      try {
+        await gateway.release(
+          _attempt!.orderUuid,
+          external ? 'uncertain' : 'cancelled',
+          _attempt!.captures,
+        );
+      } catch (_) {
+        notice = 'release_failed';
+      }
     }
   }
 

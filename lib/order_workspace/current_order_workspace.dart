@@ -37,6 +37,34 @@ class WorkspaceBill {
   int get comp => json['comp_total_baisas'] as int? ?? 0;
   int get tax =>
       json['tax_total_baisas'] as int? ?? total - subtotal + discount + comp;
+  Map<String, dynamic> get adjustmentState =>
+      json['adjustment_state'] is Map ? qrMap(json['adjustment_state']) : {};
+  String get discountLabel {
+    if ((json['manual_discount_baisas'] as int? ?? 0) <= 0) return '';
+    final state = adjustmentState['discount'];
+    if (state is Map && state['name'] is String) return state['name'] as String;
+    return (json['discounts'] as List? ?? [])
+            .map(qrMap)
+            .where((row) => (row['amount_baisas'] as int? ?? 0) > 0)
+            .lastOrNull?['name']
+            ?.toString() ??
+        '';
+  }
+
+  String get compReason => comp <= 0
+      ? ''
+      : (adjustmentState['comp'] as Map?)?['reason_name']?.toString() ??
+            (json['comps'] as List? ?? [])
+                .whereType<Map>()
+                .where((row) => (row['amount_baisas'] as int? ?? 0) > 0)
+                .lastOrNull?['reason_name']
+                ?.toString() ??
+            '';
+  bool get adjustmentStale => adjustmentState.values.whereType<Map>().any(
+    (row) => row['stale'] == true,
+  );
+  Map<String, dynamic>? get customer =>
+      json['customer'] is Map ? qrMap(json['customer']) : null;
   List<WorkspaceCartItem> get cartItems =>
       items.map(WorkspaceCartItem.new).toList();
 
@@ -361,8 +389,14 @@ class WorkspaceCartControls {
     this.quantity,
     this.customize,
     this.transfer,
+    this.discount,
+    this.comp,
+    this.customer,
+    this.adjustmentBlocked,
     this.actions = const [],
   });
+  final Future<void> Function()? discount, comp, customer;
+  final String? adjustmentBlocked;
   final List<WorkspaceAction> actions;
   final bool busy;
   final List<String> notices, drafts;

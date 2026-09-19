@@ -7,6 +7,7 @@ import 'dine_in_store.dart';
 abstract interface class DineInGateway {
   Future<DineInDetail> detail(int tableId);
   Future<Map<String, dynamic>> append(DineInRequest request);
+  Future<Map<String, dynamic>> adjust(DineInRequest request);
   Future<void> review(
     DineInDetail detail,
     Map<String, dynamic> round,
@@ -52,6 +53,22 @@ class DineInController extends ChangeNotifier {
       pending == null &&
       !hasLocalConflict;
   bool get canAdd => available && detail?.canAppend == true;
+  bool get canAdjust =>
+      available &&
+      detail?.canAppend == true &&
+      detail?.billUuid != null &&
+      !detail!.pendingReview;
+  String? get adjustmentBlocked => pending != null
+      ? 'pending_adjustment'
+      : detail?.billUuid == null
+      ? 'bill_missing'
+      : detail?.pendingReview == true
+      ? 'adjustment_review'
+      : detail?.canAppend != true
+      ? 'bill_reserved'
+      : !available
+      ? 'refresh'
+      : null;
   bool get canPay =>
       available &&
       detail?.protectedCheckout == true &&
@@ -273,6 +290,77 @@ class DineInController extends ChangeNotifier {
     }
   }
 
+  /// The picker includes the existing manager gate. It runs only after a
+  /// fresh read; a second byte-for-byte read fences the entire approval window.
+  Future<bool> adjust(
+    Future<Map<String, dynamic>?> Function(DineInDetail) pick,
+  ) async {
+    if (!canAdjust) return false;
+    final previous = detail!;
+    busy = true;
+    _generation++;
+    notice = null;
+    _notify();
+    try {
+      final before = await gateway.detail(tableId);
+      if (!before.canAppend ||
+          before.pendingReview ||
+          _localConflict(before) ||
+          before.seatingUuid != previous.seatingUuid ||
+          before.billUuid != previous.billUuid) {
+        notice = 'changed';
+        return false;
+      }
+      detail = before;
+      final intent = await pick(before);
+      if (intent == null || _disposed || !_foreground) return false;
+      final current = await gateway.detail(tableId);
+      if (_disposed ||
+          !_foreground ||
+          !current.canAppend ||
+          current.pendingReview ||
+          _localConflict(current) ||
+          current.seatingUuid != before.seatingUuid ||
+          current.billUuid != before.billUuid ||
+          jsonEncode(current.bill) != jsonEncode(before.bill) ||
+          jsonEncode(current.rounds) != jsonEncode(before.rounds)) {
+        notice = 'changed';
+        return false;
+      }
+      final request = DineInRequest(
+        tableId: tableId,
+        seatingUuid: current.seatingUuid!,
+        billUuid: current.billUuid,
+        payload: {
+          'table_id': current.primaryTableId!,
+          'seating_key': QrQuickRequest.newId(),
+          'client_request_id': QrQuickRequest.newId(),
+          'queued_offline': false,
+          'staff_id': ?staffId,
+          'adjustment': intent,
+        },
+      );
+      try {
+        await store.save(request);
+      } catch (_) {
+        pending = await store.load();
+        if (pending == null) ready = false;
+        notice = 'storage';
+        return false;
+      }
+      pending = request;
+      return await _send(request, fresh: true);
+    } catch (_) {
+      notice = pending == null ? 'refresh' : 'uncertain';
+      return false;
+    } finally {
+      busy = false;
+      stale = true;
+      _notify();
+      await refresh();
+    }
+  }
+
   Future<bool> retry() async {
     if (!ready || busy || !_foreground || pending == null) return false;
     busy = true;
@@ -303,8 +391,30 @@ class DineInController extends ChangeNotifier {
 
   Future<bool> _send(DineInRequest request, {required bool fresh}) async {
     try {
-      final result = await gateway.append(request);
+      final result = request.isAdjustment
+          ? await gateway.adjust(request)
+          : await gateway.append(request);
       final outcome = result['outcome'];
+      if (request.isAdjustment) {
+        if (!const {'adjusted', 'replayed'}.contains(outcome) ||
+            (result['winner_table_session_uuid'] ??
+                    result['table_session_uuid']) !=
+                request.seatingUuid ||
+            result['seating_key'] != request.payload['seating_key'] ||
+            result['table_id'] != request.payload['table_id'] ||
+            result['order_uuid'] != request.billUuid ||
+            result['client_request_id'] != request.id ||
+            result['kind'] != request.adjustment['kind'] ||
+            result['mode'] != request.adjustment['mode'] ||
+            result['grand_total_baisas'] is! int ||
+            (result['grand_total_baisas'] as int) < 1) {
+          throw const FormatException('Uncertain adjustment acknowledgement');
+        }
+        await store.remove(request);
+        pending = null;
+        notice = null;
+        return true;
+      }
       if (request.isCancellation) {
         final count = result['cancelled_qty'];
         if (!const {
@@ -378,6 +488,25 @@ class DineInController extends ChangeNotifier {
         await _printAcceptedRound(request.tableId, result['round_id'] as int);
       }
       return true;
+    } on QrQuickFailure catch (error) {
+      if (request.isAdjustment &&
+          const {
+            'bill_missing',
+            'bill_reserved',
+            'adjustment_exceeds_bill',
+            'full_comp_not_supported',
+            'comp_cap_exceeded',
+            'discount_rule_not_applicable',
+            'approval_required',
+            'customer_not_found',
+          }.contains(error.code)) {
+        await store.remove(request);
+        pending = null;
+        notice = error.code;
+        return false;
+      }
+      notice = 'uncertain';
+      return false;
     } catch (_) {
       // Unknown errors, HTTP refusals and lost responses keep the immutable intent.
       // Never give a retry a new identity, even after navigation or restart.
