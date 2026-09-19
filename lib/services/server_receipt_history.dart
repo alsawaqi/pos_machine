@@ -62,6 +62,20 @@ class ServerReceiptHistory {
     return operation;
   }
 
+  Future<void> removeProvisional(String uuid) {
+    final operation = _tail.then((_) async {
+      final target = storage;
+      if (target is! ProvisionalReceiptRemoval) {
+        throw StateError('Receipt storage cannot resolve provisional history');
+      }
+      await (target as ProvisionalReceiptRemoval).removeProvisionalReceipt(
+        uuid,
+      );
+    });
+    _tail = operation.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return operation;
+  }
+
   Future<void> acknowledge(
     OrderOutboxRow row,
     List<Map<String, dynamic>> events,

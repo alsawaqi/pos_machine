@@ -7,6 +7,10 @@ Future<void> projectMachineCheckoutReceipt(
   CheckoutSnapshot? snapshot,
   CheckoutAttempt attempt,
 ) async {
+  if (const {'refused', 'released', 'managed'}.contains(attempt.state)) {
+    await history.removeProvisional(attempt.orderUuid);
+    return;
+  }
   final existing = await history.find(attempt.orderUuid);
   if (snapshot == null && existing == null) {
     throw StateError('Receipt details unavailable; keep the saved checkout');

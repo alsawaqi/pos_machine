@@ -119,6 +119,9 @@ class QrCheckoutController extends ChangeNotifier {
   }
 
   Future<void> _save(CheckoutAttempt next) async {
+    if (const {'refused', 'released', 'managed'}.contains(next.state)) {
+      await projectReceipt?.call(snapshot, next);
+    }
     await store.replace(_attempt!, next);
     _attempt = next;
   }
@@ -128,7 +131,19 @@ class QrCheckoutController extends ChangeNotifier {
     _busy = true;
     _changed();
     try {
+      // Repair projections left by an older build or an interrupted transition.
+      final journal = store;
+      if (projectReceipt != null && journal is CheckoutReceiptJournal) {
+        for (final ended
+            in await (journal as CheckoutReceiptJournal)
+                .endedWithoutReceipt()) {
+          await projectReceipt!(null, ended);
+        }
+      }
       _attempt = await store.active();
+      if (_attempt?.state == 'refused') {
+        await projectReceipt?.call(null, _attempt!);
+      }
       if (_attempt == null && requestedUuid == null) {
         phase = CheckoutPhase.empty;
         return;

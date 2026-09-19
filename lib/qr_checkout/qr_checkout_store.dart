@@ -2,6 +2,10 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'qr_checkout_models.dart';
 
+abstract interface class CheckoutReceiptJournal {
+  Future<List<CheckoutAttempt>> endedWithoutReceipt();
+}
+
 abstract interface class CheckoutStore {
   Future<CheckoutAttempt?> active();
   Future<void> create(CheckoutAttempt attempt);
@@ -10,7 +14,7 @@ abstract interface class CheckoutStore {
 
 /// A separate QR payment journal: no changes to sales/outbox/table DB schemas.
 /// One unresolved attempt per device scope. No background tender or deletion.
-class SqliteCheckoutStore implements CheckoutStore {
+class SqliteCheckoutStore implements CheckoutStore, CheckoutReceiptJournal {
   SqliteCheckoutStore(this.db, this.scope);
   final Database db;
   final String scope;
@@ -31,6 +35,39 @@ class SqliteCheckoutStore implements CheckoutStore {
     await db.execute('''CREATE UNIQUE INDEX qr_checkout_one_active
       ON qr_checkout_attempts(scope)
       WHERE state NOT IN ('paid', 'released', 'managed')''');
+  }
+
+  @override
+  Future<List<CheckoutAttempt>> endedWithoutReceipt() async {
+    final rows = await db.query(
+      'qr_checkout_attempts',
+      where: "scope = ?",
+      whereArgs: [scope],
+    );
+    final attempts = rows.map((row) {
+      final attempt = CheckoutAttempt.decode(row['payload'] as String);
+      if (attempt.id != row['id'] || attempt.state != row['state']) {
+        throw const FormatException('Checkout journal columns disagree');
+      }
+      return attempt;
+    }).toList();
+    return attempts
+        .where(
+          (attempt) =>
+              const {
+                'refused',
+                'released',
+                'managed',
+              }.contains(attempt.state) &&
+              !attempts.any(
+                (other) =>
+                    other.id != attempt.id &&
+                    other.orderUuid == attempt.orderUuid &&
+                    !other.terminal &&
+                    other.state != 'refused',
+              ),
+        )
+        .toList();
   }
 
   @override

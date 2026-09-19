@@ -24,6 +24,10 @@ abstract interface class DraftRecoveryGuard {
   });
 }
 
+abstract interface class ProvisionalReceiptRemoval {
+  Future<void> removeProvisionalReceipt(String uuid);
+}
+
 abstract class OrderStorageService {
   Future<void> assertNoPendingCombine() async {}
   Future<int> fetchNextOrderNumber();
@@ -52,7 +56,8 @@ class LocalOrderStorageService
         OrderStorageService,
         RemoteTableStore,
         TableLedgerStore,
-        DraftRecoveryGuard {
+        DraftRecoveryGuard,
+        ProvisionalReceiptRemoval {
   LocalOrderStorageService._();
 
   @visibleForTesting
@@ -172,6 +177,26 @@ class LocalOrderStorageService
       if (number is int && number > highest) highest = number;
     }
     return highest + 1;
+  }
+
+  @override
+  Future<void> removeProvisionalReceipt(String uuid) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final row in await txn.query('order_history')) {
+        final value = jsonDecode(row['snapshot_json'] as String) as Map;
+        if (value['serverOrderUuid'] == uuid &&
+            value['serverReceipt'] == true &&
+            value['serverReceiptConfirmed'] != true &&
+            (value['receiptNumber'] == null || value['receiptNumber'] == '')) {
+          await txn.delete(
+            'order_history',
+            where: 'id = ? AND snapshot_json = ?',
+            whereArgs: [row['id'], row['snapshot_json']],
+          );
+        }
+      }
+    });
   }
 
   @override
