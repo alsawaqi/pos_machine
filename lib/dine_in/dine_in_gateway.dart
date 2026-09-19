@@ -22,7 +22,11 @@ class ApiDineInGateway implements DineInGateway, DineInContextGuard {
     }
   }
 
-  Future<T> _call<T>(Future<T> Function() action, {bool writes = false}) async {
+  Future<T> _call<T>(
+    Future<T> Function() action, {
+    bool writes = false,
+    bool adjustment = false,
+  }) async {
     check();
     try {
       if (writes) await mutationGuard?.call();
@@ -34,10 +38,13 @@ class ApiDineInGateway implements DineInGateway, DineInContextGuard {
       throw QrQuickFailure(
         e.code ?? 'refresh',
         e.message,
-        refused:
-            !e.isNetwork &&
-            (e.statusCode ?? 0) >= 400 &&
-            (e.statusCode ?? 0) < 500,
+        refused: adjustment
+            ? !e.isNetwork &&
+                  e.hasStructuredErrorCode &&
+                  const {404, 409, 422}.contains(e.statusCode)
+            : !e.isNetwork &&
+                  (e.statusCode ?? 0) >= 400 &&
+                  (e.statusCode ?? 0) < 500,
       );
     }
   }
@@ -56,6 +63,7 @@ class ApiDineInGateway implements DineInGateway, DineInContextGuard {
   Future<Map<String, dynamic>> adjust(DineInRequest request) => _call(
     () => api.dineInAdjust(request.seatingUuid, request.payload),
     writes: true,
+    adjustment: true,
   );
   @override
   Future<void> review(

@@ -1260,6 +1260,7 @@ class ApiException implements Exception {
     this.statusCode,
     this.code,
     this.isNetwork = false,
+    this.hasStructuredErrorCode = false,
     this.retryAfter,
   });
 
@@ -1267,6 +1268,9 @@ class ApiException implements Exception {
   final int? statusCode;
   final String? code;
   final bool isNetwork;
+
+  /// True only for a JSON errors[] entry containing a non-empty string code.
+  final bool hasStructuredErrorCode;
   final Duration? retryAfter;
 
   bool get isUnauthorized => statusCode == 401;
@@ -1281,6 +1285,9 @@ class ApiException implements Exception {
       return ApiException(
         message: (first['message'] ?? 'Request failed.').toString(),
         code: first['code']?.toString(),
+        hasStructuredErrorCode:
+            first['code'] is String &&
+            (first['code'] as String).trim().isNotEmpty,
         statusCode: status,
         retryAfter: retryAfter,
       );

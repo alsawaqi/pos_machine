@@ -37,11 +37,9 @@ class _RetryServer extends AckServer {
     if (requests.length == 1) {
       throw ApiException(message: 'lost', isNetwork: true);
     }
-    throw ApiException(
-      message: 'external refusal',
-      statusCode: 422,
-      code: 'new_policy_refusal',
-    );
+    throw ApiException.fromErrors([
+      {'message': 'external refusal', 'code': 'new_policy_refusal'},
+    ], 422);
   }
 }
 

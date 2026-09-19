@@ -537,18 +537,7 @@ class DineInController extends ChangeNotifier {
       }
       return true;
     } on QrQuickFailure catch (error) {
-      if (request.isAdjustment &&
-          (error.refused ||
-              const {
-                'bill_missing',
-                'bill_reserved',
-                'adjustment_exceeds_bill',
-                'full_comp_not_supported',
-                'comp_cap_exceeded',
-                'discount_rule_not_applicable',
-                'approval_required',
-                'customer_not_found',
-              }.contains(error.code))) {
+      if (request.isAdjustment && error.refused) {
         await store.remove(request);
         pending = null;
         notice = 'adjust_refused:${error.code}';
