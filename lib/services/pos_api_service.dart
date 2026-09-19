@@ -930,7 +930,11 @@ class PosApiService {
       final body = await _send(
         () => _dio.get(
           '/device/orders/history',
-          queryParameters: {'per_page': 100, 'page': page},
+          queryParameters: {
+            'per_page': 100,
+            'page': page,
+            'include_table_rounds': 1,
+          },
         ),
       );
       final rows = body.dataMap['orders'];

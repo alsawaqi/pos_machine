@@ -198,7 +198,9 @@ Future<RecoveryLocal> loadRecoveryLocal(
     final id = round['client_request_id'];
     if (!combineUuid(id) ||
         !ids.add(id as String) ||
-        round['status'] != 'appended' ||
+        (round['status'] != 'appended' &&
+            !(currentGenerationOnly &&
+                const {'held', 'rejected'}.contains(round['status']))) ||
         round['server_round_id'] is! int ||
         !serverIds.add(round['server_round_id'] as int) ||
         (round['server_round_id'] as int) < 1 ||
@@ -208,11 +210,13 @@ Future<RecoveryLocal> loadRecoveryLocal(
         DateTime.tryParse(round['acked_at'] as String) == null ||
         round['order_uuid'] != uuid ||
         round['seating_key'] != table!['seating_key'] ||
-        recoveryMaps(
-          jsonDecode(round['held_lines_json'] as String? ?? '[]'),
-        ).isNotEmpty ||
-        (jsonDecode(round['review_reasons_json'] as String? ?? '[]') as List)
-            .isNotEmpty) {
+        (round['status'] == 'appended' &&
+            (recoveryMaps(
+                  jsonDecode(round['held_lines_json'] as String? ?? '[]'),
+                ).isNotEmpty ||
+                (jsonDecode(round['review_reasons_json'] as String? ?? '[]')
+                        as List)
+                    .isNotEmpty))) {
       throw StateError(
         'Every original staff round must be fully acknowledged and accepted.',
       );

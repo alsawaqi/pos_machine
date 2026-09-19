@@ -170,7 +170,9 @@ class RecoveryLocal {
           !requests.add(round['client_request_id'] as String) ||
           round['table_id'] != '$tableId' ||
           round['order_uuid'] != uuid ||
-          round['status'] != 'appended' ||
+          (round['status'] != 'appended' &&
+              !(json['generation_scoped'] == true &&
+                  const {'held', 'rejected'}.contains(round['status']))) ||
           !combineUuid(round['seating_key']) ||
           round['server_round_id'] is! int ||
           (round['server_round_id'] as int) < 1 ||
@@ -179,10 +181,12 @@ class RecoveryLocal {
           (round['server_round_no'] as int) < 1 ||
           round['acked_at'] is! String ||
           DateTime.tryParse(round['acked_at'] as String) == null ||
-          (jsonDecode(round['held_lines_json'] as String? ?? '[]') as List)
-              .isNotEmpty ||
-          (jsonDecode(round['review_reasons_json'] as String? ?? '[]') as List)
-              .isNotEmpty) {
+          (round['status'] == 'appended' &&
+              ((jsonDecode(round['held_lines_json'] as String? ?? '[]') as List)
+                      .isNotEmpty ||
+                  (jsonDecode(round['review_reasons_json'] as String? ?? '[]')
+                          as List)
+                      .isNotEmpty))) {
         throw const FormatException(
           'Unresolved staff round in recovery snapshot',
         );

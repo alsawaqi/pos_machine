@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../bill_combine/combine_models.dart';
 import 'recovery_models.dart';
+import 'closed_round_proof.dart';
 import 'recovery_local.dart'
     show
         assertRecoveryUnjoinedCopies,
@@ -117,6 +118,10 @@ class RecoveryStore {
         return false;
       }
     }
+    if (local.rounds.any((r) => r['status'] != 'appended') &&
+        !closedRoundProof(local, bill)) {
+      return false;
+    }
     Map<String, int> quantities(Iterable<Map<String, dynamic>> lines) {
       final sums = <String, int>{};
       for (final line in lines) {
@@ -129,9 +134,9 @@ class RecoveryStore {
     }
 
     final sent = quantities(
-      local.rounds.expand(
-        (r) => recoveryMaps(jsonDecode(r['lines_json'] as String)),
-      ),
+      local.rounds
+          .where((r) => r['status'] == 'appended')
+          .expand((r) => recoveryMaps(jsonDecode(r['lines_json'] as String))),
     );
     final draft = quantities(
       local.items.map((raw) {
