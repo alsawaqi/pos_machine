@@ -34,6 +34,19 @@ void main() {
       dio.interceptors.add(
         InterceptorsWrapper(
           onRequest: (o, h) async {
+            if (o.path.endsWith('/verify-manager-pin')) {
+              h.resolve(
+                Response(
+                  requestOptions: o,
+                  statusCode: 200,
+                  data: {
+                    'ok': o.data['pin'] == '1234',
+                    'staff': {'name': 'Test Manager'},
+                  },
+                ),
+              );
+              return;
+            }
             if (o.path.endsWith('/detail')) {
               final d = AdjustmentServer().detail();
               final id = o.path.contains('/2/') ? 2 : 1;
@@ -185,12 +198,16 @@ void main() {
         expect(ok, false);
         final original = c.pending!.encoded;
         expect(
-          await (c as dynamic).discardPendingAdjustment(() async => false),
+          await (c as dynamic).discardPendingAdjustment(
+            () async => await api.verifyManagerPin('0000') != null,
+          ),
           false,
         );
         expect((await store.load())!.encoded, original);
         expect(
-          await (c as dynamic).discardPendingAdjustment(() async => true),
+          await (c as dynamic).discardPendingAdjustment(
+            () async => await api.verifyManagerPin('1234') != null,
+          ),
           true,
         );
         expect(c.pending, isNull);
