@@ -18,6 +18,7 @@ import 'package:pos_machine/screens/staff_pos_screen.dart';
 import 'package:pos_machine/state/pos_controller.dart';
 import 'draft_recovery_test.dart' show RecoveryHarness, billId;
 import 'workspace_machine_harness.dart';
+import 'real_io_wait.dart';
 import 'package:pos_machine/dine_in/dine_in_screen.dart';
 import 'package:pos_machine/qr_checkout/qr_checkout_widgets.dart';
 import 'package:pos_machine/qr_checkout/qr_checkout_models.dart';
@@ -299,6 +300,11 @@ void main() {
         );
         final dynamic host = tester.state(find.byType(StaffPosScreen));
         final PosController c = host.controller;
+        await pumpUntilRealCondition(
+          tester,
+          () => c.diningTableSyncHooks is TableKitchenBridge,
+          reason: 'live bridge initialized before fixture payment hooks',
+        );
         await tester.runAsync(() async {
           await c.refreshDiningTables();
         });
@@ -448,6 +454,11 @@ void main() {
           expect(api.payments, 0);
         }
 
+        await pumpUntilRealCondition(
+          tester,
+          () async => (await h.db.query('dining_tables')).isEmpty,
+          reason: 'confirmed bill retirement committed to real SQLite',
+        );
         final rows = await tester.runAsync(() => h.db.query('dining_tables'));
         expect(
           rows,

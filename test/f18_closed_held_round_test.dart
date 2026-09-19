@@ -20,6 +20,7 @@ import 'package:pos_machine/dine_in/dine_in_screen.dart';
 import 'package:pos_machine/screens/staff_pos_screen.dart';
 import 'package:pos_machine/state/pos_controller.dart';
 import 'workspace_machine_harness.dart';
+import 'real_io_wait.dart';
 
 const seat = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const product = Product(
@@ -222,12 +223,11 @@ void main() {
               ),
             );
           });
-          for (var i = 0; i < 500 && !done; i++) {
-            await tester.pump(const Duration(milliseconds: 20));
-            await tester.runAsync(
-              () => Future<void>.delayed(const Duration(milliseconds: 10)),
-            );
-          }
+          await pumpUntilRealCondition(
+            tester,
+            () => done,
+            reason: 'real SQLite/coordinator operation completed',
+          );
           if (!done) throw StateError('Real component workflow did not finish');
           if (error != null) Error.throwWithStackTrace(error!, trace!);
           return value;
