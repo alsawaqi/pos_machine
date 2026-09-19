@@ -12,6 +12,7 @@ class ApiDineInGateway implements DineInGateway, DineInContextGuard {
   final String scope;
   final String? token;
   final Future<void> Function()? mutationGuard;
+  @override
   void check() {
     if (token == null ||
         token!.isEmpty ||
