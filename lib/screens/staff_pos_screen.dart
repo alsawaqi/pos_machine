@@ -2914,14 +2914,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
   }
 
-  Widget _billAdjustmentContext(WorkspaceBill bill) => Column(
+  Widget _billAdjustmentContext(
+    WorkspaceBill bill, {
+    bool showCustomer = true,
+  }) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      if (bill.customer case final customer?)
+      if (showCustomer && bill.customer != null)
         Chip(
           key: const ValueKey('table-bill-customer'),
           avatar: const Icon(Icons.person_outline),
-          label: Text('${customer['name'] ?? ''} · ${customer['phone'] ?? ''}'),
+          label: Text(
+            '${bill.customer!['name'] ?? ''} · ${bill.customer!['phone'] ?? ''}',
+          ),
         ),
       if (bill.adjustmentStale)
         Text(
@@ -2931,7 +2936,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     ],
   );
 
-  Widget _tableAdjustmentControls({WorkspaceCartControls? workspaceControls}) {
+  Widget _tableAdjustmentControls({
+    WorkspaceCartControls? workspaceControls,
+    bool compact = false,
+  }) {
     final editor = _liveEditor;
     final enabled =
         workspaceControls == null &&
@@ -2953,6 +2961,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             for (final kind in ['discount', 'comp', 'customer'])
               TextButton(
                 key: ValueKey('table-adjust-$kind'),
+                style: compact
+                    ? TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        minimumSize: const Size(0, 36),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      )
+                    : null,
                 onPressed: workspaceControls != null
                     ? switch (kind) {
                         'discount' => workspaceControls.discount,
@@ -2973,7 +2988,28 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               ),
           ],
         ),
-        if (blocked != null) Text(dineInText(_arabicTable, blocked)),
+        if (blocked != null && !compact)
+          Text(dineInText(_arabicTable, blocked)),
+        if (blocked != null && compact)
+          Tooltip(
+            message: dineInText(_arabicTable, blocked),
+            child: TextButton(
+              onPressed: () => _showPopupMessage(
+                title: dineInText(_arabicTable, 'title'),
+                message: dineInText(_arabicTable, blocked),
+                tone: FeedbackTone.info,
+              ),
+              style: TextButton.styleFrom(
+                minimumSize: Size.zero,
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                _arabicTable ? 'لماذا غير متاح؟' : 'Why unavailable?',
+                style: const TextStyle(fontSize: 11),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -8051,7 +8087,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             _tableAdjustmentControls()
           else
             _buildCustomerReferenceField(qr: qr),
-          if (bill != null) _billAdjustmentContext(bill),
+          if (bill != null)
+            _billAdjustmentContext(bill, showCustomer: qr == null),
           const SizedBox(height: 16),
           _buildVehiclePlateField(qr: qr),
           const SizedBox(height: 16),
@@ -10442,10 +10479,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   ),
           ),
           const SizedBox(height: 12),
-          if (workspace != null) _buildWorkspaceCartStatus(workspace),
-          if (liveTable || workspace?.dineIn == true)
-            _tableAdjustmentControls(
-              workspaceControls: workspace?.cartControls,
+          if (workspace != null)
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 120),
+              child: SingleChildScrollView(
+                child: _buildWorkspaceCartStatus(workspace),
+              ),
             ),
           if (liveTable || workspace?.dineIn == true) ...[
             if (workspace == null && _localTableRefusal != null)
@@ -10473,18 +10512,32 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       : 'Correct held round',
                 ),
               ),
-            FilledButton.icon(
-              key: const ValueKey('table-send-to-kitchen'),
-              onPressed: workspace != null
-                  ? workspace.cartControls?.submit
-                  : !_tableSendBusy &&
-                        _localTableRefusal != _closedTableMessage &&
-                        _hasTableUnsent &&
-                        _tableSelectionMessage == null
-                  ? _sendTableRound
-                  : null,
-              icon: const Icon(Icons.soup_kitchen_outlined),
-              label: Text(l10n.tableSendToKitchen),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    key: const ValueKey('table-send-to-kitchen'),
+                    onPressed: workspace != null
+                        ? workspace.cartControls?.submit
+                        : !_tableSendBusy &&
+                              _localTableRefusal != _closedTableMessage &&
+                              _hasTableUnsent &&
+                              _tableSelectionMessage == null
+                        ? _sendTableRound
+                        : null,
+                    icon: const Icon(Icons.soup_kitchen_outlined),
+                    label: Text(l10n.tableSendToKitchen),
+                  ),
+                ),
+                if ((workspace == null && _localTableRefusal == null) ||
+                    workspace?.cartControls?.adjustmentSupported == true)
+                  Flexible(
+                    child: _tableAdjustmentControls(
+                      workspaceControls: workspace?.cartControls,
+                      compact: true,
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
           ],

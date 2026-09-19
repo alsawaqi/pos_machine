@@ -390,6 +390,7 @@ void main() {
             }
           }, reason: 'requested control is visible and enabled');
           await tester.ensureVisible(target);
+          await tester.pumpAndSettle();
           await pumpUntilRealCondition(tester, () {
             try {
               return target.hitTestable().evaluate().isNotEmpty;

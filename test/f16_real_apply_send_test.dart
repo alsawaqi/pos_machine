@@ -1,3 +1,4 @@
+import 'real_io_wait.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
@@ -354,6 +355,12 @@ void main() {
         bridge = c.diningTableSyncHooks as TableKitchenBridge;
         expect(bridge.coordinator, same(coordinator));
         await drive(() => coordinator.settled);
+        await pumpUntilRealCondition(
+          tester,
+          () =>
+              server.events.any((e) => e['event_type'] == 'table.session.open'),
+          reason: 'real table open persisted and reached transport',
+        );
         expect(
           server.events.where((e) => e['event_type'] == 'table.session.open'),
           hasLength(1),

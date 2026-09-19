@@ -47,6 +47,9 @@ class _Outbox implements OrderSyncRepository {
 
 class _Coordinator implements TableSyncCoordinator {
   @override
+  Future<void> Function(Map<String, dynamic> event, Map<String, dynamic> ack)?
+  paymentAcknowledged;
+  @override
   void Function(List<Map<String, dynamic>> lines)? validateRound;
   @override
   String? Function(int productId)? stockModeForProduct;

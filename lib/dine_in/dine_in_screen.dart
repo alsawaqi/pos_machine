@@ -739,6 +739,7 @@ class _DineInScreenState extends State<DineInScreen>
         drafts.isEmpty &&
         !(widget.localDraftBlockedNow?.call() ?? widget.localDraftBlocked);
     return WorkspaceCartControls(
+      adjustmentSupported: widget.pickAdjustment != null,
       discount: _canAdjust ? () => _adjust('discount') : null,
       comp: _canAdjust ? () => _adjust('comp') : null,
       customer: _canAdjust ? () => _adjust('customer') : null,
