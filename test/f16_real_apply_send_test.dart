@@ -365,6 +365,10 @@ void main() {
           server.events.where((e) => e['event_type'] == 'table.session.open'),
           hasLength(1),
         );
+        await pumpUntilRealCondition(tester, () async {
+          final rows = await localDb.query('dining_tables');
+          return rows.length == 1 && rows.single['seating_uuid'] == seat;
+        }, reason: 'real table-open ACK identity committed to SQLite');
         expect(
           (await drive(
             () => localDb.query('dining_tables'),
