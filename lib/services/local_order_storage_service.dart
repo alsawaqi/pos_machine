@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../models/pos_models.dart';
@@ -156,13 +155,22 @@ class LocalOrderStorageService
   @override
   Future<int> fetchNextOrderNumber() async {
     final db = await database;
-    final historyMax = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT MAX(order_number) FROM order_history'),
-    );
-    final highest = [historyMax].whereType<int>().fold<int>(
-      1449,
-      (current, value) => value > current ? value : current,
-    );
+    var highest = 1449;
+    for (final row in await db.query(
+      'order_history',
+      columns: ['order_number', 'snapshot_json'],
+    )) {
+      var serverReceipt = false;
+      try {
+        final snapshot = jsonDecode(row['snapshot_json'] as String);
+        serverReceipt = snapshot is Map && snapshot['serverReceipt'] == true;
+      } catch (_) {
+        // Unrecognised history must still reserve its legacy local number.
+      }
+      if (serverReceipt) continue;
+      final number = row['order_number'];
+      if (number is int && number > highest) highest = number;
+    }
     return highest + 1;
   }
 
