@@ -11,6 +11,9 @@ void main() {
       (tester) async {
         final api = TableFake()
           ..value = tableFixture(source: 'main_pos', pending: true);
+        // This fixture is a held staff round, not a normal customer arrival.
+        (api.value['rounds'] as List).last['entered_by'] = 'staff';
+        (api.value['rounds'] as List).last['needs_review'] = true;
         var corrections = 0, pays = 0;
         await tester.pumpWidget(
           MaterialApp(

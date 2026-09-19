@@ -104,6 +104,7 @@ class DineInScreen extends StatefulWidget {
     this.localDraftBlocked = false,
     this.onCorrectHeldRound,
     this.onEditLocalItems,
+    this.hasHeldLocalRound,
     this.workspace,
     this.onVoid,
     this.approveCancellation,
@@ -119,6 +120,7 @@ class DineInScreen extends StatefulWidget {
   final Future<void> Function()? onRecover;
   final Future<void> Function()? onCorrectHeldRound;
   final Future<void> Function()? onEditLocalItems;
+  final bool Function()? hasHeldLocalRound;
   final bool Function()? localDraftBlockedNow;
   final bool arabic, writesAllowed, localDraftBlocked;
   final CurrentOrderWorkspace? workspace;
@@ -726,7 +728,8 @@ class _DineInScreenState extends State<DineInScreen>
                 : null,
           ),
         if (widget.onCorrectHeldRound != null &&
-            controller?.detail?.pendingReview == true)
+            (controller?.detail?.heldStaffReview == true ||
+                widget.hasHeldLocalRound?.call() == true))
           WorkspaceAction(
             widget.arabic ? 'تصحيح الجولة المعلّقة' : 'Correct held round',
             widget.writesAllowed &&
@@ -935,7 +938,8 @@ class _DineInScreenState extends State<DineInScreen>
                     if (c?.stale == true) note('refresh'),
                     if (c?.notice != null) note(c!.notice!),
                     if (widget.onCorrectHeldRound != null &&
-                        controller?.detail?.pendingReview == true)
+                        (controller?.detail?.heldStaffReview == true ||
+                            widget.hasHeldLocalRound?.call() == true))
                       OutlinedButton(
                         key: const ValueKey('dine-correct-held-round'),
                         onPressed:

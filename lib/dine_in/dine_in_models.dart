@@ -85,6 +85,12 @@ class DineInDetail {
   bool get orphaned => json['orphaned'] == true;
   bool get pendingReview =>
       rounds.any((r) => r['status'] == 'pending_confirmation');
+  bool get heldStaffReview => rounds.any(
+    (r) =>
+        r['entered_by'] == 'staff' &&
+        r['status'] == 'pending_confirmation' &&
+        r['needs_review'] == true,
+  );
   bool get canAppend =>
       !orphaned &&
       seating?['status'] == 'open' &&

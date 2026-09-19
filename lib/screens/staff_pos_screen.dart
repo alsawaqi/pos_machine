@@ -2845,11 +2845,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  bool _hasHeldLocalTable(String id) =>
-      controller.diningSessionFor(id) != null &&
-      ((_remoteTables.tables[int.tryParse(id)]?.needsReviewCount ?? 0) > 0 ||
-          _tableKitchen?.coordinator.cachedSession(id)?.lastVerdict == 'held' ||
-          (controller.activeDiningTableId == id && _heldTableRounds > 0));
+  bool _hasHeldLocalTable(String id) => _heldLocalTables[id] == true;
 
   Future<void> _returnToLocalTableItems(String tableId) async {
     if (!mounted ||
@@ -3193,6 +3189,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       _remoteTables.tables[int.tryParse(tableId)]?.billOrderUuid != null;
 
   final Map<String, String> _sentDraftProofs = {};
+  final Map<String, bool> _heldLocalTables = {};
   bool _adoptingStaffBill = false;
 
   DiningTableSession? _tableDraft(String id) =>
@@ -3248,6 +3245,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         _draftProof(_tableDraft(id)!) != proof) {
       return;
     }
+    _heldLocalTables[id] = rounds.any((r) => r.status == 'held');
     if (acknowledged && delta.isEmpty && !bridge.hasLocalOnlyDelta(local)) {
       _sentDraftProofs[id] = proof;
     } else {
@@ -3319,6 +3317,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         localDraftBlocked: _tableDraftBlocks(tableId),
         localDraftBlockedNow: () => _tableDraftBlocks(tableId),
         onEditLocalItems: () => _returnToLocalTableItems(tableId),
+        hasHeldLocalRound: () => _hasHeldLocalTable(tableId),
         createController: () async {
           final api = ref.read(apiServiceProvider);
           final session = ref.read(sessionServiceProvider);
