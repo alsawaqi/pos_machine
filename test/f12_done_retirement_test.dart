@@ -17,6 +17,7 @@ import 'package:pos_machine/screens/staff_pos_screen.dart';
 import 'package:pos_machine/state/pos_controller.dart';
 import 'draft_recovery_test.dart' show RecoveryHarness, billId;
 import 'workspace_machine_harness.dart';
+import 'real_io_wait.dart';
 import 'package:pos_machine/dine_in/dine_in_screen.dart';
 import 'package:pos_machine/qr_checkout/qr_checkout_widgets.dart';
 import 'package:pos_machine/qr_checkout/qr_checkout_models.dart';
@@ -341,30 +342,29 @@ void main() {
             () => Future<void>.delayed(const Duration(milliseconds: 25)),
           );
         }
+        await pumpUntilRealCondition(
+          tester,
+          () => find.byType(DineInScreen).evaluate().length == 1,
+          reason: 'shared bill screen',
+        );
         expect(find.byType(DineInScreen), findsOneWidget);
         final screen = tester.widget<DineInScreen>(find.byType(DineInScreen));
         var routeDone = false;
         unawaited(screen.onPay(billId).then((_) => routeDone = true));
-        for (
-          var i = 0;
-          i < 200 && find.byType(QrCheckoutBoundary).evaluate().isEmpty;
-          i++
-        ) {
-          await tester.pump(const Duration(milliseconds: 100));
-          await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 25)),
-          );
-        }
+        await pumpUntilRealCondition(
+          tester,
+          () => find.byType(QrCheckoutBoundary).evaluate().length == 1,
+          reason: 'checkout route',
+        );
         expect(find.byType(QrCheckoutBoundary), findsOneWidget);
         final checkout = tester
             .widget<QrCheckoutBoundary>(find.byType(QrCheckoutBoundary))
             .controller;
-        for (var i = 0; i < 200 && !checkout.ready; i++) {
-          await tester.pump(const Duration(milliseconds: 20));
-          await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 30)),
-          );
-        }
+        await pumpUntilRealCondition(
+          tester,
+          () => checkout.ready,
+          reason: 'checkout ready',
+        );
         expect(checkout.ready, isTrue, reason: checkout.notice);
         await tester.runAsync(
           () => checkout.pay([const CheckoutTender('cash', 4750)]),
@@ -383,12 +383,21 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(api.payments, 1);
-        for (var i = 0; i < (unsent ? 30 : 150); i++) {
+        // Keep the negative-case observation window; positive completion below
+        // waits for the persisted result instead of an arbitrary frame count.
+        for (var i = 0; unsent && i < 30; i++) {
           await tester.pump(const Duration(milliseconds: 100));
           await tester.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 30)),
           );
         }
+        await pumpUntilRealCondition(tester, () async {
+          if (!routeDone) return false;
+          if (unsent) return true;
+          return (await h.db.query('dining_tables')).isEmpty &&
+              c.diningSessionFor('1') == null &&
+              (await h.db.query('draft_recovery_closed_archive')).length == 1;
+        }, reason: 'Done route and automatic retirement persisted');
         expect(routeDone, isTrue);
         final rows = await tester.runAsync(() => h.db.query('dining_tables'));
         if (unsent) {

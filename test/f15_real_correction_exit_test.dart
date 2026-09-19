@@ -22,6 +22,7 @@ import 'package:pos_machine/dine_in/dine_in_screen.dart';
 import 'package:pos_machine/screens/staff_pos_screen.dart';
 import 'package:pos_machine/state/pos_controller.dart';
 import 'workspace_machine_harness.dart';
+import 'real_io_wait.dart';
 
 const seat = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const product = Product(
@@ -38,6 +39,7 @@ class AckServer implements PosApiService {
   String roundStatus = 'pending_confirmation';
   String? requestId;
   int rejects = 0;
+  Future<void>? detailGate;
   String? uuid;
   final events = <Map<String, dynamic>>[];
   Dio dio() {
@@ -103,52 +105,57 @@ class AckServer implements PosApiService {
   @override
   Future<List<Map<String, dynamic>>> fetchIncomingTransfers() async => [];
   @override
-  Future<Map<String, dynamic>> dineInDetail(int id) async => {
-    'table': {'id': 1, 'label': 'Table 1'},
-    'occupied': !paid,
-    'orphaned': false,
-    'seating': paid
-        ? null
-        : {
-            'uuid': seat,
-            'table_id': 1,
-            'status': 'open',
-            'joined_table_ids': [],
-          },
-    'bill': paid
-        ? null
-        : {
-            'uuid': uuid,
-            'status': 'open',
-            'order_type': 'dine_in',
-            'table_id': 1,
-            'source': 'main_pos',
-            'charge': 'none',
-            'grand_total_baisas': 840,
-            'items': [],
-          },
-    'rounds': [
-      {
-        'id': 1,
-        'round_no': 1,
-        'client_request_id': requestId,
-        'entered_by': 'staff',
-        'status': roundStatus,
-        'needs_review': true,
-        'priced_lines': [],
-        'total_baisas': 0,
-      },
-      {
-        'id': 2,
-        'round_no': 2,
-        'entered_by': 'customer',
-        'status': 'pending_confirmation',
-        'needs_review': false,
-        'priced_lines': [],
-        'total_baisas': 840,
-      },
-    ],
-  };
+  Future<Map<String, dynamic>> dineInDetail(int id) async {
+    // Optional external-server latency reproduces the old setup-window failure.
+    await detailGate;
+    return {
+      'table': {'id': 1, 'label': 'Table 1'},
+      'occupied': !paid,
+      'orphaned': false,
+      'seating': paid
+          ? null
+          : {
+              'uuid': seat,
+              'table_id': 1,
+              'status': 'open',
+              'joined_table_ids': [],
+            },
+      'bill': paid
+          ? null
+          : {
+              'uuid': uuid,
+              'status': 'open',
+              'order_type': 'dine_in',
+              'table_id': 1,
+              'source': 'main_pos',
+              'charge': 'none',
+              'grand_total_baisas': 840,
+              'items': [],
+            },
+      'rounds': [
+        {
+          'id': 1,
+          'round_no': 1,
+          'client_request_id': requestId,
+          'entered_by': 'staff',
+          'status': roundStatus,
+          'needs_review': true,
+          'priced_lines': [],
+          'total_baisas': 0,
+        },
+        {
+          'id': 2,
+          'round_no': 2,
+          'entered_by': 'customer',
+          'status': 'pending_confirmation',
+          'needs_review': false,
+          'priced_lines': [],
+          'total_baisas': 840,
+        },
+      ],
+    };
+  }
+
   @override
   Future<void> dineInReview(
     String uuid,
@@ -405,6 +412,10 @@ void main() {
           await tester.tap(find.text('Done').last);
           await settle();
         }
+        await pumpUntilRealCondition(tester, () async {
+          final rows = await localDb.query('local_table_rounds');
+          return rows.length == 1 && rows.single['status'] == 'held';
+        }, reason: 'real held ledger ACK');
         final held = await drive(() => localDb.query('local_table_rounds'));
         expect(held!.single['status'], 'held');
         if (mode == 'edit-local-items') {
@@ -417,6 +428,15 @@ void main() {
               isCurrent: () => true,
             ),
           );
+        }
+        // Real wall-clock HTTP latency, independent of fake frame time. This
+        // deterministically exercises the setup race when explicitly enabled.
+        if (const bool.fromEnvironment('QR_FIX9_SLOW_DETAIL')) {
+          await tester.runAsync(() async {
+            server.detailGate = Future<void>.delayed(
+              const Duration(seconds: 5),
+            );
+          });
         }
         boards.add(
           RemoteTableSnapshot(
@@ -445,8 +465,19 @@ void main() {
           await tester.tap(find.text('Customer bill').first);
           await settle();
         }
+        await pumpUntilRealCondition(
+          tester,
+          () => find.byType(DineInScreen).evaluate().length == 1,
+          reason: 'shared bill screen',
+        );
         expect(find.byType(DineInScreen), findsOneWidget);
         if (mode == 'reject-and-correct') {
+          await pumpUntilRealCondition(tester, () async {
+            final rows = await localDb.query('local_table_rounds');
+            return rows.length == 1 &&
+                rows.single['status'] == 'held' &&
+                find.text('Correct held round').evaluate().length == 1;
+          }, reason: 'held ledger and Correct held round action');
           expect(find.text('Correct held round'), findsOneWidget);
           await tester.tap(find.text('Correct held round'));
           await settle();
@@ -454,6 +485,11 @@ void main() {
           await tester.tap(find.text('Reject and correct'));
           await settle();
         } else {
+          await pumpUntilRealCondition(
+            tester,
+            () => find.text('Edit local items').evaluate().length == 1,
+            reason: 'Edit local items action',
+          );
           expect(find.text('Edit local items'), findsOneWidget);
           await tester.tap(find.text('Edit local items'));
           await settle();
@@ -462,6 +498,12 @@ void main() {
           await coordinator.settled;
           await outbox.flush();
         });
+        await pumpUntilRealCondition(tester, () async {
+          final rows = await localDb.query('local_table_rounds');
+          return rows.length == 1 &&
+              rows.single['status'] == 'rejected' &&
+              find.byType(DineInScreen).evaluate().isEmpty;
+        }, reason: 'rejection persisted and editable cart restored');
         expect(server.rejects, 1);
         expect(
           server.events.where((e) => e['event_type'] == 'table.session.round'),
