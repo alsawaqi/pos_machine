@@ -106,6 +106,7 @@ class ServerReceiptHistory {
         snapshot.copyWith(
           receiptNumber: number as String? ?? '',
           serverReceiptConfirmed: true,
+          paymentStatus: 'Paid',
         ),
       );
     }

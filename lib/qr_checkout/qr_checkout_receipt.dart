@@ -39,6 +39,7 @@ Future<void> projectMachineCheckoutReceipt(
       receiptNumber: attempt.state == 'paid' ? attempt.receiptNumber ?? '' : '',
       serverReceipt: true,
       serverReceiptConfirmed: attempt.state == 'paid',
+      paymentStatus: attempt.state == 'paid' ? 'Paid' : record.paymentStatus,
     ),
   );
 }
