@@ -162,6 +162,8 @@ class CurrentOrderWorkspace extends ChangeNotifier {
   final String? tableLabel;
   bool get dineIn => tableLabel != null;
   bool returnToList = true;
+  // Correction returns to the existing local cart without invoking leave/send.
+  bool returnToLocalCart = false;
   WorkspaceCartControls? cartControls;
   final VoidCallback onExit;
   Object? _owner;

@@ -1038,7 +1038,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         });
         _applyAudienceGate();
         if (quick && workspace.returnToList) unawaited(_openQuickOrders());
-        if (tableLabel != null && controller.activeDiningTableId != null) {
+        if (tableLabel != null &&
+            !workspace.returnToLocalCart &&
+            controller.activeDiningTableId != null) {
           unawaited(
             controller.returnToDiningFloorPlan().then((_) async {
               await _retireClosedTableCopies(force: true);
@@ -2849,6 +2851,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           _tableKitchen?.coordinator.cachedSession(id)?.lastVerdict == 'held' ||
           (controller.activeDiningTableId == id && _heldTableRounds > 0));
 
+  Future<void> _returnToLocalTableItems(String tableId) async {
+    if (!mounted ||
+        controller.diningSessionFor(tableId) == null ||
+        controller.isProcessingPayment ||
+        _showPaymentPage) {
+      return;
+    }
+    final workspace = _workspace;
+    if (workspace != null) {
+      workspace.returnToLocalCart = true;
+      workspace.onExit();
+    }
+    // Deliberately keep/open the original cart. Leaving a table is a separate
+    // action and would auto-send before staff had a chance to correct anything.
+    await controller.openDiningTable(tableId);
+  }
+
   Future<void> _correctHeldTableRounds({String? tableId}) async {
     if (ref.read(tableSessionsModeProvider) != 'live' || _tableSendBusy) return;
     await _ensureTableKitchen();
@@ -2906,7 +2925,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         isCurrent: current,
       );
       await _refreshTableSentState();
-      if (mounted) _workspace?.onExit();
+      if (mounted) await _returnToLocalTableItems(session.tableId);
     } catch (_) {
       if (mounted) _showTableActionFailure();
     } finally {
@@ -3299,6 +3318,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         writesAllowed: ref.read(tableSessionsModeProvider) == 'live',
         localDraftBlocked: _tableDraftBlocks(tableId),
         localDraftBlockedNow: () => _tableDraftBlocks(tableId),
+        onEditLocalItems: () => _returnToLocalTableItems(tableId),
         createController: () async {
           final api = ref.read(apiServiceProvider);
           final session = ref.read(sessionServiceProvider);

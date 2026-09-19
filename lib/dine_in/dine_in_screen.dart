@@ -103,6 +103,7 @@ class DineInScreen extends StatefulWidget {
     this.writesAllowed = true,
     this.localDraftBlocked = false,
     this.onCorrectHeldRound,
+    this.onEditLocalItems,
     this.workspace,
     this.onVoid,
     this.approveCancellation,
@@ -117,6 +118,7 @@ class DineInScreen extends StatefulWidget {
   final Future<void> Function()? onCombine;
   final Future<void> Function()? onRecover;
   final Future<void> Function()? onCorrectHeldRound;
+  final Future<void> Function()? onEditLocalItems;
   final bool Function()? localDraftBlockedNow;
   final bool arabic, writesAllowed, localDraftBlocked;
   final CurrentOrderWorkspace? workspace;
@@ -713,6 +715,16 @@ class _DineInScreenState extends State<DineInScreen>
           : null,
       voidBill: _canVoid ? _void : null,
       actions: [
+        if (((widget.localDraftBlockedNow?.call() ??
+                    widget.localDraftBlocked) ||
+                c?.hasLocalConflict == true) &&
+            widget.onEditLocalItems != null)
+          WorkspaceAction(
+            widget.arabic ? 'تعديل الأصناف المحلية' : 'Edit local items',
+            c?.busy != true && c?.pending == null && !childOpen
+                ? widget.onEditLocalItems
+                : null,
+          ),
         if (widget.onCorrectHeldRound != null &&
             controller?.detail?.pendingReview == true)
           WorkspaceAction(
@@ -969,6 +981,20 @@ class _DineInScreenState extends State<DineInScreen>
                           widget.arabic
                               ? 'استعادة مسودة هذه الفاتورة'
                               : 'Recover this bill draft',
+                        ),
+                      ),
+                    if ((localBlocked || c?.hasLocalConflict == true) &&
+                        widget.onEditLocalItems != null)
+                      OutlinedButton(
+                        key: const ValueKey('dine-edit-local-items'),
+                        onPressed:
+                            c?.busy != true && c?.pending == null && !childOpen
+                            ? widget.onEditLocalItems
+                            : null,
+                        child: Text(
+                          widget.arabic
+                              ? 'تعديل الأصناف المحلية'
+                              : 'Edit local items',
                         ),
                       ),
                     if (localBlocked || c?.hasLocalConflict == true)
