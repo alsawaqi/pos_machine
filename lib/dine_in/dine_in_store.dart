@@ -13,9 +13,14 @@ abstract interface class DineInDraftStore {
   Future<void> saveDraft(int tableId, Map<String, dynamic>? draft);
 }
 
-/// One unresolved intent per device scope. No outbox sending or local table writes.
+/// Legacy round intents stay device-wide; adjustments are isolated per table.
+/// Namespaced records use the existing schema; no table or column migration.
 class SqliteDineInStore implements DineInStore, DineInDraftStore {
-  SqliteDineInStore(this.db, this.scope);
+  SqliteDineInStore(this.db, this.scope, {this.tableId});
+  final int? tableId;
+  SqliteDineInStore forTable(int id) =>
+      SqliteDineInStore(db, scope, tableId: id);
+  String _adjustScope(int id) => "$scope::adjustment:$id";
   final Database db;
   final String scope;
   static Future<SqliteDineInStore> open(String scope) async {
@@ -71,15 +76,7 @@ class SqliteDineInStore implements DineInStore, DineInDraftStore {
     }
   }
 
-  @override
-  Future<DineInRequest?> load() async {
-    final rows = await db.query(
-      'dine_in_requests',
-      where: 'scope = ?',
-      whereArgs: [scope],
-    );
-    if (rows.isEmpty) return null;
-    final row = rows.single;
+  DineInRequest _decode(Map<String, Object?> row) {
     final request = DineInRequest(
       tableId: row['table_id'] as int,
       seatingUuid: row['seating_uuid'] as String,
@@ -92,11 +89,66 @@ class SqliteDineInStore implements DineInStore, DineInDraftStore {
     return request;
   }
 
+  Future<List<DineInRequest>> _all(DatabaseExecutor executor) async {
+    final prefix = '$scope::adjustment:';
+    final rows = await executor.query(
+      'dine_in_requests',
+      where: 'scope = ? OR substr(scope, 1, ?) = ?',
+      whereArgs: [scope, prefix.length, prefix],
+    );
+    return rows.map(_decode).toList();
+  }
+
+  @override
+  Future<DineInRequest?> load() async {
+    final requests = await _all(db);
+    return requests
+        .where(
+          (r) => tableId == null || !r.isAdjustment || r.tableId == tableId,
+        )
+        .firstOrNull;
+  }
+
+  Future<bool> blocksBill(String uuid) async =>
+      (await _all(db)).any((r) => !r.isAdjustment || r.billUuid == uuid);
+
+  /// Atomic, append-only discard audit in a separate draft namespace. Retains
+  /// the exact original request, with no claim about whether the server applied it.
+  Future<void> discardAdjustment(DineInRequest request, int? staffId) async {
+    if (!request.isAdjustment) {
+      throw StateError('Only adjustments may be discarded');
+    }
+    await db.transaction((txn) async {
+      await txn.insert('dine_in_drafts', {
+        'scope': '$scope::discarded-adjustment:${request.id}',
+        'table_id': request.tableId,
+        'payload': jsonEncode({
+          'action': 'adjustment_discarded',
+          'at': DateTime.now().toUtc().toIso8601String(),
+          'authority': 'existing_manager_gate',
+          'requesting_staff_id': staffId,
+          'request': {
+            'table_id': request.tableId,
+            'seating_uuid': request.seatingUuid,
+            'bill_uuid': request.billUuid,
+            'payload': request.payload,
+          },
+        }),
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+      await _remove(txn, request);
+    });
+  }
+
   @override
   Future<void> save(DineInRequest request) async {
     await db.transaction((txn) async {
+      if ((await _all(
+        txn,
+      )).any((r) => !r.isAdjustment || r.tableId == request.tableId)) {
+        throw StateError('Resolve the saved request first');
+      }
       await txn.insert('dine_in_requests', {
-        'scope': scope,
+        'scope': request.isAdjustment ? _adjustScope(request.tableId) : scope,
         'table_id': request.tableId,
         'seating_uuid': request.seatingUuid,
         'bill_uuid': request.billUuid,
@@ -116,11 +168,18 @@ class SqliteDineInStore implements DineInStore, DineInDraftStore {
   }
 
   @override
-  Future<void> remove(DineInRequest request) async {
-    final count = await db.delete(
+  Future<void> remove(DineInRequest request) => _remove(db, request);
+
+  Future<void> _remove(DatabaseExecutor executor, DineInRequest request) async {
+    final count = await executor.delete(
       'dine_in_requests',
-      where: 'scope = ? AND request_id = ? AND payload = ?',
-      whereArgs: [scope, request.id, request.encoded],
+      where: 'scope IN (?, ?) AND request_id = ? AND payload = ?',
+      whereArgs: [
+        scope,
+        _adjustScope(request.tableId),
+        request.id,
+        request.encoded,
+      ],
     );
     if (count != 1) throw StateError('Round journal changed');
   }

@@ -17,16 +17,20 @@ abstract interface class DineInGateway {
   Future<void> reopen(String uuid);
 }
 
+abstract interface class DineInContextGuard {
+  void check();
+}
+
 class DineInController extends ChangeNotifier {
   DineInController(
     this.gateway,
-    this.store,
+    DineInStore store,
     this.tableId, {
     this.staffId,
     this.localDraftTables,
     this.printAccepted,
     this.recordCancellationWaste,
-  });
+  }) : store = store is SqliteDineInStore ? store.forTable(tableId) : store;
   final DineInGateway gateway;
   final DineInStore store;
   final int tableId;
@@ -369,6 +373,9 @@ class DineInController extends ChangeNotifier {
     _notify();
     try {
       final request = pending!;
+      // An adjustment retry keeps its original route and payload. Even if the
+      // board changed, only the server may decide replay versus refusal.
+      if (request.isAdjustment) return await _send(request, fresh: false);
       // An old intent may not open a new seating after a clear/prune/reassignment.
       final current = await gateway.detail(request.tableId);
       if (_localConflict(current) ||
@@ -380,6 +387,47 @@ class DineInController extends ChangeNotifier {
       return await _send(request, fresh: false);
     } catch (_) {
       notice = 'uncertain';
+      return false;
+    } finally {
+      busy = false;
+      stale = true;
+      _notify();
+      await refresh();
+    }
+  }
+
+  bool get canDiscardAdjustment =>
+      ready &&
+      !busy &&
+      _foreground &&
+      pending?.isAdjustment == true &&
+      notice == 'uncertain' &&
+      store is SqliteDineInStore;
+
+  Future<bool> discardPendingAdjustment(Future<bool> Function() approve) async {
+    if (!canDiscardAdjustment) return false;
+    final request = pending!;
+    busy = true;
+    _notify();
+    try {
+      if (gateway case final DineInContextGuard guard) {
+        guard.check();
+      }
+      if (!await approve() ||
+          _disposed ||
+          !_foreground ||
+          pending?.encoded != request.encoded) {
+        return false;
+      }
+      if (gateway case final DineInContextGuard guard) {
+        guard.check();
+      }
+      await (store as SqliteDineInStore).discardAdjustment(request, staffId);
+      pending = null;
+      notice = 'adjustment_discarded';
+      return true;
+    } catch (_) {
+      notice = 'storage';
       return false;
     } finally {
       busy = false;
@@ -490,19 +538,20 @@ class DineInController extends ChangeNotifier {
       return true;
     } on QrQuickFailure catch (error) {
       if (request.isAdjustment &&
-          const {
-            'bill_missing',
-            'bill_reserved',
-            'adjustment_exceeds_bill',
-            'full_comp_not_supported',
-            'comp_cap_exceeded',
-            'discount_rule_not_applicable',
-            'approval_required',
-            'customer_not_found',
-          }.contains(error.code)) {
+          (error.refused ||
+              const {
+                'bill_missing',
+                'bill_reserved',
+                'adjustment_exceeds_bill',
+                'full_comp_not_supported',
+                'comp_cap_exceeded',
+                'discount_rule_not_applicable',
+                'approval_required',
+                'customer_not_found',
+              }.contains(error.code))) {
         await store.remove(request);
         pending = null;
-        notice = error.code;
+        notice = 'adjust_refused:${error.code}';
         return false;
       }
       notice = 'uncertain';

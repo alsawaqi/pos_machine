@@ -58,6 +58,18 @@ String dineInText(bool ar, String key) {
       'The customer was not found for this merchant.',
       'لم يتم العثور على العميل لدى هذا التاجر.',
     ],
+    'discard_adjustment': [
+      'Discard saved adjustment',
+      'استبعاد التعديل المحفوظ',
+    ],
+    'discard_adjustment_explain': [
+      'Retry first. If the server remains unreachable, a manager can archive this request locally. This does not undo a server adjustment or confirm its result. Refresh and check the bill before applying another adjustment.',
+      'أعد المحاولة أولاً. إذا تعذر الوصول للخادم، يمكن للمدير أرشفة الطلب محلياً. هذا لا يلغي تعديل الخادم ولا يؤكد نتيجته. حدّث الفاتورة وتحقق منها قبل تعديل آخر.',
+    ],
+    'adjustment_discarded': [
+      'Saved adjustment archived. Refresh and check the bill before another adjustment.',
+      'تمت أرشفة التعديل المحفوظ. حدّث الفاتورة وتحقق منها قبل تعديل آخر.',
+    ],
     'retry_adjustment': [
       'Retry saved adjustment',
       'إعادة محاولة التعديل المحفوظ',
@@ -144,6 +156,13 @@ String dineInText(bool ar, String key) {
     ],
     'print': ['Retry kitchen print', 'إعادة طباعة المطبخ'],
   };
+  if (key.startsWith('adjust_refused:')) {
+    final code = key.substring('adjust_refused:'.length);
+    return values[code]?[ar ? 1 : 0] ??
+        (ar
+            ? 'تعذر تنفيذ التعديل ($code). حدّث الفاتورة قبل المحاولة مجدداً.'
+            : 'Adjustment refused ($code). Refresh the bill before trying again.');
+  }
   return values[key]?[ar ? 1 : 0] ?? key;
 }
 
@@ -164,6 +183,7 @@ class DineInScreen extends StatefulWidget {
     this.workspace,
     this.onVoid,
     this.approveCancellation,
+    this.approveAdjustmentDiscard,
     this.pickAdjustment,
     this.onCombine,
     this.onRecover,
@@ -185,6 +205,7 @@ class DineInScreen extends StatefulWidget {
   final CurrentOrderWorkspace? workspace;
   final Future<bool> Function(String uuid)? onVoid;
   final Future<Map<String, dynamic>?> Function()? approveCancellation;
+  final Future<bool> Function()? approveAdjustmentDiscard;
   @override
   State<DineInScreen> createState() => _DineInScreenState();
 }
@@ -823,6 +844,9 @@ class _DineInScreenState extends State<DineInScreen>
           : null,
       voidBill: _canVoid ? _void : null,
       actions: [
+        if (c?.canDiscardAdjustment == true &&
+            widget.approveAdjustmentDiscard != null)
+          WorkspaceAction(text('discard_adjustment'), _discardAdjustment),
         if (((widget.localDraftBlockedNow?.call() ??
                     widget.localDraftBlocked) ||
                 c?.hasLocalConflict == true) &&
@@ -880,6 +904,30 @@ class _DineInScreenState extends State<DineInScreen>
               ),
       ],
     );
+  }
+
+  Future<void> _discardAdjustment() async {
+    final c = controller;
+    final approve = widget.approveAdjustmentDiscard;
+    if (c == null || approve == null || !c.canDiscardAdjustment) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(text('discard_adjustment')),
+        content: Text(text('discard_adjustment_explain')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(d, false),
+            child: Text(widget.arabic ? 'رجوع' : 'Back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(d, true),
+            child: Text(text('discard_adjustment')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) await c.discardPendingAdjustment(approve);
   }
 
   Future<void> _send() async {
@@ -1211,6 +1259,13 @@ class _DineInScreenState extends State<DineInScreen>
                     ],
                     if (c?.pending != null) ...[
                       note('uncertain'),
+                      if (c?.canDiscardAdjustment == true &&
+                          widget.approveAdjustmentDiscard != null)
+                        TextButton(
+                          key: const ValueKey('dine-discard-adjustment'),
+                          onPressed: _discardAdjustment,
+                          child: Text(text('discard_adjustment')),
+                        ),
                       Text('Table #${c!.pending!.tableId}'),
                       FilledButton(
                         key: const ValueKey('dine-retry'),

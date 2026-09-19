@@ -2985,6 +2985,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 onPressed: editor!.busy ? null : () => editor.retry(),
                 child: Text(dineInText(_arabicTable, 'retry_adjustment')),
               ),
+            if (workspaceControls == null &&
+                editor?.canDiscardAdjustment == true)
+              TextButton(
+                key: const ValueKey('table-adjust-discard'),
+                onPressed: () => _discardLiveAdjustment(editor!),
+                child: Text(dineInText(_arabicTable, 'discard_adjustment')),
+              ),
           ],
         ),
         if (blocked != null && !compact)
@@ -3011,6 +3018,33 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           ),
       ],
     );
+  }
+
+  Future<void> _discardLiveAdjustment(DineInController editor) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(dineInText(_arabicTable, 'discard_adjustment')),
+        content: Text(dineInText(_arabicTable, 'discard_adjustment_explain')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(d, false),
+            child: Text(_arabicTable ? 'رجوع' : 'Back'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(d, true),
+            child: Text(dineInText(_arabicTable, 'discard_adjustment')),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      await editor.discardPendingAdjustment(
+        () => _authorizeManager(
+          subtitle: dineInText(_arabicTable, 'discard_adjustment'),
+        ),
+      );
+    }
   }
 
   bool get _liveTable =>
@@ -3854,6 +3888,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         onPay: _launchQrCheckout,
         pickAdjustment: _pickTableAdjustment,
         onVoid: (uuid) => openMachineWorkspaceVoid(context, ref, uuid),
+        approveAdjustmentDiscard: () => _authorizeManager(
+          subtitle: dineInText(_arabicTable, 'discard_adjustment'),
+        ),
         approveCancellation: () async {
           final approval = await requestSentLineCancellation(
             context,
@@ -7657,7 +7694,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             session.kioskId,
           ),
         );
-        if (await tableRequests.load() != null) {
+        if (await tableRequests.blocksBill(orderUuid)) {
           throw StateError('Resolve the saved table round before payment.');
         }
       },

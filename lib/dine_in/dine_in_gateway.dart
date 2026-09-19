@@ -3,7 +3,7 @@ import '../qr_quick/qr_quick_models.dart';
 import 'dine_in_models.dart';
 import 'dine_in_controller.dart';
 
-class ApiDineInGateway implements DineInGateway {
+class ApiDineInGateway implements DineInGateway, DineInContextGuard {
   ApiDineInGateway(this.api, this.currentScope, {this.mutationGuard})
     : scope = currentScope(),
       token = api.tokenGetter();
@@ -30,7 +30,14 @@ class ApiDineInGateway implements DineInGateway {
       check();
       return result;
     } on ApiException catch (e) {
-      throw QrQuickFailure(e.code ?? 'refresh', e.message);
+      throw QrQuickFailure(
+        e.code ?? 'refresh',
+        e.message,
+        refused:
+            !e.isNetwork &&
+            (e.statusCode ?? 0) >= 400 &&
+            (e.statusCode ?? 0) < 500,
+      );
     }
   }
 
