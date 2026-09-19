@@ -460,7 +460,7 @@ class DineInController extends ChangeNotifier {
         }
         await store.remove(request);
         pending = null;
-        notice = null;
+        notice = outcome == 'replayed' ? 'adjustment_replayed' : null;
         return true;
       }
       if (request.isCancellation) {

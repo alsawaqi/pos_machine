@@ -70,6 +70,10 @@ String dineInText(bool ar, String key) {
       'Saved adjustment archived. Refresh and check the bill before another adjustment.',
       'تمت أرشفة التعديل المحفوظ. حدّث الفاتورة وتحقق منها قبل تعديل آخر.',
     ],
+    'adjustment_replayed': [
+      'The saved adjustment was already applied.',
+      'تم تطبيق التعديل المحفوظ مسبقاً.',
+    ],
     'retry_adjustment': [
       'Retry saved adjustment',
       'إعادة محاولة التعديل المحفوظ',
