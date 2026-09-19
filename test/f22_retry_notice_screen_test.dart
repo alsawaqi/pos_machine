@@ -229,9 +229,15 @@ void main() {
         await coordinator.settled;
         await outbox.flush();
       });
-      await settle(25);
       c.availableDiscounts = [];
       final discount = find.byKey(const ValueKey('table-adjust-discount'));
+      await pumpUntilRealCondition(
+        tester,
+        () =>
+            discount.evaluate().isNotEmpty &&
+            tester.widget<TextButton>(discount).onPressed != null,
+        reason: 'the real table adjustment editor to enable Discount',
+      );
       expect(tester.widget<TextButton>(discount).onPressed, isNotNull);
       await tester.ensureVisible(discount);
       await tester.tap(discount);
@@ -253,7 +259,16 @@ void main() {
       await tester.tap(
         find.text(L10nEn().posDiscountDlgApply('10% Discount')).last,
       );
-      await settle(45);
+      await pumpUntilRealCondition(
+        tester,
+        () {
+          final savedRetry = find.byKey(const ValueKey('table-adjust-retry'));
+          return server.requests.isNotEmpty &&
+              savedRetry.evaluate().isNotEmpty &&
+              tester.widget<TextButton>(savedRetry).onPressed != null;
+        },
+        reason: 'the first saved adjustment to reach HTTP and enable its retry',
+      );
       expect(server.requests, hasLength(1));
       final retry = find.byKey(const ValueKey('table-adjust-retry'));
       expect(retry, findsOneWidget);

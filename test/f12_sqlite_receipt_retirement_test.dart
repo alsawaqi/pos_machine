@@ -341,12 +341,17 @@ void main() {
               },
             ),
           );
-          for (var i = 0; i < 40; i++) {
-            await tester.pump(const Duration(milliseconds: 100));
-            await tester.runAsync(
-              () => Future<void>.delayed(const Duration(milliseconds: 25)),
-            );
-          }
+          await pumpUntilRealCondition(
+            tester,
+            () {
+              final shared = find.byType(DineInScreen);
+              if (shared.evaluate().isEmpty) return false;
+              final dynamic state = tester.state(shared);
+              return state.controller?.canPay == true;
+            },
+            reason:
+                'the real shared DineInScreen to finish loading before checkout',
+          );
           expect(find.byType(DineInScreen), findsOneWidget);
           final screen = tester.widget<DineInScreen>(find.byType(DineInScreen));
           var routeDone = false;
