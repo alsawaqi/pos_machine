@@ -162,10 +162,23 @@ String dineInText(bool ar, String key) {
   };
   if (key.startsWith('adjust_refused:')) {
     final code = key.substring('adjust_refused:'.length);
-    return values[code]?[ar ? 1 : 0] ??
-        (ar
-            ? 'تعذر تنفيذ التعديل ($code). حدّث الفاتورة قبل المحاولة مجدداً.'
-            : 'Adjustment refused ($code). Refresh the bill before trying again.');
+    const adjustmentCodes = {
+      'bill_missing',
+      'bill_reserved',
+      'adjustment_exceeds_bill',
+      'full_comp_not_supported',
+      'comp_cap_exceeded',
+      'discount_rule_not_applicable',
+      'approval_required',
+      'customer_not_found',
+    };
+    // Unknown server codes must never resolve to unrelated UI captions.
+    if (adjustmentCodes.contains(code)) {
+      return values[code]![ar ? 1 : 0];
+    }
+    return (ar
+        ? 'تعذر تنفيذ التعديل ($code). حدّث الفاتورة قبل المحاولة مجدداً.'
+        : 'Adjustment refused ($code). Refresh the bill before trying again.');
   }
   return values[key]?[ar ? 1 : 0] ?? key;
 }
