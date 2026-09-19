@@ -9955,7 +9955,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               )
             else if (workspace == null && _tableSelectionMessage != null)
               Text(_tableSelectionMessage!),
-            if (workspace == null && _heldTableRounds > 0)
+            if (workspace == null &&
+                _heldTableRounds > 0 &&
+                _localTableRefusal != _closedTableMessage)
               TextButton(
                 key: const ValueKey('table-correct-held-round'),
                 onPressed: _tableSendBusy ? null : _correctHeldTableRounds,

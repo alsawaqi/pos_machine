@@ -728,6 +728,7 @@ class _DineInScreenState extends State<DineInScreen>
                 : null,
           ),
         if (widget.onCorrectHeldRound != null &&
+            controller?.detail?.canAppend == true &&
             (controller?.detail?.heldStaffReview == true ||
                 widget.hasHeldLocalRound?.call() == true))
           WorkspaceAction(
@@ -938,6 +939,7 @@ class _DineInScreenState extends State<DineInScreen>
                     if (c?.stale == true) note('refresh'),
                     if (c?.notice != null) note(c!.notice!),
                     if (widget.onCorrectHeldRound != null &&
+                        controller?.detail?.canAppend == true &&
                         (controller?.detail?.heldStaffReview == true ||
                             widget.hasHeldLocalRound?.call() == true))
                       OutlinedButton(
