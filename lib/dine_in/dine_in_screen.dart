@@ -713,7 +713,8 @@ class _DineInScreenState extends State<DineInScreen>
           : null,
       voidBill: _canVoid ? _void : null,
       actions: [
-        if (widget.onCorrectHeldRound != null)
+        if (widget.onCorrectHeldRound != null &&
+            controller?.detail?.pendingReview == true)
           WorkspaceAction(
             widget.arabic ? 'تصحيح الجولة المعلّقة' : 'Correct held round',
             widget.writesAllowed &&
@@ -921,7 +922,8 @@ class _DineInScreenState extends State<DineInScreen>
                     if (error != null) note(error!),
                     if (c?.stale == true) note('refresh'),
                     if (c?.notice != null) note(c!.notice!),
-                    if (widget.onCorrectHeldRound != null)
+                    if (widget.onCorrectHeldRound != null &&
+                        controller?.detail?.pendingReview == true)
                       OutlinedButton(
                         key: const ValueKey('dine-correct-held-round'),
                         onPressed:
