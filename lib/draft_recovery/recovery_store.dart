@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../bill_combine/combine_models.dart';
 import 'recovery_models.dart';
-import 'recovery_local.dart' show assertRecoveryUnjoinedCopies;
+import 'recovery_local.dart'
+    show assertRecoveryUnjoinedCopies, assertRecoveryPaymentHistory;
 
 class RecoveryStore {
   RecoveryStore(this.db, this.scope, {this.onChanged});
@@ -47,7 +48,11 @@ class RecoveryStore {
     await db.transaction((txn) async {
       await assertNoCombine(txn);
       await assertNonePending(txn);
-      await verifyLocal(local, executor: txn);
+      await verifyLocal(
+        local,
+        executor: txn,
+        allowConfirmedServerReceipt: true,
+      );
       await createClosedSchema(txn);
       await txn.insert('draft_recovery_closed_archive', {
         'order_uuid': local.uuid,
@@ -319,6 +324,7 @@ class RecoveryStore {
   Future<void> verifyLocal(
     RecoveryLocal local, {
     DatabaseExecutor? executor,
+    bool allowConfirmedServerReceipt = false,
   }) async {
     final target = executor ?? db;
     await assertRecoveryUnjoinedCopies(target, local.tableId);
@@ -387,17 +393,11 @@ class RecoveryStore {
         throw StateError('The local round ledger changed.');
       }
     }
-    for (final row in await target.query(
-      'order_history',
-      columns: ['snapshot_json'],
-    )) {
-      if (recoveryMap(
-            jsonDecode(row['snapshot_json'] as String),
-          )['serverOrderUuid'] ==
-          local.uuid) {
-        throw StateError('A payment record appeared. Keep the recovery copy.');
-      }
-    }
+    await assertRecoveryPaymentHistory(
+      target,
+      local.uuid,
+      allowConfirmedServerReceipt: allowConfirmedServerReceipt,
+    );
   }
 
   Future<void> create(RecoveryAttempt attempt) async {

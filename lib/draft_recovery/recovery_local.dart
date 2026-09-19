@@ -214,17 +214,11 @@ Future<RecoveryLocal> loadRecoveryLocal(
       'A shared local draft without acknowledged rounds needs separate review.',
     );
   }
-  for (final row in await db.query(
-    'order_history',
-    columns: ['snapshot_json'],
-  )) {
-    if (recoveryMap(
-          jsonDecode(row['snapshot_json'] as String),
-        )['serverOrderUuid'] ==
-        uuid) {
-      throw StateError('Local payment history exists for this bill.');
-    }
-  }
+  await assertRecoveryPaymentHistory(
+    db,
+    uuid,
+    allowConfirmedServerReceipt: currentGenerationOnly,
+  );
   return RecoveryLocal({
     if (currentGenerationOnly) 'generation_scoped': true,
     'table_id': tableId,
@@ -237,4 +231,26 @@ Future<RecoveryLocal> loadRecoveryLocal(
     'cancellations': cancellations,
     'outbox': outbox,
   });
+}
+
+/// Only the closed-copy path may use a confirmed projection of this canonical
+/// server bill. Legacy/local or unconfirmed payment evidence remains a blocker.
+Future<void> assertRecoveryPaymentHistory(
+  DatabaseExecutor db,
+  String uuid, {
+  bool allowConfirmedServerReceipt = false,
+}) async {
+  for (final row in await db.query(
+    'order_history',
+    columns: ['snapshot_json'],
+  )) {
+    final receipt = recoveryMap(jsonDecode(row['snapshot_json'] as String));
+    if (receipt['serverOrderUuid'] != uuid) continue;
+    if (allowConfirmedServerReceipt &&
+        receipt['serverReceipt'] == true &&
+        receipt['serverReceiptConfirmed'] == true) {
+      continue;
+    }
+    throw StateError('Local payment history exists for this bill.');
+  }
 }

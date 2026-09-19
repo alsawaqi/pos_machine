@@ -3620,8 +3620,20 @@ class PosController extends ChangeNotifier
     // Push the finalized order to pos_api (via the durable outbox). Fire-and-
     // forget: completion never waits on, or fails because of, the network.
     onOrderCompleted?.call(completedSnapshot);
-    if (isDineInPayment) {
+    if (isDineInPayment && !serverOwned) {
       await _markActiveDiningTablePaid(completedSnapshot);
+    }
+    if (serverOwned) {
+      _cancelPendingDiningTablePersistence();
+      await _diningTablePersistQueue;
+      // Keep the acknowledged draft/round proof until the server confirms the
+      // closed bill. Automatic closed-copy retirement archives it unchanged.
+      final paid = _buildActiveDiningTableSession(
+        paidSnapshot: completedSnapshot,
+      );
+      if (paid != null) {
+        diningTableSyncHooks?.onTablePaid(paid, completedSnapshot);
+      }
     }
     if (serverOwned && refreshServerReceipt != null) {
       try {

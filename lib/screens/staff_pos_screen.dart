@@ -3547,8 +3547,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         'لا تزال عملية طاولة أو إرسال معلقة. أكمل مزامنتها ثم أعد المحاولة.',
       ),
       'local': (
-        'The saved local records cannot be reconciled. Keep this copy and ask a manager to review it.',
-        'تعذر مطابقة السجلات المحلية المحفوظة. احتفظ بهذه النسخة واطلب من المشرف مراجعتها.',
+        'Open Order History and Check payment result to review any saved payment. If this copy still cannot be cleared, keep app data and give support the table and order reference. Do not take payment again.',
+        'افتح سجل الطلبات وتحقق من نتيجة الدفع لمراجعة أي دفعة محفوظة. إذا تعذر مسح النسخة، احتفظ ببيانات التطبيق وأرسل رقم الطاولة ومرجع الطلب إلى الدعم. لا تأخذ دفعة أخرى.',
       ),
       'server': (
         'Could not verify this bill with the server. Reconnect and retry.',
