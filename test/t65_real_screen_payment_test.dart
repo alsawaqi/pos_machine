@@ -630,7 +630,11 @@ void main() {
           );
         }
         expect(find.text('10%'), findsWidgets);
-        await tester.tap(find.text('10%').last);
+        await tester.tap(
+          find
+              .descendant(of: find.byType(Dialog), matching: find.text('10%'))
+              .last,
+        );
         await tester.pump();
         await tap(find.text(L10nEn().posDiscountDlgApply('10% Discount')).last);
         for (var i = 0; i < 25; i++) {
@@ -653,14 +657,22 @@ void main() {
 
         // Both the ordinary live cart and adopted DineInScreen reuse these dialogs.
         await tap(discount);
-        await tap(find.text('5%').last);
+        await tap(
+          find
+              .descendant(of: find.byType(Dialog), matching: find.text('5%'))
+              .last,
+        );
         await tap(find.text(L10nEn().posDiscountDlgApply('5% Discount')).last);
         expect(server.manual, 270);
         await tap(discount);
         await tap(find.text(L10nEn().posDiscountDlgClear).last);
         expect(server.manual, 0);
         await tap(discount);
-        await tap(find.text('10%').last);
+        await tap(
+          find
+              .descendant(of: find.byType(Dialog), matching: find.text('10%'))
+              .last,
+        );
         await tap(find.text(L10nEn().posDiscountDlgApply('10% Discount')).last);
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('manager_biometric_registered', true);
@@ -752,6 +764,16 @@ void main() {
         );
         c.availableDiscounts = [];
         await tap(discount);
+        // Wait for the fresh-read dialog, not a fixed number of frames.
+        await pumpUntilRealCondition(
+          tester,
+          () => find
+              .byKey(const ValueKey('discount-custom-percent'))
+              .evaluate()
+              .isNotEmpty,
+          reason: 'manual discount dialog finished its fresh read',
+        );
+        await tester.pumpAndSettle();
         // Exercise free-entry as well as the presets used earlier.
         await tester.enterText(
           find.byKey(const ValueKey('discount-custom-percent')),
