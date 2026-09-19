@@ -317,7 +317,11 @@ class DineInController extends ChangeNotifier {
       }
       detail = before;
       final intent = await pick(before);
-      if (intent == null || _disposed || !_foreground) return false;
+      if (intent == null) return false;
+      if (_disposed || !_foreground) {
+        notice = 'refresh';
+        return false;
+      }
       final current = await gateway.detail(tableId);
       if (_disposed ||
           !_foreground ||
