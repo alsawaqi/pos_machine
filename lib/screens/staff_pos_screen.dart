@@ -2901,16 +2901,25 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         return;
       }
       await editor.adjust((detail) => _pickTableAdjustment(detail, kind));
-      if (mounted && editor.notice != null) {
-        _showPopupMessage(
-          title: dineInText(_arabicTable, 'title'),
-          message: dineInText(_arabicTable, editor.notice!),
-          tone: FeedbackTone.info,
-        );
-      }
+      _showTableAdjustmentNotice(editor);
     } catch (_) {
       if (mounted) _showTableActionFailure();
     }
+  }
+
+  void _showTableAdjustmentNotice(DineInController editor) {
+    if (mounted && editor.notice != null) {
+      _showPopupMessage(
+        title: dineInText(_arabicTable, 'title'),
+        message: dineInText(_arabicTable, editor.notice!),
+        tone: FeedbackTone.info,
+      );
+    }
+  }
+
+  Future<void> _retryTableAdjustment(DineInController editor) async {
+    await editor.retry();
+    _showTableAdjustmentNotice(editor);
   }
 
   Widget _billAdjustmentContext(
@@ -2982,7 +2991,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 editor?.pending?.isAdjustment == true)
               TextButton(
                 key: const ValueKey('table-adjust-retry'),
-                onPressed: editor!.busy ? null : () => editor.retry(),
+                onPressed: editor!.busy
+                    ? null
+                    : () => _retryTableAdjustment(editor),
                 child: Text(dineInText(_arabicTable, 'retry_adjustment')),
               ),
             if (workspaceControls == null &&
@@ -3044,6 +3055,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           subtitle: dineInText(_arabicTable, 'discard_adjustment'),
         ),
       );
+      _showTableAdjustmentNotice(editor);
     }
   }
 
