@@ -109,7 +109,7 @@ Future<RecoveryLocal> loadRecoveryLocal(
             row['linked_table_ids_json'] != '[]') ||
         row['winner_seating_uuid'] != null ||
         row['seating_state'] == 'merged' ||
-        row['seating_state'] == 'closed') {
+        (row['seating_state'] == 'closed' && !currentGenerationOnly)) {
       throw StateError(
         'Joined, paid or changed table generations need separate review.',
       );
@@ -123,6 +123,40 @@ Future<RecoveryLocal> loadRecoveryLocal(
   if (table?['server_order_uuid'] != null &&
       table!['server_order_uuid'] != uuid) {
     throw StateError('The local bill identities disagree.');
+  }
+  Map<String, dynamic>? ownPay;
+  if (table?['seating_state'] == 'closed') {
+    final pay = await outboxRow(uuid);
+    final receipts = await db.query(
+      'order_history',
+      columns: ['snapshot_json'],
+    );
+    final confirmed = receipts
+        .map((r) => recoveryMap(jsonDecode(r['snapshot_json'] as String)))
+        .where(
+          (r) =>
+              r['serverOrderUuid'] == uuid &&
+              r['serverReceipt'] == true &&
+              r['serverReceiptConfirmed'] == true,
+        )
+        .firstOrNull;
+    if (pay != null &&
+        pay.syncedAt != null &&
+        confirmed != null &&
+        await outboxRow('$uuid:void') == null &&
+        await outboxRow('tbl:${table!['seating_key']}:close') == null) {
+      ownPay = {
+        'key': pay.orderUuid,
+        'events_json': pay.eventsJson,
+        'synced_at': pay.syncedAt!.toIso8601String(),
+        'receipt': confirmed,
+      };
+    }
+    if (!currentGenerationOnly || !ownClosedPayProof(table!, uuid, ownPay)) {
+      throw StateError(
+        'Closed generation has no matching acknowledged local server payment.',
+      );
+    }
   }
   // Closed copies keep their ledger. A later occupancy of this table must
   // prove only its own generation, without deleting earlier round history.
@@ -157,7 +191,7 @@ Future<RecoveryLocal> loadRecoveryLocal(
       (table == null ||
           !combineUuid(table['seating_uuid']) ||
           !combineUuid(table['seating_key']) ||
-          table['seating_state'] != 'open')) {
+          (table['seating_state'] != 'open' && ownPay == null))) {
     throw StateError('Missing acknowledged local table generation.');
   }
   for (final round in rounds) {
@@ -221,6 +255,7 @@ Future<RecoveryLocal> loadRecoveryLocal(
   );
   return RecoveryLocal({
     if (currentGenerationOnly) 'generation_scoped': true,
+    'own_closed_pay': ?ownPay,
     'table_id': tableId,
     'uuid': uuid,
     'kind': rounds.isEmpty ? 'legacy_hold' : 'staff_rounds',
@@ -252,5 +287,32 @@ Future<void> assertRecoveryPaymentHistory(
       continue;
     }
     throw StateError('Local payment history exists for this bill.');
+  }
+}
+
+/// A closed generation is exceptional only when this outbox paid its canonical
+/// bill and the server confirmed the receipt. A synced close/void or an unrelated
+/// receipt cannot authorize retirement. Saved alongside the exact original copy.
+bool ownClosedPayProof(Map<String, dynamic> table, String uuid, Object? value) {
+  if (value is! Map) return false;
+  try {
+    final proof = recoveryMap(value);
+    final events = recoveryMaps(jsonDecode(proof['events_json'] as String));
+    final receipt = recoveryMap(proof['receipt']);
+    return table['seating_state'] == 'closed' &&
+        table['last_verdict'] == 'processed' &&
+        table['server_order_uuid'] == uuid &&
+        table['winner_seating_uuid'] == null &&
+        proof['key'] == uuid &&
+        DateTime.tryParse(proof['synced_at'] as String) != null &&
+        events.length == 1 &&
+        events.single['event_type'] == 'order.pay' &&
+        combineUuid(events.single['client_event_id']) &&
+        recoveryMap(events.single['payload'])['order_uuid'] == uuid &&
+        receipt['serverOrderUuid'] == uuid &&
+        receipt['serverReceipt'] == true &&
+        receipt['serverReceiptConfirmed'] == true;
+  } catch (_) {
+    return false;
   }
 }

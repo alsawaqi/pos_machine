@@ -3,7 +3,10 @@ import 'package:sqflite/sqflite.dart';
 import '../bill_combine/combine_models.dart';
 import 'recovery_models.dart';
 import 'recovery_local.dart'
-    show assertRecoveryUnjoinedCopies, assertRecoveryPaymentHistory;
+    show
+        assertRecoveryUnjoinedCopies,
+        assertRecoveryPaymentHistory,
+        ownClosedPayProof;
 
 class RecoveryStore {
   RecoveryStore(this.db, this.scope, {this.onChanged});
@@ -99,6 +102,20 @@ class RecoveryStore {
         table['seating'] != null ||
         table['bill'] != null) {
       return false;
+    }
+    for (final original in local.rows.where(
+      (r) => r['table'] == 'dining_tables',
+    )) {
+      final row = recoveryMap(original['row']);
+      if (row['seating_state'] == 'closed' &&
+          (bill['status'] != 'paid' ||
+              !ownClosedPayProof(
+                row,
+                local.uuid,
+                local.json['own_closed_pay'],
+              ))) {
+        return false;
+      }
     }
     Map<String, int> quantities(Iterable<Map<String, dynamic>> lines) {
       final sums = <String, int>{};

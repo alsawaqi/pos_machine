@@ -3631,7 +3631,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
       final outbox = ref.read(orderSyncRepositoryProvider);
       final coordinator = ref.read(tableSyncCoordinatorProvider);
-      for (final candidate in controller.diningTableSessions.toList()) {
+      // ACKs persist identity directly, while the active cart intentionally
+      // keeps its own copy. At the idle floor use the authoritative saved
+      // generation, including fresh staff tables whose memory lacks the ACK.
+      final savedCandidates = await storage.loadDiningTableSessions();
+      sameScope();
+      for (final candidate in savedCandidates) {
         if (tableId != null && candidate.tableId != tableId) continue;
         _closedCopyBlockers[candidate.tableId] = 'proof';
         final id = int.tryParse(candidate.tableId);
