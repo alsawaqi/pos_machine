@@ -1238,8 +1238,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       settingsControllerProvider,
       (_, _) => _scheduleTableSearch(),
     );
-    controller.isLiveSharedTable = () =>
-        ref.read(tableSessionsModeProvider) == 'live';
+    controller.isLiveSharedTable = () => _liveTable;
     controller.addListener(_onTableCartChanged);
     controller.prepareDiningTableTender = _prepareLiveTableTender;
     controller.liveDiningTotal = () => _liveBill?.total;
