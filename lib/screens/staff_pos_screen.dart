@@ -4359,7 +4359,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final bound =
         _tableKitchen?.coordinator.cachedSession(local?.tableId ?? '') ?? local;
     final row = _cartBill;
+    // A board fetched before this generation was opened/appended cannot
+    // close it. Keep the fresh send preflight and all newer-board refusals.
+    final boardAt = row?.fetchedAt ?? _remoteTables.meta.boardFetchedAt;
+    final ackAt = bound?.lastVerdictAt;
+    final boardPredatesOpenAck =
+        bound?.seatingState == 'open' &&
+        const {
+          'opened',
+          'attached',
+          'appended',
+          'seating_created',
+        }.contains(bound?.lastVerdict) &&
+        boardAt != null &&
+        ackAt != null &&
+        boardAt.isBefore(ackAt);
     if (bound?.seatingUuid != null &&
+        !boardPredatesOpenAck &&
         (_remoteTables.meta.boardFetchedAt != null || row != null) &&
         (row == null ||
             !row.occupied ||
