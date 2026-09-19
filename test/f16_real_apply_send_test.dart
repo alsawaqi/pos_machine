@@ -33,6 +33,7 @@ const product = Product(
 // coordinator, outbox ACKs, delta calculation and both databases are real.
 class AckServer implements PosApiService {
   bool paid = false;
+  bool holdRound = false;
   String? uuid;
   final events = <Map<String, dynamic>>[];
   Dio dio() {
@@ -60,8 +61,16 @@ class AckServer implements PosApiService {
                 } else
                   'outcome': e['event_type'] == 'table.session.open'
                       ? 'opened'
+                      : holdRound
+                      ? 'held'
                       : 'appended',
                 if (e['event_type'] == 'table.session.round') ...{
+                  if (holdRound) ...{
+                    'held_lines': [
+                      {'line_index': 0, 'reason': 'out_of_stock'},
+                    ],
+                    'review_reasons': ['out_of_stock'],
+                  },
                   'round_id': events
                       .where((e) => e['event_type'] == 'table.session.round')
                       .length,
@@ -155,9 +164,13 @@ Future<Database> realLocalDatabase() async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
-  for (final priorRound in [false, true]) {
+  for (final scenario in ['fresh', 'prior', 'held']) {
+    final priorRound = scenario == 'prior';
+    final heldRound = scenario == 'held';
     testWidgets(
-      'F16 real Apply enables first send immediately with prior round = $priorRound',
+      heldRound
+          ? 'R2 held ACK on open seating outranks older free board but not newer closure'
+          : 'F16 real Apply enables first send immediately with prior round = $priorRound',
       (tester) async {
         Future<T?> drive<T>(Future<T> Function() action) async {
           var done = false;
@@ -423,6 +436,7 @@ void main() {
           reason:
               'Send must be enabled on the first frame after real Apply closes',
         );
+        server.holdRound = heldRound;
         await tester.tap(send);
         for (var i = 0; i < 80; i++) {
           await tester.pump(const Duration(milliseconds: 20));
@@ -447,6 +461,26 @@ void main() {
           await drive(() => localDb.query('local_table_rounds')),
           hasLength(before + 1),
         );
+        if (heldRound) {
+          final held = (await drive(
+            () => localDb.query('local_table_rounds'),
+          ))!.single;
+          expect(held['status'], 'held');
+          expect(coordinator.cachedSession('1')!.seatingState, 'open');
+          expect(coordinator.cachedSession('1')!.lastVerdict, 'held');
+          // Only the older free board exists: no board poll rescues this screen.
+          if (find.text('Done').evaluate().isNotEmpty) {
+            await tester.tap(find.text('Done').last);
+            await tester.pumpAndSettle();
+          }
+          expect(
+            find.textContaining('This bill was paid or closed'),
+            findsNothing,
+          );
+          expect(find.text('Correct held round'), findsOneWidget);
+          // Held lines need correction, not a duplicate send of the same delta.
+          expect(tester.widget<FilledButton>(send).onPressed, isNull);
+        }
         // A later authoritative free board still blocks this old generation.
         final closedAt = coordinator
             .cachedSession('1')!
@@ -461,6 +495,7 @@ void main() {
         await tester.pump();
         await tester.pump();
         expect(tester.widget<FilledButton>(send).onPressed, isNull);
+        if (heldRound) expect(find.text('Correct held round'), findsNothing);
         expect(
           server.events.where((e) => e['event_type'] == 'table.session.round'),
           hasLength(before + 1),
