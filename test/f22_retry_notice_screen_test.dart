@@ -261,7 +261,16 @@ void main() {
       expect(retry, findsOneWidget);
       await tester.ensureVisible(retry);
       await tester.tap(retry);
-      await settle(5);
+      // The retry completes durable removal and its board refresh before the
+      // screen shows the result. HTTP arrival alone is not UI completion.
+      await pumpUntilRealCondition(
+        tester,
+        () => find
+            .textContaining('Adjustment refused (new_policy_refusal)')
+            .evaluate()
+            .isNotEmpty,
+        reason: 'the final retry refusal to be visible after durable recovery',
+      );
       expect(server.requests, hasLength(2));
       expect(server.requests[1], server.requests[0]);
       expect(
