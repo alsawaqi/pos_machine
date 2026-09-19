@@ -456,8 +456,11 @@ void main() {
 
         await pumpUntilRealCondition(
           tester,
-          () async => (await h.db.query('dining_tables')).isEmpty,
-          reason: 'confirmed bill retirement committed to real SQLite',
+          () async =>
+              (await h.db.query('dining_tables')).isEmpty &&
+              c.diningSessionFor('1') == null,
+          reason:
+              'confirmed bill retirement committed and controller refresh completed',
         );
         final rows = await tester.runAsync(() => h.db.query('dining_tables'));
         expect(

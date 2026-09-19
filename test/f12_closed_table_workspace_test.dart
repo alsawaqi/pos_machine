@@ -1,3 +1,4 @@
+import 'real_io_wait.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -198,6 +199,15 @@ void main() {
           await tester.pump(const Duration(milliseconds: 100));
           await tester.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 30)),
+          );
+        }
+        if (!unsent) {
+          await pumpUntilRealCondition(
+            tester,
+            () async =>
+                (await h.db.query('dining_tables')).isEmpty &&
+                c.diningSessionFor('1') == null,
+            reason: 'retirement committed and controller refresh completed',
           );
         }
         final rows = await tester.runAsync(() => h.db.query('dining_tables'));
