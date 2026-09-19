@@ -752,7 +752,16 @@ void main() {
         );
         c.availableDiscounts = [];
         await tap(discount);
-        await tap(find.text('10%').last);
+        // Exercise free-entry as well as the presets used earlier.
+        await tester.enterText(
+          find.byKey(const ValueKey('discount-custom-percent')),
+          '10',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey('discount-reason')),
+          'Synthetic test',
+        );
+        await tester.pump();
         await tap(find.text(L10nEn().posDiscountDlgApply('10% Discount')).last);
         expect(server.manual, 540);
         expect(c.discount.isActive, false);
