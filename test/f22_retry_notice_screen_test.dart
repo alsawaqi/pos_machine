@@ -34,8 +34,9 @@ class _RetryServer extends AckServer {
     Map<String, dynamic> p,
   ) async {
     requests.add(jsonDecode(jsonEncode(p)));
-    if (requests.length == 1)
+    if (requests.length == 1) {
       throw ApiException(message: 'lost', isNetwork: true);
+    }
     throw ApiException(
       message: 'external refusal',
       statusCode: 422,
