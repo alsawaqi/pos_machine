@@ -87,9 +87,8 @@ bool closedRoundProof(RecoveryLocal local, Map<String, dynamic> bill) {
           return false;
         }
       } else {
-        // A missing row is safe only in this complete closed-bill projection,
-        // whose accepted ownership set has just been proved against its items.
-        if (remote != null &&
+        // Absence is not proof of rejection, even in a closed-bill projection.
+        if (remote == null ||
             (remote['status'] != 'rejected' ||
                 remote['entered_by'] != 'staff' ||
                 remote['client_request_id'] != round['client_request_id'] ||

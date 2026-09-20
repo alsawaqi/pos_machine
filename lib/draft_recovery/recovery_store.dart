@@ -173,12 +173,6 @@ class RecoveryStore {
           .where((r) => const {'held', 'rejected'}.contains(r['status']))
           .expand((r) => recoveryMaps(jsonDecode(r['lines_json'] as String))),
     );
-    // A held row can still be in the saved cart, or have been removed locally.
-    // Never subtract an accepted item or consume an unrelated unsent quantity.
-    for (final key in {...sent.keys, ...draft.keys}) {
-      final extra = (draft[key] ?? 0) - (sent[key] ?? 0);
-      if (extra < 0 || extra > (rejected[key] ?? 0)) return false;
-    }
     for (final cancellation in local.cancellations) {
       final wire = recoveryWire({
         'product_id': cancellation['product_id'],
@@ -187,11 +181,19 @@ class RecoveryStore {
         'qty': cancellation['qty'],
       });
       final qty = wire.remove('qty') as int;
+      final key = recoveryJson(wire);
       if (cancellation['status'] != 'bill_terminal' ||
           cancellation['cancelled_qty'] != 0 ||
-          qty > (rejected[recoveryJson(wire)] ?? 0)) {
+          qty > (rejected[key] ?? 0)) {
         return false;
       }
+      rejected[key] = (rejected[key] ?? 0) - qty;
+    }
+    // A held row can still be in the saved cart, or have been removed locally.
+    // Never subtract an accepted item or consume an unrelated unsent quantity.
+    for (final key in {...sent.keys, ...draft.keys}) {
+      final extra = (draft[key] ?? 0) - (sent[key] ?? 0);
+      if (extra < 0 || extra > (rejected[key] ?? 0)) return false;
     }
     return true;
   }
