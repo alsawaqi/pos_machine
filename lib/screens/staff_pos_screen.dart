@@ -1,3 +1,4 @@
+import '../draft_recovery/closed_round_proof.dart';
 import '../qr_checkout/qr_checkout_receipt.dart';
 import '../services/server_receipt_history.dart';
 import '../services/table_round_validation.dart';
@@ -3579,6 +3580,48 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           if (await _retireClosedTableCopies(tableId: tableId, force: true)) {
             return true;
           }
+          if (mounted &&
+              const {
+                'proof',
+                'server',
+              }.contains(_closedCopyBlockers[tableId])) {
+            final ar = Localizations.localeOf(context).languageCode == 'ar';
+            final retry = await showDialog<bool>(
+              context: context,
+              builder: (dialog) => AlertDialog(
+                title: Text(
+                  ar
+                      ? 'التحقق وأرشفة النسخة المغلقة'
+                      : 'Check and archive closed copy',
+                ),
+                content: Text(
+                  ar
+                      ? 'دليل الخادم غير مكتمل. يمكن للمشرف إعادة التحقق. لن تتم الأرشفة إلا بعد إثبات إغلاق نفس الفاتورة ورفض الجولات المعلقة. تبقى العناصر غير المرسلة محفوظة. لا تأخذ دفعة أخرى.'
+                      : 'Server proof is incomplete. A manager can check again. Archiving requires proof that this same bill is closed and its held rounds were rejected. Unsent items stay saved. Do not take payment again.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialog, false),
+                    child: Text(ar ? 'إلغاء' : 'Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(dialog, true),
+                    child: Text(
+                      ar ? 'تحقق بموافقة المشرف' : 'Manager check and archive',
+                    ),
+                  ),
+                ],
+              ),
+            );
+            if (retry == true && mounted && await _authorizeManager()) {
+              if (await _retireClosedTableCopies(
+                tableId: tableId,
+                force: true,
+                managerApproved: true,
+              ))
+                return true;
+            }
+          }
           if (mounted) {
             ScaffoldMessenger.of(
               context,
@@ -4081,8 +4124,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         'أكمل طلبات الدفع أو الطلبات المحفوظة قبل أرشفة النسخة. استخدم التحقق من نتيجة الدفع لأي دفعة غير مؤكدة.',
       ),
       'proof': (
-        'The saved copy has no verified closed bill identity. Keep it for manager review.',
-        'لا تحتوي النسخة المحفوظة على هوية فاتورة مغلقة تم التحقق منها. احتفظ بها لمراجعة المشرف.',
+        'The server has not proved this closed bill and its held rounds. Reconnect, then use Clear Table for a manager check. Keep the copy; do not take payment again.',
+        'لم يثبت الخادم إغلاق الفاتورة وحالة جولاتها المعلقة. أعد الاتصال ثم استخدم مسح الطاولة للتحقق بموافقة المشرف. احتفظ بالنسخة ولا تأخذ دفعة أخرى.',
       ),
     };
     final message = messages[key] ?? messages['local']!;
@@ -4109,6 +4152,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Future<bool> _retireClosedTableCopies({
     String? tableId,
     bool force = false,
+    bool managerApproved = false,
   }) async {
     if (!mounted || _closedCopyBusyReason != null) return false;
     final storage =
@@ -4197,6 +4241,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             _closedCopyBlockers[candidate.tableId] = 'proof';
             continue;
           }
+          if ((local.cancellations.isNotEmpty ||
+                  local.rounds.any((r) => r['status'] != 'appended')) &&
+              !closedRoundProof(local, bill)) {
+            _closedCopyBlockers[candidate.tableId] = 'proof';
+            continue;
+          }
           if (!RecoveryStore.closedSentProof(local, bill, detail.json)) {
             _closedCopyBlockers[candidate.tableId] = 'unsent';
             continue;
@@ -4220,10 +4270,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               );
               sameScope();
               stage = 'local';
-              if (await RecoveryStore(
-                db,
-                captured,
-              ).retireClosed(local, bill: bill, table: detail.json)) {
+              if (await RecoveryStore(db, captured).retireClosed(
+                local,
+                bill: bill,
+                table: detail.json,
+                reconcileRejectedRounds: true,
+                managerApproved: managerApproved,
+              )) {
                 retired = true;
                 for (final original in local.rows.where(
                   (r) => r['table'] == 'dining_tables',

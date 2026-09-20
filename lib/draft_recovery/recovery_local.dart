@@ -182,10 +182,67 @@ Future<RecoveryLocal> loadRecoveryLocal(
     whereArgs: ledgerArgs,
     orderBy: 'cancelled_at, client_request_id',
   );
-  if (cancellations.isNotEmpty) {
-    throw StateError('Cancellation history needs separate reconciliation.');
-  }
   final outbox = <Map<String, dynamic>>[];
+  for (final cancellation in cancellations) {
+    // This ACK changed no canonical line. It is only usable by closed-copy
+    // retirement, which separately proves complete rejected-round ownership.
+    final row = await outboxRow(cancellation['outbox_key'] as String);
+    final events = row == null
+        ? <Map<String, dynamic>>[]
+        : recoveryMaps(jsonDecode(row.eventsJson));
+    final event = events.length == 1 ? events.single : <String, dynamic>{};
+    final payload = recoveryMap(event['payload'] ?? {});
+    final verdicts = await db.query(
+      'table_sync_verdicts',
+      where:
+          'table_id = ? AND seating_key = ? AND event_kind = ? AND outcome = ?',
+      whereArgs: [
+        '$tableId',
+        table!['seating_key'],
+        'cancel_line',
+        'bill_terminal',
+      ],
+    );
+    final acknowledged = verdicts
+        .map((v) => recoveryMap(jsonDecode(v['detail_json'] as String)))
+        .where((v) => v['client_event_id'] == cancellation['client_request_id'])
+        .toList();
+    // cancel_line requests identify a seating, not an order UUID. Require the
+    // retained server ACK to name this exact canonical bill AND seating.
+    final ack = acknowledged.length == 1
+        ? acknowledged.single
+        : <String, dynamic>{};
+    if (!currentGenerationOnly ||
+        cancellation['status'] != 'bill_terminal' ||
+        cancellation['cancelled_qty'] != 0 ||
+        row?.syncedAt == null ||
+        !combineUuid(cancellation['client_request_id']) ||
+        DateTime.tryParse(cancellation['acked_at'] as String? ?? '') == null ||
+        event['event_type'] != 'table.session.cancel_line' ||
+        event['client_event_id'] != cancellation['client_request_id'] ||
+        payload['client_request_id'] != cancellation['client_request_id'] ||
+        payload['table_id'] != tableId ||
+        ack['order_uuid'] != uuid ||
+        ack['table_session_uuid'] != table['seating_uuid'] ||
+        ack['cancelled_qty'] != 0 ||
+        recoveryJson(ack['request']) != recoveryJson(payload) ||
+        payload['seating_key'] != table!['seating_key'] ||
+        payload['product_id'] != cancellation['product_id'] ||
+        payload['qty'] != cancellation['qty'] ||
+        payload['notes'] != cancellation['notes'] ||
+        recoveryJson(payload['addon_ids']) !=
+            recoveryJson(
+              jsonDecode(cancellation['addon_ids_json'] as String),
+            )) {
+      throw StateError('Cancellation history needs separate reconciliation.');
+    }
+    outbox.add({
+      'key': row!.orderUuid,
+      'events_json': row.eventsJson,
+      'synced_at': row.syncedAt!.toIso8601String(),
+      'terminal_cancellation_ack': ack,
+    });
+  }
   final ids = <String>{}, serverIds = <int>{};
   if (rounds.isNotEmpty &&
       (table == null ||

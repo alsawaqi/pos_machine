@@ -47,6 +47,8 @@ class RecoveryStore {
     RecoveryLocal local, {
     required Map<String, dynamic> bill,
     required Map<String, dynamic> table,
+    bool reconcileRejectedRounds = false,
+    bool managerApproved = false,
   }) async {
     if (!closedSentProof(local, bill, table)) return false;
     await db.transaction((txn) async {
@@ -62,9 +64,25 @@ class RecoveryStore {
         'order_uuid': local.uuid,
         'scope': scope,
         'local_json': local.encoded,
-        'proof_json': recoveryJson({'bill': bill, 'table': table}),
+        'proof_json': recoveryJson({
+          'bill': bill,
+          'table': table,
+          if (managerApproved) 'authorized_by': 'Manager',
+        }),
         'archived_at': DateTime.now().toUtc().toIso8601String(),
       });
+      if (reconcileRejectedRounds) {
+        // Preserve the exact pre-reconciliation ledger in the archive above.
+        // Only a fully proved terminal bill can reach this transaction.
+        for (final round in local.rounds.where((r) => r['status'] == 'held')) {
+          await txn.update(
+            'local_table_rounds',
+            {'status': 'rejected'},
+            where: 'client_request_id = ? AND status = ?',
+            whereArgs: [round['client_request_id'], 'held'],
+          );
+        }
+      }
       for (final original in local.rows) {
         final raw = recoveryMap(original['row']);
         await txn.insert('draft_recovery_retired', {
@@ -118,7 +136,8 @@ class RecoveryStore {
         return false;
       }
     }
-    if (local.rounds.any((r) => r['status'] != 'appended') &&
+    if ((local.cancellations.isNotEmpty ||
+            local.rounds.any((r) => r['status'] != 'appended')) &&
         !closedRoundProof(local, bill)) {
       return false;
     }
@@ -149,7 +168,31 @@ class RecoveryStore {
         };
       }),
     );
-    return recoveryJson(sent) == recoveryJson(draft);
+    final rejected = quantities(
+      local.rounds
+          .where((r) => const {'held', 'rejected'}.contains(r['status']))
+          .expand((r) => recoveryMaps(jsonDecode(r['lines_json'] as String))),
+    );
+    // A held row can still be in the saved cart, or have been removed locally.
+    // Never subtract an accepted item or consume an unrelated unsent quantity.
+    for (final key in {...sent.keys, ...draft.keys}) {
+      final extra = (draft[key] ?? 0) - (sent[key] ?? 0);
+      if (extra < 0 || extra > (rejected[key] ?? 0)) return false;
+    }
+    for (final cancellation in local.cancellations) {
+      final wire = recoveryWire({
+        'product_id': cancellation['product_id'],
+        'addon_ids': jsonDecode(cancellation['addon_ids_json'] as String),
+        'notes': cancellation['notes'],
+        'qty': cancellation['qty'],
+      });
+      final qty = wire.remove('qty') as int;
+      if (cancellation['status'] != 'bill_terminal' ||
+          cancellation['cancelled_qty'] != 0 ||
+          qty > (rejected[recoveryJson(wire)] ?? 0))
+        return false;
+    }
+    return true;
   }
 
   static Future<bool> pending(DatabaseExecutor db) async {

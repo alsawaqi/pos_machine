@@ -126,7 +126,12 @@ class RecoveryLocal {
         draft['orderType'] != 'dine_in' ||
         draft['splitCount'] != 1 ||
         recoveryMap(draft['discount'])['value'] != 0 ||
-        recoveryMaps(json['cancellations']).isNotEmpty ||
+        (cancellations.isNotEmpty &&
+            (json['generation_scoped'] != true ||
+                cancellations.any(
+                  (c) =>
+                      c['status'] != 'bill_terminal' || c['cancelled_qty'] != 0,
+                ))) ||
         (kind == 'legacy_hold' && rounds.isNotEmpty) ||
         (kind == 'staff_rounds' &&
             (rounds.isEmpty ||
@@ -204,6 +209,8 @@ class RecoveryLocal {
   String get kind => json['kind'] as String;
   String? get seatingUuid => json['seating_uuid'] as String?;
   List<Map<String, dynamic>> get rows => recoveryMaps(json['rows']);
+  List<Map<String, dynamic>> get cancellations =>
+      recoveryMaps(json['cancellations']);
   List<Map<String, dynamic>> get rounds => recoveryMaps(json['rounds']);
   List<Map<String, dynamic>> get items =>
       recoveryMaps(recoveryMap(json['draft'])['items']);
