@@ -178,6 +178,7 @@ class QrCheckoutController extends ChangeNotifier {
           state: 'claiming',
           createdAt: now(),
           tenderMayHaveStarted: false,
+          paymentContract: 'qr',
         );
         await store.create(attempt);
         _attempt = attempt;
@@ -450,7 +451,12 @@ class QrCheckoutController extends ChangeNotifier {
     }
     final frozen = Map<String, dynamic>.from(event);
     await _save(
-      attempt.copy(state: 'pending', captures: payments, event: frozen),
+      attempt.copy(
+        state: 'pending',
+        captures: payments,
+        event: frozen,
+        paymentContract: 'table',
+      ),
     );
     phase = CheckoutPhase.pending;
     _changed();

@@ -281,6 +281,24 @@ void main() {
         CheckoutAttempt.decode(jsonEncode(oldPending().json)).event,
         oldPending().event,
       );
+      expect(
+        () => CheckoutAttempt.decode(
+          jsonEncode({...oldPending().json, 'payment_contract': 'qr'}),
+        ),
+        throwsFormatException,
+      );
+      expect(
+        CheckoutAttempt.decode(
+          jsonEncode({...oldPending().json, 'payment_contract': 'table'}),
+        ).event,
+        oldPending().event,
+      );
+      expect(
+        () => CheckoutAttempt.decode(
+          jsonEncode({...oldPending().json, 'payment_contract': 'unknown'}),
+        ),
+        throwsFormatException,
+      );
       for (final fields in <Map<String, dynamic>>[
         {'unrecognized': true},
         {'loyalty_redeem': {}},

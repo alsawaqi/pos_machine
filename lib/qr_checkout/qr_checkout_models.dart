@@ -190,6 +190,7 @@ class CheckoutAttempt {
     List<Map<String, dynamic>> captures = const [],
     this.receiptNumber,
     this.tenderMayHaveStarted,
+    this.paymentContract,
   }) : claim = claim == null ? null : frozenCheckoutMap(claim),
        event = event == null ? null : frozenCheckoutMap(event),
        captures = List.unmodifiable(captures.map(frozenCheckoutMap)) {
@@ -221,6 +222,10 @@ class CheckoutAttempt {
   /// null: older journal, unknown. false: this attempt has not reached tender.
   /// true: tender may have started; written BEFORE capture and never reset.
   final bool? tenderMayHaveStarted;
+
+  /// null preserves pre-contract table journals. New standalone QR journals
+  /// use qr; only the table producer changes it to table before saving pay.
+  final String? paymentContract;
   bool get terminal => const ['paid', 'released', 'managed'].contains(state);
   CheckoutAttempt copy({
     String? state,
@@ -231,6 +236,7 @@ class CheckoutAttempt {
     List<Map<String, dynamic>>? captures,
     String? receiptNumber,
     bool? tenderMayHaveStarted,
+    String? paymentContract,
   }) => CheckoutAttempt(
     id: id,
     orderUuid: orderUuid,
@@ -242,6 +248,7 @@ class CheckoutAttempt {
     event: event ?? this.event,
     captures: captures ?? this.captures,
     receiptNumber: receiptNumber ?? this.receiptNumber,
+    paymentContract: paymentContract ?? this.paymentContract,
     tenderMayHaveStarted:
         tenderMayHaveStarted ??
         (state == 'capturing' ? true : this.tenderMayHaveStarted),
@@ -257,6 +264,7 @@ class CheckoutAttempt {
     'event': event,
     'captures': captures,
     'receipt_number': receiptNumber,
+    if (paymentContract != null) 'payment_contract': paymentContract,
     if (tenderMayHaveStarted != null)
       'tender_may_have_started': tenderMayHaveStarted,
   };
@@ -265,6 +273,10 @@ class CheckoutAttempt {
     if (json.containsKey('tender_may_have_started') &&
         json['tender_may_have_started'] is! bool) {
       throw const FormatException('Invalid checkout tender evidence');
+    }
+    if (json.containsKey('payment_contract') &&
+        !const ['qr', 'table'].contains(json['payment_contract'])) {
+      throw const FormatException('Unknown checkout payment contract');
     }
     final state = json['state'] as String;
     if (!const [
@@ -292,6 +304,7 @@ class CheckoutAttempt {
       event: json['event'] == null ? null : checkoutMap(json['event']),
       captures: (json['captures'] as List).map(checkoutMap).toList(),
       receiptNumber: json['receipt_number'] as String?,
+      paymentContract: json['payment_contract'] as String?,
       tenderMayHaveStarted: json['tender_may_have_started'] as bool?,
     );
     if (attempt.id.isEmpty ||
@@ -316,7 +329,7 @@ class CheckoutAttempt {
             'order_uuid',
             'paid_at',
             'payments',
-            'gps',
+            if (attempt.paymentContract != 'qr') 'gps',
           }).isNotEmpty ||
           (payload.containsKey('gps') && !_validSavedGps(payload['gps'])) ||
           payments.any((p) => p['status'] != 'success') ||

@@ -114,7 +114,8 @@ class SqliteCheckoutStore implements CheckoutStore, CheckoutReceiptJournal {
         previous.orderUuid != next.orderUuid ||
         previous.terminal ||
         (previous.event != null &&
-            jsonEncode(previous.event) != jsonEncode(next.event))) {
+            (jsonEncode(previous.event) != jsonEncode(next.event) ||
+                previous.paymentContract != next.paymentContract))) {
       throw StateError(
         'Cannot replace a payment identity or a terminal journal row',
       );
