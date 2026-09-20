@@ -184,6 +184,14 @@ Future<RecoveryLocal> loadRecoveryLocal(
   );
   final outbox = <Map<String, dynamic>>[];
   for (final cancellation in cancellations) {
+    // Preserve the original refusal before inspecting evidence on ordinary
+    // recovery paths, including older/incomplete cancellation records.
+    if (!currentGenerationOnly ||
+        cancellation['status'] != 'bill_terminal' ||
+        cancellation['cancelled_qty'] != 0 ||
+        cancellation['outbox_key'] is! String) {
+      throw StateError('Cancellation history needs separate reconciliation.');
+    }
     // This ACK changed no canonical line. It is only usable by closed-copy
     // retirement, which separately proves complete rejected-round ownership.
     final row = await outboxRow(cancellation['outbox_key'] as String);
