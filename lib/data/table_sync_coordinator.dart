@@ -708,7 +708,6 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
               'event_type': 'product.waste',
               'client_timestamp': at.toIso8601String(),
               'payload': {
-                'table_cancellation_request_id': requestId,
                 'lines': [
                   {
                     'product_id': cancellation.productId,
