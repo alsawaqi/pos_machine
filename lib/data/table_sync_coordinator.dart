@@ -770,6 +770,10 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
           .firstOrNull;
       if (ack == null || ack['result'] is! Map) continue;
       final result = Map<String, dynamic>.from(ack['result'] as Map);
+      if (event['event_type'] == 'order.pay' &&
+          (result['status'] != 'paid' || result['orphan_tender'] == true)) {
+        continue; // A tender held for review did not close the seating.
+      }
       final payload = Map<String, dynamic>.from(event['payload'] as Map);
       final type = event['event_type'] as String;
       final kind = type.split('.').last;

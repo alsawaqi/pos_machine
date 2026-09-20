@@ -507,8 +507,28 @@ class OrderSyncRepository {
   /// tender or payload. This also heals the historical synced/pending split.
   Future<int> recoverTablePayment(String orderUuid, String eventId) =>
       _prepare(() async {
-        final row = await _db.getOutbox(orderUuid);
-        if (row == null) throw StateError('Saved table payment is unavailable');
+        // The durable key may be the snapshot's original serverOrderUuid
+        // while the event has since been rebound to the canonical bill.
+        // Match BOTH immutable event id and canonical uuid; never :pay rows.
+        final matching = (await _db.select(_db.orderOutbox).get()).where((row) {
+          if (row.orderUuid.endsWith(':pay')) return false;
+          try {
+            final events = jsonDecode(row.eventsJson);
+            return events is List &&
+                events.length == 1 &&
+                events.single is Map &&
+                events.single['event_type'] == 'order.pay' &&
+                events.single['client_event_id'] == eventId &&
+                events.single['payload'] is Map &&
+                events.single['payload']['order_uuid'] == orderUuid;
+          } catch (_) {
+            return false;
+          }
+        }).toList();
+        if (matching.length != 1) {
+          throw StateError('Saved table payment is unavailable');
+        }
+        final row = matching.single;
         final events = (jsonDecode(row.eventsJson) as List).cast<Map>();
         if (events.length != 1 ||
             events.single['event_type'] != 'order.pay' ||
@@ -516,13 +536,20 @@ class OrderSyncRepository {
             (events.single['payload'] as Map)['order_uuid'] != orderUuid) {
           throw StateError('Saved table payment identity differs');
         }
-        if (row.syncedAt != null) {
+        if (row.syncedAt != null || isStuck(row)) {
+          // Replay this named payment once to obtain an authoritative result.
+          // Keep the saved payload/id; do not unpark unrelated sales.
           await (_db.update(_db.orderOutbox)..where(
                 (t) =>
-                    t.orderUuid.equals(orderUuid) &
+                    t.orderUuid.equals(row.orderUuid) &
                     t.eventsJson.equals(row.eventsJson),
               ))
-              .write(const OrderOutboxCompanion(syncedAt: Value(null)));
+              .write(
+                const OrderOutboxCompanion(
+                  syncedAt: Value(null),
+                  serverRejections: Value(0),
+                ),
+              );
         }
         return _flushOnce();
       });
@@ -641,7 +668,26 @@ class OrderSyncRepository {
         } else {
           successful = false;
           final error = _firstError(results);
-          await _recordServerRejection(row, error);
+          // A table payment refusal is durable checkout evidence too. Other
+          // event types and missing/malformed ACKs keep their classification.
+          final failedTablePayment =
+              !row.orderUuid.endsWith(':pay') &&
+              events.length == 1 &&
+              events.single['event_type'] == 'order.pay' &&
+              results.length == 1 &&
+              results.single['status'] == 'failed' &&
+              results.single['client_event_id'] ==
+                  events.single['client_event_id'];
+          await _recordServerRejection(
+            row,
+            error,
+            parkPayment: failedTablePayment,
+          );
+          if (failedTablePayment) {
+            for (final listener in List<OutboxAckListener>.of(_ackListeners)) {
+              await listener(row, events, results);
+            }
+          }
         }
       } on ApiException catch (e) {
         successful = false;
@@ -825,11 +871,15 @@ class OrderSyncRepository {
     }
   }
 
-  Future<void> _recordServerRejection(OrderOutboxRow row, String error) async {
+  Future<void> _recordServerRejection(
+    OrderOutboxRow row,
+    String error, {
+    bool parkPayment = false,
+  }) async {
     // A deterministic refusal after a QR tender must not be retried silently:
     // staff may already have returned cash or escalated a charged card. Park it
     // immediately. Transport/no-ACK failures still replay the same event UUID.
-    final rejections = row.orderUuid.endsWith(':pay')
+    final rejections = row.orderUuid.endsWith(':pay') || parkPayment
         ? maxServerRejections
         : row.serverRejections + 1;
     await _db.markOutboxServerRejection(

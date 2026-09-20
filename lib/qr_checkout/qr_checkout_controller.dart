@@ -155,7 +155,14 @@ class QrCheckoutController extends ChangeNotifier {
         phase = existing.state == 'pending'
             ? CheckoutPhase.pending
             : CheckoutPhase.attention;
-        notice = existing.state == 'releasing' ? 'release_failed' : 'recovery';
+        notice = existing.state == 'releasing'
+            ? 'release_failed'
+            : existing.state == 'refused' &&
+                  !existing.captures.any(
+                    (c) => const {'card', 'bank_pos'}.contains(c['method']),
+                  )
+            ? 'return_cash'
+            : 'recovery';
         return;
       }
       final uuid = existing?.orderUuid ?? requestedUuid!;
@@ -473,6 +480,7 @@ class QrCheckoutController extends ChangeNotifier {
     // Unrelated ACKs are not evidence for this attempt and must not decode
     // their payload through its frozen claim (which could throw).
     if (saved == null ||
+        saved.paymentContract == 'qr' ||
         saved.state != 'pending' ||
         saved.event == null ||
         event['client_event_id'] != saved.id ||
@@ -485,16 +493,29 @@ class QrCheckoutController extends ChangeNotifier {
       throw const FormatException('Check payment result: unmatched table ACK');
     }
     _attempt = saved;
+    if (ack['status'] == 'failed') {
+      await _acceptPaymentAck(ack);
+      _changed();
+      return;
+    }
     final result = checkoutMap(ack['result']);
     if (ack['status'] != 'processed' ||
-        result['status'] != 'paid' ||
+        (result['status'] != 'paid' && result['orphan_tender'] != true) ||
         result['order_id'] != saved.orderId ||
-        result['receipt_number'] is! String ||
-        (result['receipt_number'] as String).trim().isEmpty ||
-        result['orphan_tender'] == true) {
+        (result['receipt_number'] != null &&
+            result['receipt_number'] is! String)) {
       throw const FormatException(
         'Check payment result: payment proof missing',
       );
+    }
+    if (result['orphan_tender'] == true) {
+      // The server retained the tender for review, not as settlement of this
+      // bill. Use the existing durable manager handover; never retry tender.
+      await _save(saved.copy(state: 'uncertain'));
+      phase = CheckoutPhase.attention;
+      notice = 'recovery';
+      _changed();
+      return;
     }
     await _acceptPaymentAck(ack);
     if (_attempt?.state != 'paid') {

@@ -116,9 +116,9 @@ class RecoveryServer extends original.AckServer {
                 'table_session_uuid': original.seat,
                 'temp_reference': 'T-FIX7-001',
                 if (e['event_type'] == 'order.pay') ...{
-                  'status': 'paid',
+                  if (receiptProof) 'status': 'paid',
                   'order_id': 65,
-                  if (receiptProof) 'receipt_number': 'TEST-T65-120',
+                  'receipt_number': 'TEST-T65-120',
                 } else
                   'outcome': e['event_type'] == 'table.session.open'
                       ? 'opened'

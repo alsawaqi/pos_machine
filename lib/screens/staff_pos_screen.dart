@@ -2592,7 +2592,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   color: const Color(0xFFFFE6A6),
                   child: ListTile(
                     title: Text(
-                      arabic
+                      _savedTablePaymentNotice != null
+                          ? checkoutText(context, _savedTablePaymentNotice!)
+                          : arabic
                           ? 'الدفع محفوظ ولم تتأكد نتيجته. لا تأخذ دفعة أخرى.'
                           : 'Payment is saved; its result is not confirmed. Do not take payment again.',
                     ),
@@ -2601,10 +2603,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                       onPressed: _checkingTablePayment
                           ? null
                           : () async {
-                              await _retireClosedTableCopies(force: true);
+                              if (_savedTablePaymentNotice != null) {
+                                await _launchQrCheckout(null);
+                              } else {
+                                await _retireClosedTableCopies(force: true);
+                              }
                             },
                       child: Text(
-                        arabic ? 'تحقق من نتيجة الدفع' : 'Check payment result',
+                        _savedTablePaymentNotice != null
+                            ? checkoutText(context, 'manager')
+                            : arabic
+                            ? 'تحقق من نتيجة الدفع'
+                            : 'Check payment result',
                       ),
                     ),
                   ),
@@ -2743,6 +2753,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   bool _checkingTablePayment = false;
   bool _savedTablePaymentPending = false;
+  String? _savedTablePaymentNotice;
   DateTime? _lastTablePaymentCheck;
 
   Future<void> _checkSavedTablePayment({bool force = false}) async {
@@ -2767,21 +2778,41 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (_savedTablePaymentPending) setState(() {});
     _lastTablePaymentCheck = DateTime.now();
     var pending = false;
+    String? notice;
     try {
       await _ensureTableKitchen();
       final checkout = await _newQrCheckout();
       try {
         final saved = await checkout.store.active();
-        if (saved == null || saved.state != 'pending' || saved.event == null) {
+        if (saved == null ||
+            saved.paymentContract == 'qr' ||
+            !const {'pending', 'refused', 'uncertain'}.contains(saved.state) ||
+            saved.event == null) {
           return;
         }
         final sessions = await _tableKitchen!.coordinator.loadSessions();
-        if (!sessions.any((s) => s.serverOrderUuid == saved.orderUuid)) return;
+        if (saved.paymentContract != 'table' &&
+            !sessions.any((s) => s.serverOrderUuid == saved.orderUuid)) {
+          return;
+        }
         pending = true;
-        await ref
-            .read(orderSyncRepositoryProvider)
-            .recoverTablePayment(saved.orderUuid, saved.id);
-        pending = (await checkout.store.active())?.id == saved.id;
+        if (saved.state == 'pending') {
+          await ref
+              .read(orderSyncRepositoryProvider)
+              .recoverTablePayment(saved.orderUuid, saved.id);
+        }
+        final remaining = await checkout.store.active();
+        pending = remaining?.id == saved.id;
+        if (pending &&
+            const {'refused', 'uncertain'}.contains(remaining!.state)) {
+          notice =
+              remaining.state == 'refused' &&
+                  !remaining.captures.any(
+                    (c) => const {'card', 'bank_pos'}.contains(c['method']),
+                  )
+              ? 'return_cash'
+              : 'recovery';
+        }
       } finally {
         checkout.dispose();
       }
@@ -2792,7 +2823,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     } finally {
       _checkingTablePayment = false;
       if (mounted && (pending || _savedTablePaymentPending)) {
-        setState(() => _savedTablePaymentPending = pending);
+        setState(() {
+          _savedTablePaymentPending = pending;
+          _savedTablePaymentNotice = notice;
+        });
       }
     }
   }
