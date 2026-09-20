@@ -165,6 +165,14 @@ class AckServer implements PosApiService {
           for (final raw in batch) {
             final e = Map<String, dynamic>.from(raw);
             events.add(e);
+            if (e['event_type'] == 'product.waste') {
+              results.add({
+                'client_event_id': e['client_event_id'],
+                'status': 'failed',
+                'result': {'error': 'Cannot waste: only -21 on the shelf.'},
+              });
+              continue;
+            }
             uuid = (e['payload'] as Map)['order_uuid'] as String;
             if (e['event_type'] == 'order.pay') {
               expect(claimed, true);
@@ -334,18 +342,18 @@ Future<Database> realLocalDatabase() async {
 
 void main() => runPaymentRegression();
 
-void runPaymentRegression({bool gps = false}) {
+void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
   for (final mode in [
     'staff',
-    'shared',
-    'already-stuck',
+    if (!parkedWaste) 'shared',
+    if (!parkedWaste) 'already-stuck',
     if (gps) 'unadjusted',
   ]) {
     final restart = mode == 'already-stuck';
     testWidgets(
-      'T65 real screen ${gps ? 'GPS ' : ''}$mode payment journals canonical amount and retires own acknowledged copy',
+      'T65 real screen ${parkedWaste ? 'parked waste ' : ''}${gps ? 'GPS ' : ''}$mode payment journals canonical amount and retires own acknowledged copy',
       (tester) async {
         Future<T?> drive<T>(Future<T> Function() action) async {
           var done = false;
@@ -476,6 +484,25 @@ void runPaymentRegression({bool gps = false}) {
             markPrinted: (_) async {},
           );
         });
+        if (parkedWaste) {
+          await drive(() async {
+            await outbox.enqueueEvent('tbl:legacy-seat:waste:fixture', {
+              'client_event_id': 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+              'event_type': 'product.waste',
+              'client_timestamp': DateTime.now().toUtc().toIso8601String(),
+              'payload': {
+                'lines': [
+                  {'product_id': 10, 'qty': 1, 'reason': 'other'},
+                ],
+                'note': 'cancelled after preparation — table 1',
+              },
+            });
+            for (var i = 1; i < OrderSyncRepository.maxServerRejections; i++) {
+              await outbox.flush();
+            }
+            expect(await outbox.stuckBatches(), hasLength(1));
+          });
+        }
         debugOrderStorageOverride = storage;
         addTearDown(() async {
           await tester.pumpWidget(const SizedBox.shrink());
@@ -494,6 +521,8 @@ void runPaymentRegression({bool gps = false}) {
             tester,
             mode: 'live',
             toggle: false,
+            realTableHealth: parkedWaste,
+            connectivityOnline: parkedWaste,
             wrapStaff: (child) => MediaQuery(
               data: const MediaQueryData(textScaler: TextScaler.linear(0.8)),
               child: child,
@@ -550,6 +579,35 @@ void runPaymentRegression({bool gps = false}) {
           c.addProduct(product);
           c.addProduct(product);
         });
+        if (parkedWaste) {
+          await pumpUntilRealCondition(
+            tester,
+            () => find
+                .byKey(const ValueKey('waste-sync-attention-banner'))
+                .evaluate()
+                .isNotEmpty,
+            reason:
+                'parked waste shown as stock waste with Stuck sales destination',
+          );
+          expect(
+            find.textContaining('Stock waste could not sync.'),
+            findsOneWidget,
+          );
+          expect(
+            find.textContaining('Stuck sales to review and retry'),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const ValueKey('table-sync-attention-banner')),
+            findsNothing,
+          );
+          expect(
+            find.textContaining('Table synchronization is pending.'),
+            findsNothing,
+          );
+          await drive(outbox.assertIdleForCombine);
+        }
+
         for (var i = 0; i < 15; i++) {
           await tester.pump(const Duration(milliseconds: 100));
           await drive(
@@ -1023,6 +1081,11 @@ void runPaymentRegression({bool gps = false}) {
           hasLength(1),
         );
         final dynamic currentHost = tester.state(find.byType(StaffPosScreen));
+        if (parkedWaste) {
+          final rows = await drive(outbox.stuckBatches);
+          expect(rows, hasLength(1));
+          expect(rows!.single.eventsJson, contains('product.waste'));
+        }
         expect(
           (currentHost.controller as PosController).diningSessionFor('1'),
           isNull,

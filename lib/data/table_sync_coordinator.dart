@@ -513,7 +513,9 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
     }
 
     check();
-    if ((await outbox.pendingRows()).isNotEmpty) {
+    if ((await outbox.pendingRows()).any(
+      (row) => !OrderSyncRepository.isParkedWaste(row),
+    )) {
       throw StateError('Finish pending sync before reviewing this round.');
     }
     final held = await heldRounds(session);
@@ -706,6 +708,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
               'event_type': 'product.waste',
               'client_timestamp': at.toIso8601String(),
               'payload': {
+                'table_cancellation_request_id': requestId,
                 'lines': [
                   {
                     'product_id': cancellation.productId,

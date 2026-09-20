@@ -136,7 +136,7 @@ class OrderSyncRepository {
   /// for existing preparation/ACK callbacks. Never flushes or deletes a row.
   Future<void> assertIdleForCombine() async {
     await _flushTail;
-    if ((await pendingRows()).isNotEmpty) {
+    if ((await pendingRows()).any((row) => !isParkedWaste(row))) {
       throw StateError(
         'Sync all pending orders and payments before combining.',
       );
@@ -151,7 +151,7 @@ class OrderSyncRepository {
   /// the state checked by [mutationGuard] before returning.
   Future<void> admitDraftRecovery(Future<void> Function() operation) =>
       _serialize(() async {
-        if ((await pendingRows()).isNotEmpty) {
+        if ((await pendingRows()).any((row) => !isParkedWaste(row))) {
           throw StateError(
             'Sync all pending orders and payments before recovering a draft.',
           );
@@ -753,6 +753,37 @@ class OrderSyncRepository {
 
   static bool isStuck(OrderOutboxRow row) =>
       row.serverRejections >= maxServerRejections;
+
+  /// Only a parked, waste-only batch is unrelated to bill ownership/payment.
+  /// Mixed, corrupt or financial batches retain the existing blocking policy.
+  static bool isParkedWaste(OrderOutboxRow row) {
+    if (!isStuck(row)) return false;
+    try {
+      final events = jsonDecode(row.eventsJson);
+      return events is List &&
+          events.isNotEmpty &&
+          events.every(
+            (e) =>
+                e is Map &&
+                e['event_type'] == 'product.waste' &&
+                e['payload'] is Map,
+          );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static bool isTableWork(OrderOutboxRow row) {
+    if (!row.orderUuid.startsWith('tbl:')) return false;
+    try {
+      final events = jsonDecode(row.eventsJson);
+      return events is! List ||
+          events.isEmpty ||
+          events.any((e) => e is! Map || e['event_type'] != 'product.waste');
+    } catch (_) {
+      return true;
+    }
+  }
 
   bool _hasMissingGps(OrderOutboxRow row) {
     try {

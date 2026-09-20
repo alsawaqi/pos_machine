@@ -142,6 +142,8 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
   required String mode,
   required bool toggle,
   bool arabic = false,
+  bool realTableHealth = false,
+  bool connectivityOnline = false,
   required CatalogSnapshot catalog,
   AudienceService? audience,
   PosApiService? api,
@@ -204,11 +206,14 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
         ),
         tableActivityNoticeProvider.overrideWith((ref) => const Stream.empty()),
         tableShadowConfigProvider.overrideWith((ref) => Stream.value(null)),
-        degradedStateProvider.overrideWith(_NoDegraded.new),
+        if (!realTableHealth)
+          degradedStateProvider.overrideWith(_NoDegraded.new),
         orderSyncAttentionProvider.overrideWith((ref) => Stream.value([])),
         stuckOrderSyncProvider.overrideWith((ref) => Stream.value([])),
         catalogProvider.overrideWith((ref) => Stream.value(catalog)),
-        connectivityProvider.overrideWith((ref) => Stream.value(false)),
+        connectivityProvider.overrideWith(
+          (ref) => Stream.value(connectivityOnline),
+        ),
         geofenceProvider.overrideWith(
           (ref) => Stream.value(const GeofenceStatus(FenceState.disabled)),
         ),

@@ -33,6 +33,13 @@ class TableDegradedBanner extends StatelessWidget {
                   ? l10n.tableOfflineBanner(time, state.queuedActions)
                   : l10n.tableSyncPendingBanner(state.queuedActions),
             ),
+          if (state.parkedWaste > 0)
+            _message(
+              'waste-sync-attention-banner',
+              Localizations.localeOf(context).languageCode == 'ar'
+                  ? 'تعذرت مزامنة هدر المخزون. ${state.parkedWaste} عمليات محفوظة. افتح الإعدادات ← مبيعات عالقة للمراجعة وإعادة المحاولة.'
+                  : 'Stock waste could not sync. ${state.parkedWaste} saved bookings. Open Settings → Stuck sales to review and retry.',
+            ),
           if (state.parkedActions > 0)
             _message(
               'table-sync-attention-banner',

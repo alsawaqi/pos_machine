@@ -3179,7 +3179,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   .whereType<Map>();
               for (final event in events) {
                 final payload = event['payload'] as Map? ?? {};
-                if (row.orderUuid.startsWith('tbl:') &&
+                if ((event['event_type']?.toString() ?? '').startsWith(
+                      'table.session.',
+                    ) &&
                     payload['table_id'] != null) {
                   ids.add(payload['table_id'].toString());
                 } else {
@@ -3887,6 +3889,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   'event_type': 'product.waste',
                   'client_timestamp': cancel['cancelled_at'],
                   'payload': {
+                    'table_cancellation_request_id': request.id,
                     'lines': [
                       {
                         'product_id': cancel['product_id'],

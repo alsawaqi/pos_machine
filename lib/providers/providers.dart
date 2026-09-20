@@ -328,25 +328,29 @@ class TableDegradedState {
     this.since,
     this.queuedActions = 0,
     this.parkedActions = 0,
+    this.parkedWaste = 0,
     bool? connectionUnavailable,
   }) : connectionUnavailable = connectionUnavailable ?? degraded;
   final bool degraded;
   final DateTime? since;
   final int queuedActions;
   final int parkedActions;
+  final int parkedWaste;
   final bool connectionUnavailable;
-  bool get hasWarning => degraded || parkedActions > 0;
+  bool get hasWarning => degraded || parkedActions > 0 || parkedWaste > 0;
 }
 
 class TableDegradedController extends Notifier<TableDegradedState> {
   List<OrderOutboxRow> _pending = [];
+  int _parkedWaste = 0;
   DateTime? _lastSuccessfulFlush;
 
   @override
   TableDegradedState build() {
     final repository = ref.read(orderSyncRepositoryProvider);
     final pending = repository.watchPending().listen((rows) {
-      _pending = rows.where((row) => row.orderUuid.startsWith('tbl:')).toList();
+      _pending = rows.where(OrderSyncRepository.isTableWork).toList();
+      _parkedWaste = rows.where(OrderSyncRepository.isParkedWaste).length;
       _evaluate();
     });
     final flushes = repository.flushCompletions.listen((success) {
@@ -401,6 +405,7 @@ class TableDegradedController extends Notifier<TableDegradedState> {
       since: stillDegraded ? since : null,
       queuedActions: retryable.length,
       parkedActions: _pending.length - retryable.length,
+      parkedWaste: _parkedWaste,
       connectionUnavailable: connectionUnavailable,
     );
   }
