@@ -756,9 +756,10 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
               (result) => result['client_event_id'] == event['client_event_id'],
             )
             .firstOrNull;
-        if (paymentAck != null) {
-          await paymentAcknowledged?.call(event, paymentAck);
+        if (paymentAck == null) {
+          throw StateError('Check payment result: missing payment ACK');
         }
+        await paymentAcknowledged?.call(event, paymentAck);
       }
       final ack = results
           .where(

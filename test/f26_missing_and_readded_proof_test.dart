@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:drift/native.dart';
@@ -492,7 +491,7 @@ void main() {
           expect(await localDb.query('dining_tables'), hasLength(1));
         });
         expect(server.roundEvents, hasLength(2));
-        bridge!.detach();
+        bridge.detach();
         bridge = null;
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 1));

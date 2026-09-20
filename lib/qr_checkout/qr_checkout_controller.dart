@@ -470,32 +470,50 @@ class QrCheckoutController extends ChangeNotifier {
     Map<String, dynamic> ack,
   ) async {
     final saved = await store.active();
+    // Unrelated ACKs are not evidence for this attempt and must not decode
+    // their payload through its frozen claim (which could throw).
     if (saved == null ||
         saved.state != 'pending' ||
         saved.event == null ||
-        !_sameTablePayment(saved, event) ||
-        ack['client_event_id'] != saved.id) {
+        event['client_event_id'] != saved.id ||
+        (event['payload'] is Map &&
+            (event['payload'] as Map)['order_uuid'] != saved.orderUuid)) {
       return;
     }
+    if (ack['client_event_id'] != saved.id ||
+        !_sameTablePayment(saved, event)) {
+      throw const FormatException('Check payment result: unmatched table ACK');
+    }
     _attempt = saved;
+    final result = checkoutMap(ack['result']);
+    if (ack['status'] != 'processed' ||
+        result['status'] != 'paid' ||
+        result['order_id'] != saved.orderId ||
+        result['receipt_number'] is! String ||
+        (result['receipt_number'] as String).trim().isEmpty ||
+        result['orphan_tender'] == true) {
+      throw const FormatException(
+        'Check payment result: payment proof missing',
+      );
+    }
     await _acceptPaymentAck(ack);
+    if (_attempt?.state != 'paid') {
+      throw StateError('Check payment result: table payment remains pending');
+    }
     _changed();
   }
 
   bool _sameTablePayment(CheckoutAttempt saved, Map<String, dynamic> event) {
-    if (jsonEncode(saved.event) == jsonEncode(event)) return true;
+    // Validate both immutable journal and flushed event. GPS is transport
+    // evidence, never payment identity; every retry may obtain a fresh fix.
+    CheckoutAttempt.decode(jsonEncode(saved.json));
+    CheckoutAttempt.decode(jsonEncode(saved.copy(event: event).json));
     final original = checkoutMap(saved.event!['payload']);
     final incoming = checkoutMap(event['payload']);
-    // The real outbox may obtain GPS after the immutable tender journal was
-    // written. It adds only location; it must not replace a saved fix or alter
-    // any payment identity, timestamp, amount, tender or evidence.
-    if (original.containsKey('gps') || !incoming.containsKey('gps')) {
-      return false;
-    }
-    CheckoutAttempt.decode(jsonEncode(saved.copy(event: event).json));
-    final withoutAddedGps = {...incoming}..remove('gps');
-    return jsonEncode(saved.event) ==
-        jsonEncode({...event, 'payload': withoutAddedGps});
+    return event['event_type'] == 'order.pay' &&
+        original['order_uuid'] == incoming['order_uuid'] &&
+        original['paid_at'] == incoming['paid_at'] &&
+        jsonEncode(original['payments']) == jsonEncode(incoming['payments']);
   }
 
   Future<void> _captureStopped(

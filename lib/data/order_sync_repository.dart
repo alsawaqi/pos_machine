@@ -503,6 +503,30 @@ class OrderSyncRepository {
     return _prepare(_flushOnce);
   }
 
+  /// Re-open only the SAME durable table pay for ACK recovery. No new event,
+  /// tender or payload. This also heals the historical synced/pending split.
+  Future<int> recoverTablePayment(String orderUuid, String eventId) =>
+      _prepare(() async {
+        final row = await _db.getOutbox(orderUuid);
+        if (row == null) throw StateError('Saved table payment is unavailable');
+        final events = (jsonDecode(row.eventsJson) as List).cast<Map>();
+        if (events.length != 1 ||
+            events.single['event_type'] != 'order.pay' ||
+            events.single['client_event_id'] != eventId ||
+            (events.single['payload'] as Map)['order_uuid'] != orderUuid) {
+          throw StateError('Saved table payment identity differs');
+        }
+        if (row.syncedAt != null) {
+          await (_db.update(_db.orderOutbox)..where(
+                (t) =>
+                    t.orderUuid.equals(orderUuid) &
+                    t.eventsJson.equals(row.eventsJson),
+              ))
+              .write(const OrderOutboxCompanion(syncedAt: Value(null)));
+        }
+        return _flushOnce();
+      });
+
   Future<int> _flushOnce() async {
     final pending = await _db.pendingOutbox();
     final branch = await _db.getBranch();

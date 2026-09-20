@@ -2583,6 +2583,33 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             tableDegraded,
           ),
           overlays: [
+            if (_savedTablePaymentPending)
+              PositionedDirectional(
+                bottom: 12,
+                start: 12,
+                end: 12,
+                child: Material(
+                  color: const Color(0xFFFFE6A6),
+                  child: ListTile(
+                    title: Text(
+                      arabic
+                          ? 'الدفع محفوظ ولم تتأكد نتيجته. لا تأخذ دفعة أخرى.'
+                          : 'Payment is saved; its result is not confirmed. Do not take payment again.',
+                    ),
+                    trailing: TextButton(
+                      key: const ValueKey('table-check-payment-result'),
+                      onPressed: _checkingTablePayment
+                          ? null
+                          : () async {
+                              await _retireClosedTableCopies(force: true);
+                            },
+                      child: Text(
+                        arabic ? 'تحقق من نتيجة الدفع' : 'Check payment result',
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             PositionedDirectional(
               top: 12,
               start: 12,
@@ -2712,6 +2739,62 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       throw StateError('Check payment result before another payment.');
     }
     return Map<String, dynamic>.from(snapshot.order);
+  }
+
+  bool _checkingTablePayment = false;
+  bool _savedTablePaymentPending = false;
+  DateTime? _lastTablePaymentCheck;
+
+  Future<void> _checkSavedTablePayment({bool force = false}) async {
+    if (!mounted ||
+        _checkingTablePayment ||
+        controller.isLoadingStorage ||
+        controller.isProcessingPayment ||
+        _normalQrCheckoutOpen ||
+        ref.read(tableSessionsModeProvider) != 'live') {
+      return;
+    }
+    if (!force &&
+        _lastTablePaymentCheck != null &&
+        DateTime.now().difference(_lastTablePaymentCheck!).inSeconds < 10) {
+      return;
+    }
+    if ((debugOrderStorageOverride ?? LocalOrderStorageService.instance)
+        is! LocalOrderStorageService) {
+      return;
+    }
+    _checkingTablePayment = true;
+    if (_savedTablePaymentPending) setState(() {});
+    _lastTablePaymentCheck = DateTime.now();
+    var pending = false;
+    try {
+      await _ensureTableKitchen();
+      final checkout = await _newQrCheckout();
+      try {
+        final saved = await checkout.store.active();
+        if (saved == null || saved.state != 'pending' || saved.event == null) {
+          return;
+        }
+        final sessions = await _tableKitchen!.coordinator.loadSessions();
+        if (!sessions.any((s) => s.serverOrderUuid == saved.orderUuid)) return;
+        pending = true;
+        await ref
+            .read(orderSyncRepositoryProvider)
+            .recoverTablePayment(saved.orderUuid, saved.id);
+        pending = (await checkout.store.active())?.id == saved.id;
+      } finally {
+        checkout.dispose();
+      }
+    } catch (_) {
+      // Retain original payment and expose the same safe retry. Never collect
+      // tender, invent a receipt, or clear missing server proof.
+      pending = true;
+    } finally {
+      _checkingTablePayment = false;
+      if (mounted && (pending || _savedTablePaymentPending)) {
+        setState(() => _savedTablePaymentPending = pending);
+      }
+    }
   }
 
   Future<void> _tablePaymentAck(
@@ -4158,6 +4241,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     bool force = false,
     bool managerApproved = false,
   }) async {
+    await _checkSavedTablePayment(force: force);
     if (!mounted || _closedCopyBusyReason != null) return false;
     final storage =
         debugOrderStorageOverride ?? LocalOrderStorageService.instance;

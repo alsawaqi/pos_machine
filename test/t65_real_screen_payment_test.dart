@@ -545,12 +545,11 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
         await mount();
         final dynamic host = tester.state(find.byType(StaffPosScreen));
         final PosController c = host.controller;
-        for (var i = 0; i < 30; i++) {
-          await tester.pump(const Duration(milliseconds: 100));
-          await drive(
-            () => Future<void>.delayed(const Duration(milliseconds: 25)),
-          );
-        }
+        await pumpUntilRealCondition(
+          tester,
+          () => !c.isLoadingStorage && c.diningTableSyncHooks != null,
+          reason: 'real I/O condition before assertions',
+        );
         c.applyCatalog(
           categories: const ['Drinks'],
           products: const [product],
@@ -608,19 +607,19 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           await drive(outbox.assertIdleForCombine);
         }
 
-        for (var i = 0; i < 15; i++) {
-          await tester.pump(const Duration(milliseconds: 100));
-          await drive(
-            () => Future<void>.delayed(const Duration(milliseconds: 25)),
-          );
-        }
+        await pumpUntilRealCondition(tester, () {
+          final control = find.byKey(const ValueKey('table-send-to-kitchen'));
+          return control.hitTestable().evaluate().isNotEmpty &&
+              tester.widget<FilledButton>(control).onPressed != null;
+        }, reason: 'real I/O condition before assertions');
         await tester.tap(find.byKey(const ValueKey('table-send-to-kitchen')));
-        for (var i = 0; i < 40; i++) {
-          await tester.pump(const Duration(milliseconds: 100));
-          await drive(
-            () => Future<void>.delayed(const Duration(milliseconds: 20)),
-          );
-        }
+        await pumpUntilRealCondition(
+          tester,
+          () => server.events.any(
+            (e) => e['event_type'] == 'table.session.round',
+          ),
+          reason: 'real I/O condition before assertions',
+        );
         await drive(() async {
           await coordinator.settled;
           await outbox.flush();
@@ -672,10 +671,18 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
               },
             ),
           );
-          await settle(35);
+          await pumpUntilRealCondition(
+            tester,
+            () => find.byType(DineInScreen).evaluate().isNotEmpty,
+            reason: 'shared bill screen opened',
+          );
           expect(find.byType(DineInScreen), findsOneWidget);
         }
-        await settle(25);
+        await pumpUntilRealCondition(tester, () {
+          final control = find.byKey(const ValueKey('table-adjust-discount'));
+          return control.evaluate().isNotEmpty &&
+              tester.widget<TextButton>(control).onPressed != null;
+        }, reason: 'table detail and journal ready');
         if (mode != 'unadjusted') {
           final discount = find.byKey(const ValueKey('table-adjust-discount'));
           expect(discount, findsOneWidget);
@@ -689,12 +696,11 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           );
           await tester.ensureVisible(discount);
           await tester.tap(discount);
-          for (var i = 0; i < 20; i++) {
-            await tester.pump(const Duration(milliseconds: 100));
-            await drive(
-              () => Future<void>.delayed(const Duration(milliseconds: 20)),
-            );
-          }
+          await pumpUntilRealCondition(
+            tester,
+            () => find.text('10%').evaluate().isNotEmpty,
+            reason: 'real I/O condition before assertions',
+          );
           expect(find.text('10%'), findsWidgets);
           await tester.tap(
             find
@@ -705,12 +711,11 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           await tap(
             find.text(L10nEn().posDiscountDlgApply('10% Discount')).last,
           );
-          for (var i = 0; i < 25; i++) {
-            await tester.pump(const Duration(milliseconds: 100));
-            await drive(
-              () => Future<void>.delayed(const Duration(milliseconds: 20)),
-            );
-          }
+          await pumpUntilRealCondition(
+            tester,
+            () => server.adjustments.length == 1,
+            reason: 'real I/O condition before assertions',
+          );
           expect(
             server.adjustments,
             hasLength(1),
@@ -917,7 +922,16 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
         if (mode == 'shared') {
           final screen = tester.widget<DineInScreen>(find.byType(DineInScreen));
           unawaited(screen.onPay(server.uuid!));
-          await settle(30);
+          await pumpUntilRealCondition(
+            tester,
+            () =>
+                find.byType(QrCheckoutBoundary).evaluate().isNotEmpty &&
+                tester
+                    .widget<QrCheckoutBoundary>(find.byType(QrCheckoutBoundary))
+                    .controller
+                    .ready,
+            reason: 'checkout claim and snapshot ready',
+          );
           final boundary = tester.widget<QrCheckoutBoundary>(
             find.byType(QrCheckoutBoundary),
           );
@@ -927,7 +941,11 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           await drive(
             () => checkout.pay([CheckoutTender('cash', checkout.total)]),
           );
-          await settle();
+          await pumpUntilRealCondition(
+            tester,
+            () => checkout.phase == CheckoutPhase.paid,
+            reason: 'paid journal completed',
+          );
           expect(checkout.phase, CheckoutPhase.paid, reason: checkout.notice);
           boards.add(
             RemoteTableSnapshot(
@@ -937,7 +955,11 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
             ),
           );
           await tap(find.byKey(const ValueKey('qr-checkout-exit')));
-          await settle(40);
+          await pumpUntilRealCondition(
+            tester,
+            () async => (await localDb.query('dining_tables')).isEmpty,
+            reason: 'closed copy archived',
+          );
           expect(
             await drive(() => localDb.query('dining_tables')),
             isEmpty,
@@ -992,12 +1014,11 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
             c.payAndPrint(cashTenderedAmount: 20).then((_) => done = true),
           );
         });
-        for (var i = 0; i < 200 && !done; i++) {
-          await tester.pump(const Duration(milliseconds: 100));
-          await drive(
-            () => Future<void>.delayed(const Duration(milliseconds: 25)),
-          );
-        }
+        await pumpUntilRealCondition(
+          tester,
+          () => done,
+          reason: 'real payment completed',
+        );
         expect(done, true);
         expect(c.cart, isEmpty, reason: c.lastPaymentMessage);
         expect(c.activeDiningTableId, isNull);
@@ -1048,12 +1069,11 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
             },
           ),
         );
-        for (var i = 0; i < 160; i++) {
-          await tester.pump(const Duration(milliseconds: 100));
-          await drive(
-            () => Future<void>.delayed(const Duration(milliseconds: 25)),
-          );
-        }
+        await pumpUntilRealCondition(
+          tester,
+          () async => (await localDb.query('dining_tables')).isEmpty,
+          reason: 'real I/O condition before assertions',
+        );
         expect(
           await drive(() => localDb.query('dining_tables')),
           isEmpty,
