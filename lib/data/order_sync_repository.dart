@@ -551,10 +551,10 @@ class OrderSyncRepository {
                 ),
               );
         }
-        return _flushOnce();
+        return _flushOnce(recoveringTableEventId: eventId);
       });
 
-  Future<int> _flushOnce() async {
+  Future<int> _flushOnce({String? recoveringTableEventId}) async {
     final pending = await _db.pendingOutbox();
     final branch = await _db.getBranch();
     final branchIsFenced =
@@ -671,6 +671,9 @@ class OrderSyncRepository {
           // A table payment refusal is durable checkout evidence too. Other
           // event types and missing/malformed ACKs keep their classification.
           final failedTablePayment =
+              recoveringTableEventId != null &&
+              recoveringTableEventId ==
+                  events.singleOrNull?['client_event_id'] &&
               !row.orderUuid.endsWith(':pay') &&
               events.length == 1 &&
               events.single['event_type'] == 'order.pay' &&
