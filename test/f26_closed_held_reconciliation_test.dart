@@ -485,7 +485,7 @@ void main() {
               'draft_recovery_closed_archive',
             );
             return expectedRetirement
-                ? archives.isNotEmpty
+                ? archives.isNotEmpty && c.diningSessionFor('1') == null
                 : server.closedReads > 0;
           },
           reason:
