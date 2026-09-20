@@ -467,13 +467,28 @@ class QrCheckoutController extends ChangeNotifier {
     if (saved == null ||
         saved.state != 'pending' ||
         saved.event == null ||
-        jsonEncode(saved.event) != jsonEncode(event) ||
+        !_sameTablePayment(saved, event) ||
         ack['client_event_id'] != saved.id) {
       return;
     }
     _attempt = saved;
     await _acceptPaymentAck(ack);
     _changed();
+  }
+
+  bool _sameTablePayment(CheckoutAttempt saved, Map<String, dynamic> event) {
+    if (jsonEncode(saved.event) == jsonEncode(event)) return true;
+    final original = checkoutMap(saved.event!['payload']);
+    final incoming = checkoutMap(event['payload']);
+    // The real outbox may obtain GPS after the immutable tender journal was
+    // written. It adds only location; it must not replace a saved fix or alter
+    // any payment identity, timestamp, amount, tender or evidence.
+    if (original.containsKey('gps') || !incoming.containsKey('gps'))
+      return false;
+    CheckoutAttempt.decode(jsonEncode(saved.copy(event: event).json));
+    final withoutAddedGps = {...incoming}..remove('gps');
+    return jsonEncode(saved.event) ==
+        jsonEncode({...event, 'payload': withoutAddedGps});
   }
 
   Future<void> _captureStopped(

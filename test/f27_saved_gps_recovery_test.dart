@@ -18,7 +18,7 @@ import 'package:pos_machine/services/server_receipt_history.dart';
 import 'qr_checkout_fakes.dart' show claimJson, snapshotJson, checkoutTime;
 import 't65_real_screen_payment_test.dart' show realLocalDatabase;
 
-CheckoutAttempt oldPending({Map<String, dynamic>? extra}) {
+CheckoutAttempt oldPending({Map<String, dynamic>? extra, bool gps = true}) {
   final tenders = [
     {'method': 'cash', 'amount_baisas': 4750, 'status': 'success'},
   ];
@@ -40,7 +40,7 @@ CheckoutAttempt oldPending({Map<String, dynamic>? extra}) {
         'order_uuid': 'qr-bill',
         'paid_at': checkoutTime.toIso8601String(),
         'payments': tenders,
-        'gps': {'lat': 23.588, 'lng': 58.3829},
+        if (gps) 'gps': {'lat': 23.588, 'lng': 58.3829},
         ...?extra,
       },
     },
@@ -50,123 +50,126 @@ CheckoutAttempt oldPending({Map<String, dynamic>? extra}) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
-  test(
-    'F27 old GPS payment replays through real outbox ACK, journal and receipt storage',
-    () async {
-      databaseFactory = databaseFactoryFfi;
-      final local = await realLocalDatabase();
-      await SqliteCheckoutStore.createSchema(local);
-      final store = SqliteCheckoutStore(local, 'scope');
-      final storage = LocalOrderStorageService.forTesting(local);
-      final history = ServerReceiptHistory(storage);
-      final old = oldPending();
-      // Exact pre-update persisted shape: create deliberately does not decode.
-      await store.create(old);
-      await projectMachineCheckoutReceipt(
-        history,
-        CheckoutSnapshot(snapshotJson(), CheckoutClaim(claimJson())),
-        old,
-      );
-      final drift = AppDatabase.forTesting(NativeDatabase.memory());
-      await drift.enqueueOutbox(
-        OrderOutboxCompanion(
-          orderUuid: const Value('qr-bill'),
-          orderNumber: const Value(0),
-          createdAt: Value(checkoutTime),
-          eventsJson: Value(jsonEncode([old.event])),
-        ),
-      );
-      final received = <String>[];
-      final dio = Dio(BaseOptions(baseUrl: 'http://fixture.invalid/api/v1'))
-        ..interceptors.add(
-          InterceptorsWrapper(
-            onRequest: (o, h) {
-              expect(o.path, endsWith('/sync/push'));
-              final e = ((o.data as Map)['events'] as List).single as Map;
-              received.add(jsonEncode(e));
-              h.resolve(
-                Response(
-                  requestOptions: o,
-                  statusCode: 200,
-                  data: {
-                    'data': {
-                      'results': [
-                        {
-                          'client_event_id': old.id,
-                          'status': 'processed',
-                          'result': {
-                            'order_id': 12,
-                            'status': 'paid',
-                            'receipt_number': 'KLD-F27-OLD',
-                          },
-                        },
-                      ],
-                    },
-                  },
-                ),
-              );
-            },
+  for (final lateGps in [false, true]) {
+    test(
+      'F27 ${lateGps ? 'late' : 'old'} GPS payment replays through real outbox ACK, journal and receipt storage',
+      () async {
+        databaseFactory = databaseFactoryFfi;
+        final local = await realLocalDatabase();
+        await SqliteCheckoutStore.createSchema(local);
+        final store = SqliteCheckoutStore(local, 'scope');
+        final storage = LocalOrderStorageService.forTesting(local);
+        final history = ServerReceiptHistory(storage);
+        final old = oldPending(gps: !lateGps);
+        final wireEvent = oldPending().event;
+        // Exact pre-update persisted shape: create deliberately does not decode.
+        await store.create(old);
+        await projectMachineCheckoutReceipt(
+          history,
+          CheckoutSnapshot(snapshotJson(), CheckoutClaim(claimJson())),
+          old,
+        );
+        final drift = AppDatabase.forTesting(NativeDatabase.memory());
+        await drift.enqueueOutbox(
+          OrderOutboxCompanion(
+            orderUuid: const Value('qr-bill'),
+            orderNumber: const Value(0),
+            createdAt: Value(checkoutTime),
+            eventsJson: Value(jsonEncode([wireEvent])),
           ),
         );
-      final api = PosApiService(tokenGetter: () => 'fixture', dio: dio);
-      final outbox = OrderSyncRepository(api, drift);
-      final checkout = QrCheckoutController(
-        gateway: ApiCheckoutGateway(
-          api: api,
-          currentScope: () => 'scope',
-          location: () async => null,
-          legacyGuard: (_) async {},
-        ),
-        store: store,
-        captureCard: (_) async => throw StateError('No bank operation'),
-        captureBank: (_) async => throw StateError('No bank operation'),
-        authorizeGift: () async => false,
-        projectReceipt: (s, a) => projectMachineCheckoutReceipt(history, s, a),
-      );
-      final coordinator = TableSyncCoordinator(
-        outbox: outbox,
-        store: storage,
-        loadSessions: storage.loadDiningTableSessions,
-        mode: () => 'live',
-        degraded: () => false,
-        staffId: () => 7,
-        markPrinted: (_) async {},
-      );
-      coordinator.paymentAcknowledged = checkout.acceptTablePayAck;
-      addTearDown(() async {
-        checkout.dispose();
-        await coordinator.dispose();
-        await outbox.dispose();
-        await drift.close();
-        await local.close();
-      });
-      await coordinator.hydrate();
-      await outbox.flush();
-      final row = await outbox.rowForKey('qr-bill');
-      expect(row!.syncedAt, isNotNull, reason: row.lastError);
-      expect(received, [jsonEncode(old.event)]);
-      expect(
-        (await local.query('qr_checkout_attempts')).single['state'],
-        'paid',
-      );
-      expect(await store.active(), isNull);
-      final receipt = (await storage.loadOrderHistory()).single.snapshot;
-      expect(receipt.serverReceiptConfirmed, true);
-      expect(receipt.receiptNumber, 'KLD-F27-OLD');
-      expect(receipt.paymentStatus, 'Paid');
-      await outbox.flush();
-      expect(
-        received,
-        hasLength(1),
-        reason: 'Completed outbox never sends a second tender',
-      );
-      expect(
-        (await local.query('qr_checkout_attempts')).single['payload'],
-        contains(jsonEncode(old.event)),
-      );
-    },
-  );
-
+        final received = <String>[];
+        final dio = Dio(BaseOptions(baseUrl: 'http://fixture.invalid/api/v1'))
+          ..interceptors.add(
+            InterceptorsWrapper(
+              onRequest: (o, h) {
+                expect(o.path, endsWith('/sync/push'));
+                final e = ((o.data as Map)['events'] as List).single as Map;
+                received.add(jsonEncode(e));
+                h.resolve(
+                  Response(
+                    requestOptions: o,
+                    statusCode: 200,
+                    data: {
+                      'data': {
+                        'results': [
+                          {
+                            'client_event_id': old.id,
+                            'status': 'processed',
+                            'result': {
+                              'order_id': 12,
+                              'status': 'paid',
+                              'receipt_number': 'KLD-F27-OLD',
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  ),
+                );
+              },
+            ),
+          );
+        final api = PosApiService(tokenGetter: () => 'fixture', dio: dio);
+        final outbox = OrderSyncRepository(api, drift);
+        final checkout = QrCheckoutController(
+          gateway: ApiCheckoutGateway(
+            api: api,
+            currentScope: () => 'scope',
+            location: () async => null,
+            legacyGuard: (_) async {},
+          ),
+          store: store,
+          captureCard: (_) async => throw StateError('No bank operation'),
+          captureBank: (_) async => throw StateError('No bank operation'),
+          authorizeGift: () async => false,
+          projectReceipt: (s, a) =>
+              projectMachineCheckoutReceipt(history, s, a),
+        );
+        final coordinator = TableSyncCoordinator(
+          outbox: outbox,
+          store: storage,
+          loadSessions: storage.loadDiningTableSessions,
+          mode: () => 'live',
+          degraded: () => false,
+          staffId: () => 7,
+          markPrinted: (_) async {},
+        );
+        coordinator.paymentAcknowledged = checkout.acceptTablePayAck;
+        addTearDown(() async {
+          checkout.dispose();
+          await coordinator.dispose();
+          await outbox.dispose();
+          await drift.close();
+          await local.close();
+        });
+        await coordinator.hydrate();
+        await outbox.flush();
+        final row = await outbox.rowForKey('qr-bill');
+        expect(row!.syncedAt, isNotNull, reason: row.lastError);
+        expect(received, [jsonEncode(wireEvent)]);
+        expect(
+          (await local.query('qr_checkout_attempts')).single['state'],
+          'paid',
+        );
+        expect(await store.active(), isNull);
+        final receipt = (await storage.loadOrderHistory()).single.snapshot;
+        expect(receipt.serverReceiptConfirmed, true);
+        expect(receipt.receiptNumber, 'KLD-F27-OLD');
+        expect(receipt.paymentStatus, 'Paid');
+        await outbox.flush();
+        expect(
+          received,
+          hasLength(1),
+          reason: 'Completed outbox never sends a second tender',
+        );
+        expect(
+          (await local.query('qr_checkout_attempts')).single['payload'],
+          contains(jsonEncode(old.event)),
+        );
+      },
+    );
+  }
   test(
     'F27 shared checkout keeps GPS on claim and next table can be claimed',
     () async {
