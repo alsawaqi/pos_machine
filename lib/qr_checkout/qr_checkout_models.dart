@@ -316,7 +316,9 @@ class CheckoutAttempt {
             'order_uuid',
             'paid_at',
             'payments',
+            'gps',
           }).isNotEmpty ||
+          (payload.containsKey('gps') && !_validSavedGps(payload['gps'])) ||
           payments.any((p) => p['status'] != 'success') ||
           jsonEncode(payments) != jsonEncode(attempt.captures)) {
         throw const FormatException('Invalid saved QR payment');
@@ -334,4 +336,23 @@ class CheckoutAttempt {
     }
     return attempt;
   }
+}
+
+// The table pay producer may freeze a geofence fix into the immutable event.
+// Accept exactly that shape, never arbitrary metadata or a partial fix.
+bool _validSavedGps(Object? value) {
+  if (value is! Map ||
+      value.length != 2 ||
+      !value.containsKey('lat') ||
+      !value.containsKey('lng'))
+    return false;
+  final lat = value['lat'], lng = value['lng'];
+  return lat is num &&
+      lng is num &&
+      lat.isFinite &&
+      lng.isFinite &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lng >= -180 &&
+      lng <= 180;
 }

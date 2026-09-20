@@ -29,6 +29,7 @@ import 'package:pos_machine/dine_in/dine_in_store.dart';
 import 'package:pos_machine/qr_checkout/qr_checkout_widgets.dart';
 import 'package:pos_machine/qr_checkout/qr_checkout_models.dart';
 import 'package:pos_machine/qr_checkout/qr_checkout_controller.dart';
+import 'package:pos_machine/qr_checkout/qr_checkout_store.dart';
 
 const seat = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const product = Product(
@@ -331,13 +332,20 @@ Future<Database> realLocalDatabase() async {
   return db;
 }
 
-void main() {
+void main() => runPaymentRegression();
+
+void runPaymentRegression({bool gps = false}) {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
-  for (final mode in ['staff', 'shared', 'already-stuck']) {
+  for (final mode in [
+    'staff',
+    'shared',
+    'already-stuck',
+    if (gps) 'unadjusted',
+  ]) {
     final restart = mode == 'already-stuck';
     testWidgets(
-      'T65 real screen adjusted $mode payment journals canonical amount and retires own acknowledged copy',
+      'T65 real screen ${gps ? 'GPS ' : ''}$mode payment journals canonical amount and retires own acknowledged copy',
       (tester) async {
         Future<T?> drive<T>(Future<T> Function() action) async {
           var done = false;
@@ -610,233 +618,244 @@ void main() {
           expect(find.byType(DineInScreen), findsOneWidget);
         }
         await settle(25);
-        final discount = find.byKey(const ValueKey('table-adjust-discount'));
-        expect(discount, findsOneWidget);
-        expect(
-          tester.widget<TextButton>(discount).onPressed,
-          isNotNull,
-          reason: tester
-              .widgetList<Text>(find.byType(Text))
-              .map((t) => t.data)
-              .join(' | '),
-        );
-        await tester.ensureVisible(discount);
-        await tester.tap(discount);
-        for (var i = 0; i < 20; i++) {
-          await tester.pump(const Duration(milliseconds: 100));
-          await drive(
-            () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        if (mode != 'unadjusted') {
+          final discount = find.byKey(const ValueKey('table-adjust-discount'));
+          expect(discount, findsOneWidget);
+          expect(
+            tester.widget<TextButton>(discount).onPressed,
+            isNotNull,
+            reason: tester
+                .widgetList<Text>(find.byType(Text))
+                .map((t) => t.data)
+                .join(' | '),
           );
-        }
-        expect(find.text('10%'), findsWidgets);
-        await tester.tap(
-          find
-              .descendant(of: find.byType(Dialog), matching: find.text('10%'))
-              .last,
-        );
-        await tester.pump();
-        await tap(find.text(L10nEn().posDiscountDlgApply('10% Discount')).last);
-        for (var i = 0; i < 25; i++) {
-          await tester.pump(const Duration(milliseconds: 100));
-          await drive(
-            () => Future<void>.delayed(const Duration(milliseconds: 20)),
+          await tester.ensureVisible(discount);
+          await tester.tap(discount);
+          for (var i = 0; i < 20; i++) {
+            await tester.pump(const Duration(milliseconds: 100));
+            await drive(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
+          }
+          expect(find.text('10%'), findsWidgets);
+          await tester.tap(
+            find
+                .descendant(of: find.byType(Dialog), matching: find.text('10%'))
+                .last,
           );
-        }
-        expect(
-          server.adjustments,
-          hasLength(1),
-          reason: server.journalFault?.toString(),
-        );
-        expect(server.manual, 540);
-        expect(
-          c.discount.value,
-          0,
-          reason: 'No server adjustment may become local cart money',
-        );
+          await tester.pump();
+          await tap(
+            find.text(L10nEn().posDiscountDlgApply('10% Discount')).last,
+          );
+          for (var i = 0; i < 25; i++) {
+            await tester.pump(const Duration(milliseconds: 100));
+            await drive(
+              () => Future<void>.delayed(const Duration(milliseconds: 20)),
+            );
+          }
+          expect(
+            server.adjustments,
+            hasLength(1),
+            reason: server.journalFault?.toString(),
+          );
+          expect(server.manual, 540);
+          expect(
+            c.discount.value,
+            0,
+            reason: 'No server adjustment may become local cart money',
+          );
 
-        // Both the ordinary live cart and adopted DineInScreen reuse these dialogs.
-        await tap(discount);
-        await tap(
-          find
-              .descendant(of: find.byType(Dialog), matching: find.text('5%'))
-              .last,
-        );
-        await tap(find.text(L10nEn().posDiscountDlgApply('5% Discount')).last);
-        expect(server.manual, 270);
-        await tap(discount);
-        await tap(find.text(L10nEn().posDiscountDlgClear).last);
-        expect(server.manual, 0);
-        await tap(discount);
-        await tap(
-          find
-              .descendant(of: find.byType(Dialog), matching: find.text('10%'))
-              .last,
-        );
-        await tap(find.text(L10nEn().posDiscountDlgApply('10% Discount')).last);
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('manager_biometric_registered', true);
-        var authorized = false, gateCalls = 0;
-        const gate = MethodChannel('com.example.manager_biometrics');
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(gate, (call) async {
-              gateCalls++;
-              return authorized;
-            });
-        addTearDown(
-          () => TestDefaultBinaryMessengerBinding
-              .instance
-              .defaultBinaryMessenger
-              .setMockMethodCallHandler(gate, null),
-        );
-        final compButton = find.byKey(const ValueKey('table-adjust-comp'));
-        final beforeDenied = server.adjustments.length;
-        await tap(compButton);
-        await tap(find.text(L10nEn().commonCancel).last);
-        expect(server.adjustments, hasLength(beforeDenied));
-        expect(
-          await drive(
-            () async => (await SqliteDineInStore.open(
-              'inspection',
-            )).db.query('dine_in_requests'),
-          ),
-          isEmpty,
-        );
-        // The warning uses the existing temporary feedback overlay; wait it out.
-        await settle(45);
-        authorized = true;
-        await tap(compButton);
-        await tap(find.byKey(const ValueKey('comp-target-dropdown')));
-        await tap(find.text('Coffee ×2').last);
-        if (find.text('2 / 2').evaluate().isNotEmpty) {
-          await tap(find.byKey(const ValueKey('comp-qty-decrement')));
-        }
-        await tap(find.text('Service').last);
-        await tap(find.text(L10nEn().posCompApplyButton).last);
-        expect(server.comp, 2700);
-        expect(c.appliedComp, null);
-        await tap(compButton);
-        await tap(find.text('Replace').last);
-        await tap(find.byKey(const ValueKey('comp-target-dropdown')));
-        await tap(find.text('Coffee ×2').last);
-        if (find.text('2 / 2').evaluate().isNotEmpty) {
-          await tap(find.byKey(const ValueKey('comp-qty-decrement')));
-        }
-        await tap(find.text('Service').last);
-        await tap(find.text(L10nEn().posCompApplyButton).last);
-        expect(server.comp, 2700);
-        await tap(compButton);
-        await tap(find.text(L10nEn().posCompRemoveButton).last);
-        expect(server.comp, 0);
-        expect(gateCalls, 3);
-        c.availableDiscounts = const [
-          MerchantDiscount(
-            id: 8,
-            name: 'Manager five',
-            scope: 'order',
-            amountType: 'percent',
-            percent: 5,
-            requiresManagerApproval: true,
-          ),
-        ];
-        authorized = false;
-        final beforeRule = server.adjustments.length;
-        await tap(discount);
-        await tap(find.text('Manager five').last);
-        await tap(find.text(L10nEn().commonCancel).last);
-        await settle(45);
-        expect(server.adjustments, hasLength(beforeRule));
-        expect(
-          await drive(
-            () async => (await SqliteDineInStore.open(
-              'inspection',
-            )).db.query('dine_in_requests'),
-          ),
-          isEmpty,
-        );
-        authorized = true;
-        await tap(discount);
-        await tap(find.text('Manager five').last);
-        expect(server.manual, 270);
-        expect(
-          (server.adjustments.last['adjustment'] as Map)['authorized_by'],
-          'Manager',
-        );
-        c.availableDiscounts = [];
-        await tap(discount);
-        // Wait for the fresh-read dialog, not a fixed number of frames.
-        await pumpUntilRealCondition(
-          tester,
-          () => find
-              .byKey(const ValueKey('discount-custom-percent'))
-              .evaluate()
-              .isNotEmpty,
-          reason: 'manual discount dialog finished its fresh read',
-        );
-        await tester.pumpAndSettle();
-        // Exercise free-entry as well as the presets used earlier.
-        await tester.enterText(
-          find.byKey(const ValueKey('discount-custom-percent')),
-          '10',
-        );
-        await tester.enterText(
-          find.byKey(const ValueKey('discount-reason')),
-          'Synthetic test',
-        );
-        await tester.pump();
-        await tap(find.text(L10nEn().posDiscountDlgApply('10% Discount')).last);
-        expect(server.manual, 540);
-        expect(c.discount.isActive, false);
-        final customerButton = find.byKey(
-          const ValueKey('table-adjust-customer'),
-        );
-        Future<void> search(String name) async {
-          final field = find.descendant(
-            of: find.byType(Dialog),
-            matching: find.byType(TextField),
+          // Both the ordinary live cart and adopted DineInScreen reuse these dialogs.
+          await tap(discount);
+          await tap(
+            find
+                .descendant(of: find.byType(Dialog), matching: find.text('5%'))
+                .last,
           );
+          await tap(
+            find.text(L10nEn().posDiscountDlgApply('5% Discount')).last,
+          );
+          expect(server.manual, 270);
+          await tap(discount);
+          await tap(find.text(L10nEn().posDiscountDlgClear).last);
+          expect(server.manual, 0);
+          await tap(discount);
+          await tap(
+            find
+                .descendant(of: find.byType(Dialog), matching: find.text('10%'))
+                .last,
+          );
+          await tap(
+            find.text(L10nEn().posDiscountDlgApply('10% Discount')).last,
+          );
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('manager_biometric_registered', true);
+          var authorized = false, gateCalls = 0;
+          const gate = MethodChannel('com.example.manager_biometrics');
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(gate, (call) async {
+                gateCalls++;
+                return authorized;
+              });
+          addTearDown(
+            () => TestDefaultBinaryMessengerBinding
+                .instance
+                .defaultBinaryMessenger
+                .setMockMethodCallHandler(gate, null),
+          );
+          final compButton = find.byKey(const ValueKey('table-adjust-comp'));
+          final beforeDenied = server.adjustments.length;
+          await tap(compButton);
+          await tap(find.text(L10nEn().commonCancel).last);
+          expect(server.adjustments, hasLength(beforeDenied));
+          expect(
+            await drive(
+              () async => (await SqliteDineInStore.open(
+                'inspection',
+              )).db.query('dine_in_requests'),
+            ),
+            isEmpty,
+          );
+          // The warning uses the existing temporary feedback overlay; wait it out.
+          await settle(45);
+          authorized = true;
+          await tap(compButton);
+          await tap(find.byKey(const ValueKey('comp-target-dropdown')));
+          await tap(find.text('Coffee ×2').last);
+          if (find.text('2 / 2').evaluate().isNotEmpty) {
+            await tap(find.byKey(const ValueKey('comp-qty-decrement')));
+          }
+          await tap(find.text('Service').last);
+          await tap(find.text(L10nEn().posCompApplyButton).last);
+          expect(server.comp, 2700);
+          expect(c.appliedComp, null);
+          await tap(compButton);
+          await tap(find.text('Replace').last);
+          await tap(find.byKey(const ValueKey('comp-target-dropdown')));
+          await tap(find.text('Coffee ×2').last);
+          if (find.text('2 / 2').evaluate().isNotEmpty) {
+            await tap(find.byKey(const ValueKey('comp-qty-decrement')));
+          }
+          await tap(find.text('Service').last);
+          await tap(find.text(L10nEn().posCompApplyButton).last);
+          expect(server.comp, 2700);
+          await tap(compButton);
+          await tap(find.text(L10nEn().posCompRemoveButton).last);
+          expect(server.comp, 0);
+          expect(gateCalls, 3);
+          c.availableDiscounts = const [
+            MerchantDiscount(
+              id: 8,
+              name: 'Manager five',
+              scope: 'order',
+              amountType: 'percent',
+              percent: 5,
+              requiresManagerApproval: true,
+            ),
+          ];
+          authorized = false;
+          final beforeRule = server.adjustments.length;
+          await tap(discount);
+          await tap(find.text('Manager five').last);
+          await tap(find.text(L10nEn().commonCancel).last);
+          await settle(45);
+          expect(server.adjustments, hasLength(beforeRule));
+          expect(
+            await drive(
+              () async => (await SqliteDineInStore.open(
+                'inspection',
+              )).db.query('dine_in_requests'),
+            ),
+            isEmpty,
+          );
+          authorized = true;
+          await tap(discount);
+          await tap(find.text('Manager five').last);
+          expect(server.manual, 270);
+          expect(
+            (server.adjustments.last['adjustment'] as Map)['authorized_by'],
+            'Manager',
+          );
+          c.availableDiscounts = [];
+          await tap(discount);
+          // Wait for the fresh-read dialog, not a fixed number of frames.
           await pumpUntilRealCondition(
             tester,
-            () => field.evaluate().length == 1,
-            reason: 'customer search dialog opened after fresh bill read',
+            () => find
+                .byKey(const ValueKey('discount-custom-percent'))
+                .evaluate()
+                .isNotEmpty,
+            reason: 'manual discount dialog finished its fresh read',
           );
-          await tester.enterText(field, name);
-          await tap(find.text(L10nEn().posCustomerSearchButton).last);
-          await tap(find.text(name).last);
-        }
+          await tester.pumpAndSettle();
+          // Exercise free-entry as well as the presets used earlier.
+          await tester.enterText(
+            find.byKey(const ValueKey('discount-custom-percent')),
+            '10',
+          );
+          await tester.enterText(
+            find.byKey(const ValueKey('discount-reason')),
+            'Synthetic test',
+          );
+          await tester.pump();
+          await tap(
+            find.text(L10nEn().posDiscountDlgApply('10% Discount')).last,
+          );
+          expect(server.manual, 540);
+          expect(c.discount.isActive, false);
+          final customerButton = find.byKey(
+            const ValueKey('table-adjust-customer'),
+          );
+          Future<void> search(String name) async {
+            final field = find.descendant(
+              of: find.byType(Dialog),
+              matching: find.byType(TextField),
+            );
+            await pumpUntilRealCondition(
+              tester,
+              () => field.evaluate().length == 1,
+              reason: 'customer search dialog opened after fresh bill read',
+            );
+            await tester.enterText(field, name);
+            await tap(find.text(L10nEn().posCustomerSearchButton).last);
+            await tap(find.text(name).last);
+          }
 
-        await tap(customerButton);
-        await search('First');
-        expect(server.customer?['id'], 5);
-        expect(c.selectedCustomer, null);
-        await tap(customerButton);
-        await tap(find.text('Replace').last);
-        await search('Second');
-        expect(server.customer?['id'], 6);
-        await tap(customerButton);
-        await tap(find.text('Remove customer').last);
-        expect(server.customer, null);
-        expect(
-          gateCalls,
-          5,
-          reason: 'Manual discounts and customer changes have no manager gate',
-        );
-        // Leave all three adjustments on the paid bill: only the server
-        // receipt carries them; the original local draft remains unadjusted.
-        await tap(compButton);
-        await tap(find.byKey(const ValueKey('comp-target-dropdown')));
-        await tap(find.text('Coffee ×2').last);
-        if (find.text('2 / 2').evaluate().isNotEmpty) {
-          await tap(find.byKey(const ValueKey('comp-qty-decrement')));
+          await tap(customerButton);
+          await search('First');
+          expect(server.customer?['id'], 5);
+          expect(c.selectedCustomer, null);
+          await tap(customerButton);
+          await tap(find.text('Replace').last);
+          await search('Second');
+          expect(server.customer?['id'], 6);
+          await tap(customerButton);
+          await tap(find.text('Remove customer').last);
+          expect(server.customer, null);
+          expect(
+            gateCalls,
+            5,
+            reason:
+                'Manual discounts and customer changes have no manager gate',
+          );
+          // Leave all three adjustments on the paid bill: only the server
+          // receipt carries them; the original local draft remains unadjusted.
+          await tap(compButton);
+          await tap(find.byKey(const ValueKey('comp-target-dropdown')));
+          await tap(find.text('Coffee ×2').last);
+          if (find.text('2 / 2').evaluate().isNotEmpty) {
+            await tap(find.byKey(const ValueKey('comp-qty-decrement')));
+          }
+          await tap(find.text('Service').last);
+          await tap(find.text(L10nEn().posCompApplyButton).last);
+          await tap(customerButton);
+          await search('First');
+          expect(server.total, 2160);
+          expect(server.customer?['id'], 5);
+          expect(c.discount.isActive, false);
+          expect(c.appliedComp, null);
+          expect(c.selectedCustomer, null);
         }
-        await tap(find.text('Service').last);
-        await tap(find.text(L10nEn().posCompApplyButton).last);
-        await tap(customerButton);
-        await search('First');
-        expect(server.total, 2160);
-        expect(server.customer?['id'], 5);
-        expect(c.discount.isActive, false);
-        expect(c.appliedComp, null);
-        expect(c.selectedCustomer, null);
         if (mode == 'shared') {
           final screen = tester.widget<DineInScreen>(find.byType(DineInScreen));
           unawaited(screen.onPay(server.uuid!));
@@ -895,6 +914,19 @@ void main() {
           await tester.pump(const Duration(milliseconds: 1));
           return;
         }
+        if (gps) {
+          final realContext = coordinator.paymentContext!;
+          coordinator.paymentContext = (snapshot) async {
+            final context = await realContext(snapshot);
+            return TablePaymentContext(
+              lat: 23.588,
+              lng: 58.3829,
+              cardCharge: context.cardCharge,
+              eventId: context.eventId,
+              prepareEvent: context.prepareEvent,
+            );
+          };
+        }
         c.selectPaymentMethod('Cash');
         var done = false;
         await drive(() async {
@@ -927,6 +959,23 @@ void main() {
         expect(receiptRows.single['snapshot_json'], contains('TEST-T65-120'));
         final payRow = await drive(() => outbox.rowForKey(server.uuid!));
         expect(payRow!.syncedAt, isNotNull);
+        if (gps) {
+          final payload =
+              server.events.singleWhere(
+                    (e) => e['event_type'] == 'order.pay',
+                  )['payload']
+                  as Map;
+          expect(payload['gps'], {'lat': 23.588, 'lng': 58.3829});
+          expect(
+            (payload['payments'] as List).single['amount_baisas'],
+            mode == 'unadjusted' ? 5400 : 2160,
+          );
+          final rows = await drive(() async {
+            final journal = await SqliteCheckoutStore.open('inspection');
+            return journal.db.query('qr_checkout_attempts');
+          });
+          expect(rows!.single['state'], 'paid');
+        }
         if (restart) {
           await tester.pumpWidget(const SizedBox.shrink());
           await tester.pump(const Duration(milliseconds: 1));
