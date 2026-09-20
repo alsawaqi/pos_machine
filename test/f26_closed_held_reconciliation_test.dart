@@ -17,7 +17,6 @@ import 'package:pos_machine/models/remote_table_state.dart';
 import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/services/local_order_storage_service.dart';
 import 'package:pos_machine/services/pos_api_service.dart';
-import 'package:pos_machine/dine_in/dine_in_screen.dart';
 import 'package:pos_machine/screens/staff_pos_screen.dart';
 import 'package:pos_machine/state/pos_controller.dart';
 import 'workspace_machine_harness.dart';
@@ -459,8 +458,9 @@ void main() {
           expect(cancellations!.single['status'], 'bill_terminal');
           expect(cancellations.single['cancelled_qty'], 0);
         }
-        if (mode == 'unsent')
+        if (mode == 'unsent') {
           c.addProduct(c.allProducts.singleWhere((p) => p.id == '12'));
+        }
         // The real exit path must not retransmit a held/rejected round.
         await drive(() async {
           await c.returnToDiningFloorPlan();
@@ -571,7 +571,7 @@ void main() {
           ),
           isEmpty,
         );
-        bridge!.detach();
+        bridge.detach();
         bridge = null;
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 1));

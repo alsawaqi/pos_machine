@@ -3620,8 +3620,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 tableId: tableId,
                 force: true,
                 managerApproved: true,
-              ))
+              )) {
                 return true;
+              }
             }
           }
           if (mounted) {

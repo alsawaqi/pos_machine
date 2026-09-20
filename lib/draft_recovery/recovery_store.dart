@@ -189,8 +189,9 @@ class RecoveryStore {
       final qty = wire.remove('qty') as int;
       if (cancellation['status'] != 'bill_terminal' ||
           cancellation['cancelled_qty'] != 0 ||
-          qty > (rejected[recoveryJson(wire)] ?? 0))
+          qty > (rejected[recoveryJson(wire)] ?? 0)) {
         return false;
+      }
     }
     return true;
   }

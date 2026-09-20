@@ -483,8 +483,9 @@ class QrCheckoutController extends ChangeNotifier {
     // The real outbox may obtain GPS after the immutable tender journal was
     // written. It adds only location; it must not replace a saved fix or alter
     // any payment identity, timestamp, amount, tender or evidence.
-    if (original.containsKey('gps') || !incoming.containsKey('gps'))
+    if (original.containsKey('gps') || !incoming.containsKey('gps')) {
       return false;
+    }
     CheckoutAttempt.decode(jsonEncode(saved.copy(event: event).json));
     final withoutAddedGps = {...incoming}..remove('gps');
     return jsonEncode(saved.event) ==

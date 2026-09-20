@@ -226,7 +226,7 @@ Future<RecoveryLocal> loadRecoveryLocal(
         ack['table_session_uuid'] != table['seating_uuid'] ||
         ack['cancelled_qty'] != 0 ||
         recoveryJson(ack['request']) != recoveryJson(payload) ||
-        payload['seating_key'] != table!['seating_key'] ||
+        payload['seating_key'] != table['seating_key'] ||
         payload['product_id'] != cancellation['product_id'] ||
         payload['qty'] != cancellation['qty'] ||
         payload['notes'] != cancellation['notes'] ||

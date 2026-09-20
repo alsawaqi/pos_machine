@@ -344,8 +344,9 @@ bool _validSavedGps(Object? value) {
   if (value is! Map ||
       value.length != 2 ||
       !value.containsKey('lat') ||
-      !value.containsKey('lng'))
+      !value.containsKey('lng')) {
     return false;
+  }
   final lat = value['lat'], lng = value['lng'];
   return lat is num &&
       lng is num &&
