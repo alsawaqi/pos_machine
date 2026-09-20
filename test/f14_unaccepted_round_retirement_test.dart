@@ -187,11 +187,12 @@ void main() {
               ],
             },
         };
-        final okay = [
-          'rejected',
-          'held-rejected',
-          'held-absent',
-        ].contains(shape);
+        // Fix order 5 F-26: an absent server round is not rejection proof.
+        // Keep that case on the preserve-originals / no-archive branch.
+        final okay = ['rejected', 'held-rejected'].contains(shape);
+        if (shape == 'held-absent') {
+          expect(okay, isFalse);
+        }
         expect(
           await h.store.retireClosed(
             local,
