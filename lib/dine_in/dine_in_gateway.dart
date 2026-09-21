@@ -58,6 +58,7 @@ class ApiDineInGateway implements DineInGateway, DineInContextGuard {
         ? api.dineInCancelLine(request.seatingUuid, request.cancellationPayload)
         : api.dineInAppend(request.seatingUuid, request.payload),
     writes: true,
+    adjustment: request.isCancellation,
   );
   @override
   Future<Map<String, dynamic>> adjust(DineInRequest request) => _call(

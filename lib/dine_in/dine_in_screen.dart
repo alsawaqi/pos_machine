@@ -1,3 +1,4 @@
+import '../table_cancellation/table_bill_cancellation.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../order_workspace/current_order_workspace.dart';
@@ -8,6 +9,14 @@ import 'dine_in_models.dart';
 import 'dine_in_store.dart';
 
 String dineInText(bool ar, String key) {
+  if (key.startsWith('cancel_refused:')) {
+    return tableCancelText(key.substring('cancel_refused:'.length), ar);
+  }
+  if (key.startsWith('cancel_waste:')) {
+    return ar
+        ? 'تم تسجيل الهدر: ${key.substring(13)} ر.ع.'
+        : 'Waste recorded: OMR ${key.substring(13)}';
+  }
   const values = {
     'title': ['Dine-In', 'داخل المطعم'],
     'discount': ['Discount', 'خصم'],
@@ -1092,7 +1101,9 @@ class _DineInScreenState extends State<DineInScreen>
                         onPressed: _canVoid ? _void : null,
                         icon: const Icon(Icons.delete_outline),
                         label: Text(
-                          widget.arabic ? 'إلغاء الفاتورة' : 'Void bill',
+                          widget.arabic
+                              ? 'إلغاء فاتورة الطاولة'
+                              : 'Cancel table bill',
                         ),
                       ),
                     IconButton(

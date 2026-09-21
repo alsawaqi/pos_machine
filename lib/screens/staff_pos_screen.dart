@@ -72,7 +72,10 @@ import '../qr_checkout/qr_checkout_store.dart';
 import '../qr_checkout/qr_checkout_widgets.dart';
 import '../services/mosambee_payment_service.dart' show MosambeeFailurePhase;
 import 'qr_quick_orders_screen.dart';
-import 'workspace_void.dart';
+import '../order_workspace/workspace_void.dart'
+    show assertWorkspaceVoidJournals;
+import '../table_cancellation/table_bill_cancellation.dart';
+import '../table_cancellation/table_bill_cancel_dialog.dart';
 import '../widgets/qr_round_print_status_indicator.dart';
 import '../widgets/sent_line_cancel_dialog.dart';
 import '../widgets/table_degraded_banner.dart';
@@ -954,6 +957,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Future<void>? _tableKitchenInit;
   StreamSubscription<void>? _tableKitchenChanges;
   StreamSubscription<List<TableSyncVerdict>>? _tableVerdicts;
+  final _cancellingWorkspaces =
+      <
+        String,
+        ({CurrentOrderWorkspace workspace, String scope, String? token})
+      >{};
   TableReconciliationPresenter? _tableReconciliation;
   TableModeTransition? _tableModeTransition;
   final _tableControllerReady = Completer<void>();
@@ -1054,9 +1062,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         });
         _applyAudienceGate();
         if (quick && workspace.returnToList) unawaited(_openQuickOrders());
-        if (tableLabel != null &&
-            !workspace.returnToLocalCart &&
-            controller.activeDiningTableId != null) {
+        if (tableLabel != null && !workspace.returnToLocalCart) {
           unawaited(
             controller.returnToDiningFloorPlan().then((_) async {
               await _retireClosedTableCopies(force: true);
@@ -3336,6 +3342,38 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         markSeen: coordinator.markVerdictsSeen,
       );
       _tableVerdicts = coordinator.verdicts.listen((rows) {
+        for (final row in rows) {
+          if (row.eventKind != 'cancel_bill') continue;
+          final uuid = row.detail['order_uuid'];
+          final waiting = _cancellingWorkspaces[uuid];
+          if (waiting == null ||
+              !const {'cancelled', 'replayed'}.contains(row.outcome)) {
+            continue;
+          }
+          final api = ref.read(apiServiceProvider),
+              session = ref.read(sessionServiceProvider);
+          final currentScope = quickDeviceScope(
+            api.quickOrderBaseUrl,
+            session.companyId,
+            session.branchId,
+            session.kioskId,
+          );
+          if (!mounted ||
+              waiting.scope != currentScope ||
+              waiting.token != api.tokenGetter() ||
+              !identical(waiting.workspace, _workspace)) {
+            continue;
+          }
+          if ((waiting.workspace.cartControls?.draftRows ?? []).isNotEmpty ||
+              (waiting.workspace.cartControls?.pendingRows ?? []).isNotEmpty) {
+            continue;
+          }
+          _cancellingWorkspaces.remove(uuid);
+          // The coordinator has validated this exact cancellation ACK. Leaving
+          // only releases the editor; the existing closed-copy proof still
+          // owns archival and checks canonical history, pending work and drafts.
+          waiting.workspace.onExit();
+        }
         unawaited(
           _tableReconciliation!.present(rows).catchError((Object _) {
             if (mounted) _showTableActionFailure();
@@ -4063,7 +4101,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             machineQuickCatalogue(ref.read(catalogProvider).asData?.value),
         onPay: _launchQrCheckout,
         pickAdjustment: _pickTableAdjustment,
-        onVoid: (uuid) => openMachineWorkspaceVoid(context, ref, uuid),
+        onVoid: (uuid) => _cancelTableBill(id, uuid),
         approveAdjustmentDiscard: () => _authorizeManager(
           subtitle: dineInText(_arabicTable, 'discard_adjustment'),
         ),
@@ -4083,6 +4121,119 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       tableLabel: tableLabel ?? table?.name ?? tableId,
     );
     _customerBillRouteOpen = _workspace != null;
+  }
+
+  Future<bool> _cancelTableBill(int tableId, String uuid) async {
+    final api = ref.read(apiServiceProvider),
+        session = ref.read(sessionServiceProvider);
+    String scope() => quickDeviceScope(
+      api.quickOrderBaseUrl,
+      session.companyId,
+      session.branchId,
+      session.kioskId,
+    );
+    final captured = scope(), token = api.tokenGetter();
+    final workspace = _workspace;
+    if (workspace != null) {
+      _cancellingWorkspaces[uuid] = (
+        workspace: workspace,
+        scope: captured,
+        token: token,
+      );
+    }
+    void check() {
+      if (!mounted || captured != scope() || token != api.tokenGetter()) {
+        throw StateError('cancel_blocked');
+      }
+    }
+
+    try {
+      final result = await ref
+          .read(tableSyncCoordinatorProvider)
+          .cancelBill(
+            tableId: tableId,
+            billUuid: uuid,
+            read: () async {
+              check();
+              final d = DineInDetail(await api.dineInDetail(tableId));
+              check();
+              return d;
+            },
+            pick: (d) => showBillCancelDialog(
+              context,
+              BillCancelGroup.fromRounds(d.rounds),
+              d.bill!['grand_total_baisas'] as int,
+              arabic: _arabicTable,
+            ),
+            approve: () => _authorizeManager(
+              subtitle: _arabicTable
+                  ? 'إلغاء فاتورة الطاولة'
+                  : 'Cancel table bill',
+            ),
+            guard: () async {
+              check();
+              if (_tableDraftBlocks('$tableId') || _tableSendBusy) {
+                throw StateError('cancel_blocked');
+              }
+              await controller.assertNoPendingCombine();
+              if (ref
+                      .read(qrSettlementCoordinatorProvider)
+                      .pendingManagerRecoveries
+                      .isNotEmpty ||
+                  await ref
+                      .read(orderSyncRepositoryProvider)
+                      .hasUnresolvedStandaloneQrPay(uuid)) {
+                throw StateError('cancel_blocked');
+              }
+              await assertWorkspaceVoidJournals(captured, uuid);
+              check();
+            },
+          );
+      check();
+      if (result == null || !mounted) {
+        _cancellingWorkspaces.remove(uuid);
+        return false;
+      }
+      if (result['outcome'] == 'refused') _cancellingWorkspaces.remove(uuid);
+      final code =
+          result['refusal_code'] ??
+          (result['outcome'] == 'uncertain'
+              ? 'cancel_pending'
+              : result['outcome']);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            [
+              tableCancelText(code as String, _arabicTable),
+              if (cancellationWasteNotice(result, _arabicTable)
+                  case final String notice)
+                notice,
+            ].join('\n'),
+          ),
+        ),
+      );
+      if (const {'cancelled', 'replayed'}.contains(result['outcome'])) {
+        await ref.read(orderSyncRepositoryProvider).flush();
+        await ref.read(tableShadowRepositoryProvider).pollNow();
+        return true;
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              tableCancelText(
+                error is StateError
+                    ? error.message.toString()
+                    : 'cancel_pending',
+                _arabicTable,
+              ),
+            ),
+          ),
+        );
+      }
+    }
+    return false;
   }
 
   Future<void> _openRemoteDiningTableActions(
@@ -10864,7 +11015,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   icon: dining
                       ? Icons.delete_sweep_rounded
                       : Icons.delete_outline_rounded,
-                  title: dining
+                  title: workspace?.tableLabel != null
+                      ? (_arabicTable
+                            ? 'إلغاء فاتورة الطاولة'
+                            : 'Cancel table bill')
+                      : dining
                       ? l10n.posOrderPanelClearTable
                       : l10n.posOrderPanelVoid,
                   tint: Color(0xFFF6F0F0),

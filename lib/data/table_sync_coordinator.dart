@@ -1,6 +1,9 @@
 import '../services/table_round_validation.dart';
 import 'dart:async';
 import 'dart:convert';
+import '../dine_in/dine_in_models.dart';
+import '../table_cancellation/table_bill_cancellation.dart';
+import '../table_cancellation/table_bill_cancel_dialog.dart';
 
 import '../models/pos_models.dart';
 import '../models/table_sync_models.dart';
@@ -54,6 +57,19 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
     String Function()? newUuid,
   }) : clock = clock ?? DateTime.now,
        newUuid = newUuid ?? uuidV4 {
+    outbox.cancellationRoute = (event) async {
+      final intent = (await store.readTableSyncVerdicts(limit: 1000000))
+          .singleWhere(
+            (v) =>
+                v.eventKind == 'cancel_bill_intent' &&
+                v.detail['event']['client_event_id'] ==
+                    event['client_event_id'],
+          );
+      if (jsonEncode(intent.detail['event']) != jsonEncode(event)) {
+        throw StateError('Cancellation request changed');
+      }
+      return intent.detail['seating_uuid'] as String;
+    };
     outbox.addAckListener(_applyAcks);
     _flushSubscription = outbox.flushCompletions.listen((_) {
       unawaited(_publishVerdicts());
@@ -121,6 +137,18 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
       await guardSession?.call(session);
       _sessions.putIfAbsent(session.tableId, () => session);
     }
+    for (final intent in await store.readTableSyncVerdicts(limit: 1000000)) {
+      if (intent.eventKind != 'cancel_bill_intent') continue;
+      final event = Map<String, dynamic>.from(intent.detail['event'] as Map);
+      if (await outbox.rowForKey('cancel-bill:${event['client_event_id']}') ==
+          null) {
+        await outbox.enqueueEvent(
+          'cancel-bill:${event['client_event_id']}',
+          event,
+          createdAt: DateTime.parse(event['client_timestamp'] as String),
+        );
+      }
+    }
     // The outbox is durable first. Recover a ledger write interrupted between
     // the Drift commit and sqflite preparation without ever printing again.
     for (final row in await outbox.pendingRows()) {
@@ -186,6 +214,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
   Future<void> dispose() async {
     _disposed = true;
     outbox.removeAckListener(_applyAcks);
+    outbox.cancellationRoute = null;
     await _flushSubscription.cancel();
     await _changes.close();
     await _verdicts.close();
@@ -719,6 +748,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
                     'cancelled after preparation — table ${session.draft?.diningTableName ?? session.tableId}, ref ${session.tempReference ?? session.orderReference}',
                 'staff_id': staffId(),
                 'wasted_at': at.toIso8601String(),
+                'table_cancellation_request_id': requestId,
               },
             },
         },
@@ -729,6 +759,255 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
       );
       _changed();
     });
+  }
+
+  /// The existing verdict journal retains immutable intent, identity, and ACK.
+  /// The outbox carries only the exact server contract. Retrying never re-picks.
+  Future<Map<String, dynamic>?> cancelBill({
+    required int tableId,
+    required String billUuid,
+    required Future<DineInDetail> Function() read,
+    required Future<BillCancelChoice?> Function(DineInDetail) pick,
+    required Future<bool> Function() approve,
+    required Future<void> Function() guard,
+  }) => _serial(() async {
+    if (!live || degraded()) throw StateError('cancel_offline');
+    final history = await store.readTableSyncVerdicts(limit: 1000000);
+    final pending = history
+        .where(
+          (v) =>
+              v.eventKind == 'cancel_bill_intent' &&
+              v.detail['order_uuid'] == billUuid &&
+              !history.any(
+                (a) =>
+                    a.eventKind == 'cancel_bill' &&
+                    a.detail['client_event_id'] ==
+                        v.detail['event']['client_event_id'],
+              ),
+        )
+        .toList();
+    if (pending.length > 1) throw StateError('cancel_blocked');
+    Map<String, dynamic> event;
+    if (pending.isNotEmpty) {
+      event = Map<String, dynamic>.from(pending.single.detail['event'] as Map);
+    } else {
+      await guard();
+      await outbox.assertIdleForCombine();
+      final before = await read();
+      if (before.tableId != tableId ||
+          before.billUuid != billUuid ||
+          !before.canAppend) {
+        throw StateError('bill_reserved');
+      }
+      final groups = BillCancelGroup.fromRounds(before.rounds);
+      if (groups.isEmpty) throw StateError('nothing_to_cancel');
+      final choice = await pick(before);
+      if (choice == null || !await approve()) return null;
+      await guard();
+      await outbox.assertIdleForCombine();
+      if (degraded()) throw StateError('cancel_offline');
+      final after = await read();
+      if (after.tableId != tableId ||
+          !after.canAppend ||
+          after.seatingUuid != before.seatingUuid ||
+          after.billUuid != billUuid ||
+          jsonEncode(after.bill) != jsonEncode(before.bill) ||
+          jsonEncode(after.rounds) != jsonEncode(before.rounds)) {
+        throw StateError('bill_changed');
+      }
+      if (choice.reason.trim().isEmpty ||
+          choice.reason.length > 200 ||
+          choice.lines.length != groups.length) {
+        throw StateError('cancel_blocked');
+      }
+      final lines = <Map<String, dynamic>>[], waste = <String, dynamic>{};
+      for (var i = 0; i < groups.length; i++) {
+        final group = groups[i], line = choice.lines[i];
+        if (jsonEncode({...group.selector, 'qty': group.qty}) !=
+                jsonEncode({
+                  for (final e in line.entries)
+                    if (e.key != 'prepared') e.key: e.value,
+                }) ||
+            line['prepared'] is! bool) {
+          throw StateError('bill_changed');
+        }
+        final id = newUuid();
+        lines.add({'client_request_id': id, ...line});
+        waste[id] = {
+          'id': newUuid(),
+          'stock_mode': stockModeForProduct?.call(line['product_id'] as int),
+        };
+      }
+      final id = newUuid(), at = clock().toUtc().toIso8601String();
+      final local = (await loadSessions())
+          .where(
+            (s) => s.tableId == '$tableId' && s.serverOrderUuid == billUuid,
+          )
+          .firstOrNull;
+      event = {
+        'client_event_id': id,
+        'event_type': 'table.session.cancel_bill',
+        'client_timestamp': at,
+        'payload': {
+          'client_request_id': id,
+          'seating_key': local?.seatingKey ?? newUuid(),
+          'table_id': after.primaryTableId!,
+          'queued_offline': false,
+          'staff_id': ?staffId(),
+          'reason': choice.reason.trim(),
+          'authorized_by': 'Manager',
+          'cancelled_at': at,
+          'lines': lines,
+        },
+      };
+      await store.addTableSyncVerdict(
+        TableSyncVerdict(
+          observedAt: clock().toUtc(),
+          tableId: '$tableId',
+          seatingKey: event['payload']['seating_key'] as String,
+          eventKind: 'cancel_bill_intent',
+          outcome: 'saved',
+          seen: true,
+          detail: {
+            'event': event,
+            'order_uuid': billUuid,
+            'seating_uuid': after.seatingUuid,
+            'waste': waste,
+          },
+        ),
+      );
+    }
+    await outbox.enqueueEvent(
+      'cancel-bill:${event['client_event_id']}',
+      event,
+      createdAt: DateTime.parse(event['client_timestamp'] as String),
+    );
+    // An already-enqueued lost response still needs a fresh pass.
+    final result = (await store.readTableSyncVerdicts(limit: 1000000))
+        .where(
+          (v) =>
+              v.eventKind == 'cancel_bill' &&
+              v.detail['client_event_id'] == event['client_event_id'],
+        )
+        .firstOrNull;
+    if (result == null) return {'outcome': 'uncertain'};
+    return result.detail;
+  });
+
+  Future<bool> _cancelAck(
+    Map<String, dynamic> event,
+    List<Map<String, dynamic>> results,
+  ) async {
+    final kind = event['event_type'];
+    if (kind != 'table.session.cancel_bill' &&
+        kind != 'table.session.cancel_line') {
+      return false;
+    }
+    final code = cancellationFailedCode(event, results);
+    final ack = results
+        .where((r) => r['client_event_id'] == event['client_event_id'])
+        .singleOrNull;
+    if (ack == null) throw const FormatException('Missing cancellation result');
+    if (code == null &&
+        (ack['status'] != 'processed' || ack['result'] is! Map)) {
+      throw const FormatException('Uncertain cancellation');
+    }
+    if (kind == 'table.session.cancel_line' && code == null) return false;
+    final payload = Map<String, dynamic>.from(event['payload'] as Map);
+    final result = code == null
+        ? Map<String, dynamic>.from(ack['result'] as Map)
+        : <String, dynamic>{
+            'outcome': 'refused',
+            'refusal_code': code,
+            'server_ack': ack,
+          };
+    if (kind == 'table.session.cancel_bill' && code == null) {
+      final intent = (await store.readTableSyncVerdicts(limit: 1000000))
+          .singleWhere(
+            (v) =>
+                v.eventKind == 'cancel_bill_intent' &&
+                v.detail['event']['client_event_id'] ==
+                    event['client_event_id'],
+          );
+      validateBillCancellation(
+        payload,
+        result,
+        intent.detail['order_uuid'] as String,
+        intent.detail['seating_uuid'] as String,
+      );
+      for (final raw in payload['lines'] as List) {
+        final line = Map<String, dynamic>.from(raw as Map),
+            meta = Map<String, dynamic>.from(
+              intent.detail['waste'][raw['client_request_id']] as Map,
+            );
+        if (line['prepared'] != true ||
+            !const {'unit', 'cooked'}.contains(meta['stock_mode'])) {
+          continue;
+        }
+        await outbox.enqueueAfterAcknowledgement(
+          'cancel-waste:${line['client_request_id']}',
+          {
+            'client_event_id': meta['id'],
+            'event_type': 'product.waste',
+            'client_timestamp': event['client_timestamp'],
+            'payload': {
+              'table_cancellation_request_id': line['client_request_id'],
+              'lines': [
+                {
+                  'product_id': line['product_id'],
+                  'qty': line['qty'],
+                  'reason': 'other',
+                },
+              ],
+              'staff_id': payload['staff_id'],
+              'wasted_at': payload['cancelled_at'],
+              'note':
+                  'cancelled after preparation — table ${payload['table_id']}',
+            },
+          },
+        );
+      }
+    }
+    final previous = await store.readTableSyncVerdicts(limit: 1000000);
+    if (!previous.any(
+      (v) =>
+          v.eventKind == kind.toString().split('.').last &&
+          v.detail['client_event_id'] == event['client_event_id'],
+    )) {
+      await store.addTableSyncVerdict(
+        TableSyncVerdict(
+          observedAt: clock().toUtc(),
+          tableId: '${payload['table_id']}',
+          seatingKey: payload['seating_key'] as String,
+          eventKind: kind.toString().split('.').last,
+          outcome: result['outcome'] as String,
+          detail: {
+            ...result,
+            'request': payload,
+            'client_event_id': event['client_event_id'],
+          },
+        ),
+      );
+    }
+    if (kind == 'table.session.cancel_line' && code != null) {
+      final rows = await store.readLocalLineCancellations(
+        seatingKey: payload['seating_key'] as String,
+      );
+      final row = rows
+          .where((r) => r.clientRequestId == payload['client_request_id'])
+          .firstOrNull;
+      if (row != null) {
+        await store.saveLocalLineCancellation(
+          row.withChanges({
+            'status': code,
+            'cancelled_qty': 0,
+            'acked_at': clock().toUtc().toIso8601String(),
+          }),
+        );
+      }
+    }
+    _changed();
+    return true;
   }
 
   Future<void> _publishVerdicts() async {
@@ -750,6 +1029,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
     List<Map<String, dynamic>> results,
   ) async {
     for (final event in events) {
+      if (await _cancelAck(event, results)) continue;
       if (event['event_type'] == 'order.pay') {
         final paymentAck = results
             .where(
@@ -770,6 +1050,40 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
           .firstOrNull;
       if (ack == null || ack['result'] is! Map) continue;
       final result = Map<String, dynamic>.from(ack['result'] as Map);
+      if (event['event_type'] == 'product.waste' &&
+          (result['wasted_lines'] as num? ?? 0) > 0) {
+        final reference =
+            (event['payload'] as Map)['table_cancellation_request_id'];
+        final verdicts = await store.readTableSyncVerdicts(limit: 1000000);
+        final intent = verdicts
+            .where(
+              (v) =>
+                  v.eventKind == 'cancel_bill_intent' &&
+                  (v.detail['waste'] as Map).containsKey(reference),
+            )
+            .firstOrNull;
+        if (intent != null &&
+            !verdicts.any(
+              (v) =>
+                  v.eventKind == 'cancel_shelf_waste' &&
+                  v.detail['client_event_id'] == event['client_event_id'],
+            )) {
+          await store.addTableSyncVerdict(
+            TableSyncVerdict(
+              observedAt: clock().toUtc(),
+              tableId: intent.tableId,
+              seatingKey: intent.seatingKey,
+              eventKind: 'cancel_shelf_waste',
+              outcome: 'recorded',
+              detail: {
+                'client_event_id': event['client_event_id'],
+                'table_cancellation_request_id': reference,
+                'server_ack': ack,
+              },
+            ),
+          );
+        }
+      }
       if (event['event_type'] == 'order.pay' &&
           (result['status'] != 'paid' || result['orphan_tender'] == true)) {
         continue; // A tender held for review did not close the seating.
@@ -925,6 +1239,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
           );
         }
         sheet =
+            (result['waste'] as Map?)?['booked'] == true ||
             const {'nothing_to_cancel', 'bill_terminal'}.contains(outcome) ||
             (outcome != 'unknown_seating' &&
                 cancelledQty < (payload['qty'] as num).toInt());

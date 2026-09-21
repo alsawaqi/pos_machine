@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import '../table_cancellation/table_bill_cancellation.dart';
 
 import 'package:drift/drift.dart';
 import 'package:geolocator/geolocator.dart';
@@ -55,6 +56,8 @@ class OrderSyncRepository {
   static const int maxServerRejections = 5;
   static const String _retiredQrPayMarker = 'qr-attempt-retired:';
 
+  /// Route comes from the immutable cancellation journal, never today's board.
+  Future<String> Function(Map<String, dynamic>)? cancellationRoute;
   final PosApiService _api;
   final AppDatabase _db;
 
@@ -128,6 +131,25 @@ class OrderSyncRepository {
       }
     });
     await flush();
+  }
+
+  Future<void> enqueueAfterAcknowledgement(
+    String key,
+    Map<String, dynamic> event,
+  ) async {
+    final scope = Zone.current[_ackMutationScopeKey];
+    if (scope is! _OutboxAckMutationScope || !scope.active) {
+      throw StateError('Not an acknowledgement');
+    }
+    if (await _db.getOutbox(key) != null) return;
+    await _db.enqueueOutbox(
+      OrderOutboxCompanion(
+        orderUuid: Value(key),
+        eventsJson: Value(jsonEncode([event])),
+        orderNumber: const Value(0),
+        createdAt: Value(DateTime.now()),
+      ),
+    );
   }
 
   Future<List<OrderOutboxRow>> pendingRows() => _db.pendingOutbox();
@@ -592,6 +614,7 @@ class OrderSyncRepository {
           DateTime.now().difference(row.createdAt).inSeconds > 300) {
         var changed = false;
         for (final event in events) {
+          if (event['event_type'] == 'table.session.cancel_bill') continue;
           if (!(event['event_type']?.toString() ?? '').startsWith(
             'table.session.',
           )) {
@@ -636,7 +659,44 @@ class OrderSyncRepository {
       }
 
       try {
-        final data = await _api.pushSync(events);
+        Map<String, dynamic> data;
+        if (events.length == 1 &&
+            events.single['event_type'] == 'table.session.cancel_bill') {
+          final e = events.single;
+          if (cancellationRoute == null) {
+            throw StateError('Cancellation journal unavailable');
+          }
+          final route = await cancellationRoute!(e);
+          Map<String, dynamic> ack;
+          try {
+            final result = await _api.dineInCancelBill(
+              route,
+              Map<String, dynamic>.from(e['payload'] as Map),
+            );
+            ack = {
+              'client_event_id': e['client_event_id'],
+              'status': 'processed',
+              'result': result,
+            };
+          } on ApiException catch (error) {
+            if (error.isNetwork ||
+                !error.hasStructuredErrorCode ||
+                !const {404, 409, 422}.contains(error.statusCode) ||
+                !tableCancelRefusals.contains(error.code)) {
+              rethrow;
+            }
+            ack = {
+              'client_event_id': e['client_event_id'],
+              'status': 'failed',
+              'result': {'refusal_code': error.code},
+            };
+          }
+          data = {
+            'results': [ack],
+          };
+        } else {
+          data = await _api.pushSync(events);
+        }
         final results = (data['results'] as List? ?? const [])
             .whereType<Map>()
             .map((e) => e.cast<String, dynamic>())
@@ -651,7 +711,10 @@ class OrderSyncRepository {
             !row.orderUuid.endsWith(':pay') ||
             _isMatchingPaidQrAck(events, results);
 
-        if (allProcessed && qrPaymentConfirmed) {
+        final finalCancellationRefusal =
+            events.length == 1 &&
+            cancellationFailedCode(events.single, results) != null;
+        if ((allProcessed && qrPaymentConfirmed) || finalCancellationRefusal) {
           for (final listener in List<OutboxAckListener>.of(_ackListeners)) {
             final scope = _OutboxAckMutationScope();
             try {
@@ -694,7 +757,8 @@ class OrderSyncRepository {
         }
       } on ApiException catch (e) {
         successful = false;
-        if (_isDeterministicServerRejection(e)) {
+        if (events.singleOrNull?['event_type'] != 'table.session.cancel_bill' &&
+            _isDeterministicServerRejection(e)) {
           await _recordServerRejection(row, e.message);
         } else {
           await _db.markOutboxAttempt(

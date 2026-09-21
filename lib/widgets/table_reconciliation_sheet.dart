@@ -1,3 +1,4 @@
+import '../table_cancellation/table_bill_cancellation.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -41,6 +42,22 @@ class TableReconciliationPresenter {
 int _int(Object? value) => int.tryParse(value?.toString() ?? '') ?? 0;
 
 String tableReconciliationCopy(L10n l10n, TableSyncVerdict row) {
+  if (row.eventKind == 'cancel_shelf_waste') {
+    return l10n.localeName.startsWith('ar')
+        ? 'تم تسجيل هدر الأصناف المحضّرة.'
+        : 'Prepared-item waste recorded.';
+  }
+  if (row.eventKind == 'cancel_bill' || row.eventKind == 'cancel_line') {
+    final ar = l10n.localeName.startsWith('ar');
+    if (row.detail['refusal_code'] is String) {
+      return tableCancelText(row.detail['refusal_code'] as String, ar);
+    }
+    final waste = cancellationWasteNotice(row.detail, ar);
+    if (row.eventKind == 'cancel_bill') {
+      return [tableCancelText(row.outcome, ar), ?waste].join('\n');
+    }
+    if (waste != null) return waste;
+  }
   final d = row.detail;
   final request = d['request'] is Map ? d['request'] as Map : const {};
   final table = row.tableId;

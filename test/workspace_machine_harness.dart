@@ -143,6 +143,7 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
   required bool toggle,
   bool arabic = false,
   bool realTableHealth = false,
+  bool realServices = false,
   bool connectivityOnline = false,
   required CatalogSnapshot catalog,
   AudienceService? audience,
@@ -200,11 +201,15 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
         tableSyncCoordinatorProvider.overrideWithValue(
           coordinator ?? WorkspaceTableCoordinator(),
         ),
-        tableShadowRepositoryProvider.overrideWithValue(_Shadow()),
+        if (!realServices)
+          tableShadowRepositoryProvider.overrideWithValue(_Shadow()),
         remoteBoardProvider.overrideWith(
           (ref) => boards ?? Stream.value(const RemoteTableSnapshot()),
         ),
-        tableActivityNoticeProvider.overrideWith((ref) => const Stream.empty()),
+        if (!realServices)
+          tableActivityNoticeProvider.overrideWith(
+            (ref) => const Stream.empty(),
+          ),
         tableShadowConfigProvider.overrideWith((ref) => Stream.value(null)),
         if (!realTableHealth)
           degradedStateProvider.overrideWith(_NoDegraded.new),
@@ -217,12 +222,15 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
         geofenceProvider.overrideWith(
           (ref) => Stream.value(const GeofenceStatus(FenceState.disabled)),
         ),
-        liveSyncProvider.overrideWithValue(_LiveSync()),
-        audienceServiceProvider.overrideWithValue(audience ?? _Audience()),
-        qrRoundAutoPrintControllerProvider.overrideWithValue(_AutoPrint()),
-        qrTillServiceProvider.overrideWithValue(gateway),
-        qrRoundGatewayProvider.overrideWithValue(gateway),
-        qrSettlementCoordinatorProvider.overrideWithValue(T7SheetFlow()),
+        if (!realServices) liveSyncProvider.overrideWithValue(_LiveSync()),
+        if (!realServices)
+          audienceServiceProvider.overrideWithValue(audience ?? _Audience()),
+        if (!realServices)
+          qrRoundAutoPrintControllerProvider.overrideWithValue(_AutoPrint()),
+        if (!realServices) qrTillServiceProvider.overrideWithValue(gateway),
+        if (!realServices) qrRoundGatewayProvider.overrideWithValue(gateway),
+        if (!realServices)
+          qrSettlementCoordinatorProvider.overrideWithValue(T7SheetFlow()),
         shiftReconciliationProvider.overrideWith((ref, staffId) async => null),
       ],
       child: MaterialApp(
@@ -236,7 +244,11 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (realServices) {
+    await tester.pump();
+  } else {
+    await tester.pumpAndSettle();
+  }
   return WorkspaceMachineHarness(preferences, gateway);
 }
 

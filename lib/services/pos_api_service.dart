@@ -560,6 +560,16 @@ class PosApiService {
     ),
   )).dataMap;
 
+  Future<Map<String, dynamic>> dineInCancelBill(
+    String uuid,
+    Map<String, dynamic> payload,
+  ) async => (await _send(
+    () => _dio.post(
+      '/device/tables/${Uri.encodeComponent(uuid)}/cancel-bill',
+      data: payload,
+    ),
+  )).dataMap;
+
   Future<Map<String, dynamic>> dineInCancelLine(
     String uuid,
     Map<String, dynamic> payload,

@@ -1,3 +1,4 @@
+import '../table_cancellation/table_bill_cancellation.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import '../qr_quick/qr_quick_models.dart';
@@ -495,7 +496,12 @@ class DineInController extends ChangeNotifier {
         }
         await store.remove(request);
         pending = null;
-        notice = count == request.cancellation['qty'] ? null : 'changed';
+        notice = count == request.cancellation['qty']
+            ? ((result['waste'] as Map?)?['booked'] == true &&
+                      (result['waste'] as Map?)?['cost_baisas'] is int
+                  ? 'cancel_waste:${((result['waste']['cost_baisas'] as int) / 1000).toStringAsFixed(3)}'
+                  : null)
+            : 'changed';
         return count == request.cancellation['qty'];
       }
       if (fresh && const {'bill_terminal', 'bill_unpaid'}.contains(outcome)) {
@@ -541,6 +547,14 @@ class DineInController extends ChangeNotifier {
       }
       return true;
     } on QrQuickFailure catch (error) {
+      if (request.isCancellation &&
+          error.refused &&
+          tableCancelRefusals.contains(error.code)) {
+        await store.remove(request);
+        pending = null;
+        notice = 'cancel_refused:${error.code}';
+        return false;
+      }
       if (request.isAdjustment && error.refused) {
         await store.remove(request);
         pending = null;
