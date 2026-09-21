@@ -42,7 +42,8 @@ class CancelServer {
       lose = false,
       deny = false,
       shelf = false,
-      offline = false;
+      offline = false,
+      lineReserved = false;
   String? refusal;
   int approvals = 0;
   void Function()? onCancelled;
@@ -201,6 +202,18 @@ class CancelServer {
               final e = Map<String, dynamic>.from(raw),
                   p = Map<String, dynamic>.from(raw['payload'] as Map);
               events.add(e);
+              if (lineReserved &&
+                  e['event_type'] == 'table.session.cancel_line') {
+                results.add({
+                  'client_event_id': e['client_event_id'],
+                  'status': 'failed',
+                  'result': {
+                    'refusal_code': 'bill_reserved',
+                    'error': 'Synthetic reservation',
+                  },
+                });
+                continue;
+              }
               if (p['order_uuid'] is String) uuid = p['order_uuid'];
               results.add({
                 'client_event_id': e['client_event_id'],
@@ -337,12 +350,15 @@ void main() {
     'offline-line',
     'offline-bill',
     'changed-loop',
+    'line-reserved-sync',
+    'line-reserved-sync-AR',
     for (final c in codes.keys) ...[c, '$c-AR'],
   ]) {
     final ar = scenario.endsWith('-AR'), code = scenario.replaceAll('-AR', '');
     testWidgets('T11 till real screen coordinator SQLite $scenario', (
       tester,
     ) async {
+      Future<void> Function()? disposeFixture;
       try {
         Future<T?> drive<T>(Future<T> Function() action) async {
           var done = false;
@@ -455,7 +471,10 @@ void main() {
         });
         debugOrderStorageOverride = storage;
         TableKitchenBridge? bridge;
-        addTearDown(() async {
+        var disposed = false;
+        disposeFixture = () async {
+          if (disposed) return;
+          disposed = true;
           bridge?.detach();
           await tester.pumpWidget(const SizedBox.shrink());
           await tester.pump(const Duration(milliseconds: 1));
@@ -467,7 +486,8 @@ void main() {
             await localDb.close();
             await boards.close();
           });
-        });
+        };
+        addTearDown(disposeFixture);
         Future<void> mount() async {
           await pumpWorkspaceMachine(
             tester,
@@ -566,6 +586,43 @@ void main() {
           hasLength(1),
         );
 
+        if (code == 'line-reserved-sync') {
+          server.lineReserved = true;
+          await drive(
+            () => coordinator.cancelLine(
+              c.diningSessionFor('1')!,
+              line: {'product_id': 10, 'addon_ids': <int>[], 'notes': null},
+              qty: 1,
+              prepared: false,
+              authorizedBy: 'Test Manager',
+              reason: 'Synthetic reserved',
+            ),
+          );
+          await pumpUntilRealCondition(
+            tester,
+            () => find
+                .text(codes['bill_reserved']![ar ? 1 : 0])
+                .evaluate()
+                .isNotEmpty,
+            timeout: const Duration(seconds: 20),
+            reason: 'sync refusal shown in real reconciliation sheet',
+          );
+          expect(await drive(outbox.pendingRows), isEmpty);
+          final rows = (await drive(
+            () => storage.readLocalLineCancellations(),
+          ))!;
+          expect(rows.single.cancelledQty, 0);
+          expect(rows.single.status, 'bill_reserved');
+          await drive(outbox.flush);
+          expect(
+            server.events.where(
+              (e) => e['event_type'] == 'table.session.cancel_line',
+            ),
+            hasLength(1),
+          );
+          expect(await drive(() => localDb.query('order_history')), isEmpty);
+          return;
+        }
         if (scenario == 'offline-line') {
           server.offline = true;
           await drive(
@@ -963,6 +1020,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 1));
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());
+        await disposeFixture?.call();
         await tester.pump(const Duration(milliseconds: 1));
       }
     });

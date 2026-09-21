@@ -169,7 +169,8 @@
             ],
             "note": "cancelled after preparation — table Table 5, ref T-0906-001",
             "staff_id": 1,
-            "wasted_at": "2099-09-06T12:00:00.000Z"
+            "wasted_at": "2099-09-06T12:00:00.000Z",
+            "table_cancellation_request_id": "00000000-0000-4000-8000-000000001003"
           }
         }
       ],

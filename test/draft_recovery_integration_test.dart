@@ -381,6 +381,16 @@ void main() {
     test(
       'coordinator evicts only old generation and rejects in-flight stale hydrate',
       () async {
+        // This focused recovery fixture already has the ledger columns/rounds.
+        // hydrate now also recovers durable cancellation verdict intents.
+        await h.db.execute('''
+          CREATE TABLE table_sync_verdicts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            observed_at TEXT NOT NULL, table_id TEXT NOT NULL, seating_key TEXT,
+            event_kind TEXT NOT NULL, outcome TEXT NOT NULL, detail_json TEXT,
+            seen INTEGER NOT NULL DEFAULT 0
+          )
+        ''');
         final drift = AppDatabase.forTesting(NativeDatabase.memory());
         final outbox = OrderSyncRepository(
           PosApiService(tokenGetter: () => 'x'),
