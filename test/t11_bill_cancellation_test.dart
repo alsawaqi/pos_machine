@@ -43,7 +43,8 @@ class CancelServer {
       deny = false,
       shelf = false,
       offline = false,
-      lineReserved = false;
+      lineReserved = false,
+      failDetail = false;
   String? refusal;
   int approvals = 0;
   void Function()? onCancelled;
@@ -109,7 +110,7 @@ class CancelServer {
       InterceptorsWrapper(
         onRequest: (o, h) async {
           calls.add(o.path);
-          if (offline) {
+          if (offline || (failDetail && o.path.endsWith('/detail'))) {
             h.reject(
               DioException(
                 requestOptions: o,
@@ -349,6 +350,7 @@ void main() {
     'shelf',
     'offline-line',
     'offline-bill',
+    'offline-read',
     'changed-loop',
     'line-reserved-sync',
     'line-reserved-sync-AR',
@@ -717,10 +719,11 @@ void main() {
 
         debugPrint('T11 void enabled');
         if (scenario == 'offline-bill') server.offline = true;
+        if (scenario == 'offline-read') server.failDetail = true;
         await tap(
           find.text(ar ? 'إلغاء فاتورة الطاولة' : 'Cancel table bill').first,
         );
-        if (scenario == 'offline-bill') {
+        if (scenario == 'offline-bill' || scenario == 'offline-read') {
           await pumpUntilRealCondition(
             tester,
             () => find

@@ -4155,9 +4155,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             billUuid: uuid,
             read: () async {
               check();
-              final d = DineInDetail(await api.dineInDetail(tableId));
-              check();
-              return d;
+              try {
+                final d = DineInDetail(await api.dineInDetail(tableId));
+                check();
+                return d;
+              } on ApiException catch (error) {
+                // These reads precede the durable intent. Never claim that a
+                // request was saved when the fresh bill could not be read.
+                throw StateError(
+                  error.isNetwork ? 'cancel_offline' : 'cancel_blocked',
+                );
+              }
             },
             pick: (d) => showBillCancelDialog(
               context,
