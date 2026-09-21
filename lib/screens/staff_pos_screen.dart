@@ -4123,7 +4123,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _customerBillRouteOpen = _workspace != null;
   }
 
+  bool _tableCancellationBusy = false;
+
   Future<bool> _cancelTableBill(int tableId, String uuid) async {
+    if (_tableCancellationBusy) return false;
+    setState(() => _tableCancellationBusy = true);
     final api = ref.read(apiServiceProvider),
         session = ref.read(sessionServiceProvider);
     String scope() => quickDeviceScope(
@@ -4222,7 +4226,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       );
       if (const {'cancelled', 'replayed'}.contains(result['outcome'])) {
         await ref.read(orderSyncRepositoryProvider).flush();
+        if (workspace == null &&
+            _workspace == null &&
+            controller.activeDiningTableId == '$tableId' &&
+            !_tableDraftBlocks('$tableId')) {
+          // Release this editor only. Canonical closure proof, not this ACK
+          // alone, owns archival of the original local copy.
+          await controller.returnToDiningFloorPlan();
+        }
         await ref.read(tableShadowRepositoryProvider).pollNow();
+        await _retireClosedTableCopies(tableId: '$tableId', force: true);
         return true;
       }
     } catch (error) {
@@ -4240,6 +4253,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _tableCancellationBusy = false);
     }
     return false;
   }
@@ -10634,6 +10649,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         workspace?.dineIn == true ||
         (workspace == null && _isEditingDiningTable);
     final liveTable = workspace == null && _liveTable;
+    final cancelAcceptedTable =
+        liveTable &&
+        _liveEditor?.detail?.billUuid != null &&
+        BillCancelGroup.fromRounds(_liveEditor!.detail!.rounds).isNotEmpty;
     final reference = workspace == null
         ? controller.currentOrderReference
         : bill?.reference ?? '';
@@ -11023,7 +11042,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   icon: dining
                       ? Icons.delete_sweep_rounded
                       : Icons.delete_outline_rounded,
-                  title: workspace?.tableLabel != null
+                  title: workspace?.tableLabel != null || cancelAcceptedTable
                       ? (_arabicTable
                             ? 'إلغاء فاتورة الطاولة'
                             : 'Cancel table bill')
@@ -11035,6 +11054,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   iconColor: Color(0xFF6B757C),
                   onTap: workspace != null
                       ? workspace.cartControls?.voidBill
+                      : cancelAcceptedTable
+                      ? (_tableCancellationBusy || _tableSendBusy
+                            ? null
+                            : () async {
+                                final id = controller.activeDiningTableId!;
+                                final uuid = _liveEditor!.detail!.billUuid!;
+                                await _ensureTableKitchen();
+                                await _proveSentDraft(id);
+                                if (mounted) {
+                                  await _cancelTableBill(int.parse(id), uuid);
+                                }
+                              })
                       : dining
                       ? () {
                           if (liveTable) {
@@ -11399,9 +11430,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 workspace?.canPay ??
                 (_localTableRefusal != _closedTableMessage &&
                     (_cartBill?.needsReviewCount ?? 0) == 0),
-            busy: workspace == null
-                ? controller.isProcessingPayment || _tableCartPay.busy
-                : workspace.cartControls?.busy ?? false,
+            neutralBusy: _tableCancellationBusy,
+            busy:
+                _tableCancellationBusy ||
+                (workspace == null
+                    ? controller.isProcessingPayment || _tableCartPay.busy
+                    : workspace.cartControls?.busy ?? false),
             settleBill:
                 workspace == null &&
                 tableBillNeedsSheet(_tableShadowMode, _cartBill),
@@ -14484,6 +14518,7 @@ class _FooterActionCard extends StatelessWidget {
 class _PayButton extends StatelessWidget {
   final double total;
   final bool busy;
+  final bool neutralBusy;
   final bool enabled;
   final bool settleBill;
   final VoidCallback onTap;
@@ -14492,6 +14527,7 @@ class _PayButton extends StatelessWidget {
     required this.total,
     required this.busy,
     required this.onTap,
+    this.neutralBusy = false,
     this.settleBill = false,
     this.enabled = true,
   });
@@ -14541,7 +14577,11 @@ class _PayButton extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    busy
+                    neutralBusy
+                        ? (Localizations.localeOf(context).languageCode == 'ar'
+                              ? 'جارٍ مراجعة الإلغاء'
+                              : 'Reviewing cancellation')
+                        : busy
                         ? l10n.posPayBtnProcessing
                         : settleBill
                         ? l10n.tableSettleBill
@@ -14556,7 +14596,11 @@ class _PayButton extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    busy
+                    neutralBusy
+                        ? (Localizations.localeOf(context).languageCode == 'ar'
+                              ? 'بانتظار قرار الموظف'
+                              : 'Waiting for staff decision')
+                        : busy
                         ? l10n.posPayBtnCompletingOrder
                         : settleBill
                         ? l10n.tableCustomerBillTitle
