@@ -1176,14 +1176,20 @@ class LoyaltyBalance {
   final int ruleId;
   final int points;
   final int stamps;
+  final int? availablePoints;
+  final int? availableStamps;
 
   const LoyaltyBalance({
     required this.ruleId,
     required this.points,
     required this.stamps,
+    this.availablePoints,
+    this.availableStamps,
   });
 
   factory LoyaltyBalance.fromJson(Map<String, dynamic> j) => LoyaltyBalance(
+    availablePoints: (j['available_points'] as num?)?.toInt(),
+    availableStamps: (j['available_stamps'] as num?)?.toInt(),
     ruleId: (j['rule_id'] as num?)?.toInt() ?? 0,
     points: (j['points'] as num?)?.toInt() ?? 0,
     stamps: (j['stamps'] as num?)?.toInt() ?? 0,
@@ -1227,6 +1233,13 @@ class CustomerSearchResult {
             .where((p) => p.isNotEmpty)
             .toList(),
       );
+
+  int availablePointsForRule(int ruleId) => loyalty
+      .where((b) => b.ruleId == ruleId)
+      .fold(0, (s, b) => s + (b.availablePoints ?? b.points));
+  int availableStampsForRule(int ruleId) => loyalty
+      .where((b) => b.ruleId == ruleId)
+      .fold(0, (s, b) => s + (b.availableStamps ?? b.stamps));
 
   int pointsForRule(int ruleId) =>
       loyalty.where((b) => b.ruleId == ruleId).fold(0, (s, b) => s + b.points);

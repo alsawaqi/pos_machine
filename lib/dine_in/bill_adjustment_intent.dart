@@ -12,7 +12,18 @@ void validateBillAdjustment(Map<String, dynamic> value) {
       'authorized_by',
       'approved_by_staff_id',
     },
-    'discount:clear' || 'comp:clear' || 'customer:detach' => {'kind', 'mode'},
+    'loyalty:redeem' => {
+      'kind',
+      'mode',
+      'rule_id',
+      'blocks',
+      'authorized_by',
+      'approved_by_staff_id',
+    },
+    'loyalty:clear' ||
+    'discount:clear' ||
+    'comp:clear' ||
+    'customer:detach' => {'kind', 'mode'},
     'comp:apply' => {
       'kind',
       'mode',
@@ -45,6 +56,14 @@ void validateBillAdjustment(Map<String, dynamic> value) {
       (mode == 'rule' && !integer(value['discount_id'], 1, 2147483647)) ||
       (mode == 'attach' && !integer(value['customer_id'], 1, 2147483647))) {
     throw const FormatException('Invalid adjustment value');
+  }
+  if (kind == 'loyalty' &&
+      mode == 'redeem' &&
+      (!integer(value['rule_id'], 1, 2147483647) ||
+          !integer(value['blocks'], 1, 50) ||
+          !integer(value['approved_by_staff_id'], 1, 2147483647) ||
+          !text(value['authorized_by'], 100, required: true))) {
+    throw const FormatException('Invalid loyalty approval or blocks');
   }
   if (kind == 'comp' && mode == 'apply') {
     final target = value['target'];

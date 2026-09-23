@@ -76,6 +76,9 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
     });
   }
 
+  /// Validated pay ACK summaries for the completion notice, keyed by canonical bill.
+  final Map<String, Map<String, dynamic>> loyaltyEarnedByOrder = {};
+
   final OrderSyncRepository outbox;
   final TableLedgerStore store;
   final Future<List<DiningTableSession>> Function() loadSessions;
@@ -1108,6 +1111,10 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
           )
           .firstOrNull;
       if (session == null) continue;
+      if (type == 'order.pay' && result['loyalty_earned'] is Map) {
+        loyaltyEarnedByOrder[payload['order_uuid'] as String] =
+            Map<String, dynamic>.from(result['loyalty_earned'] as Map);
+      }
       final outcome =
           result['outcome']?.toString() ?? (tableEvent ? '' : 'processed');
       final oldUuid = session.serverOrderUuid ?? '';

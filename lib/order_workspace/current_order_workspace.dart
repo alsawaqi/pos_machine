@@ -392,11 +392,12 @@ class WorkspaceCartControls {
     this.discount,
     this.comp,
     this.customer,
+    this.loyalty,
     this.adjustmentBlocked,
     this.adjustmentSupported = false,
     this.actions = const [],
   });
-  final Future<void> Function()? discount, comp, customer;
+  final Future<void> Function()? discount, comp, customer, loyalty;
   final String? adjustmentBlocked;
   final bool adjustmentSupported;
   final List<WorkspaceAction> actions;

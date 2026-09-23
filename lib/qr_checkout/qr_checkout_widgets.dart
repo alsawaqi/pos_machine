@@ -1,3 +1,4 @@
+import '../dine_in/table_loyalty.dart';
 import 'package:flutter/material.dart';
 import 'qr_checkout_controller.dart';
 import 'qr_checkout_models.dart';
@@ -281,6 +282,17 @@ class _QrCheckoutBoundaryState extends State<QrCheckoutBoundary> {
               '${checkoutText(context, 'receipt')}: ${controller.attempt?.receiptNumber ?? controller.reference}',
             ),
             Text(checkoutText(context, 'history_receipt')),
+            if (loyaltyEarnedText(
+              Localizations.localeOf(context).languageCode == 'ar',
+              controller.loyaltyEarned,
+            ).isNotEmpty)
+              Text(
+                loyaltyEarnedText(
+                  Localizations.localeOf(context).languageCode == 'ar',
+                  controller.loyaltyEarned,
+                ),
+                key: const ValueKey('table-loyalty-earned'),
+              ),
           ],
           if (controller.phase == CheckoutPhase.attention ||
               controller.phase == CheckoutPhase.pending) ...[

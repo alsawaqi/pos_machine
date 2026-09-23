@@ -1,3 +1,4 @@
+import 'table_loyalty.dart';
 import '../table_cancellation/table_bill_cancellation.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -9,6 +10,17 @@ import 'dine_in_models.dart';
 import 'dine_in_store.dart';
 
 String dineInText(bool ar, String key) {
+  final loyaltyCode = key.startsWith('adjust_refused:')
+      ? key.substring('adjust_refused:'.length)
+      : key;
+  if (loyaltyCode.startsWith('loyalty_') ||
+      const {
+        'loyalty',
+        'approval_required',
+        'validation_failed',
+      }.contains(loyaltyCode)) {
+    return loyaltyText(ar, loyaltyCode);
+  }
   if (key.startsWith('cancel_refused:')) {
     return tableCancelText(key.substring('cancel_refused:'.length), ar);
   }
@@ -790,6 +802,9 @@ class _DineInScreenState extends State<DineInScreen>
       discount: _canAdjust ? () => _adjust('discount') : null,
       comp: _canAdjust ? () => _adjust('comp') : null,
       customer: _canAdjust ? () => _adjust('customer') : null,
+      loyalty: _canAdjust && detail?.bill?['customer'] is Map
+          ? () => _adjust('loyalty')
+          : null,
       adjustmentBlocked: drafts.isNotEmpty
           ? 'adjustment_unsent'
           : c?.adjustmentBlocked,
@@ -1195,10 +1210,18 @@ class _DineInScreenState extends State<DineInScreen>
                       Wrap(
                         spacing: 8,
                         children: [
-                          for (final kind in ['discount', 'comp', 'customer'])
+                          for (final kind in [
+                            'discount',
+                            'comp',
+                            'customer',
+                            'loyalty',
+                          ])
                             TextButton(
                               key: ValueKey('dine-adjust-$kind'),
-                              onPressed: _canAdjust
+                              onPressed:
+                                  _canAdjust &&
+                                      (kind != 'loyalty' ||
+                                          detail?.bill?['customer'] is Map)
                                   ? () => _adjust(kind)
                                   : null,
                               child: Text(text(kind)),

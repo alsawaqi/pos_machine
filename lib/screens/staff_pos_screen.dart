@@ -1,3 +1,4 @@
+import '../dine_in/table_loyalty.dart';
 import '../draft_recovery/closed_round_proof.dart';
 import '../qr_checkout/qr_checkout_receipt.dart';
 import '../services/server_receipt_history.dart';
@@ -1280,6 +1281,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       );
       final current = await history.find(snapshot.serverOrderUuid);
       await controller.refreshOrderHistory();
+      final earned = ref
+          .read(tableSyncCoordinatorProvider)
+          .loyaltyEarnedByOrder
+          .remove(snapshot.serverOrderUuid);
+      if (mounted && current?.serverReceiptConfirmed == true) {
+        final text = loyaltyEarnedText(_arabicTable, earned);
+        if (text.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(text, key: const ValueKey('table-loyalty-earned')),
+            ),
+          );
+        }
+      }
       return current ?? snapshot;
     };
     // Phase 3C — push advertising-slide play-time telemetry (best-effort).
@@ -2938,6 +2953,32 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     String kind,
   ) async {
     Map<String, dynamic>? picked;
+    if (kind == 'loyalty') {
+      return pickTableLoyalty(
+        context,
+        bill: detail.bill!,
+        rules: [
+          for (final rule in controller.loyaltyRules)
+            {
+              'id': rule.id,
+              'name': rule.name,
+              'type': rule.type,
+              'config': rule.config,
+              'active': rule.isActive,
+            },
+        ],
+        customer: ref.read(apiServiceProvider).tableLoyaltyCustomer,
+        // The registered fingerprint stores only a boolean, never a staff id.
+        // Always fall through to the existing PIN control for this flow.
+        approve: () => showDialog<LoyaltyApprover>(
+          context: context,
+          builder: (_) => _ManagerPinDialog(
+            api: ref.read(apiServiceProvider),
+            identityRequired: true,
+          ),
+        ),
+      );
+    }
     if (kind == 'discount') {
       await _openDiscountDialog(
         serverDetail: detail,
@@ -3005,6 +3046,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await (switch (kind) {
         'discount' => controls?.discount,
         'comp' => controls?.comp,
+        'loyalty' => controls?.loyalty,
         _ => controls?.customer,
       })?.call();
       return;
@@ -3060,6 +3102,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             '${bill.customer!['name'] ?? ''} · ${bill.customer!['phone'] ?? ''}',
           ),
         ),
+      if (bill.adjustmentState['loyalty'] case final Map reward)
+        Text(
+          '${dineInText(_arabicTable, 'loyalty')} ${reward['name'] ?? ''}: −${((reward['amount_baisas'] as num? ?? 0) / 1000).toStringAsFixed(3)} OMR',
+          key: const ValueKey('table-loyalty-line'),
+        ),
       if (bill.adjustmentStale)
         Text(
           dineInText(_arabicTable, 'adjustment_stale'),
@@ -3090,7 +3137,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         Wrap(
           spacing: 8,
           children: [
-            for (final kind in ['discount', 'comp', 'customer'])
+            for (final kind in ['discount', 'comp', 'customer', 'loyalty'])
               TextButton(
                 key: ValueKey('table-adjust-$kind'),
                 style: compact
@@ -3104,9 +3151,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     ? switch (kind) {
                         'discount' => workspaceControls.discount,
                         'comp' => workspaceControls.comp,
+                        'loyalty' => workspaceControls.loyalty,
                         _ => workspaceControls.customer,
                       }
-                    : enabled
+                    : enabled &&
+                          (kind != 'loyalty' ||
+                              editor?.detail?.bill?['customer'] is Map)
                     ? () => _adjustLiveBill(kind)
                     : null,
                 child: Text(dineInText(_arabicTable, kind)),
@@ -7063,7 +7113,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     for (final r in controller.loyaltyRules) {
       if (!r.isActive || !r.isSpendBased) continue;
       if (r.redemptionPoints <= 0 || r.redemptionValue <= 0) continue;
-      final pts = c.pointsForRule(r.id);
+      final pts = c.availablePointsForRule(r.id);
       final minNeeded = r.minRedemptionPoints > 0
           ? r.minRedemptionPoints
           : r.redemptionPoints;
@@ -7089,7 +7139,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (subtotal <= 0) return null;
     for (final r in controller.loyaltyRules) {
       if (!r.isActive || !r.isVisitBased || r.stampsRequired <= 0) continue;
-      if (c.stampsForRule(r.id) < r.stampsRequired) continue;
+      if (c.availableStampsForRule(r.id) < r.stampsRequired) continue;
       final value = _stampRewardValue(r, subtotal);
       if (value <= 0) continue;
       final capped = value > subtotal ? subtotal : value;
@@ -16705,7 +16755,8 @@ class _CustomerDetailsDialog extends StatelessWidget {
 class _ManagerPinDialog extends StatefulWidget {
   final PosApiService api;
 
-  const _ManagerPinDialog({required this.api});
+  const _ManagerPinDialog({required this.api, this.identityRequired = false});
+  final bool identityRequired;
 
   @override
   State<_ManagerPinDialog> createState() => _ManagerPinDialogState();
@@ -16737,7 +16788,9 @@ class _ManagerPinDialogState extends State<_ManagerPinDialog> {
       _error = null;
     });
     try {
-      final approver = await widget.api.verifyManagerPin(_pin);
+      final Object? approver = widget.identityRequired
+          ? await widget.api.verifyLoyaltyApprover(_pin)
+          : await widget.api.verifyManagerPin(_pin);
       if (!mounted) return;
       if (approver == null) {
         setState(() {
@@ -16747,7 +16800,7 @@ class _ManagerPinDialogState extends State<_ManagerPinDialog> {
         });
         return;
       }
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop(widget.identityRequired ? approver : true);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -16872,7 +16925,11 @@ class _ManagerPinDialogState extends State<_ManagerPinDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _busy ? null : () => Navigator.of(context).pop(false),
+          onPressed: _busy
+              ? null
+              : () => Navigator.of(
+                  context,
+                ).pop(widget.identityRequired ? null : false),
           child: Text(l10n.commonCancel),
         ),
         FilledButton(

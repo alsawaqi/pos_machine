@@ -63,6 +63,7 @@ class QrCheckoutController extends ChangeNotifier {
   CheckoutAttempt? _attempt;
   CheckoutSnapshot? snapshot;
   CheckoutClaim? _claim;
+  Map<String, dynamic>? loyaltyEarned;
   CheckoutPhase phase = CheckoutPhase.loading;
   String? notice;
   String cashInput = '';
@@ -601,6 +602,9 @@ class QrCheckoutController extends ChangeNotifier {
       await projectReceipt?.call(snapshot, confirmed);
       await _save(confirmed);
       phase = CheckoutPhase.paid;
+      loyaltyEarned = result['loyalty_earned'] is Map
+          ? checkoutMap(result['loyalty_earned'])
+          : null;
       notice = null;
     } else if (ack['status'] == 'failed') {
       await _save(_attempt!.copy(state: 'refused'));

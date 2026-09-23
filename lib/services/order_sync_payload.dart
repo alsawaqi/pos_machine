@@ -607,7 +607,8 @@ Map<String, dynamic> _orderPayPayload(
   // Loyalty REDEEM: the points OR stamps spent (their value is already on the
   // order as the discount). The server decrements the balance (strict —
   // over-balance fails). spend_based sends points; visit_based sends stamps.
-  if (snapshot.loyaltyRedeemRuleId != null &&
+  if (snapshot.orderType != 'dine_in' &&
+      snapshot.loyaltyRedeemRuleId != null &&
       (snapshot.loyaltyRedeemPoints > 0 || snapshot.loyaltyRedeemStamps > 0)) {
     payEvent['loyalty_redeem'] = <String, dynamic>{
       'rule_id': snapshot.loyaltyRedeemRuleId,

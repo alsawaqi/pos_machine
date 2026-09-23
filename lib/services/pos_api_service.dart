@@ -143,6 +143,36 @@ class PosApiService {
   /// approver's display name, or null when the PIN is rejected (the server
   /// deliberately never reveals WHY). Throttled server-side with the staff
   /// login bucket; network errors rethrow so the caller can say "offline".
+  /// Identity-bearing approval for journaled loyalty; never invent an approver.
+  Future<({int id, String name})?> verifyLoyaltyApprover(String pin) async {
+    try {
+      final envelope = await _send(
+        () => _dio.post('/device/auth/verify-manager-pin', data: {'pin': pin}),
+      );
+      final data = envelope.body.containsKey('ok')
+          ? envelope.body
+          : envelope.dataMap;
+      final staff = data['staff'];
+      if (data['ok'] != true ||
+          staff is! Map ||
+          staff['id'] is! int ||
+          (staff['id'] as int) <= 0 ||
+          staff['name'] is! String ||
+          (staff['name'] as String).trim().isEmpty) {
+        return null;
+      }
+      return (id: staff['id'] as int, name: staff['name'] as String);
+    } on ApiException catch (e) {
+      if (e.code == 'invalid_pin') return null;
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> tableLoyaltyCustomer(int id) async {
+    final body = await _send(() => _dio.get('/device/customers/$id'));
+    return Map<String, dynamic>.from(body.dataMap['customer'] as Map);
+  }
+
   Future<String?> verifyManagerPin(String pin) async {
     try {
       final body = await _send(
