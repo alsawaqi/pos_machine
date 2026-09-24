@@ -457,6 +457,14 @@ void main() {
             }
             await tap(find.text('Held Orders').first, 'Held Orders');
             await tap(find.text('Continue Order').first, 'Continue Order');
+            await pumpUntilRealCondition(
+              tester,
+              () =>
+                  c.cart.isNotEmpty &&
+                  c.heldOrders.isEmpty &&
+                  find.text('Continue Order').evaluate().isEmpty,
+              reason: 'real held resume and overlay dismissal completed',
+            );
           } else {
             await tap(find.text('Table 1').first, 'Reopen Table 1');
           }
