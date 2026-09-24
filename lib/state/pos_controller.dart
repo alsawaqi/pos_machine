@@ -742,6 +742,9 @@ class PosController extends ChangeNotifier
   /// event without coupling controller state to a BuildContext.
   void Function()? onCompClearedAfterCartEdit;
 
+  /// A saved legacy reward cannot be honored without its original debit.
+  void Function(String message)? onDraftRedemptionCleared;
+
   /// Phase C2 — the server order uuid for the CURRENT cart, minted at hold
   /// time (and restored on resume) so hold → re-hold → completion → void all
   /// share one uuid. Null = this cart was never held.
@@ -1789,6 +1792,25 @@ class PosController extends ChangeNotifier
     );
   }
 
+  void _restoreDraftDiscount(OrderSessionDraft draft) {
+    discount = draft.hasUnbackedLoyaltyDiscount
+        ? const DiscountConfiguration()
+        : draft.discount;
+    loyaltyRedeemRuleId = draft.hasLoyaltyDebit
+        ? draft.loyaltyRedeemRuleId
+        : null;
+    loyaltyRedeemPoints = draft.hasLoyaltyDebit ? draft.loyaltyRedeemPoints : 0;
+    loyaltyRedeemStamps = draft.hasLoyaltyDebit ? draft.loyaltyRedeemStamps : 0;
+    if (draft.hasUnbackedLoyaltyDiscount) {
+      final message = _l10n.localeName.startsWith('ar')
+          ? 'تمت إزالة خصم الولاء المحفوظ لعدم توفر بيانات الاستبدال. يرجى استبدال المكافأة من جديد.'
+          : 'Saved loyalty discount removed because its redemption details are missing. Please redeem the reward again.';
+      lastPaymentMessage = message;
+      displayNote = message;
+      onDraftRedemptionCleared?.call(message);
+    }
+  }
+
   OrderSessionDraft createDraft({String serverOrderUuid = ''}) {
     final activeTable = activeDiningTableDefinition;
     final floor = activeTable == null
@@ -1806,6 +1828,9 @@ class PosController extends ChangeNotifier
       diningTableName: activeTable?.name ?? '',
       items: _cart.map((item) => CartItem.fromMap(item.toMap())).toList(),
       discount: discount,
+      loyaltyRedeemRuleId: loyaltyRedeemRuleId,
+      loyaltyRedeemPoints: loyaltyRedeemPoints,
+      loyaltyRedeemStamps: loyaltyRedeemStamps,
       splitCount: splitCount,
       note: displayNote,
       serverOrderUuid: serverOrderUuid,
@@ -2268,7 +2293,6 @@ class PosController extends ChangeNotifier
           ? null
           : session.draft!.serverOrderUuid;
       customerReferenceNumber = session.draft!.customerReferenceNumber;
-      discount = session.draft!.discount;
       splitCount = session.draft!.splitCount;
       _splitPayments.clear();
       _splitPlanAmounts = null;
@@ -2278,6 +2302,7 @@ class PosController extends ChangeNotifier
               definition.name,
               _floorLabel(definition.floorId),
             );
+      _restoreDraftDiscount(session.draft!);
     } else {
       if (!canReuseCurrentCart) {
         _dropCompForCartMutation();
@@ -2783,7 +2808,6 @@ class PosController extends ChangeNotifier
     selectedOrderType = record.draft.orderType;
     selectedCategory = record.draft.selectedCategory;
     customerReferenceNumber = record.draft.customerReferenceNumber;
-    discount = record.draft.discount;
     splitCount = record.draft.splitCount;
     _splitPayments.clear();
     _splitPlanAmounts = null;
@@ -2792,6 +2816,7 @@ class PosController extends ChangeNotifier
     selectedPaymentMethod = 'Cash';
     displayNote = record.draft.note;
     lastPaymentMessage = '';
+    _restoreDraftDiscount(record.draft);
     activeDiningTableId = record.draft.diningTableId.isEmpty
         ? null
         : record.draft.diningTableId;
@@ -4390,6 +4415,7 @@ class PosController extends ChangeNotifier
     _lastCardCharge = null;
     loyaltyRedeemRuleId = null;
     loyaltyRedeemPoints = 0;
+    loyaltyRedeemStamps = 0;
     appliedComp = null;
     // P-G7 — per-order delivery facts. The provider pick is ALSO cleared:
     // the next delivery order must go through the picker deliberately (an

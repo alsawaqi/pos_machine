@@ -341,7 +341,12 @@ void main() {
         await t.tap(button);
         await pumpUntilRealCondition(
           t,
-          () => c.notice == 'adjust_refused:$code',
+          () =>
+              c.notice == 'adjust_refused:$code' &&
+              find
+                  .text(dineInText(ar, 'adjust_refused:$code'))
+                  .evaluate()
+                  .isNotEmpty,
           reason: 'structured refusal rendered',
           timeout: const Duration(seconds: 20),
         );

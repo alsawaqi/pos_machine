@@ -164,6 +164,25 @@ class AckServer {
           dynamic value;
           if (o.path.endsWith('/detail')) {
             value = await dineInDetail(1);
+          } else if (o.path.endsWith('/customers/search')) {
+            value = {
+              'customers': [
+                {
+                  'id': 5,
+                  'name': 'Customer',
+                  'phone': '90000000',
+                  'loyalty': [
+                    {
+                      'rule_id': 11,
+                      'points': 200,
+                      'stamps': 0,
+                      'available_points': 200,
+                      'available_stamps': 0,
+                    },
+                  ],
+                },
+              ],
+            };
           } else if (o.path.endsWith('/customers/5')) {
             value = {
               'customer': {
@@ -409,19 +428,24 @@ Future<Database> realLocalDatabase() async {
 
 void main() => runPaymentRegression();
 
-void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
+void runPaymentRegression({
+  bool gps = false,
+  bool parkedWaste = false,
+  bool staleCounter = false,
+}) {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
   for (final mode in [
     'staff',
-    'counter-points',
-    'counter-stamps',
+    if (!staleCounter) 'counter-points',
+    if (!staleCounter) 'counter-stamps',
     if (!parkedWaste) 'shared',
+    if (!parkedWaste && !staleCounter) 'already-stuck',
     if (gps) 'unadjusted',
   ]) {
     final restart = mode == 'already-stuck';
     testWidgets(
-      'T12 real screen ${parkedWaste ? 'parked waste ' : ''}${gps ? 'GPS ' : ''}$mode payment journals canonical amount and retires own acknowledged copy',
+      'T12 real screen ${staleCounter ? 'stale counter ' : ''}${parkedWaste ? 'parked waste ' : ''}${gps ? 'GPS ' : ''}$mode payment ${staleCounter ? 'checks live debit suppression' : 'journals canonical amount and retires own acknowledged copy'}',
       (tester) async {
         Future<T?> drive<T>(Future<T> Function() action) async {
           var done = false;
@@ -484,7 +508,8 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           await tester.tap(target);
           await settle(6);
           final control = find.byKey(const ValueKey('table-adjust-discount'));
-          if (find.byType(Dialog).evaluate().isEmpty &&
+          if (!staleCounter &&
+              find.byType(Dialog).evaluate().isEmpty &&
               find.byType(BottomSheet).evaluate().isEmpty &&
               control.evaluate().isNotEmpty) {
             await pumpUntilRealCondition(
@@ -708,14 +733,62 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           await tester.pump(const Duration(milliseconds: 1));
           return;
         }
-        await drive(() async {
-          await storage.refreshRecoveryGuard();
-          expectSync(c.diningTableDefinitions, isNotEmpty);
-          await c.openDiningTable('1');
-          expectSync(c.activeDiningTableId, '1', reason: c.lastPaymentMessage);
+        if (staleCounter) {
+          // ignore: avoid_print
+          print('GUARD $mode quick cart start');
           c.addProduct(product);
           c.addProduct(product);
-        });
+          await tap(find.text('Process to Pay').first);
+          await tap(find.byTooltip('Search customer'));
+          await tester.enterText(
+            find.descendant(
+              of: find.byType(Dialog),
+              matching: find.byType(TextField),
+            ),
+            '90000000',
+          );
+          await tap(
+            find.descendant(
+              of: find.byType(Dialog),
+              matching: find.widgetWithText(FilledButton, 'Search'),
+            ),
+          );
+          await tap(find.text('Customer').last);
+          // ignore: avoid_print
+          print('GUARD $mode payment opened');
+          await tap(find.text('Add Discount').first);
+          await tap(find.text('Redeem loyalty points'));
+          await tap(find.widgetWithText(FilledButton, 'Redeem'));
+          expectSync(c.loyaltyRedeemRuleId, 11);
+          expectSync(c.loyaltyRedeemPoints, 100);
+          // ignore: avoid_print
+          print('GUARD $mode counter reward applied');
+          await tap(find.byIcon(Icons.arrow_back_rounded).first);
+          await tap(find.text('Dine In').first);
+          await tap(find.text('Table 1').first);
+          // ignore: avoid_print
+          print('GUARD $mode table cart reused');
+          expectSync(c.activeDiningTableId, '1');
+          expectSync(
+            c.loyaltyRedeemRuleId,
+            11,
+            reason: 'real quick-cart reward survives the UI table reuse',
+          );
+          expectSync(c.loyaltyRedeemPoints, 100);
+        } else {
+          await drive(() async {
+            await storage.refreshRecoveryGuard();
+            expectSync(c.diningTableDefinitions, isNotEmpty);
+            await c.openDiningTable('1');
+            expectSync(
+              c.activeDiningTableId,
+              '1',
+              reason: c.lastPaymentMessage,
+            );
+            c.addProduct(product);
+            c.addProduct(product);
+          });
+        }
         if (parkedWaste) {
           await pumpUntilRealCondition(
             tester,
@@ -773,23 +846,25 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
         // coordinator ACK. A bound pre-seeded fixture would hide the proof gate.
         expectSync(c.diningSessionFor('1')!.seatingUuid, isNull);
 
-        c.availableDiscounts = const [
-          MerchantDiscount(
-            id: 7,
-            name: 'Automatic',
-            scope: 'order',
-            amountType: 'percent',
-            percent: 5,
-            autoApply: true,
-          ),
-        ];
-        c.maybeAutoApplyOrderDiscount();
-        expectSync(
-          c.discount.isActive,
-          false,
-          reason: 'Live rounds already own automatic discounts',
-        );
-        c.availableDiscounts = [];
+        if (!staleCounter) {
+          c.availableDiscounts = const [
+            MerchantDiscount(
+              id: 7,
+              name: 'Automatic',
+              scope: 'order',
+              amountType: 'percent',
+              percent: 5,
+              autoApply: true,
+            ),
+          ];
+          c.maybeAutoApplyOrderDiscount();
+          expectSync(
+            c.discount.isActive,
+            false,
+            reason: 'Live rounds already own automatic discounts',
+          );
+          c.availableDiscounts = [];
+        }
         if (mode == 'shared') {
           boards.add(
             RemoteTableSnapshot(
@@ -820,121 +895,124 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           final control = find.byKey(const ValueKey('table-adjust-discount'));
           return control.evaluate().isNotEmpty &&
               tester.widget<TextButton>(control).onPressed != null;
-        }, reason: 'table detail and journal ready');
-        final redeem = find.byKey(const ValueKey('table-adjust-loyalty'));
-        expectSync(redeem, findsOneWidget);
-        await pumpUntilRealCondition(
-          tester,
-          () =>
-              redeem.evaluate().isNotEmpty &&
-              tester.widget<TextButton>(redeem).onPressed != null,
-          reason: 'loyalty table entry',
-        );
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('manager_biometric_registered', true);
-        Future<void> picker() async {
-          await tap(redeem);
+        }, reason: 'table detail, sent-line proof and journal ready');
+        if (!staleCounter && mode != 'unadjusted') {
+          final redeem = find.byKey(const ValueKey('table-adjust-loyalty'));
+          expectSync(redeem, findsOneWidget);
+          await pumpUntilRealCondition(
+            tester,
+            () =>
+                redeem.evaluate().isNotEmpty &&
+                tester.widget<TextButton>(redeem).onPressed != null,
+            reason: 'loyalty table entry',
+          );
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('manager_biometric_registered', true);
+          Future<void> picker() async {
+            await tap(redeem);
+            await pumpUntilRealCondition(
+              tester,
+              () => find
+                  .byKey(const ValueKey('table-loyalty-picker'))
+                  .evaluate()
+                  .isNotEmpty,
+              reason: 'whole block picker',
+            );
+            await tap(find.byKey(const ValueKey('table-loyalty-plus')));
+            expectSync(
+              find.text('Redeem 200 points for OMR 1.000'),
+              findsOneWidget,
+            );
+            expectSync(
+              tester
+                  .widget<IconButton>(
+                    find.byKey(const ValueKey('table-loyalty-plus')),
+                  )
+                  .onPressed,
+              isNull,
+            );
+            await tap(find.byKey(const ValueKey('table-loyalty-apply')));
+            await pumpUntilRealCondition(
+              tester,
+              () =>
+                  find.text(L10nEn().posManagerPinTitle).evaluate().isNotEmpty,
+              reason: 'fingerprint without staff id falls through to real PIN',
+            );
+          }
+
+          Future<void> pin() async {
+            for (final digit in ['1', '2', '3', '4']) {
+              await tap(
+                find
+                    .descendant(
+                      of: find.byType(Dialog),
+                      matching: find.text(digit),
+                    )
+                    .last,
+              );
+            }
+            await tap(find.text(L10nEn().posManagerPinVerify).last);
+          }
+
+          await picker();
+          await tap(find.text(L10nEn().commonCancel).last);
+          expectSync(server.adjustments, isEmpty);
+          final journalRows = await drive(
+            () async => (await SqliteDineInStore.open(
+              'inspection',
+            )).db.query('dine_in_requests'),
+          );
+          expectSync(journalRows, isEmpty);
+          await picker();
+          server.pinAccepted = false;
+          await pin();
+          expectSync(server.adjustments, isEmpty);
+          await tap(find.text(L10nEn().commonCancel).last);
+          server.pinAccepted = true;
+          await picker();
+          await pin();
+          await pumpUntilRealCondition(
+            tester,
+            () => server.reward == 1000,
+            reason: 'real adjustment applied',
+          );
+          expectSync(server.adjustments.single['adjustment'], {
+            'kind': 'loyalty',
+            'mode': 'redeem',
+            'rule_id': 11,
+            'blocks': 2,
+            'authorized_by': 'Verified Approver',
+            'approved_by_staff_id': 19,
+          });
+          expectSync(c.loyaltyRedeemRuleId, isNull);
           await pumpUntilRealCondition(
             tester,
             () => find
-                .byKey(const ValueKey('table-loyalty-picker'))
+                .byKey(const ValueKey('table-loyalty-line'))
                 .evaluate()
                 .isNotEmpty,
-            reason: 'whole block picker',
+            reason: 'server redemption displayed',
           );
-          await tap(find.byKey(const ValueKey('table-loyalty-plus')));
-          expectSync(
-            find.text('Redeem 200 points for OMR 1.000'),
-            findsOneWidget,
-          );
-          expectSync(
-            tester
-                .widget<IconButton>(
-                  find.byKey(const ValueKey('table-loyalty-plus')),
-                )
-                .onPressed,
-            isNull,
-          );
-          await tap(find.byKey(const ValueKey('table-loyalty-apply')));
+          await tap(redeem);
+          await tap(find.byKey(const ValueKey('table-loyalty-clear')));
           await pumpUntilRealCondition(
             tester,
-            () => find.text(L10nEn().posManagerPinTitle).evaluate().isNotEmpty,
-            reason: 'fingerprint without staff id falls through to real PIN',
+            () => server.reward == 0,
+            reason: 'clear acknowledged',
           );
+          expectSync(server.adjustments.last['adjustment'], {
+            'kind': 'loyalty',
+            'mode': 'clear',
+          });
+          await picker();
+          await pin();
+          await pumpUntilRealCondition(
+            tester,
+            () => server.adjustments.length == 3,
+            reason: 'new redemption saved',
+          );
+          expectSync(server.reward, 1000);
         }
-
-        Future<void> pin() async {
-          for (final digit in ['1', '2', '3', '4']) {
-            await tap(
-              find
-                  .descendant(
-                    of: find.byType(Dialog),
-                    matching: find.text(digit),
-                  )
-                  .last,
-            );
-          }
-          await tap(find.text(L10nEn().posManagerPinVerify).last);
-        }
-
-        await picker();
-        await tap(find.text(L10nEn().commonCancel).last);
-        expectSync(server.adjustments, isEmpty);
-        final journalRows = await drive(
-          () async => (await SqliteDineInStore.open(
-            'inspection',
-          )).db.query('dine_in_requests'),
-        );
-        expectSync(journalRows, isEmpty);
-        await picker();
-        server.pinAccepted = false;
-        await pin();
-        expectSync(server.adjustments, isEmpty);
-        await tap(find.text(L10nEn().commonCancel).last);
-        server.pinAccepted = true;
-        await picker();
-        await pin();
-        await pumpUntilRealCondition(
-          tester,
-          () => server.reward == 1000,
-          reason: 'real adjustment applied',
-        );
-        expectSync(server.adjustments.single['adjustment'], {
-          'kind': 'loyalty',
-          'mode': 'redeem',
-          'rule_id': 11,
-          'blocks': 2,
-          'authorized_by': 'Verified Approver',
-          'approved_by_staff_id': 19,
-        });
-        expectSync(c.loyaltyRedeemRuleId, isNull);
-        await pumpUntilRealCondition(
-          tester,
-          () => find
-              .byKey(const ValueKey('table-loyalty-line'))
-              .evaluate()
-              .isNotEmpty,
-          reason: 'server redemption displayed',
-        );
-        await tap(redeem);
-        await tap(find.byKey(const ValueKey('table-loyalty-clear')));
-        await pumpUntilRealCondition(
-          tester,
-          () => server.reward == 0,
-          reason: 'clear acknowledged',
-        );
-        expectSync(server.adjustments.last['adjustment'], {
-          'kind': 'loyalty',
-          'mode': 'clear',
-        });
-        await picker();
-        await pin();
-        await pumpUntilRealCondition(
-          tester,
-          () => server.adjustments.length == 3,
-          reason: 'new redemption saved',
-        );
-        expectSync(server.reward, 1000);
         if (mode == 'shared') {
           final screen = tester.widget<DineInScreen>(find.byType(DineInScreen));
           unawaited(screen.onPay(server.uuid!));
@@ -953,7 +1031,7 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           );
           final checkout = boundary.controller;
           expectSync(checkout.ready, true, reason: checkout.notice);
-          expectSync(checkout.total, 4400);
+          expectSync(checkout.total, staleCounter ? 5400 : 4400);
           await drive(
             () => checkout.pay([CheckoutTender('cash', checkout.total)]),
           );
@@ -967,11 +1045,43 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
             CheckoutPhase.paid,
             reason: checkout.notice,
           );
+          if (staleCounter) {
+            final rows = await drive(
+              () async => (await SqliteCheckoutStore.open(
+                'inspection',
+              )).db.query('qr_checkout_attempts'),
+            );
+            expectSync(rows, hasLength(1));
+            expectSync(jsonEncode(rows), isNot(contains('loyalty_redeem')));
+            final driftRows = await drive(
+              () => driftDb.select(driftDb.orderOutbox).get(),
+            );
+            expectSync(
+              driftRows!.every(
+                (row) => !row.eventsJson.contains('loyalty_redeem'),
+              ),
+              true,
+            );
+            // ignore: avoid_print
+            print(
+              'F36 LIVE shared: checkout journal and drift rows contain no device redemption; pushed pay=${jsonEncode(server.events.where((e) => e['event_type'] == 'order.pay').toList())}',
+            );
+          }
+
           await tester.pump();
           expectSync(
             find.text('You earned 44 points · You earned 1 stamps'),
             findsOneWidget,
           );
+          if (staleCounter) {
+            expectSync(
+              server.events.where((e) => e['event_type'] == 'order.pay'),
+              hasLength(1),
+            );
+            await tester.pumpWidget(const SizedBox.shrink());
+            await tester.pump(const Duration(milliseconds: 1));
+            return;
+          }
           boards.add(
             RemoteTableSnapshot(
               tables: {
@@ -980,11 +1090,14 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
             ),
           );
           await tap(find.byKey(const ValueKey('qr-checkout-exit')));
-          await pumpUntilRealCondition(
-            tester,
-            () async => (await localDb.query('dining_tables')).isEmpty,
-            reason: 'closed copy archived',
-          );
+          await pumpUntilRealCondition(tester, () async {
+            final rows = await localDb.query('dining_tables');
+            if (find.byType(StaffPosScreen).evaluate().isEmpty) return false;
+            final dynamic current = tester.state(find.byType(StaffPosScreen));
+            return rows.isEmpty &&
+                (current.controller as PosController).diningSessionFor('1') ==
+                    null;
+          }, reason: 'closed copy archived');
           expectSync(
             await drive(() => localDb.query('dining_tables')),
             isEmpty,
@@ -1036,13 +1149,24 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
         var done = false;
         await drive(() async {
           unawaited(
-            c.payAndPrint(cashTenderedAmount: 20).then((_) => done = true),
+            c.payAndPrint(cashTenderedAmount: 20).then((message) {
+              // ignore: avoid_print
+              print(
+                'T12 PAYMENT $mode stale=$staleCounter message=$message status=${c.paymentStatus} events=${server.events.map((e) => e['event_type']).toList()}',
+              );
+              done = true;
+            }),
           );
         });
         await pumpUntilRealCondition(
           tester,
-          () => done,
-          reason: 'real payment completed',
+          () =>
+              done &&
+              find
+                  .text('You earned 44 points · You earned 1 stamps')
+                  .evaluate()
+                  .isNotEmpty,
+          reason: 'real payment and earned notice completed',
         );
         expectSync(done, true);
         expectSync(
@@ -1070,6 +1194,26 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
         );
         final payRow = await drive(() => outbox.rowForKey(server.uuid!));
         expectSync(payRow!.syncedAt, isNotNull);
+        if (staleCounter) {
+          final events = (jsonDecode(payRow.eventsJson) as List).cast<Map>();
+          final pay = events.singleWhere((e) => e['event_type'] == 'order.pay');
+          expectSync(
+            (pay['payload'] as Map).containsKey('loyalty_redeem'),
+            false,
+          );
+          expectSync(
+            server.events.where((e) => e['event_type'] == 'order.pay'),
+            hasLength(1),
+          );
+          // ignore: avoid_print
+          print(
+            'F36 LIVE staff: durable=${jsonEncode(pay)} pushed=${jsonEncode(server.events.where((e) => e['event_type'] == 'order.pay').toList())}',
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 1));
+          return;
+        }
+
         if (gps) {
           final payload =
               server.events.singleWhere(
@@ -1101,11 +1245,14 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
             },
           ),
         );
-        await pumpUntilRealCondition(
-          tester,
-          () async => (await localDb.query('dining_tables')).isEmpty,
-          reason: 'real I/O condition before assertions',
-        );
+        await pumpUntilRealCondition(tester, () async {
+          final rows = await localDb.query('dining_tables');
+          if (find.byType(StaffPosScreen).evaluate().isEmpty) return false;
+          final dynamic current = tester.state(find.byType(StaffPosScreen));
+          return rows.isEmpty &&
+              (current.controller as PosController).diningSessionFor('1') ==
+                  null;
+        }, reason: 'real I/O condition before assertions');
         expectSync(
           await drive(() => localDb.query('dining_tables')),
           isEmpty,

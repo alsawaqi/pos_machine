@@ -52,11 +52,59 @@ void main() {
         expect(pay, full.events[1]);
         expect(jsonEncode(pay), jsonEncode(full.events[1]));
         expect(pay['event_type'], 'order.pay');
+        expect((pay['payload'] as Map)['loyalty_redeem'], {
+          'rule_id': 3,
+          'points': 5,
+          'stamps': 0,
+        });
+        expect((full.events[1]['payload'] as Map)['loyalty_redeem'], {
+          'rule_id': 3,
+          'points': 5,
+          'stamps': 0,
+        });
         expect(jsonEncode([pay]), isNot(contains('order.create')));
         expect((pay['payload'] as Map)['gps'], {'lat': 23.0, 'lng': 58.0});
       });
     }
   }
+  test(
+    'live caller explicitly suppresses device redemption; default equals full',
+    () {
+      final snapshot = OrderSnapshot.initial().copyWith(
+        orderType: 'dine_in',
+        serverOrderUuid: 'bill',
+        total: 4,
+        loyaltyRedeemRuleId: 3,
+        loyaltyRedeemPoints: 5,
+      );
+      final full = buildOrderSyncPayload(snapshot, now: at, newUuid: _ids());
+      final normal = buildOrderPayEvent(snapshot, now: at, newUuid: _ids());
+      expect(normal, full.events[1]);
+      expect((normal['payload'] as Map)['loyalty_redeem'], {
+        'rule_id': 3,
+        'points': 5,
+        'stamps': 0,
+      });
+      final suppressed =
+          Function.apply(
+                buildOrderPayEvent,
+                [snapshot],
+                {
+                  #now: at,
+                  #newUuid: _ids(),
+                  #suppressDeviceLoyaltyRedeem: true,
+                },
+              )
+              as Map<String, dynamic>;
+      expect(
+        (suppressed['payload'] as Map).containsKey('loyalty_redeem'),
+        false,
+      );
+      final expected = jsonDecode(jsonEncode(normal)) as Map;
+      (expected['payload'] as Map).remove('loyalty_redeem');
+      expect(suppressed, expected);
+    },
+  );
   test(
     'split tenders retain rounding and each card evidence byte-for-byte',
     () {

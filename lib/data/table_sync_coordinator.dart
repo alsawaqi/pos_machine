@@ -488,6 +488,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
       final event = buildOrderPayEvent(
         snapshot,
         orderUuid: bill,
+        suppressDeviceLoyaltyRedeem: true,
         lat: payment.lat,
         lng: payment.lng,
         cardCharge: payment.cardCharge,

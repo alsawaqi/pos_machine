@@ -1491,6 +1491,23 @@ class OrderSessionDraft {
   final String diningTableName;
   final List<CartItem> items;
   final DiscountConfiguration discount;
+  final int? loyaltyRedeemRuleId;
+  final int loyaltyRedeemPoints;
+  final int loyaltyRedeemStamps;
+
+  bool get hasLoyaltyDebit =>
+      loyaltyRedeemRuleId != null &&
+      loyaltyRedeemRuleId! > 0 &&
+      (loyaltyRedeemPoints > 0 || loyaltyRedeemStamps > 0);
+
+  // Base-format drafts stored the reward as an anonymous fixed discount.
+  // Never reinterpret that discount as manual when its debit is missing.
+  bool get hasUnbackedLoyaltyDiscount =>
+      !hasLoyaltyDebit &&
+      discount.kind == DiscountKind.fixedAmount &&
+      discount.discountId == null &&
+      (discount.label == 'Loyalty redemption' ||
+          discount.label == 'Stamp reward');
   final int splitCount;
   final String note;
   // Phase C2 — the server order uuid minted at HOLD time, so the hold mirror
@@ -1511,6 +1528,9 @@ class OrderSessionDraft {
     this.diningTableName = '',
     required this.items,
     required this.discount,
+    this.loyaltyRedeemRuleId,
+    this.loyaltyRedeemPoints = 0,
+    this.loyaltyRedeemStamps = 0,
     required this.splitCount,
     this.note = '',
     this.serverOrderUuid = '',
@@ -1541,6 +1561,9 @@ class OrderSessionDraft {
           (map['discount'] as Map?) ?? const <String, dynamic>{},
         ),
       ),
+      loyaltyRedeemRuleId: (map['loyaltyRedeemRuleId'] as num?)?.toInt(),
+      loyaltyRedeemPoints: (map['loyaltyRedeemPoints'] as num?)?.toInt() ?? 0,
+      loyaltyRedeemStamps: (map['loyaltyRedeemStamps'] as num?)?.toInt() ?? 0,
       splitCount: (map['splitCount'] as num?)?.toInt() ?? 1,
       note: map['note']?.toString() ?? '',
       serverOrderUuid: map['serverOrderUuid']?.toString() ?? '',
@@ -1563,6 +1586,9 @@ class OrderSessionDraft {
     String? diningTableName,
     List<CartItem>? items,
     DiscountConfiguration? discount,
+    int? loyaltyRedeemRuleId,
+    int? loyaltyRedeemPoints,
+    int? loyaltyRedeemStamps,
     int? splitCount,
     String? note,
     String? serverOrderUuid,
@@ -1580,6 +1606,9 @@ class OrderSessionDraft {
       diningTableName: diningTableName ?? this.diningTableName,
       items: items ?? this.items,
       discount: discount ?? this.discount,
+      loyaltyRedeemRuleId: loyaltyRedeemRuleId ?? this.loyaltyRedeemRuleId,
+      loyaltyRedeemPoints: loyaltyRedeemPoints ?? this.loyaltyRedeemPoints,
+      loyaltyRedeemStamps: loyaltyRedeemStamps ?? this.loyaltyRedeemStamps,
       splitCount: splitCount ?? this.splitCount,
       note: note ?? this.note,
       serverOrderUuid: serverOrderUuid ?? this.serverOrderUuid,
@@ -1628,6 +1657,10 @@ class OrderSessionDraft {
       'diningTableName': diningTableName,
       'items': items.map((item) => item.toMap()).toList(),
       'discount': discount.toMap(),
+      if (loyaltyRedeemRuleId != null)
+        'loyaltyRedeemRuleId': loyaltyRedeemRuleId,
+      if (loyaltyRedeemPoints > 0) 'loyaltyRedeemPoints': loyaltyRedeemPoints,
+      if (loyaltyRedeemStamps > 0) 'loyaltyRedeemStamps': loyaltyRedeemStamps,
       'splitCount': splitCount,
       'note': note,
       if (serverOrderUuid.isNotEmpty) 'serverOrderUuid': serverOrderUuid,

@@ -1313,6 +1313,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.onOrderHeld = _handleOrderHeld;
     controller.onOrderVoided = _handleOrderVoided;
     controller.onCompClearedAfterCartEdit = _handleCompClearedAfterCartEdit;
+    controller.onDraftRedemptionCleared = (message) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+      });
+    };
     // P-F8 — merchant order numbering: the controller asks for the next
     // sequential number at payment time through this bridge.
     controller.allocateReceiptNumber = () =>

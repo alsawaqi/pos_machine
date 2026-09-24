@@ -607,8 +607,7 @@ Map<String, dynamic> _orderPayPayload(
   // Loyalty REDEEM: the points OR stamps spent (their value is already on the
   // order as the discount). The server decrements the balance (strict —
   // over-balance fails). spend_based sends points; visit_based sends stamps.
-  if (snapshot.orderType != 'dine_in' &&
-      snapshot.loyaltyRedeemRuleId != null &&
+  if (snapshot.loyaltyRedeemRuleId != null &&
       (snapshot.loyaltyRedeemPoints > 0 || snapshot.loyaltyRedeemStamps > 0)) {
     payEvent['loyalty_redeem'] = <String, dynamic>{
       'rule_id': snapshot.loyaltyRedeemRuleId,
@@ -634,6 +633,7 @@ Map<String, dynamic> buildOrderPayEvent(
   String Function()? newUuid,
   String? orderUuid,
   String? clientEventId,
+  bool suppressDeviceLoyaltyRedeem = false,
 }) {
   final gen = newUuid ?? uuidV4;
   final billUuid =
@@ -641,18 +641,22 @@ Map<String, dynamic> buildOrderPayEvent(
       (snapshot.serverOrderUuid.isNotEmpty ? snapshot.serverOrderUuid : gen());
   final ts = (now ?? DateTime.now()).toUtc().toIso8601String();
   if (clientEventId == null) gen(); // The legacy create-event UUID slot.
+  final payload = _orderPayPayload(
+    snapshot,
+    orderUuid: billUuid,
+    ts: ts,
+    gps: lat != null && lng != null ? {'lat': lat, 'lng': lng} : null,
+    cardCharge: cardCharge,
+    loyaltyRuleIds: loyaltyRuleIds,
+  );
+  // Only the live coordinator opts out: that bill's canonical adjustment row
+  // owns redemption. Local dine-in orders use the ordinary debit contract.
+  if (suppressDeviceLoyaltyRedeem) payload.remove('loyalty_redeem');
   return <String, dynamic>{
     'client_event_id': clientEventId ?? gen(),
     'event_type': 'order.pay',
     'client_timestamp': ts,
-    'payload': _orderPayPayload(
-      snapshot,
-      orderUuid: billUuid,
-      ts: ts,
-      gps: lat != null && lng != null ? {'lat': lat, 'lng': lng} : null,
-      cardCharge: cardCharge,
-      loyaltyRuleIds: loyaltyRuleIds,
-    ),
+    'payload': payload,
   };
 }
 
