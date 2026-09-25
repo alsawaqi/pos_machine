@@ -1002,6 +1002,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   bool _qrOrdersListOpen = false;
   CurrentOrderWorkspace? _transferredQrWorkspace;
   CurrentOrderWorkspace? _workspace;
+  Future<void>? _workspaceFloorReturn;
   Widget Function(CurrentOrderWorkspace)? _workspaceEditor;
 
   void _workspaceChanged() {
@@ -1046,6 +1047,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         controller.showCharityRoundUpPrompt) {
       return;
     }
+    _workspaceFloorReturn = null;
     late final CurrentOrderWorkspace workspace;
     workspace = CurrentOrderWorkspace(
       mainCart: quick || tableLabel != null,
@@ -1064,8 +1066,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         _applyAudienceGate();
         if (quick && workspace.returnToList) unawaited(_openQuickOrders());
         if (tableLabel != null && !workspace.returnToLocalCart) {
+          final floorReturn = controller.returnToDiningFloorPlan();
+          _workspaceFloorReturn = floorReturn;
           unawaited(
-            controller.returnToDiningFloorPlan().then((_) async {
+            floorReturn.then((_) async {
               await _retireClosedTableCopies(force: true);
             }),
           );
@@ -8396,6 +8400,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     workspace.returnToList = false;
     workspace.onExit();
     if (workspace.dineIn) {
+      // onExit owns the first save. Wait for it rather than treating an
+      // internal completion step as another cashier tap during that save.
+      final floorReturn = _workspaceFloorReturn;
+      if (floorReturn != null) await floorReturn;
       await controller.selectOrderType(OrderType.dineIn);
       await controller.returnToDiningFloorPlan();
     } else {
