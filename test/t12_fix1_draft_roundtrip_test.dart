@@ -47,6 +47,13 @@ void main() {
           taxes: const [],
         );
         c.addProduct(item);
+        c.attachCustomer(
+          const CustomerSearchResult(
+            id: 5,
+            name: 'Loyal Customer',
+            phone: '+968 9000 0001',
+          ),
+        );
         c.applyLoyaltyRedemption(
           ruleId: 11,
           valueOmr: 0.5,
@@ -82,6 +89,8 @@ void main() {
           'stamps': stamps ? 5 : 0,
         });
         expect(c.discountAmount, 0.5);
+        expect(c.selectedCustomer?.id, 5);
+        expect(c.selectedCustomer?.phone, '+968 9000 0001');
         // Receiving uses the existing server item-only contract, which does not
         // carry trustworthy redemption metadata: clear BOTH discount and debit.
         expect(
@@ -104,6 +113,68 @@ void main() {
       },
     );
   }
+
+  test(
+    'P2 draft without an attached customer removes debit with notice',
+    () async {
+      databaseFactory = databaseFactoryFfi;
+      final directory = await Directory.systemTemp.createTemp(
+        'p2-no-customer-',
+      );
+      await databaseFactory.setDatabasesPath(directory.path);
+      final db = await realLocalDatabase();
+      final storage = LocalOrderStorageService.forTesting(db);
+      await storage.refreshRecoveryGuard();
+      final c = PosController(orderStorage: storage);
+      final watch = Stopwatch()..start();
+      while (c.isLoadingStorage &&
+          watch.elapsed < const Duration(seconds: 20)) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(c.isLoadingStorage, false);
+      addTearDown(() async {
+        c.dispose();
+        await db.close();
+      });
+      c.printReceipts = false;
+      c.printKitchenTickets = false;
+      const item = Product(
+        id: '10',
+        name: 'Coffee',
+        category: 'Drinks',
+        price: 2,
+      );
+      c.applyCatalog(
+        categories: const ['Drinks'],
+        products: const [item],
+        floors: const [],
+        tables: const [],
+        taxes: const [],
+      );
+      c.addProduct(item);
+      c.applyLoyaltyRedemption(
+        ruleId: 11,
+        points: 100,
+        valueOmr: 0.5,
+        label: 'Loyalty redemption',
+      );
+      final draft = OrderSessionDraft.fromMap(c.createDraft().toMap());
+      await storage.saveHeldOrder(draft);
+      await c.refreshHeldOrders();
+      c.clearForNextOrder();
+      String? notice;
+      c.onDraftRedemptionCleared = (message) => notice = message;
+      await c.resumeHeldOrder(c.heldOrders.single);
+      expect(c.selectedCustomer, isNull);
+      expect(c.loyaltyRedeemRuleId, isNull);
+      expect(c.loyaltyRedeemPoints, 0);
+      expect(c.discountAmount, 0);
+      expect(
+        notice,
+        'Saved loyalty discount removed because its redemption details are missing. Please redeem the reward again.',
+      );
+    },
+  );
   test(
     'P2 legacy map has no invented debit and manual discounts stay manual',
     () {

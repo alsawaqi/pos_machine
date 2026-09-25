@@ -1535,6 +1535,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // a +country prefix the numeric field strips, so re-resolving by phone could
     // mismatch).
     final searchedCustomer = controller.selectedCustomer;
+    final earnedRuleIds = List<int>.from(controller.effectiveEarnRuleIds);
     // Soft POS evidence for a single (non-split) card payment — read now, before
     // the controller's next-order reset clears it (split tenders carry their own
     // evidence on the snapshot's SplitPaymentRecords).
@@ -1588,6 +1589,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     int? customerId;
     if (searchedCustomer != null) {
       customerId = searchedCustomer.id;
+      if (plate.isNotEmpty && searchedCustomer.phone.isNotEmpty) {
+        try {
+          // Register against the exact stored phone; never replace the attached id.
+          await ref
+              .read(apiServiceProvider)
+              .saveCustomer(
+                name: searchedCustomer.name,
+                phone: searchedCustomer.phone,
+                plateNumber: plate,
+              );
+        } catch (_) {
+          // Plate linkage remains best-effort; the sale still carries the plate.
+        }
+      }
     } else if (phone.isNotEmpty) {
       try {
         customerId = await ref
@@ -1609,7 +1624,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // nothing (no spend ⇒ no points; the server also guards this).
     final loyaltyRuleIds =
         customerId != null && snapshot.paymentMethod != 'Gift'
-        ? controller.effectiveEarnRuleIds
+        ? earnedRuleIds
         : const <int>[];
 
     try {
@@ -5762,9 +5777,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     setState(() {
       _showPaymentPage = false;
       _cashTenderInput = '';
-      _customerNumberController.clear();
     });
-    controller.setCustomerReferenceNumber('');
   }
 
   Future<void> _handleHoldOrder() async {
@@ -6514,13 +6527,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     setState(() {
       _customerNumberController.text = value;
     });
-    controller.setCustomerReferenceNumber(value);
 
     // Fetch-on-Enter (#3): look the number up (phone), attach the customer so
     // their loyalty loads, and surface the balances. Falls back to the offline
     // cache, then to keeping the value as a bare reference.
     final q = value.trim();
-    if (q.isEmpty) return;
+    if (q.isEmpty) {
+      controller.setCustomerReferenceNumber('');
+      return;
+    }
 
     List<CustomerSearchResult> matches;
     try {
@@ -6540,6 +6555,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     match ??= matches.isNotEmpty ? matches.first : null;
 
     if (match == null) {
+      controller.setCustomerReferenceNumber(value);
       _showPopupMessage(
         title: l10n.posCustomerNotFoundTitle,
         message: l10n.posCustomerNotFoundMessage(q),

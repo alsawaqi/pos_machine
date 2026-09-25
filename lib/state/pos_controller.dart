@@ -1400,6 +1400,12 @@ class PosController extends ChangeNotifier
     if (isLiveSharedTable?.call() == true) return;
     if (!_cartMutationAllowed()) return;
     if (_autoOrderDiscountSuppressed) return;
+    if (_hasLoyaltyRedemption) {
+      if (_loyaltyRedemptionConsistent) return;
+      discount = const DiscountConfiguration();
+      _clearLoyaltyRedemption();
+      _resetCharityRoundUp();
+    }
     if (discount.isActive || _cart.isEmpty) return;
     final now = clock();
     final input = machine_pricing.buildPricingInput(this, now);
@@ -1793,15 +1799,28 @@ class PosController extends ChangeNotifier
   }
 
   void _restoreDraftDiscount(OrderSessionDraft draft) {
-    discount = draft.hasUnbackedLoyaltyDiscount
-        ? const DiscountConfiguration()
-        : draft.discount;
+    selectedCustomer = draft.customer != null && draft.customer!.id > 0
+        ? draft.customer
+        : null;
+    selectedEarnRuleIds = selectedCustomer == null
+        ? null
+        : draft.earnRuleIds == null
+        ? null
+        : List<int>.from(draft.earnRuleIds!);
+    customerReferenceNumber = draft.customerReferenceNumber;
+    discount = draft.discount;
     loyaltyRedeemRuleId = draft.hasLoyaltyDebit
         ? draft.loyaltyRedeemRuleId
         : null;
     loyaltyRedeemPoints = draft.hasLoyaltyDebit ? draft.loyaltyRedeemPoints : 0;
     loyaltyRedeemStamps = draft.hasLoyaltyDebit ? draft.loyaltyRedeemStamps : 0;
-    if (draft.hasUnbackedLoyaltyDiscount) {
+    loyaltyRedeemCustomerId = draft.hasLoyaltyDebit
+        ? draft.loyaltyRedeemCustomerId
+        : null;
+    if (draft.hasUnbackedLoyaltyDiscount ||
+        (draft.hasLoyaltyDebit && !_loyaltyRedemptionConsistent)) {
+      discount = const DiscountConfiguration();
+      _clearLoyaltyRedemption();
       final message = _l10n.localeName.startsWith('ar')
           ? 'تمت إزالة خصم الولاء المحفوظ لعدم توفر بيانات الاستبدال. يرجى استبدال المكافأة من جديد.'
           : 'Saved loyalty discount removed because its redemption details are missing. Please redeem the reward again.';
@@ -1822,6 +1841,13 @@ class PosController extends ChangeNotifier
       orderType: selectedOrderType,
       selectedCategory: selectedCategory,
       customerReferenceNumber: customerReferenceNumber,
+      customer: selectedCustomer == null
+          ? null
+          : CustomerSearchResult.fromJson(selectedCustomer!.toJson()),
+      earnRuleIds: selectedEarnRuleIds == null
+          ? null
+          : List<int>.from(selectedEarnRuleIds!),
+      loyaltyRedeemCustomerId: loyaltyRedeemCustomerId,
       diningFloorId: activeTable?.floorId ?? '',
       diningFloorLabel: floor?.label ?? '',
       diningTableId: activeTable?.id ?? '',
@@ -1914,6 +1940,7 @@ class PosController extends ChangeNotifier
       loyaltyRedeemRuleId = null;
       loyaltyRedeemPoints = 0;
       loyaltyRedeemStamps = 0;
+      loyaltyRedeemCustomerId = null;
     }
     _applyDeliveryPricing();
     _broadcast();
@@ -1955,24 +1982,41 @@ class PosController extends ChangeNotifier
     _broadcast();
   }
 
+  void _customerChangingTo(int? id) {
+    if (selectedCustomer?.id == id) return;
+    selectedEarnRuleIds = null;
+    if (!_hasLoyaltyRedemption) return;
+    discount = const DiscountConfiguration();
+    _clearLoyaltyRedemption();
+    _resetCharityRoundUp();
+    final message = _l10n.localeName.startsWith('ar')
+        ? 'تمت إزالة استبدال نقاط الولاء لتغيّر العميل. أعد الاستبدال إذا لزم.'
+        : 'Loyalty redemption removed because the customer changed. Redeem again if needed.';
+    lastPaymentMessage = message;
+    displayNote = message;
+    onDraftRedemptionCleared?.call(message);
+  }
+
   void setCustomerReferenceNumber(String value) {
     if (!_cartMutationAllowed()) return;
-    customerReferenceNumber = value.replaceAll(RegExp(r'\D'), '').trim();
-    // Typing a raw number detaches any searched customer (they diverge).
-    selectedCustomer = null;
-    selectedEarnRuleIds = null; // P-F3 — the choice belonged to them
+    final reference = value.replaceAll(RegExp(r'\D'), '').trim();
+    final attachedReference = selectedCustomer?.phone
+        .replaceAll(RegExp(r'\D'), '')
+        .trim();
+    if (selectedCustomer == null ||
+        reference != attachedReference ||
+        reference.isEmpty) {
+      _customerChangingTo(null);
+      selectedCustomer = null;
+      selectedEarnRuleIds = null;
+    }
+    customerReferenceNumber = reference;
     _broadcast();
   }
 
-  /// Attach a customer chosen from live search. Their phone backfills the
-  /// reference display; the order will attach by id.
+  /// A same-id refresh keeps the order's redemption and earn choice.
   void attachCustomer(CustomerSearchResult customer) {
-    // P-F3 — an earn-program choice belongs to ONE customer: keep it on a
-    // same-customer re-attach (e.g. reopening their details), drop it when
-    // the customer actually changes.
-    if (selectedCustomer?.id != customer.id) {
-      selectedEarnRuleIds = null;
-    }
+    _customerChangingTo(customer.id);
     selectedCustomer = customer;
     customerReferenceNumber = customer.phone
         .replaceAll(RegExp(r'\D'), '')
@@ -2019,6 +2063,52 @@ class PosController extends ChangeNotifier
   @override
   int loyaltyRedeemStamps = 0;
 
+  int? loyaltyRedeemCustomerId;
+
+  bool get _hasLoyaltyRedemption =>
+      loyaltyRedeemRuleId != null ||
+      loyaltyRedeemPoints != 0 ||
+      loyaltyRedeemStamps != 0;
+
+  bool get _loyaltyRedemptionConsistent =>
+      selectedCustomer != null &&
+      selectedCustomer!.id > 0 &&
+      loyaltyRedeemCustomerId == selectedCustomer!.id &&
+      loyaltyRedeemRuleId != null &&
+      loyaltyRedeemRuleId! > 0 &&
+      ((loyaltyRedeemPoints > 0 &&
+              loyaltyRedeemStamps == 0 &&
+              discount.label == 'Loyalty redemption') ||
+          (loyaltyRedeemStamps > 0 &&
+              loyaltyRedeemPoints == 0 &&
+              discount.label == 'Stamp reward')) &&
+      discount.kind == DiscountKind.fixedAmount &&
+      discount.discountId == null &&
+      discount.value > 0;
+
+  void _clearLoyaltyRedemption() {
+    loyaltyRedeemRuleId = null;
+    loyaltyRedeemPoints = 0;
+    loyaltyRedeemStamps = 0;
+    loyaltyRedeemCustomerId = null;
+  }
+
+  String? _guardLoyaltyTender() {
+    // Canonical live-table redemptions are owned by the server, not this slot.
+    if (isLiveSharedTable?.call() == true ||
+        !_hasLoyaltyRedemption ||
+        _loyaltyRedemptionConsistent) {
+      return null;
+    }
+    final message = _l10n.localeName.startsWith('ar')
+        ? 'أعد إرفاق العميل أو أزل استبدال نقاط الولاء قبل الدفع'
+        : 'Attach the customer again or remove the loyalty redemption before paying';
+    lastPaymentMessage = message;
+    displayNote = message;
+    _notifySafely();
+    return message;
+  }
+
   void applyDiscount(DiscountConfiguration configuration) {
     if (!_cartMutationAllowed()) return;
     // P-G7 — delivery-provider orders take no discounts.
@@ -2029,6 +2119,7 @@ class PosController extends ChangeNotifier
     loyaltyRedeemRuleId = null;
     loyaltyRedeemPoints = 0;
     loyaltyRedeemStamps = 0;
+    loyaltyRedeemCustomerId = null;
     _resetCharityRoundUp();
     _broadcast();
   }
@@ -2051,6 +2142,7 @@ class PosController extends ChangeNotifier
       value: valueOmr,
       label: label,
     );
+    loyaltyRedeemCustomerId = selectedCustomer?.id;
     loyaltyRedeemRuleId = ruleId;
     loyaltyRedeemPoints = points;
     loyaltyRedeemStamps = stamps;
@@ -2064,6 +2156,7 @@ class PosController extends ChangeNotifier
     loyaltyRedeemRuleId = null;
     loyaltyRedeemPoints = 0;
     loyaltyRedeemStamps = 0;
+    loyaltyRedeemCustomerId = null;
     // P-F4 — an explicit clear means "no discount on THIS order": stop the
     // auto order-scope rule from re-applying itself.
     _autoOrderDiscountSuppressed = true;
@@ -2309,6 +2402,9 @@ class PosController extends ChangeNotifier
         _cart.clear();
         selectedCategory = categories.first;
         customerReferenceNumber = '';
+        selectedCustomer = null;
+        selectedEarnRuleIds = null;
+        _clearLoyaltyRedemption();
         discount = const DiscountConfiguration();
         splitCount = 1;
         _splitPayments.clear();
@@ -3060,6 +3156,8 @@ class PosController extends ChangeNotifier
     String customerPhone = '',
     String driverPhone = '',
   }) async {
+    final loyaltyRefusal = _guardLoyaltyTender();
+    if (loyaltyRefusal != null) return loyaltyRefusal;
     if (_cart.isEmpty || isProcessingPayment) return null;
     if (selectedOrderType != OrderType.delivery ||
         selectedDeliveryProviderId == null) {
@@ -3119,6 +3217,8 @@ class PosController extends ChangeNotifier
   }
 
   Future<String?> payAndPrint({double? cashTenderedAmount}) async {
+    final loyaltyRefusal = _guardLoyaltyTender();
+    if (loyaltyRefusal != null) return loyaltyRefusal;
     if (_cart.isEmpty || isProcessingPayment) return null;
 
     final transactionMethod = selectedPaymentMethod;
@@ -3375,6 +3475,8 @@ class PosController extends ChangeNotifier
   }
 
   Future<String?> payMixedCashAndCard({required double cashAmount}) async {
+    final loyaltyRefusal = _guardLoyaltyTender();
+    if (loyaltyRefusal != null) return loyaltyRefusal;
     if (_cart.isEmpty || isProcessingPayment) return null;
 
     if (splitCount > 1 || hasRecordedSplitPayments) {
@@ -4416,6 +4518,7 @@ class PosController extends ChangeNotifier
     loyaltyRedeemRuleId = null;
     loyaltyRedeemPoints = 0;
     loyaltyRedeemStamps = 0;
+    loyaltyRedeemCustomerId = null;
     appliedComp = null;
     // P-G7 — per-order delivery facts. The provider pick is ALSO cleared:
     // the next delivery order must go through the picker deliberately (an

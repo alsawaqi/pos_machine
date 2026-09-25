@@ -573,6 +573,9 @@ void main() {
           events.where((e) => e['event_type'] == 'order.pay'),
           hasLength(1),
         );
+        if (scenario == 'hold' || scenario == 'reopen') {
+          expect(order['customer_id'], 5);
+        }
         expect(pay['loyalty_redeem'], expected);
         expect(order['discount_total_baisas'], legacy ? 0 : 500);
         final pushed = server.events

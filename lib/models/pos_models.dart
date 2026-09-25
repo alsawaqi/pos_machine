@@ -1234,6 +1234,27 @@ class CustomerSearchResult {
             .toList(),
       );
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'phone': phone,
+    'wallet_balance_baisas': (walletBalance * 1000).round(),
+    'plates': List<String>.from(plates),
+    'loyalty': loyalty
+        .map(
+          (b) => {
+            'rule_id': b.ruleId,
+            'points': b.points,
+            'stamps': b.stamps,
+            if (b.availablePoints != null)
+              'available_points': b.availablePoints,
+            if (b.availableStamps != null)
+              'available_stamps': b.availableStamps,
+          },
+        )
+        .toList(),
+  };
+
   int availablePointsForRule(int ruleId) => loyalty
       .where((b) => b.ruleId == ruleId)
       .fold(0, (s, b) => s + (b.availablePoints ?? b.points));
@@ -1485,6 +1506,9 @@ class OrderSessionDraft {
   final OrderType orderType;
   final String selectedCategory;
   final String customerReferenceNumber;
+  final CustomerSearchResult? customer;
+  final List<int>? earnRuleIds;
+  final int? loyaltyRedeemCustomerId;
   final String diningFloorId;
   final String diningFloorLabel;
   final String diningTableId;
@@ -1522,6 +1546,9 @@ class OrderSessionDraft {
     required this.orderType,
     required this.selectedCategory,
     required this.customerReferenceNumber,
+    this.customer,
+    this.earnRuleIds,
+    this.loyaltyRedeemCustomerId,
     this.diningFloorId = '',
     this.diningFloorLabel = '',
     this.diningTableId = '',
@@ -1547,6 +1574,17 @@ class OrderSessionDraft {
       orderType: OrderTypeLabel.fromStorage(map['orderType']?.toString()),
       selectedCategory: map['selectedCategory']?.toString() ?? 'Coffee',
       customerReferenceNumber: map['customerReferenceNumber']?.toString() ?? '',
+      customer: map['customer'] is Map
+          ? CustomerSearchResult.fromJson(
+              Map<String, dynamic>.from(map['customer'] as Map),
+            )
+          : null,
+      earnRuleIds: (map['earnRuleIds'] as List?)
+          ?.cast<num>()
+          .map((n) => n.toInt())
+          .toList(),
+      loyaltyRedeemCustomerId: (map['loyaltyRedeemCustomerId'] as num?)
+          ?.toInt(),
       diningFloorId: map['diningFloorId']?.toString() ?? '',
       diningFloorLabel: map['diningFloorLabel']?.toString() ?? '',
       diningTableId: map['diningTableId']?.toString() ?? '',
@@ -1580,6 +1618,9 @@ class OrderSessionDraft {
     OrderType? orderType,
     String? selectedCategory,
     String? customerReferenceNumber,
+    CustomerSearchResult? customer,
+    List<int>? earnRuleIds,
+    int? loyaltyRedeemCustomerId,
     String? diningFloorId,
     String? diningFloorLabel,
     String? diningTableId,
@@ -1600,6 +1641,10 @@ class OrderSessionDraft {
       selectedCategory: selectedCategory ?? this.selectedCategory,
       customerReferenceNumber:
           customerReferenceNumber ?? this.customerReferenceNumber,
+      customer: customer ?? this.customer,
+      earnRuleIds: earnRuleIds ?? this.earnRuleIds,
+      loyaltyRedeemCustomerId:
+          loyaltyRedeemCustomerId ?? this.loyaltyRedeemCustomerId,
       diningFloorId: diningFloorId ?? this.diningFloorId,
       diningFloorLabel: diningFloorLabel ?? this.diningFloorLabel,
       diningTableId: diningTableId ?? this.diningTableId,
@@ -1651,6 +1696,10 @@ class OrderSessionDraft {
       'orderType': orderType.storageValue,
       'selectedCategory': selectedCategory,
       'customerReferenceNumber': customerReferenceNumber,
+      if (customer != null) 'customer': customer!.toJson(),
+      if (earnRuleIds != null) 'earnRuleIds': List<int>.from(earnRuleIds!),
+      if (loyaltyRedeemCustomerId != null)
+        'loyaltyRedeemCustomerId': loyaltyRedeemCustomerId,
       'diningFloorId': diningFloorId,
       'diningFloorLabel': diningFloorLabel,
       'diningTableId': diningTableId,
