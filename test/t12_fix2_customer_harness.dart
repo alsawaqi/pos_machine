@@ -40,7 +40,7 @@ class CustomerServer {
     6: {
       'id': 6,
       'name': 'Customer B',
-      'phone': '+968 9000 0002',
+      'phone': '+96890000002',
       'plates': ['B123'],
     },
     7: {'id': 7, 'name': 'No account', 'phone': '+968 9000 0003', 'plates': []},
@@ -83,7 +83,14 @@ class CustomerServer {
     if (kind == 'order.create') {
       final order = Map<String, dynamic>.from(payload['order'] as Map);
       uuid = order['uuid'] as String;
-      if (order['customer_id'] != null &&
+      final calculated =
+          (order['subtotal_baisas'] as num? ?? 0) -
+          (order['discount_total_baisas'] as num? ?? 0) -
+          (order['comp_total_baisas'] as num? ?? 0) +
+          (order['tax_total_baisas'] as num? ?? 0);
+      if ((calculated - (order['grand_total_baisas'] as num? ?? 0)).abs() > 1) {
+        error = 'order money invariant failed';
+      } else if (order['customer_id'] != null &&
           !customers.containsKey(order['customer_id'])) {
         error = 'order references a customer outside the device tenant';
       } else {
@@ -144,20 +151,31 @@ class CustomerServer {
             final q =
                 (o.queryParameters['q'] ?? o.queryParameters['query'] ?? '')
                     .toString()
-                    .toLowerCase();
+                    .trim();
+            final hits =
+                customers.values
+                    .where(
+                      (c) =>
+                          c['name'].toString().toLowerCase().contains(
+                            q.toLowerCase(),
+                          ) ||
+                          c['phone'].toString().toLowerCase().contains(
+                            q.toLowerCase(),
+                          ) ||
+                          (c['plates'] as List).any(
+                            (p) => p.toString().toUpperCase().contains(
+                              q.toUpperCase(),
+                            ),
+                          ),
+                    )
+                    .toList()
+                  ..sort(
+                    (a, b) =>
+                        a['name'].toString().compareTo(b['name'].toString()),
+                  );
             value = {
               'customers': [
-                for (final c in customers.values)
-                  if (c['name'].toString().toLowerCase().contains(q) ||
-                      c['phone']
-                              .toString()
-                              .replaceAll(RegExp(r'\D'), '')
-                              .contains(q.replaceAll(RegExp(r'\D'), '')) &&
-                          RegExp(r'\d').hasMatch(q) ||
-                      (c['plates'] as List).any(
-                        (p) => p.toString().toLowerCase().contains(q),
-                      ))
-                    profile(c['id'] as int),
+                for (final c in hits.take(25)) profile(c['id'] as int),
               ],
             };
           } else if (o.method == 'POST' &&
@@ -180,7 +198,10 @@ class CustomerServer {
               },
             );
             if (data['plate_number'] != null) {
-              (customers[id]!['plates'] as List).add(data['plate_number']);
+              final plates = customers[id]!['plates'] as List;
+              if (!plates.contains(data['plate_number'])) {
+                plates.add(data['plate_number']);
+              }
             }
             value = {'customer': profile(id)};
           } else if (RegExp(r'/device/customers/\d+$').hasMatch(o.path)) {
@@ -258,6 +279,22 @@ class CustomerRig {
   final boards = StreamController<RemoteTableSnapshot>.broadcast();
   int cardCalls = 0, printerCalls = 0, gpsCalls = 0;
   int measuredGpsMillis = 0;
+  bool get tableBusy {
+    try {
+      return (c as dynamic).tableTransitionInProgress as bool;
+    } on NoSuchMethodError {
+      return false;
+    }
+  }
+
+  bool get lookupBusy {
+    try {
+      return (c as dynamic).customerLookupPending as bool;
+    } on NoSuchMethodError {
+      return false;
+    }
+  }
+
   L10n get l => L10n.of(tester.element(find.byType(StaffPosScreen)));
   Future<T?> drive<T>(Future<T> Function() action) async {
     bool done = false;
@@ -425,6 +462,8 @@ class CustomerRig {
     await mount();
   }
 
+  bool get connectivityOnline => false;
+
   Future<void> mount() async {
     final harness = await pumpWorkspaceMachine(
       tester,
@@ -432,6 +471,7 @@ class CustomerRig {
       toggle: false,
       arabic: arabic,
       realServices: true,
+      connectivityOnline: connectivityOnline,
       realTableHealth: true,
       wrapStaff: (child) => MediaQuery(
         data: const MediaQueryData(textScaler: TextScaler.linear(0.8)),
@@ -548,7 +588,7 @@ class CustomerRig {
         of: find.byType(Dialog),
         matching: find.byType(TextField),
       ),
-      (server.customers[id]!['phone'] as String).replaceAll(RegExp(r'\D'), ''),
+      server.customers[id]!['name'] as String,
     );
     await tap(
       find.descendant(
@@ -556,7 +596,9 @@ class CustomerRig {
         matching: find.widgetWithText(FilledButton, l.posCustomerSearchButton),
       ),
     );
-    await tap(find.text(server.customers[id]!['name'] as String));
+    await tap(
+      find.widgetWithText(ListTile, server.customers[id]!['name'] as String),
+    );
     await chooseEarn();
     expect(c.selectedCustomer?.id, id);
   }
@@ -677,6 +719,8 @@ class CustomerRig {
       'case': name,
       'customer_id': order['customer_id'],
       'loyalty_redeem': pay['loyalty_redeem'],
+      'subtotal_baisas': order['subtotal_baisas'],
+      'grand_total_baisas': order['grand_total_baisas'],
       'discount_baisas': order['discount_total_baisas'],
       'loyalty_rule_ids': pay['loyalty_rule_ids'] ?? [],
       'pay_count': delivery ? 0 : pays.length,
@@ -690,6 +734,8 @@ class CustomerRig {
     };
     // ignore: avoid_print
     print('FIX2_MONEY ${jsonEncode(measurements)}');
+    expect(order['subtotal_baisas'], 2700);
+    expect(order['grand_total_baisas'], redeem ? 2200 : 2700);
     expect(order['customer_id'], customer);
     expect(pay['loyalty_redeem'], expectedRedeem);
     expect(order['discount_total_baisas'], redeem ? 500 : 0);

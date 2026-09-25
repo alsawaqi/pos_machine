@@ -1506,6 +1506,7 @@ class OrderSessionDraft {
   final OrderType orderType;
   final String selectedCategory;
   final String customerReferenceNumber;
+  final String vehiclePlateNumber;
   final CustomerSearchResult? customer;
   final List<int>? earnRuleIds;
   final int? loyaltyRedeemCustomerId;
@@ -1547,6 +1548,7 @@ class OrderSessionDraft {
     required this.selectedCategory,
     required this.customerReferenceNumber,
     this.customer,
+    this.vehiclePlateNumber = '',
     this.earnRuleIds,
     this.loyaltyRedeemCustomerId,
     this.diningFloorId = '',
@@ -1574,6 +1576,7 @@ class OrderSessionDraft {
       orderType: OrderTypeLabel.fromStorage(map['orderType']?.toString()),
       selectedCategory: map['selectedCategory']?.toString() ?? 'Coffee',
       customerReferenceNumber: map['customerReferenceNumber']?.toString() ?? '',
+      vehiclePlateNumber: map['vehiclePlateNumber']?.toString() ?? '',
       customer: map['customer'] is Map
           ? CustomerSearchResult.fromJson(
               Map<String, dynamic>.from(map['customer'] as Map),
@@ -1618,6 +1621,7 @@ class OrderSessionDraft {
     OrderType? orderType,
     String? selectedCategory,
     String? customerReferenceNumber,
+    String? vehiclePlateNumber,
     CustomerSearchResult? customer,
     List<int>? earnRuleIds,
     int? loyaltyRedeemCustomerId,
@@ -1641,6 +1645,7 @@ class OrderSessionDraft {
       selectedCategory: selectedCategory ?? this.selectedCategory,
       customerReferenceNumber:
           customerReferenceNumber ?? this.customerReferenceNumber,
+      vehiclePlateNumber: vehiclePlateNumber ?? this.vehiclePlateNumber,
       customer: customer ?? this.customer,
       earnRuleIds: earnRuleIds ?? this.earnRuleIds,
       loyaltyRedeemCustomerId:
@@ -1696,6 +1701,8 @@ class OrderSessionDraft {
       'orderType': orderType.storageValue,
       'selectedCategory': selectedCategory,
       'customerReferenceNumber': customerReferenceNumber,
+      if (vehiclePlateNumber.isNotEmpty)
+        'vehiclePlateNumber': vehiclePlateNumber,
       if (customer != null) 'customer': customer!.toJson(),
       if (earnRuleIds != null) 'earnRuleIds': List<int>.from(earnRuleIds!),
       if (loyaltyRedeemCustomerId != null)

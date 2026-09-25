@@ -61,12 +61,14 @@ void main() {
           await r.start();
           await r.add();
           await r.payPage();
-          r.c.applyLoyaltyRedemption(
-            ruleId: 11,
-            points: 100,
-            valueOmr: 0.5,
+          r.c.loyaltyRedeemRuleId = 11;
+          r.c.loyaltyRedeemPoints = 100;
+          r.c.discount = const DiscountConfiguration(
+            kind: DiscountKind.fixedAmount,
+            value: 0.5,
             label: 'Loyalty redemption',
           );
+          r.c.setVehiclePlateNumber(r.c.vehiclePlateNumber);
           r.c.orderNumbering = const OrderNumberingConfig(enabled: true);
           r.c.printReceipts = true;
           r.c.printKitchenTickets = true;
@@ -126,12 +128,16 @@ void main() {
   ]) {
     testWidgets('T12 fix2 c identity $mode', (tester) async {
       final r = CustomerRig(tester);
+      if (mode == 'same-enter') {
+        r.server.customers[5]!['phone'] = '+96890000001';
+      }
       await r.start();
       await r.add();
       await r.payPage();
       await r.attach();
       await r.redeem();
       final same = mode.startsWith('same');
+      Iterable<Element>? changeNotice;
       if (mode == 'search') {
         await r.attach(6);
       } else if (mode == 'plate') {
@@ -177,6 +183,8 @@ void main() {
         );
         if (!same) await r.chooseEarn();
         if (mode == 'details') {
+          expect(find.text(changedEn), findsOneWidget);
+          changeNotice = find.text(changedEn).evaluate().toList();
           await r.closeNotice();
           await r.tap(find.byKey(const ValueKey('payment-customer-details')));
           await r.tap(
@@ -187,7 +195,15 @@ void main() {
           );
         }
       }
-      expect(find.text(changedEn), same ? findsNothing : findsOneWidget);
+      if (mode == 'same-enter') {
+        expect(r.c.selectedCustomer?.id, 5);
+        expect(r.c.selectedEarnRuleIds, [11]);
+        expect(find.byType(CheckboxListTile), findsNothing);
+      }
+      expect(
+        changeNotice ?? find.text(changedEn).evaluate(),
+        same ? isEmpty : hasLength(1),
+      );
       await r.closeNotice();
       await r.cash();
       await r.checkMoney(
@@ -208,6 +224,12 @@ void main() {
         if (table) {
           await r.tap(find.text('Dine In').first);
           await r.tap(find.text('Table 1').first);
+          await pumpUntilRealCondition(
+            tester,
+            () =>
+                r.c.activeDiningTableId == '1' && !r.tableBusy && !r.lookupBusy,
+            reason: 'table 1 open finished',
+          );
         }
         await r.add();
         await r.payPage();
@@ -218,6 +240,11 @@ void main() {
           await r.tap(find.text('Back To Floor').first);
           await pumpUntilRealCondition(
             tester,
+            () => r.c.activeDiningTableId == null && !r.tableBusy,
+            reason: 'table flush finished',
+          );
+          await pumpUntilRealCondition(
+            tester,
             () => r.c.activeDiningTableId == null,
             reason: 'table draft saved',
           );
@@ -225,9 +252,25 @@ void main() {
             await r.tap(find.byTooltip(r.l.posDiningTableActionsTooltip));
             await r.tap(find.text(r.l.posDiningActionMove));
             await r.tap(find.text('Table 2 · Main'));
+            await pumpUntilRealCondition(
+              tester,
+              () =>
+                  r.c.diningSessionFor('1') == null &&
+                  r.c.diningSessionFor('2')?.status ==
+                      DiningTableStatus.occupied,
+              reason: 'move persisted and source cleared',
+            );
             await r.closeNotice();
           }
           await r.tap(find.text(route == 'move' ? 'Table 2' : 'Table 1').first);
+          await pumpUntilRealCondition(
+            tester,
+            () =>
+                r.c.activeDiningTableId == (route == 'move' ? '2' : '1') &&
+                !r.tableBusy &&
+                !r.lookupBusy,
+            reason: 'table opened and customer refresh finished',
+          );
         } else {
           await r.tap(find.text('Hold').first);
           await pumpUntilRealCondition(
@@ -245,6 +288,11 @@ void main() {
           );
           await r.closeNotice();
         }
+        await pumpUntilRealCondition(
+          tester,
+          () => !r.lookupBusy,
+          reason: 'restore customer refresh finished',
+        );
         expect(r.c.selectedCustomer?.id, 5);
         expect(r.c.selectedCustomer?.name, 'Customer A');
         expect(r.c.selectedCustomer?.phone, '+968 9000 0001');
@@ -277,6 +325,11 @@ void main() {
       if (table) {
         await r.tap(find.text('Dine In').first);
         await r.tap(find.text('Table 1').first);
+        await pumpUntilRealCondition(
+          tester,
+          () => r.c.activeDiningTableId == '1' && !r.tableBusy && !r.lookupBusy,
+          reason: 'table 1 open finished',
+        );
       }
       await r.add();
       await r.payPage();
@@ -285,7 +338,22 @@ void main() {
       await r.exit();
       if (table) {
         await r.tap(find.text('Back To Floor').first);
-        await r.tap(find.text('Quick Order').first);
+        await pumpUntilRealCondition(
+          tester,
+          () => r.c.activeDiningTableId == null && !r.tableBusy,
+          reason: 'table flush finished',
+        );
+        await pumpUntilRealCondition(
+          tester,
+          () => r.c.activeDiningTableId == null && !r.tableBusy,
+          reason: 'leave table finished',
+        );
+        await r.tap(find.byIcon(Icons.arrow_back_rounded).first);
+        await pumpUntilRealCondition(
+          tester,
+          () => r.c.selectedOrderType == OrderType.quickOrder && !r.tableBusy,
+          reason: 'floor plan back finished',
+        );
       } else {
         await r.tap(find.text('Hold').first);
         await pumpUntilRealCondition(
@@ -302,6 +370,11 @@ void main() {
       if (table) {
         await r.tap(find.text('Dine In').first);
         await r.tap(find.text('Table 1').first);
+        await pumpUntilRealCondition(
+          tester,
+          () => r.c.activeDiningTableId == '1' && !r.tableBusy && !r.lookupBusy,
+          reason: 'table 1 open finished',
+        );
       } else {
         await r.tap(find.text('Held Orders').first);
         await r.tap(find.text('Continue Order').first);
@@ -328,6 +401,14 @@ void main() {
           if (table) {
             await r.tap(find.text('Dine In').first);
             await r.tap(find.text('Table 1').first);
+            await pumpUntilRealCondition(
+              tester,
+              () =>
+                  r.c.activeDiningTableId == '1' &&
+                  !r.tableBusy &&
+                  !r.lookupBusy,
+              reason: 'table 1 open finished',
+            );
           }
           await r.add();
           await r.payPage();
@@ -336,6 +417,11 @@ void main() {
           await r.exit();
           if (table) {
             await r.tap(find.text('Back To Floor').first);
+            await pumpUntilRealCondition(
+              tester,
+              () => r.c.activeDiningTableId == null && !r.tableBusy,
+              reason: 'table flush finished',
+            );
           } else {
             await r.tap(find.text('Hold').first);
             await pumpUntilRealCondition(
@@ -368,6 +454,14 @@ void main() {
           }
           if (table) {
             await r.tap(find.text('Table 1').first);
+            await pumpUntilRealCondition(
+              tester,
+              () =>
+                  r.c.activeDiningTableId == '1' &&
+                  !r.tableBusy &&
+                  !r.lookupBusy,
+              reason: 'table 1 open finished',
+            );
           } else {
             await r.tap(find.text('Held Orders').first);
             await r.tap(find.text('Continue Order').first);
@@ -382,6 +476,11 @@ void main() {
           expect(r.c.loyaltyRedeemRuleId, isNull);
           expect(r.c.discountAmount, 0);
           expect(r.c.customerReferenceNumber, reference);
+          await pumpUntilRealCondition(
+            tester,
+            () => find.text(legacyNotice).evaluate().isNotEmpty,
+            reason: 'legacy notice built',
+          );
           expect(find.text(legacyNotice), findsOneWidget);
           expect(
             r.server.posts,
@@ -445,6 +544,11 @@ void main() {
         );
         await r.tap(find.text('Dine In').first);
         await r.tap(find.text('Table 1').first);
+        await pumpUntilRealCondition(
+          tester,
+          () => r.c.activeDiningTableId == '1' && !r.tableBusy && !r.lookupBusy,
+          reason: 'table 1 open finished',
+        );
       }
       await r.tap(find.byIcon(Icons.add_rounded).last);
       await r.payPage();

@@ -35,6 +35,12 @@ abstract class DiningTableSyncHooks {
   void onTablePaid(DiningTableSession paid, OrderSnapshot snapshot);
 }
 
+class CustomerActionTag {
+  const CustomerActionTag(this.generation, this.sequence);
+  final int generation;
+  final int sequence;
+}
+
 class PosController extends ChangeNotifier
     implements machine_pricing.MachinePricingState {
   static const Duration _rearDisplaySyncDebounceDuration = Duration(
@@ -70,11 +76,174 @@ class PosController extends ChangeNotifier
 
   String get activeDiningTableBillUuid => _activeServerOrderUuid ?? '';
 
+  int _orderGeneration = 0;
+  int _customerActionSequence = 0;
+  final Set<CustomerActionTag> _pendingCustomerLookups = {};
+  int _tableTransitionDepth = 0;
+  int get orderGeneration => _orderGeneration;
+  CustomerActionTag get customerActionTag =>
+      CustomerActionTag(_orderGeneration, _customerActionSequence);
+  bool get tableTransitionInProgress => _tableTransitionDepth > 0;
+  bool get customerLookupPending => _pendingCustomerLookups.any(
+    (tag) =>
+        tag.generation == _orderGeneration &&
+        tag.sequence == _customerActionSequence,
+  );
+  bool get customerTenderStarted =>
+      isProcessingPayment ||
+      showCharityRoundUpPrompt ||
+      showPaymentLaunchOverlay;
+  Future<({CustomerSearchResult? customer, bool deleted})> Function(int id)?
+  refreshRestoredCustomer;
+
+  String get customerLookupMessage => _l10n.localeName.startsWith('ar')
+      ? 'جارٍ البحث عن العميل — انتظر قليلاً ثم ادفع مرة أخرى'
+      : 'Customer lookup in progress — wait a moment, then pay again';
+  String get tableTransitionMessage => _l10n.localeName.startsWith('ar')
+      ? 'ما زال حفظ الطاولة جارياً — انتظر قليلاً ثم حاول مرة أخرى'
+      : 'The table is still being saved — wait a moment, then try again';
+  String get splitIdentityMessage => _l10n.localeName.startsWith('ar')
+      ? 'تم دفع جزء من هذه الفاتورة — لا يمكن تغيير العميل أو الخصم الآن'
+      : 'Part of this bill is already paid — the customer and discount can no longer change';
+  String get giftRedemptionMessage => _l10n.localeName.startsWith('ar')
+      ? 'أزل استبدال نقاط الولاء قبل إهداء الطلب'
+      : 'Remove the loyalty redemption before gifting the order';
+
+  void _identityNotice(String message) {
+    lastPaymentMessage = message;
+    displayNote = message;
+    onDraftRedemptionCleared?.call(message);
+    _notifySafely();
+  }
+
+  void _advanceOrderGeneration() {
+    _orderGeneration++;
+    _pendingCustomerLookups.clear();
+  }
+
+  CustomerActionTag? beginCustomerAction({bool lookup = false}) {
+    if (customerTenderStarted) return null;
+    if (!_cartMutationAllowed()) return null;
+    final tag = CustomerActionTag(_orderGeneration, ++_customerActionSequence);
+    _pendingCustomerLookups.clear();
+    if (lookup) _pendingCustomerLookups.add(tag);
+    _notifySafely();
+    return tag;
+  }
+
+  bool customerActionCurrent(CustomerActionTag tag) =>
+      !_isDisposed &&
+      tag.generation == _orderGeneration &&
+      tag.sequence == _customerActionSequence &&
+      !customerTenderStarted;
+
+  void markCustomerLookup(CustomerActionTag tag) {
+    if (customerActionCurrent(tag)) {
+      _pendingCustomerLookups.add(tag);
+      _notifySafely();
+    }
+  }
+
+  void endCustomerLookup(CustomerActionTag tag) {
+    _pendingCustomerLookups.remove(tag);
+    _notifySafely();
+  }
+
+  void cancelCustomerLookups() {
+    _customerActionSequence++;
+    _pendingCustomerLookups.clear();
+  }
+
+  bool _identityMutationAllowed({bool money = false}) {
+    if (customerTenderStarted) return false;
+    if (!_cartMutationAllowed()) return false;
+    if (hasRecordedSplitPayments) {
+      _identityNotice(splitIdentityMessage);
+      return false;
+    }
+    if (money && customerLookupPending) {
+      _identityNotice(customerLookupMessage);
+      return false;
+    }
+    return true;
+  }
+
+  bool allowLoyaltyDialog() => _identityMutationAllowed(money: true);
+
+  String? customerTenderRefusal({bool gift = false}) {
+    final message = gift && _hasLoyaltyRedemption
+        ? giftRedemptionMessage
+        : customerLookupPending
+        ? customerLookupMessage
+        : tableTransitionInProgress
+        ? tableTransitionMessage
+        : null;
+    if (message != null) _identityNotice(message);
+    return message;
+  }
+
+  Future<T> _duringTableTransition<T>(Future<T> Function() action) async {
+    _tableTransitionDepth++;
+    _advanceOrderGeneration();
+    _notifySafely();
+    try {
+      return await action();
+    } finally {
+      _tableTransitionDepth--;
+      _notifySafely();
+    }
+  }
+
+  void _refreshDraftCustomer() {
+    final id = selectedCustomer?.id;
+    final refresh = refreshRestoredCustomer;
+    if (id == null || refresh == null || isLiveSharedTable?.call() == true) {
+      return;
+    }
+    final tag = CustomerActionTag(_orderGeneration, ++_customerActionSequence);
+    _pendingCustomerLookups.add(tag);
+    unawaited(() async {
+      try {
+        final result = await refresh(id).timeout(const Duration(seconds: 3));
+        if (!customerActionCurrent(tag) || selectedCustomer?.id != id) return;
+        if (result.deleted) {
+          selectedCustomer = null;
+          selectedEarnRuleIds = null;
+          customerReferenceNumber = '';
+          vehiclePlateNumber = '';
+          if (_hasLoyaltyRedemption) discount = const DiscountConfiguration();
+          _clearLoyaltyRedemption();
+          _resetCharityRoundUp();
+          _identityNotice(
+            _l10n.localeName.startsWith('ar')
+                ? 'هذا العميل لم يعد موجوداً — تمت إزالة العميل وأي استبدال لنقاط الولاء'
+                : 'This customer no longer exists — the customer and any loyalty redemption were removed',
+          );
+          _broadcast();
+        } else if (result.customer?.id == id) {
+          selectedCustomer = result.customer;
+          customerReferenceNumber = result.customer!.phone
+              .replaceAll(RegExp(r'\D'), '')
+              .trim();
+          _broadcast();
+        }
+      } catch (_) {
+        // Offline, timeout or an unreadable response keeps the saved identity.
+      } finally {
+        endCustomerLookup(tag);
+      }
+    }());
+  }
+
   DraftRecoveryGuard? get _recoveryGuard => _orderStorage is DraftRecoveryGuard
       ? _orderStorage as DraftRecoveryGuard
       : null;
   bool get recoveryBlocked => _recoveryGuard?.recoveryBlocked.value ?? false;
-  bool _cartMutationAllowed() {
+  bool _cartMutationAllowed({bool insideTableTransition = false}) {
+    if (tableTransitionInProgress && !insideTableTransition) {
+      _identityNotice(tableTransitionMessage);
+      return false;
+    }
     if (!recoveryBlocked) return true;
     lastPaymentMessage = _l10n.localeName.startsWith('ar')
         ? 'أكمل استعادة مسودة الفاتورة المحفوظة في قسم داخل المطعم أولاً.'
@@ -137,8 +306,12 @@ class PosController extends ChangeNotifier
     }
   }
 
-  Future<bool> _combineMutationAllowed() async {
-    if (!_cartMutationAllowed()) return false;
+  Future<bool> _combineMutationAllowed({
+    bool insideTableTransition = false,
+  }) async {
+    if (!_cartMutationAllowed(insideTableTransition: insideTableTransition)) {
+      return false;
+    }
     try {
       await _orderStorage.assertNoPendingCombine();
       return await _draftAllowed(
@@ -625,10 +798,11 @@ class PosController extends ChangeNotifier
     return chosen.where(active.contains).toList();
   }
 
-  void setSelectedEarnRules(List<int> ruleIds) {
-    if (!_cartMutationAllowed()) return;
+  bool setSelectedEarnRules(List<int> ruleIds) {
+    if (!_identityMutationAllowed()) return false;
     selectedEarnRuleIds = List<int>.from(ruleIds);
     _broadcast();
+    return true;
   }
 
   int splitCount = 1;
@@ -806,6 +980,7 @@ class PosController extends ChangeNotifier
   }
 
   Future<void> init() async {
+    _advanceOrderGeneration();
     await _loadStoredOrders();
 
     if (_presentationEnabled) {
@@ -1397,6 +1572,11 @@ class PosController extends ChangeNotifier
   /// the payment page opens (time windows re-checked then). Rules that
   /// require manager approval never auto-apply — nobody approved them.
   void maybeAutoApplyOrderDiscount() {
+    if (customerTenderStarted ||
+        customerLookupPending ||
+        hasRecordedSplitPayments) {
+      return;
+    }
     if (isLiveSharedTable?.call() == true) return;
     if (!_cartMutationAllowed()) return;
     if (_autoOrderDiscountSuppressed) return;
@@ -1405,6 +1585,12 @@ class PosController extends ChangeNotifier
       discount = const DiscountConfiguration();
       _clearLoyaltyRedemption();
       _resetCharityRoundUp();
+      _identityNotice(
+        _l10n.localeName.startsWith('ar')
+            ? 'تمت إزالة خصم الولاء المحفوظ لعدم توفر بيانات الاستبدال. يرجى استبدال المكافأة من جديد.'
+            : 'Saved loyalty discount removed because its redemption details are missing. Please redeem the reward again.',
+      );
+      _broadcast();
     }
     if (discount.isActive || _cart.isEmpty) return;
     final now = clock();
@@ -1799,6 +1985,7 @@ class PosController extends ChangeNotifier
   }
 
   void _restoreDraftDiscount(OrderSessionDraft draft) {
+    vehiclePlateNumber = draft.vehiclePlateNumber;
     selectedCustomer = draft.customer != null && draft.customer!.id > 0
         ? draft.customer
         : null;
@@ -1808,6 +1995,7 @@ class PosController extends ChangeNotifier
         ? null
         : List<int>.from(draft.earnRuleIds!);
     customerReferenceNumber = draft.customerReferenceNumber;
+    _refreshDraftCustomer();
     discount = draft.discount;
     loyaltyRedeemRuleId = draft.hasLoyaltyDebit
         ? draft.loyaltyRedeemRuleId
@@ -1848,6 +2036,7 @@ class PosController extends ChangeNotifier
           ? null
           : List<int>.from(selectedEarnRuleIds!),
       loyaltyRedeemCustomerId: loyaltyRedeemCustomerId,
+      vehiclePlateNumber: vehiclePlateNumber,
       diningFloorId: activeTable?.floorId ?? '',
       diningFloorLabel: floor?.label ?? '',
       diningTableId: activeTable?.id ?? '',
@@ -1905,7 +2094,15 @@ class PosController extends ChangeNotifier
   }
 
   Future<void> selectOrderType(OrderType orderType) async {
-    if (!_cartMutationAllowed()) return;
+    if (tableTransitionInProgress) {
+      _identityNotice(tableTransitionMessage);
+      return;
+    }
+    return _duringTableTransition(() => _selectOrderType(orderType));
+  }
+
+  Future<void> _selectOrderType(OrderType orderType) async {
+    if (!_cartMutationAllowed(insideTableTransition: true)) return;
     if (selectedOrderType == orderType) {
       if (orderType == OrderType.dineIn && activeDiningTableId == null) {
         displayNote = _l10n.ctrlMsgChooseTableDineIn;
@@ -1915,7 +2112,7 @@ class PosController extends ChangeNotifier
     }
 
     if (selectedOrderType == OrderType.dineIn && activeDiningTableId != null) {
-      await returnToDiningFloorPlan();
+      await _duringTableTransition(_returnToDiningFloorPlan);
     }
 
     selectedOrderType = orderType;
@@ -1984,6 +2181,7 @@ class PosController extends ChangeNotifier
 
   void _customerChangingTo(int? id) {
     if (selectedCustomer?.id == id) return;
+    if (selectedCustomer != null) vehiclePlateNumber = '';
     selectedEarnRuleIds = null;
     if (!_hasLoyaltyRedemption) return;
     discount = const DiscountConfiguration();
@@ -1997,39 +2195,71 @@ class PosController extends ChangeNotifier
     onDraftRedemptionCleared?.call(message);
   }
 
-  void setCustomerReferenceNumber(String value) {
-    if (!_cartMutationAllowed()) return;
+  bool setCustomerReferenceNumber(String value) {
+    if (!_identityMutationAllowed()) return false;
     final reference = value.replaceAll(RegExp(r'\D'), '').trim();
     final attachedReference = selectedCustomer?.phone
         .replaceAll(RegExp(r'\D'), '')
         .trim();
-    if (selectedCustomer == null ||
-        reference != attachedReference ||
-        reference.isEmpty) {
+    if (selectedCustomer == null || reference != attachedReference) {
       _customerChangingTo(null);
       selectedCustomer = null;
       selectedEarnRuleIds = null;
     }
     customerReferenceNumber = reference;
     _broadcast();
+    return true;
+  }
+
+  /// An explicit search with no match is a raw reference, even when its digits
+  /// equal a differently formatted stored phone.
+  bool setUnmatchedCustomerReference(String value) {
+    if (!_identityMutationAllowed()) return false;
+    _customerChangingTo(null);
+    selectedCustomer = null;
+    selectedEarnRuleIds = null;
+    customerReferenceNumber = value.replaceAll(RegExp(r'\D'), '').trim();
+    _broadcast();
+    return true;
+  }
+
+  bool clearAttachedCustomer() {
+    if (!_identityMutationAllowed()) return false;
+    cancelCustomerLookups();
+    _customerChangingTo(null);
+    selectedCustomer = null;
+    selectedEarnRuleIds = null;
+    customerReferenceNumber = '';
+    vehiclePlateNumber = '';
+    _broadcast();
+    return true;
   }
 
   /// A same-id refresh keeps the order's redemption and earn choice.
-  void attachCustomer(CustomerSearchResult customer) {
+  bool attachCustomer(CustomerSearchResult customer) {
+    if (hasRecordedSplitPayments &&
+        !customerTenderStarted &&
+        selectedCustomer?.id == customer.id &&
+        !tableTransitionInProgress) {
+      return true;
+    }
+    if (!_identityMutationAllowed()) return false;
     _customerChangingTo(customer.id);
     selectedCustomer = customer;
     customerReferenceNumber = customer.phone
         .replaceAll(RegExp(r'\D'), '')
         .trim();
     _broadcast();
+    return true;
   }
 
-  void setVehiclePlateNumber(String value) {
-    if (!_cartMutationAllowed()) return;
+  bool setVehiclePlateNumber(String value) {
+    if (!_identityMutationAllowed()) return false;
     // Plates are alphanumeric; store the canonical uppercased form (the server
     // matches plates uppercased).
     vehiclePlateNumber = value.trim().toUpperCase();
     _broadcast();
+    return true;
   }
 
   /// Offline customer search over the cached slice (name/phone contains the
@@ -2109,10 +2339,10 @@ class PosController extends ChangeNotifier
     return message;
   }
 
-  void applyDiscount(DiscountConfiguration configuration) {
-    if (!_cartMutationAllowed()) return;
+  bool applyDiscount(DiscountConfiguration configuration) {
+    if (!_identityMutationAllowed(money: true)) return false;
     // P-G7 — delivery-provider orders take no discounts.
-    if (selectedOrderType == OrderType.delivery) return;
+    if (selectedOrderType == OrderType.delivery) return false;
     discount = configuration;
     // A manual/merchant discount reuses the single discount slot — drop any
     // pending loyalty redemption so we don't send a stale redeem on pay.
@@ -2122,36 +2352,47 @@ class PosController extends ChangeNotifier
     loyaltyRedeemCustomerId = null;
     _resetCharityRoundUp();
     _broadcast();
+    return true;
   }
 
   /// Redeem under a loyalty rule: apply [valueOmr] as the order discount and
   /// remember the [points] OR [stamps] to spend (sent as loyalty_redeem on
   /// pay). spend_based passes points; visit_based passes stamps.
-  void applyLoyaltyRedemption({
+  bool applyLoyaltyRedemption({
     required int ruleId,
     required double valueOmr,
     required String label,
+    int? customerId,
     int points = 0,
     int stamps = 0,
   }) {
-    if (!_cartMutationAllowed()) return;
-    // P-G7 — no loyalty on delivery-provider orders.
-    if (selectedOrderType == OrderType.delivery) return;
+    if (!_identityMutationAllowed(money: true)) return false;
+    if (selectedCustomer == null ||
+        (customerId != null && customerId != selectedCustomer!.id)) {
+      _identityNotice(
+        _l10n.localeName.startsWith('ar')
+            ? 'تغيّر العميل. افتح الاستبدال مرة أخرى.'
+            : 'The customer changed. Open Redeem again.',
+      );
+      return false;
+    }
+    if (selectedOrderType == OrderType.delivery) return false;
     discount = DiscountConfiguration(
       kind: DiscountKind.fixedAmount,
       value: valueOmr,
       label: label,
     );
-    loyaltyRedeemCustomerId = selectedCustomer?.id;
+    loyaltyRedeemCustomerId = selectedCustomer!.id;
     loyaltyRedeemRuleId = ruleId;
     loyaltyRedeemPoints = points;
     loyaltyRedeemStamps = stamps;
     _resetCharityRoundUp();
     _broadcast();
+    return true;
   }
 
-  void clearDiscount() {
-    if (!_cartMutationAllowed()) return;
+  bool clearDiscount() {
+    if (!_identityMutationAllowed(money: true)) return false;
     discount = const DiscountConfiguration();
     loyaltyRedeemRuleId = null;
     loyaltyRedeemPoints = 0;
@@ -2162,6 +2403,7 @@ class PosController extends ChangeNotifier
     _autoOrderDiscountSuppressed = true;
     _resetCharityRoundUp();
     _broadcast();
+    return true;
   }
 
   /// The catalogue product with this id, or null (used to value a free-product
@@ -2318,14 +2560,27 @@ class PosController extends ChangeNotifier
       _findDiningTableDefinitionById(id);
 
   Future<void> openDiningTable(String tableId) async {
-    if (!await _combineMutationAllowed() || isProcessingPayment) return;
+    if (tableTransitionInProgress) {
+      _identityNotice(tableTransitionMessage);
+      return;
+    }
+    return _duringTableTransition(() => _openDiningTable(tableId));
+  }
+
+  Future<void> _openDiningTable(String tableId) async {
+    if (!await _combineMutationAllowed(insideTableTransition: true) ||
+        isProcessingPayment) {
+      return;
+    }
     // Joined tables: tapping a linked seat opens the party's shared bill on
     // the group head, not the empty linked seat.
     final tapped = diningSessionFor(tableId);
     if (tapped != null &&
         tapped.isLinkedSecondary &&
         tapped.primaryTableId != tableId) {
-      await openDiningTable(tapped.primaryTableId!);
+      await _duringTableTransition(
+        () => _openDiningTable(tapped.primaryTableId!),
+      );
       return;
     }
 
@@ -2333,7 +2588,7 @@ class PosController extends ChangeNotifier
     if (definition == null) return;
 
     if (activeDiningTableId != null && activeDiningTableId != tableId) {
-      await returnToDiningFloorPlan();
+      await _duringTableTransition(_returnToDiningFloorPlan);
     }
 
     final session = diningSessionFor(tableId);
@@ -2353,7 +2608,7 @@ class PosController extends ChangeNotifier
         )) {
       return;
     }
-    if (!_cartMutationAllowed()) return;
+    if (!_cartMutationAllowed(insideTableTransition: true)) return;
 
     selectedOrderType = OrderType.dineIn;
     activeDiningTableId = tableId;
@@ -2402,6 +2657,7 @@ class PosController extends ChangeNotifier
         _cart.clear();
         selectedCategory = categories.first;
         customerReferenceNumber = '';
+        vehiclePlateNumber = '';
         selectedCustomer = null;
         selectedEarnRuleIds = null;
         _clearLoyaltyRedemption();
@@ -2419,7 +2675,15 @@ class PosController extends ChangeNotifier
   }
 
   Future<void> returnToDiningFloorPlan() async {
-    if (!await _combineMutationAllowed()) return;
+    if (tableTransitionInProgress) {
+      _identityNotice(tableTransitionMessage);
+      return;
+    }
+    return _duringTableTransition(() => _returnToDiningFloorPlan());
+  }
+
+  Future<void> _returnToDiningFloorPlan() async {
+    if (!await _combineMutationAllowed(insideTableTransition: true)) return;
     if (selectedOrderType != OrderType.dineIn) return;
 
     final leavingTableId = activeDiningTableId;
@@ -2503,7 +2767,21 @@ class PosController extends ChangeNotifier
     String fromTableId,
     String toTableId,
   ) async {
-    if (!await _combineMutationAllowed() || isProcessingPayment) {
+    if (tableTransitionInProgress) {
+      _identityNotice(tableTransitionMessage);
+      return lastPaymentMessage;
+    }
+    return _duringTableTransition(
+      () => _transferDiningTable(fromTableId, toTableId),
+    );
+  }
+
+  Future<String?> _transferDiningTable(
+    String fromTableId,
+    String toTableId,
+  ) async {
+    if (!await _combineMutationAllowed(insideTableTransition: true) ||
+        isProcessingPayment) {
       return lastPaymentMessage;
     }
     if (activeDiningTableId != null || fromTableId == toTableId) return null;
@@ -2825,6 +3103,7 @@ class PosController extends ChangeNotifier
       // Phase C2 — mint the server uuid at hold time (or keep the resumed
       // one) so the mirror, re-holds, the final order.create and a discard's
       // order.void all converge on one pos_orders row.
+      _advanceOrderGeneration();
       final draft = createDraft(
         serverOrderUuid: _activeServerOrderUuid ??= uuidV4(),
       );
@@ -2887,6 +3166,7 @@ class PosController extends ChangeNotifier
       return lastPaymentMessage;
     }
 
+    _advanceOrderGeneration();
     _dropCompForCartMutation();
     _cart
       ..clear()
@@ -3156,6 +3436,8 @@ class PosController extends ChangeNotifier
     String customerPhone = '',
     String driverPhone = '',
   }) async {
+    final customerRefusal = customerTenderRefusal();
+    if (customerRefusal != null) return customerRefusal;
     final loyaltyRefusal = _guardLoyaltyTender();
     if (loyaltyRefusal != null) return loyaltyRefusal;
     if (_cart.isEmpty || isProcessingPayment) return null;
@@ -3198,9 +3480,6 @@ class PosController extends ChangeNotifier
     try {
       deliveryReference = trimmedReference;
       deliveryDriverPhone = driverPhone.replaceAll(RegExp(r'\D'), '').trim();
-      // Unconditional, mirroring every tendered path: blanking the field
-      // in the Proceed popup genuinely clears a previously-set customer.
-      setCustomerReferenceNumber(customerPhone);
       selectedPaymentMethod = 'Delivery';
       paymentStatus = 'Pending verification';
       lastPaymentMessage = _l10n.ctrlMsgDeliveryRecorded;
@@ -3217,6 +3496,10 @@ class PosController extends ChangeNotifier
   }
 
   Future<String?> payAndPrint({double? cashTenderedAmount}) async {
+    final customerRefusal = customerTenderRefusal(
+      gift: selectedPaymentMethod == 'Gift',
+    );
+    if (customerRefusal != null) return customerRefusal;
     final loyaltyRefusal = _guardLoyaltyTender();
     if (loyaltyRefusal != null) return loyaltyRefusal;
     if (_cart.isEmpty || isProcessingPayment) return null;
@@ -3475,6 +3758,8 @@ class PosController extends ChangeNotifier
   }
 
   Future<String?> payMixedCashAndCard({required double cashAmount}) async {
+    final customerRefusal = customerTenderRefusal();
+    if (customerRefusal != null) return customerRefusal;
     final loyaltyRefusal = _guardLoyaltyTender();
     if (loyaltyRefusal != null) return loyaltyRefusal;
     if (_cart.isEmpty || isProcessingPayment) return null;
@@ -3871,6 +4156,7 @@ class PosController extends ChangeNotifier
   @override
   void dispose() {
     _recoveryGuard?.recoveryBlocked.removeListener(_notifySafely);
+    cancelCustomerLookups();
     _isDisposed = true;
     _rearDisplaySyncTimer?.cancel();
     _rearDisplaySyncPending = false;
@@ -4347,7 +4633,8 @@ class PosController extends ChangeNotifier
   }
 
   Future<void> _persistActiveDiningTableSession() async {
-    if (!await _combineMutationAllowed()) return;
+    // Persistence belongs to the transition itself, including its final flush.
+    if (!await _combineMutationAllowed(insideTableTransition: true)) return;
     if (selectedOrderType != OrderType.dineIn || activeDiningTableId == null) {
       return;
     }
@@ -4489,6 +4776,7 @@ class PosController extends ChangeNotifier
     bool clearActiveDiningTable = false,
     String note = '',
   }) {
+    _advanceOrderGeneration();
     _reservedDiningBill = null;
     _cart.clear();
     // Phase C2 — a leftover uuid (resumed-then-cleared cart) is dropped, not

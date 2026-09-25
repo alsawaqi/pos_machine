@@ -951,6 +951,26 @@ class PosApiService {
     }
   }
 
+  Future<({CustomerSearchResult? customer, bool deleted})> refreshSavedCustomer(
+    int id,
+  ) async {
+    try {
+      final body = await _send(() => _dio.get('/device/customers/$id'));
+      final customer = body.dataMap['customer'];
+      return (
+        customer: customer is Map
+            ? CustomerSearchResult.fromJson(customer.cast<String, dynamic>())
+            : null,
+        deleted: false,
+      );
+    } on ApiException catch (e) {
+      if (e.statusCode == 404 && e.code == 'customer_not_found') {
+        return (customer: null, deleted: true);
+      }
+      rethrow;
+    }
+  }
+
   /// GET /device/orders/history — the branch's terminal (paid/void/refunded)
   /// orders, newest first, so a freshly-paired or second device shows prior
   /// sales rung at the branch (not just its own local store). Online-only.

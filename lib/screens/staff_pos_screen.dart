@@ -1233,6 +1233,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     super.initState();
     _attentionLease = enterStaffAttention();
     controller = PosController();
+    _customerNumberController = TextEditingController();
+    _vehiclePlateController = TextEditingController();
+    controller.refreshRestoredCustomer = (id) async {
+      if (_liveTable ||
+          _workspace != null ||
+          ref.read(connectivityProvider).asData?.value != true) {
+        return (customer: null, deleted: false);
+      }
+      return ref.read(apiServiceProvider).refreshSavedCustomer(id);
+    };
     controller.verifyDiningTableTender = () =>
         _verifyLocalTableBill(tender: true);
     _tableSearch = TableSearchController(
@@ -1351,8 +1361,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         _applyAudienceGate();
       }
     });
-    _customerNumberController = TextEditingController();
-    _vehiclePlateController = TextEditingController();
     _clockNow = ValueNotifier<DateTime>(DateTime.now());
     _currentOrderScrollController = ScrollController();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -2530,6 +2538,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   @override
   void dispose() {
+    controller.cancelCustomerLookups();
     _liveEditor?.removeListener(_liveEditorChanged);
     _liveEditor?.dispose();
     _tableCheckout?.dispose();
@@ -3472,6 +3481,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   void _onTableCartChanged() {
+    _syncCustomerFields();
     if (mounted) _applyAudienceGate();
     _updateTableSearch();
     if (_liveTable) {
@@ -5552,9 +5562,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// P-F5 — the customer paid on the bank's standalone terminal; record the
   /// exact amount (no charge launch, no change math, wire method bank_pos).
   Future<void> _submitBankPosPayment() async {
+    if (_showCustomerTenderRefusal()) return;
     if (_liveTable && !await _allowLocalTableTender()) return;
     if (!mounted || controller.isProcessingPayment) return;
-    controller.setCustomerReferenceNumber(_customerNumberController.text);
     controller.selectPaymentMethod('Bank POS');
     final message = await controller.payAndPrint();
     if (!mounted || message == null || message.isEmpty) return;
@@ -5575,9 +5585,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _submitCardPayment() async {
+    if (_showCustomerTenderRefusal()) return;
     if (_liveTable && !await _allowLocalTableTender()) return;
     if (!mounted || controller.isProcessingPayment) return;
-    controller.setCustomerReferenceNumber(_customerNumberController.text);
     controller.selectPaymentMethod('Credit Card');
     final message = await controller.payAndPrint();
     if (!mounted || message == null || message.isEmpty) return;
@@ -5604,6 +5614,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _submitCashPayment() async {
+    if (_showCustomerTenderRefusal()) return;
     if (_liveTable && !await _allowLocalTableTender()) return;
     if (!mounted || controller.isProcessingPayment) return;
     final l10n = L10n.of(context);
@@ -5619,7 +5630,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
-    controller.setCustomerReferenceNumber(_customerNumberController.text);
     controller.selectPaymentMethod('Cash');
     final message = await controller.payAndPrint(cashTenderedAmount: tendered);
     if (!mounted || message == null || message.isEmpty) return;
@@ -5649,6 +5659,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// customer, inventory still deducts, manager approval required (the same
   /// fingerprint gate the comp flow uses, registering one if absent).
   Future<void> _submitGiftPayment() async {
+    if (_showCustomerTenderRefusal(gift: true)) return;
     if (_liveTable) return;
     if (controller.isProcessingPayment || controller.cart.isEmpty) return;
     final l10n = L10n.of(context);
@@ -5690,7 +5701,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
     if (confirmed != true || !mounted) return;
 
-    controller.setCustomerReferenceNumber(_customerNumberController.text);
     // Label must be exactly 'Gift' — mapPaymentMethod matches 'card' before
     // 'gift', so e.g. 'Gift Card' would mis-map to a card tender.
     controller.selectPaymentMethod('Gift');
@@ -5713,6 +5723,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _submitMixedPayment() async {
+    if (_showCustomerTenderRefusal()) return;
     if (_liveTable && !await _allowLocalTableTender()) return;
     if (!mounted || controller.isProcessingPayment) return;
     final l10n = L10n.of(context);
@@ -5738,7 +5749,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
-    controller.setCustomerReferenceNumber(_customerNumberController.text);
     final message = await controller.payMixedCashAndCard(
       cashAmount: cashAmount,
     );
@@ -6274,6 +6284,95 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.setProductSearchQuery(value);
   }
 
+  void _syncCustomerFields() {
+    if (!mounted || controller.customerLookupPending) return;
+    if (_customerNumberController.text != controller.customerReferenceNumber) {
+      _customerNumberController.text = controller.customerReferenceNumber;
+    }
+    if (_vehiclePlateController.text != controller.vehiclePlateNumber) {
+      _vehiclePlateController.text = controller.vehiclePlateNumber;
+    }
+  }
+
+  bool _showCustomerTenderRefusal({bool gift = false}) {
+    final message = controller.customerTenderRefusal(gift: gift);
+    if (message == null) return false;
+    _syncCustomerFields();
+    _showPopupMessage(
+      title: _paymentMessageTitle(),
+      message: message,
+      tone: FeedbackTone.warning,
+    );
+    return true;
+  }
+
+  Future<List<CustomerSearchResult>> _lookupCustomers(
+    String query,
+    CustomerActionTag tag,
+  ) async {
+    controller.markCustomerLookup(tag);
+    try {
+      return await ref
+          .read(apiServiceProvider)
+          .searchCustomers(query)
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {
+      return controller.searchCachedCustomers(query);
+    } finally {
+      controller.endCustomerLookup(tag);
+    }
+  }
+
+  Future<bool> _confirmCustomerNumber(String value) async {
+    final tag = controller.beginCustomerAction(lookup: true);
+    if (tag == null) {
+      _syncCustomerFields();
+      return false;
+    }
+    final l10n = L10n.of(context);
+    try {
+      final q = value.trim();
+      if (q.isEmpty) {
+        return controller.setCustomerReferenceNumber('');
+      }
+      _customerNumberController.text = value;
+      final matches = await _lookupCustomers(q, tag);
+      if (!mounted || !controller.customerActionCurrent(tag)) return false;
+      CustomerSearchResult? match;
+      for (final c in matches) {
+        if (c.phone == q) {
+          match = c;
+          break;
+        }
+      }
+      match ??= matches.isNotEmpty ? matches.first : null;
+      if (match == null) {
+        if (!controller.setUnmatchedCustomerReference(value)) return false;
+        _showPopupMessage(
+          title: l10n.posCustomerNotFoundTitle,
+          message: l10n.posCustomerNotFoundMessage(q),
+          tone: FeedbackTone.info,
+        );
+        return true;
+      }
+      if (!controller.attachCustomer(match)) return false;
+      _syncCustomerFields();
+      _showPopupMessage(
+        title: l10n.posCustomerAttachedTitle,
+        message: l10n.posCustomerAttachedSummary(
+          match.name,
+          _loyaltySummary(l10n, match),
+        ),
+        tone: FeedbackTone.success,
+      );
+      await _maybePickEarnPrograms();
+      return controller.customerActionCurrent(tag);
+    } finally {
+      controller.endCustomerLookup(tag);
+      _syncCustomerFields();
+    }
+  }
+
   /// P-F3 — when the merchant runs MORE THAN ONE active earn program (e.g. a
   /// stamp card AND points), ask which one(s) this order earns under — the
   /// customer's pick. Asked once per attached customer per order; cancel or
@@ -6285,12 +6384,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final rules = controller.loyaltyRules.where((r) => r.isActive).toList();
     if (rules.length < 2) return;
 
+    final tag = controller.customerActionTag;
+    final attachedId = customer.id;
     final picked = await showDialog<List<int>>(
       context: context,
       builder: (_) =>
           _EarnProgramPickerDialog(rules: rules, customer: customer),
     );
-    if (!mounted || picked == null) return;
+    if (!mounted ||
+        picked == null ||
+        !controller.customerActionCurrent(tag) ||
+        controller.selectedCustomer?.id != attachedId) {
+      return;
+    }
     controller.setSelectedEarnRules(picked);
   }
 
@@ -6303,75 +6409,77 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await _adjustLiveBill('customer');
       return;
     }
-    final l10n = L10n.of(context);
-    CustomerSearchResult? customer = controller.selectedCustomer;
-    final q = _customerNumberController.text.trim();
-
-    if (customer == null && q.isNotEmpty) {
-      List<CustomerSearchResult> matches;
-      try {
-        matches = await ref.read(apiServiceProvider).searchCustomers(q);
-      } catch (_) {
-        matches = controller.searchCachedCustomers(q);
-      }
-      if (!mounted) return;
-      for (final c in matches) {
-        if (c.phone == q) {
-          customer = c;
-          break;
-        }
-      }
-      customer ??= matches.isNotEmpty ? matches.first : null;
-    }
-    if (customer == null) {
-      _showPopupMessage(
-        title: l10n.posCustomerNotFoundTitle,
-        message: l10n.posCustomerNotFoundMessage(q),
-        tone: FeedbackTone.info,
-      );
+    final tag = controller.beginCustomerAction(lookup: true);
+    if (tag == null) {
+      _syncCustomerFields();
       return;
     }
-
-    // Freshest profile (latest plates + balances) when the server answers;
-    // otherwise keep the search/cache copy we already hold.
-    var profile = customer;
+    final l10n = L10n.of(context);
+    CustomerSearchResult? profile = controller.selectedCustomer;
+    final q = controller.customerReferenceNumber;
     try {
-      final fresh = await ref
-          .read(apiServiceProvider)
-          .fetchCustomerDetails(profile.id);
-      if (fresh != null) profile = fresh;
-    } catch (_) {}
-    if (!mounted) return;
-
-    // Viewing details attaches the customer (loyalty earn rides the order).
-    controller.attachCustomer(profile);
-    setState(
-      () => _customerNumberController.text = controller.customerReferenceNumber,
-    );
-
+      if (profile == null && q.isNotEmpty) {
+        final matches = await _lookupCustomers(q, tag);
+        if (!mounted || !controller.customerActionCurrent(tag)) return;
+        for (final c in matches) {
+          if (c.phone == q) {
+            profile = c;
+            break;
+          }
+        }
+        profile ??= matches.isNotEmpty ? matches.first : null;
+      }
+      if (profile == null) {
+        if (mounted && controller.customerActionCurrent(tag)) {
+          _showPopupMessage(
+            title: l10n.posCustomerNotFoundTitle,
+            message: l10n.posCustomerNotFoundMessage(q),
+            tone: FeedbackTone.info,
+          );
+        }
+        return;
+      }
+      controller.markCustomerLookup(tag);
+      try {
+        final fresh = await ref
+            .read(apiServiceProvider)
+            .fetchCustomerDetails(profile.id)
+            .timeout(const Duration(seconds: 3));
+        if (fresh != null) profile = fresh;
+      } catch (_) {}
+      if (!mounted || !controller.customerActionCurrent(tag)) return;
+      if (!controller.attachCustomer(profile!)) return;
+    } finally {
+      controller.endCustomerLookup(tag);
+      _syncCustomerFields();
+    }
+    if (!mounted || !controller.customerActionCurrent(tag)) {
+      return;
+    }
     final action = await showDialog<String>(
       context: context,
       builder: (_) => _CustomerDetailsDialog(
-        customer: profile,
+        customer: profile!,
         rules: controller.loyaltyRules,
         currentPlate: controller.vehiclePlateNumber,
       ),
     );
-    if (!mounted || action == null) {
-      if (mounted) await _maybePickEarnPrograms();
+    if (!mounted || !controller.customerActionCurrent(tag)) {
+      _syncCustomerFields();
       return;
     }
     if (action == 'redeem') {
       await _openLoyaltyRedeem();
-    } else if (action.startsWith('plate:')) {
+    } else if (action != null && action.startsWith('plate:')) {
       final plate = action.substring('plate:'.length);
-      controller.setVehiclePlateNumber(plate);
-      setState(() => _vehiclePlateController.text = plate);
-      _showPopupMessage(
-        title: l10n.posPaymentVehiclePlateLabel,
-        message: plate,
-        tone: FeedbackTone.success,
-      );
+      if (controller.setVehiclePlateNumber(plate)) {
+        _showPopupMessage(
+          title: l10n.posPaymentVehiclePlateLabel,
+          message: plate,
+          tone: FeedbackTone.success,
+        );
+      }
+      _syncCustomerFields();
     }
     if (mounted) await _maybePickEarnPrograms();
   }
@@ -6384,87 +6492,96 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await _adjustLiveBill('customer');
       return;
     }
-    final l10n = L10n.of(context);
-    final value = await showDialog<String>(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => _InAppKeyboardDialog(
-        title: l10n.posPlateSearchTitle,
-        initialValue: _vehiclePlateController.text,
-        hintText: l10n.posPlateHint,
-      ),
-    );
-    if (value == null || !mounted) return;
-    final plate = value.trim().toUpperCase();
-    if (plate.isEmpty) return;
-
-    List<CustomerSearchResult> matches;
-    try {
-      matches = await ref.read(apiServiceProvider).searchCustomers(plate);
-    } catch (_) {
-      matches = controller.searchCachedCustomers(plate);
-    }
-    if (!mounted) return;
-    // The endpoint also matches names/phones — keep true plate matches when
-    // any exist.
-    final plateMatches = matches
-        .where((c) => c.plates.any((p) => p.contains(plate)))
-        .toList();
-    final candidates = plateMatches.isNotEmpty ? plateMatches : matches;
-    if (candidates.isEmpty) {
-      _showPopupMessage(
-        title: l10n.posCustomerNotFoundTitle,
-        message: l10n.posPlateSearchNoMatches(plate),
-        tone: FeedbackTone.info,
-      );
+    final tag = controller.beginCustomerAction();
+    if (tag == null) {
+      _syncCustomerFields();
       return;
     }
-
-    CustomerSearchResult? picked;
-    if (candidates.length == 1) {
-      picked = candidates.single;
-    } else {
-      picked = await showDialog<CustomerSearchResult>(
+    try {
+      final l10n = L10n.of(context);
+      final value = await showDialog<String>(
         context: context,
-        builder: (ctx) => SimpleDialog(
-          title: Text(l10n.posPlateSearchPickCustomer(plate)),
-          children: [
-            for (final c in candidates)
-              SimpleDialogOption(
-                onPressed: () => Navigator.of(ctx).pop(c),
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.person_rounded),
-                  title: Text(c.name),
-                  subtitle: Text(
-                    [
-                      if (c.phone.isNotEmpty) c.phone,
-                      if (c.plates.isNotEmpty) c.plates.join(' · '),
-                    ].join('  ·  '),
-                  ),
-                ),
-              ),
-          ],
+        barrierDismissible: true,
+        builder: (context) => _InAppKeyboardDialog(
+          title: l10n.posPlateSearchTitle,
+          initialValue: _vehiclePlateController.text,
+          hintText: l10n.posPlateHint,
         ),
       );
-    }
-    if (picked == null || !mounted) return;
+      if (value == null || !mounted) return;
+      final plate = value.trim().toUpperCase();
+      if (plate.isEmpty) return;
 
-    controller.attachCustomer(picked);
-    controller.setVehiclePlateNumber(plate);
-    setState(() {
-      _customerNumberController.text = controller.customerReferenceNumber;
-      _vehiclePlateController.text = plate;
-    });
-    _showPopupMessage(
-      title: l10n.posCustomerAttachedTitle,
-      message: l10n.posCustomerAttachedSummary(
-        picked.name,
-        _loyaltySummary(l10n, picked),
-      ),
-      tone: FeedbackTone.success,
-    );
-    await _maybePickEarnPrograms();
+      final matches = await _lookupCustomers(plate, tag);
+      if (!mounted || !controller.customerActionCurrent(tag)) return;
+      // The endpoint also matches names/phones — keep true plate matches when
+      // any exist.
+      final plateMatches = matches
+          .where((c) => c.plates.any((p) => p.contains(plate)))
+          .toList();
+      final candidates = plateMatches.isNotEmpty ? plateMatches : matches;
+      if (candidates.isEmpty) {
+        _showPopupMessage(
+          title: l10n.posCustomerNotFoundTitle,
+          message: l10n.posPlateSearchNoMatches(plate),
+          tone: FeedbackTone.info,
+        );
+        return;
+      }
+
+      CustomerSearchResult? picked;
+      if (candidates.length == 1) {
+        picked = candidates.single;
+      } else {
+        picked = await showDialog<CustomerSearchResult>(
+          context: context,
+          builder: (ctx) => SimpleDialog(
+            title: Text(l10n.posPlateSearchPickCustomer(plate)),
+            children: [
+              for (final c in candidates)
+                SimpleDialogOption(
+                  onPressed: () => Navigator.of(ctx).pop(c),
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.person_rounded),
+                    title: Text(c.name),
+                    subtitle: Text(
+                      [
+                        if (c.phone.isNotEmpty) c.phone,
+                        if (c.plates.isNotEmpty) c.plates.join(' · '),
+                      ].join('  ·  '),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      }
+      if (picked == null ||
+          !mounted ||
+          !controller.customerActionCurrent(tag)) {
+        return;
+      }
+
+      if (!controller.attachCustomer(picked)) return;
+      if (!controller.setVehiclePlateNumber(plate)) return;
+      setState(() {
+        _customerNumberController.text = controller.customerReferenceNumber;
+        _vehiclePlateController.text = plate;
+      });
+      _showPopupMessage(
+        title: l10n.posCustomerAttachedTitle,
+        message: l10n.posCustomerAttachedSummary(
+          picked.name,
+          _loyaltySummary(l10n, picked),
+        ),
+        tone: FeedbackTone.success,
+      );
+      await _maybePickEarnPrograms();
+    } finally {
+      controller.endCustomerLookup(tag);
+      _syncCustomerFields();
+    }
   }
 
   Future<void> _openCustomerSearch() async {
@@ -6472,37 +6589,43 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await _adjustLiveBill('customer');
       return;
     }
-    final l10n = L10n.of(context);
-    final result = await showDialog<CustomerSearchResult>(
-      context: context,
-      builder: (_) => _CustomerSearchDialog(
-        search: (q) async {
-          try {
-            return await ref.read(apiServiceProvider).searchCustomers(q);
-          } catch (_) {
-            // Offline / search error → fall back to the cached customer slice
-            // (with cached loyalty), so attach + redeem still work offline.
-            return controller.searchCachedCustomers(q);
-          }
-        },
-      ),
-    );
-    if (!mounted || result == null) return;
-    controller.attachCustomer(result);
-    setState(
-      () => _customerNumberController.text = controller.customerReferenceNumber,
-    );
-    final pts = controller.activeEarnRule != null
-        ? result.pointsForRule(controller.activeEarnRule!.id)
-        : 0;
-    _showPopupMessage(
-      title: l10n.posCustomerAttachedTitle,
-      message: pts > 0
-          ? l10n.posCustomerAttachedWithPoints(result.name, pts)
-          : result.name,
-      tone: FeedbackTone.success,
-    );
-    await _maybePickEarnPrograms();
+    final tag = controller.beginCustomerAction();
+    if (tag == null) {
+      _syncCustomerFields();
+      return;
+    }
+    try {
+      final l10n = L10n.of(context);
+      final result = await showDialog<CustomerSearchResult>(
+        context: context,
+        builder: (_) =>
+            _CustomerSearchDialog(search: (q) => _lookupCustomers(q, tag)),
+      );
+      if (!mounted ||
+          result == null ||
+          !controller.customerActionCurrent(tag)) {
+        return;
+      }
+      if (!controller.attachCustomer(result)) return;
+      setState(
+        () =>
+            _customerNumberController.text = controller.customerReferenceNumber,
+      );
+      final pts = controller.activeEarnRule != null
+          ? result.pointsForRule(controller.activeEarnRule!.id)
+          : 0;
+      _showPopupMessage(
+        title: l10n.posCustomerAttachedTitle,
+        message: pts > 0
+            ? l10n.posCustomerAttachedWithPoints(result.name, pts)
+            : result.name,
+        tone: FeedbackTone.success,
+      );
+      await _maybePickEarnPrograms();
+    } finally {
+      controller.endCustomerLookup(tag);
+      _syncCustomerFields();
+    }
   }
 
   Future<void> _openCustomerNumberKeyboard() async {
@@ -6522,61 +6645,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       ),
     );
 
-    if (value == null) return;
-
-    setState(() {
-      _customerNumberController.text = value;
-    });
-
-    // Fetch-on-Enter (#3): look the number up (phone), attach the customer so
-    // their loyalty loads, and surface the balances. Falls back to the offline
-    // cache, then to keeping the value as a bare reference.
-    final q = value.trim();
-    if (q.isEmpty) {
-      controller.setCustomerReferenceNumber('');
+    if (value == null || !mounted) {
+      _syncCustomerFields();
       return;
     }
-
-    List<CustomerSearchResult> matches;
-    try {
-      matches = await ref.read(apiServiceProvider).searchCustomers(q);
-    } catch (_) {
-      matches = controller.searchCachedCustomers(q);
-    }
-    if (!mounted) return;
-
-    CustomerSearchResult? match;
-    for (final c in matches) {
-      if (c.phone == q) {
-        match = c;
-        break;
-      }
-    }
-    match ??= matches.isNotEmpty ? matches.first : null;
-
-    if (match == null) {
-      controller.setCustomerReferenceNumber(value);
-      _showPopupMessage(
-        title: l10n.posCustomerNotFoundTitle,
-        message: l10n.posCustomerNotFoundMessage(q),
-        tone: FeedbackTone.info,
-      );
-      return;
-    }
-
-    controller.attachCustomer(match);
-    setState(
-      () => _customerNumberController.text = controller.customerReferenceNumber,
-    );
-    _showPopupMessage(
-      title: l10n.posCustomerAttachedTitle,
-      message: l10n.posCustomerAttachedSummary(
-        match.name,
-        _loyaltySummary(l10n, match),
-      ),
-      tone: FeedbackTone.success,
-    );
-    await _maybePickEarnPrograms();
+    await _confirmCustomerNumber(value);
   }
 
   /// A short loyalty summary (total points + stamps across rules) for the
@@ -6591,6 +6664,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openVehiclePlateKeyboard() async {
+    final tag = controller.beginCustomerAction();
+    if (tag == null) {
+      _syncCustomerFields();
+      return;
+    }
     final l10n = L10n.of(context);
     final value = await showDialog<String>(
       context: context,
@@ -6602,13 +6680,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       ),
     );
 
-    if (value == null) return;
+    if (!mounted || value == null || !controller.customerActionCurrent(tag)) {
+      _syncCustomerFields();
+      return;
+    }
 
     final plate = value.trim().toUpperCase();
-    setState(() {
-      _vehiclePlateController.text = plate;
-    });
     controller.setVehiclePlateNumber(plate);
+    _syncCustomerFields();
   }
 
   Future<void> _handleOrderTypeTap(OrderType type) async {
@@ -7003,6 +7082,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await _adjustLiveBill('discount');
       return;
     }
+    if (serverDetail == null && !controller.allowLoyaltyDialog()) return;
     final l10n = L10n.of(context);
     final branchId = ref.read(sessionControllerProvider).branchId ?? 0;
     final now = DateTime.now();
@@ -7113,7 +7193,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           picked?.call({'kind': 'discount', 'mode': 'clear'});
           return;
         }
-        controller.clearDiscount();
+        if (!controller.clearDiscount()) return;
         _showPopupMessage(
           title: l10n.posDiscountClearedTitle,
           message: l10n.posDiscountClearedMessage,
@@ -7194,6 +7274,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// Confirm + apply a visit_based stamp reward (spends stampsRequired stamps
   /// for a one-off discount; the stamps ride as loyalty_redeem on pay).
   Future<void> _redeemStamp() async {
+    if (!controller.allowLoyaltyDialog()) return;
     final l10n = L10n.of(context);
     final redeem = _redeemableStamp();
     if (redeem == null) return;
@@ -7222,12 +7303,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
     if (!mounted || ok != true) return;
 
-    controller.applyLoyaltyRedemption(
+    if (!controller.applyLoyaltyRedemption(
+      customerId: redeem.customer.id,
       ruleId: redeem.rule.id,
       stamps: redeem.stamps,
       valueOmr: redeem.valueOmr,
       label: 'Stamp reward',
-    );
+    )) {
+      return;
+    }
     _showPopupMessage(
       title: l10n.posLoyaltyRewardRedeemedTitle,
       message: l10n.posLoyaltyStampRedeemedMessage(
@@ -7241,6 +7325,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// Entry point for the payment-console "Redeem Loyalty" action: surfaces
   /// points + stamp redemption (via the discount sheet) or a helpful message.
   Future<void> _openLoyaltyRedeem() async {
+    if (!controller.allowLoyaltyDialog()) return;
     if (_liveTable) return;
     final l10n = L10n.of(context);
     if (controller.selectedCustomer == null) {
@@ -7263,6 +7348,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openRedeemDialog() async {
+    if (!controller.allowLoyaltyDialog()) return;
     final l10n = L10n.of(context);
     final redeem = _redeemable();
     if (redeem == null) return;
@@ -7292,12 +7378,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
     if (!mounted || blocks == null || blocks < 1) return;
 
-    controller.applyLoyaltyRedemption(
+    if (!controller.applyLoyaltyRedemption(
+      customerId: redeem.customer.id,
       ruleId: rule.id,
       points: blocks * rule.redemptionPoints,
       valueOmr: blocks * rule.redemptionValue,
       label: 'Loyalty redemption',
-    );
+    )) {
+      return;
+    }
     _showPopupMessage(
       title: l10n.posLoyaltyPointsRedeemedTitle,
       message: l10n.posLoyaltyPointsRedeemedMessage(
@@ -7344,7 +7433,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       });
       return;
     }
-    controller.applyDiscount(d.toConfiguration());
+    if (!controller.applyDiscount(d.toConfiguration())) return;
     _showPopupMessage(
       title: l10n.posDiscountAppliedTitle,
       message: l10n.posDiscountAppliedMessage(d.name),
@@ -7394,7 +7483,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     if (value.isActive) {
-      controller.applyDiscount(value);
+      if (!controller.applyDiscount(value)) return;
       _showPopupMessage(
         title: l10n.posDiscountAppliedTitle,
         message: l10n.posDiscountAppliedMessage(
@@ -7403,7 +7492,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         tone: FeedbackTone.success,
       );
     } else {
-      controller.clearDiscount();
+      if (!controller.clearDiscount()) return;
       _showPopupMessage(
         title: l10n.posDiscountClearedTitle,
         message: l10n.posDiscountClearedMessage,
@@ -8743,7 +8832,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                if (hasValue) ...[
+                if (hasValue || controller.selectedCustomer != null) ...[
                   _fieldTrailingAction(
                     icon: Icons.badge_outlined,
                     tooltip: l10n.posCustomerDetailsTooltip,
@@ -8768,8 +8857,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     tooltip: l10n.posCustomerClearOption,
                     onTap: qr == null
                         ? () {
-                            setState(() => _customerNumberController.clear());
-                            controller.setCustomerReferenceNumber('');
+                            controller.clearAttachedCustomer();
+                            _syncCustomerFields();
                           }
                         : null,
                   ),
@@ -9432,6 +9521,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// order lands pending verification; the merchant settles it on the
   /// portal Deliveries page when the provider's statement arrives.
   Future<void> _openDeliveryProceedDialog() async {
+    if (_showCustomerTenderRefusal()) return;
     if (controller.isProcessingPayment) return;
     final l10n = L10n.of(context);
     // No provider (e.g. it was retired mid-order, or the pick was somehow
@@ -9440,16 +9530,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await _openDeliveryProviderPicker();
       if (!mounted || controller.selectedDeliveryProviderId == null) return;
     }
+    final tag = controller.customerActionTag;
+    final prefill = controller.customerReferenceNumber;
     final result =
         await showDialog<({String reference, String customer, String driver})>(
           context: context,
-          builder: (_) => _DeliveryProceedDialog(
-            initialCustomer: _customerNumberController.text,
-          ),
+          builder: (_) => _DeliveryProceedDialog(initialCustomer: prefill),
         );
-    if (!mounted || result == null) return;
+    if (!mounted || result == null || !controller.customerActionCurrent(tag)) {
+      _syncCustomerFields();
+      return;
+    }
 
-    _customerNumberController.text = result.customer;
+    if (_showCustomerTenderRefusal()) return;
+    if (result.customer != prefill) {
+      if (!await _confirmCustomerNumber(result.customer)) return;
+    }
+    _syncCustomerFields();
     final message = await controller.completeDeliveryOrder(
       reference: result.reference,
       customerPhone: result.customer,

@@ -48,7 +48,29 @@ class TesterServer {
           );
           dynamic value;
           if (o.path.endsWith('/device/customers/search')) {
-            value = {'customers': searchResult};
+            final q = (o.queryParameters['q'] ?? '').toString().trim();
+            final hits =
+                searchResult
+                    .where(
+                      (c) =>
+                          c['name'].toString().toLowerCase().contains(
+                            q.toLowerCase(),
+                          ) ||
+                          c['phone'].toString().toLowerCase().contains(
+                            q.toLowerCase(),
+                          ) ||
+                          (c['plates'] as List? ?? []).any(
+                            (p) => p.toString().toUpperCase().contains(
+                              q.toUpperCase(),
+                            ),
+                          ),
+                    )
+                    .toList()
+                  ..sort(
+                    (a, b) =>
+                        a['name'].toString().compareTo(b['name'].toString()),
+                  );
+            value = {'customers': hits.take(25).toList()};
           } else if (o.method == 'POST' &&
               o.path.endsWith('/device/customers')) {
             value = {
@@ -371,7 +393,7 @@ void main() {
             of: find.byType(Dialog),
             matching: find.byType(TextField),
           ),
-          '90000000',
+          'Loyal',
         );
         await tap(
           find.descendant(
