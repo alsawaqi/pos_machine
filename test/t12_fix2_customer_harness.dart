@@ -296,10 +296,21 @@ class CustomerRig {
   }
 
   Future<void> tap(Finder target) async {
+    // first/last finders throw when their parent is empty. Wait for the real
+    // parent candidates before applying that selection, without swallowing
+    // exceptions from the app or changing the existing wait deadline.
+    bool hasCandidates(FinderBase<Element> finder) {
+      if (finder is ChainedFinderMixin<Element> &&
+          !hasCandidates(finder.parent)) {
+        return false;
+      }
+      return finder.evaluate().isNotEmpty;
+    }
+
     await pumpUntilRealCondition(
       tester,
-      () => target.hitTestable().evaluate().isNotEmpty,
-      reason: '${target.toString()} reachable',
+      () => hasCandidates(target.hitTestable()),
+      reason: '${target.description} reachable',
     );
     await tester.tap(target.hitTestable().first);
     await settle();
