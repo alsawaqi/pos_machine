@@ -310,7 +310,7 @@ class CustomerRig {
     await pumpUntilRealCondition(
       tester,
       () => hasCandidates(target.hitTestable()),
-      reason: '${target.description} reachable',
+      reason: '${target.describeMatch(Plurality.many)} reachable',
     );
     await tester.tap(target.hitTestable().first);
     await settle();
