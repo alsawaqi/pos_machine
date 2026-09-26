@@ -1106,6 +1106,13 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           expect(rows, hasLength(1));
           expect(rows!.single.eventsJson, contains('product.waste'));
         }
+        await pumpUntilRealCondition(
+          tester,
+          () =>
+              (currentHost.controller as PosController).diningSessionFor('1') ==
+              null,
+          reason: 'retired table removed from in-memory floor plan',
+        );
         expect(
           (currentHost.controller as PosController).diningSessionFor('1'),
           isNull,

@@ -79,6 +79,7 @@ class PosController extends ChangeNotifier
   int _orderGeneration = 0;
   int _customerActionSequence = 0;
   final Set<CustomerActionTag> _pendingCustomerLookups = {};
+  CustomerActionTag? _restoreCustomerLookup;
   int _tableTransitionDepth = 0;
   int get orderGeneration => _orderGeneration;
   CustomerActionTag get customerActionTag =>
@@ -146,7 +147,63 @@ class PosController extends ChangeNotifier
 
   void endCustomerLookup(CustomerActionTag tag) {
     _pendingCustomerLookups.remove(tag);
+    if (identical(_restoreCustomerLookup, tag)) _restoreCustomerLookup = null;
+    if (!_isDisposed &&
+        tag.generation == _orderGeneration &&
+        !customerTenderStarted &&
+        !tableTransitionInProgress &&
+        !recoveryBlocked) {
+      maybeAutoApplyOrderDiscount();
+    }
     _notifySafely();
+  }
+
+  bool get restoredCustomerLookupPending =>
+      _restoreCustomerLookup != null &&
+      customerActionCurrent(_restoreCustomerLookup!) &&
+      _pendingCustomerLookups.contains(_restoreCustomerLookup);
+
+  bool allowCustomerControl({bool refuseLookup = false}) {
+    if (customerTenderStarted || !_cartMutationAllowed()) return false;
+    if (refuseLookup && customerLookupPending) {
+      _identityNotice(customerLookupMessage);
+      return false;
+    }
+    return true;
+  }
+
+  bool isSameCustomerNumber(String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    final customer = selectedCustomer;
+    return customer != null &&
+        digits.isNotEmpty &&
+        (digits == customer.phone.replaceAll(RegExp(r'\D'), '') ||
+            digits == customerReferenceNumber);
+  }
+
+  bool confirmSameCustomerNumber() {
+    if (!allowCustomerControl()) return false;
+    // Same-number Done supersedes keyboard/search replies, but the authoritative
+    // restore refresh must still complete (including its deleted-customer reply).
+    if (!restoredCustomerLookupPending) cancelCustomerLookups();
+    _notifySafely();
+    return true;
+  }
+
+  void detachMissingCustomer() {
+    selectedCustomer = null;
+    selectedEarnRuleIds = null;
+    customerReferenceNumber = '';
+    vehiclePlateNumber = '';
+    if (_hasLoyaltyRedemption) discount = const DiscountConfiguration();
+    _clearLoyaltyRedemption();
+    _resetCharityRoundUp();
+    _identityNotice(
+      _l10n.localeName.startsWith('ar')
+          ? 'هذا العميل لم يعد موجوداً — تمت إزالة العميل وأي استبدال لنقاط الولاء'
+          : 'This customer no longer exists — the customer and any loyalty redemption were removed',
+    );
+    _broadcast();
   }
 
   void cancelCustomerLookups() {
@@ -178,13 +235,30 @@ class PosController extends ChangeNotifier
         : tableTransitionInProgress
         ? tableTransitionMessage
         : null;
-    if (message != null) _identityNotice(message);
-    return message;
+    if (message != null) {
+      _identityNotice(message);
+      return message;
+    }
+    // Reprice only before a tender starts; a changed total requires another tap.
+    if (!_hasLoyaltyRedemption &&
+        !customerTenderStarted &&
+        !recoveryBlocked &&
+        !hasRecordedSplitPayments) {
+      final before = total;
+      maybeAutoApplyOrderDiscount();
+      if (total != before) {
+        final changed = _l10n.localeName.startsWith('ar')
+            ? 'تم تحديث الإجمالي بعد تطبيق الخصم — راجع المبلغ ثم ادفع مرة أخرى'
+            : 'The discount updated the total — check the amount, then pay again';
+        _identityNotice(changed);
+        return changed;
+      }
+    }
+    return null;
   }
 
   Future<T> _duringTableTransition<T>(Future<T> Function() action) async {
     _tableTransitionDepth++;
-    _advanceOrderGeneration();
     _notifySafely();
     try {
       return await action();
@@ -202,24 +276,13 @@ class PosController extends ChangeNotifier
     }
     final tag = CustomerActionTag(_orderGeneration, ++_customerActionSequence);
     _pendingCustomerLookups.add(tag);
+    _restoreCustomerLookup = tag;
     unawaited(() async {
       try {
         final result = await refresh(id).timeout(const Duration(seconds: 3));
         if (!customerActionCurrent(tag) || selectedCustomer?.id != id) return;
         if (result.deleted) {
-          selectedCustomer = null;
-          selectedEarnRuleIds = null;
-          customerReferenceNumber = '';
-          vehiclePlateNumber = '';
-          if (_hasLoyaltyRedemption) discount = const DiscountConfiguration();
-          _clearLoyaltyRedemption();
-          _resetCharityRoundUp();
-          _identityNotice(
-            _l10n.localeName.startsWith('ar')
-                ? 'هذا العميل لم يعد موجوداً — تمت إزالة العميل وأي استبدال لنقاط الولاء'
-                : 'This customer no longer exists — the customer and any loyalty redemption were removed',
-          );
-          _broadcast();
+          detachMissingCustomer();
         } else if (result.customer?.id == id) {
           selectedCustomer = result.customer;
           customerReferenceNumber = result.customer!.phone
@@ -2254,7 +2317,7 @@ class PosController extends ChangeNotifier
   }
 
   bool setVehiclePlateNumber(String value) {
-    if (!_identityMutationAllowed()) return false;
+    if (!_identityMutationAllowed(money: true)) return false;
     // Plates are alphanumeric; store the canonical uppercased form (the server
     // matches plates uppercased).
     vehiclePlateNumber = value.trim().toUpperCase();
@@ -2339,7 +2402,14 @@ class PosController extends ChangeNotifier
     return message;
   }
 
+  static bool isLoyaltyOwnedDiscount(DiscountConfiguration configuration) =>
+      configuration.kind == DiscountKind.fixedAmount &&
+      configuration.discountId == null &&
+      (configuration.label == 'Loyalty redemption' ||
+          configuration.label == 'Stamp reward');
+
   bool applyDiscount(DiscountConfiguration configuration) {
+    if (isLoyaltyOwnedDiscount(configuration)) return false;
     if (!_identityMutationAllowed(money: true)) return false;
     // P-G7 — delivery-provider orders take no discounts.
     if (selectedOrderType == OrderType.delivery) return false;
@@ -2610,6 +2680,7 @@ class PosController extends ChangeNotifier
     }
     if (!_cartMutationAllowed(insideTableTransition: true)) return;
 
+    if (!canReuseCurrentCart) _advanceOrderGeneration();
     selectedOrderType = OrderType.dineIn;
     activeDiningTableId = tableId;
     _activeDiningTableSeatingKey = session?.seatingKey;
@@ -2687,6 +2758,8 @@ class PosController extends ChangeNotifier
     if (selectedOrderType != OrderType.dineIn) return;
 
     final leavingTableId = activeDiningTableId;
+    if (leavingTableId == null && _cart.isEmpty) return;
+    _advanceOrderGeneration();
     await _flushActiveDiningTablePersistence();
     if (leavingTableId != null) {
       diningTableSyncHooks?.onTableLeft(leavingTableId);
@@ -2817,6 +2890,7 @@ class PosController extends ChangeNotifier
 
     // Save target BEFORE deleting source (REPLACE is idempotent): a crash in
     // between duplicates a row, never loses the cart.
+    _advanceOrderGeneration();
     await _orderStorage.saveDiningTableSession(moved);
     await _orderStorage.clearDiningTable(fromTableId);
     _diningHookOccupancies.remove(fromTableId);
@@ -3447,37 +3521,37 @@ class PosController extends ChangeNotifier
     }
     final trimmedReference = reference.trim();
     if (trimmedReference.isEmpty) return null;
-    if (!await _combineMutationAllowed()) return lastPaymentMessage;
-
-    // Freeze the provider NOW — a config refresh during the allocation
-    // await below can drop selectedDeliveryProviderId (provider deleted
-    // on the portal mid-sale), and the punched order must keep the
-    // provider the cashier actually chose.
-    _punchedDeliveryProviderId = selectedDeliveryProviderId;
-    _punchedDeliveryProviderName = selectedDeliveryProvider?.name ?? '';
-
-    _resetCharityRoundUp();
-    _clearPaymentLaunchOverlay();
     isProcessingPayment = true;
-    lastPaymentMessage = '';
-
-    // P-F8 — a punched delivery order is a real order with a printed
-    // ticket, so it takes a sequential number like any tendered sale
-    // (same short fuse + offline fallback as payAndPrint).
-    if (orderNumbering.enabled &&
-        receiptNumber.isEmpty &&
-        allocateReceiptNumber != null) {
-      try {
-        final allocated = await allocateReceiptNumber!().timeout(
-          const Duration(seconds: 3),
-        );
-        if (allocated != null) receiptNumber = allocated.formatted;
-      } catch (_) {
-        // Offline / timeout / refused — the local number stands.
-      }
-    }
-
     try {
+      if (!await _combineMutationAllowed()) return lastPaymentMessage;
+
+      // Freeze the provider NOW — a config refresh during the allocation
+      // await below can drop selectedDeliveryProviderId (provider deleted
+      // on the portal mid-sale), and the punched order must keep the
+      // provider the cashier actually chose.
+      _punchedDeliveryProviderId = selectedDeliveryProviderId;
+      _punchedDeliveryProviderName = selectedDeliveryProvider?.name ?? '';
+
+      _resetCharityRoundUp();
+      _clearPaymentLaunchOverlay();
+      lastPaymentMessage = '';
+
+      // P-F8 — a punched delivery order is a real order with a printed
+      // ticket, so it takes a sequential number like any tendered sale
+      // (same short fuse + offline fallback as payAndPrint).
+      if (orderNumbering.enabled &&
+          receiptNumber.isEmpty &&
+          allocateReceiptNumber != null) {
+        try {
+          final allocated = await allocateReceiptNumber!().timeout(
+            const Duration(seconds: 3),
+          );
+          if (allocated != null) receiptNumber = allocated.formatted;
+        } catch (_) {
+          // Offline / timeout / refused — the local number stands.
+        }
+      }
+
       deliveryReference = trimmedReference;
       deliveryDriverPhone = driverPhone.replaceAll(RegExp(r'\D'), '').trim();
       selectedPaymentMethod = 'Delivery';

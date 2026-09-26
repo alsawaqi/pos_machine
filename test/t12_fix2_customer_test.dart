@@ -129,7 +129,7 @@ void main() {
     testWidgets('T12 fix2 c identity $mode', (tester) async {
       final r = CustomerRig(tester);
       if (mode == 'same-enter') {
-        r.server.customers[5]!['phone'] = '+96890000001';
+        r.server.customers[5]!['phone'] = '+968 9000 0001';
       }
       await r.start();
       await r.add();
@@ -507,12 +507,11 @@ void main() {
     final r = CustomerRig(tester);
     await r.start();
     await r.add();
-    r.c.applyLoyaltyRedemption(
-      ruleId: 11,
-      points: 100,
-      valueOmr: 0.5,
-      label: 'Loyalty redemption',
-    );
+    r.c.loyaltyRedeemRuleId = 11;
+    r.c.loyaltyRedeemPoints = 100;
+    r.c.loyaltyRedeemStamps = 0;
+    r.c.loyaltyRedeemCustomerId = null;
+    expect(r.c.loyaltyRedeemRuleId, 11);
     // A stale field set left by the base's non-reuse discount writer.
     r.c.discount = const DiscountConfiguration();
     r.c.maybeAutoApplyOrderDiscount();

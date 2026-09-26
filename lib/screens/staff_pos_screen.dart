@@ -6314,7 +6314,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     String query,
     CustomerActionTag tag,
   ) async {
-    controller.markCustomerLookup(tag);
+    final pending = CustomerActionTag(tag.generation, tag.sequence);
+    controller.markCustomerLookup(pending);
     try {
       return await ref
           .read(apiServiceProvider)
@@ -6323,11 +6324,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     } catch (_) {
       return controller.searchCachedCustomers(query);
     } finally {
+      controller.endCustomerLookup(pending);
       controller.endCustomerLookup(tag);
     }
   }
 
   Future<bool> _confirmCustomerNumber(String value) async {
+    if (controller.isSameCustomerNumber(value)) {
+      final accepted = controller.confirmSameCustomerNumber();
+      _syncCustomerFields();
+      return accepted;
+    }
     final tag = controller.beginCustomerAction(lookup: true);
     if (tag == null) {
       _syncCustomerFields();
@@ -6413,6 +6420,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await _adjustLiveBill('customer');
       return;
     }
+    if (controller.restoredCustomerLookupPending) {
+      controller.allowCustomerControl(refuseLookup: true);
+      return;
+    }
+    final attachedId = controller.selectedCustomer?.id;
     final tag = controller.beginCustomerAction(lookup: true);
     if (tag == null) {
       _syncCustomerFields();
@@ -6447,9 +6459,22 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       try {
         final fresh = await ref
             .read(apiServiceProvider)
-            .fetchCustomerDetails(profile.id)
+            .refreshSavedCustomer(profile.id)
             .timeout(const Duration(seconds: 3));
-        if (fresh != null) profile = fresh;
+        if (!mounted || !controller.customerActionCurrent(tag)) return;
+        if (fresh.deleted) {
+          if (attachedId != null) {
+            controller.detachMissingCustomer();
+          } else {
+            _showPopupMessage(
+              title: l10n.posCustomerNotFoundTitle,
+              message: l10n.posCustomerNotFoundMessage(q),
+              tone: FeedbackTone.info,
+            );
+          }
+          return;
+        }
+        if (fresh.customer != null) profile = fresh.customer;
       } catch (_) {}
       if (!mounted || !controller.customerActionCurrent(tag)) return;
       if (!controller.attachCustomer(profile!)) return;
@@ -6496,8 +6521,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await _adjustLiveBill('customer');
       return;
     }
-    final tag = controller.beginCustomerAction();
-    if (tag == null) {
+    var tag = controller.customerActionTag;
+    if (!controller.allowCustomerControl(refuseLookup: true)) {
       _syncCustomerFields();
       return;
     }
@@ -6516,6 +6541,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       final plate = value.trim().toUpperCase();
       if (plate.isEmpty) return;
 
+      if (!controller.customerActionCurrent(tag)) return;
+      final started = controller.beginCustomerAction(lookup: true);
+      if (started == null) return;
+      tag = started;
       final matches = await _lookupCustomers(plate, tag);
       if (!mounted || !controller.customerActionCurrent(tag)) return;
       // The endpoint also matches names/phones — keep true plate matches when
@@ -6593,8 +6622,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await _adjustLiveBill('customer');
       return;
     }
-    final tag = controller.beginCustomerAction();
-    if (tag == null) {
+    final tag = controller.customerActionTag;
+    if (!controller.allowCustomerControl()) {
       _syncCustomerFields();
       return;
     }
@@ -6610,6 +6639,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           !controller.customerActionCurrent(tag)) {
         return;
       }
+      if (controller.restoredCustomerLookupPending) {
+        controller.allowCustomerControl(refuseLookup: true);
+        return;
+      }
+      if (controller.beginCustomerAction() == null) return;
       if (!controller.attachCustomer(result)) return;
       setState(
         () =>
@@ -6668,8 +6702,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openVehiclePlateKeyboard() async {
-    final tag = controller.beginCustomerAction();
-    if (tag == null) {
+    final tag = controller.customerActionTag;
+    final attachedId = controller.selectedCustomer?.id;
+    if (!controller.allowCustomerControl(refuseLookup: true)) {
       _syncCustomerFields();
       return;
     }
@@ -6684,7 +6719,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       ),
     );
 
-    if (!mounted || value == null || !controller.customerActionCurrent(tag)) {
+    if (!mounted ||
+        value == null ||
+        !controller.customerActionCurrent(tag) ||
+        controller.selectedCustomer?.id != attachedId) {
       _syncCustomerFields();
       return;
     }
@@ -7454,17 +7492,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     final l10n = L10n.of(context);
+    final loyaltyOwned =
+        serverDetail == null &&
+        PosController.isLoyaltyOwnedDiscount(controller.discount);
     final value = await showDialog<DiscountConfiguration>(
       context: context,
       barrierDismissible: true,
       builder: (context) => _DiscountDialog(
-        initialDiscount: serverDetail == null
+        preserveOnEmpty: loyaltyOwned,
+        initialDiscount: serverDetail == null && !loyaltyOwned
             ? controller.discount
             : const DiscountConfiguration(),
       ),
     );
 
-    if (value == null) return;
+    if (value == null || (loyaltyOwned && !value.isActive)) return;
     if (serverDetail != null) {
       picked?.call(
         !value.isActive
@@ -18749,7 +18791,11 @@ class _RedeemBlocksDialogState extends State<_RedeemBlocksDialog> {
 class _DiscountDialog extends StatefulWidget {
   final DiscountConfiguration initialDiscount;
 
-  const _DiscountDialog({required this.initialDiscount});
+  final bool preserveOnEmpty;
+  const _DiscountDialog({
+    required this.initialDiscount,
+    this.preserveOnEmpty = false,
+  });
 
   @override
   State<_DiscountDialog> createState() => _DiscountDialogState();
@@ -19088,10 +19134,16 @@ class _DiscountDialogState extends State<_DiscountDialog> {
                   child: _FilledActionButton(
                     // The stored discount label stays English (it is persisted
                     // in snapshots, pushed to the server, and printed).
-                    label: _selected.isActive || _hasCustomEntry
+                    label:
+                        _selected.isActive ||
+                            _hasCustomEntry ||
+                            widget.preserveOnEmpty
                         ? l10n.posDiscountDlgApply(_effective.label)
                         : l10n.commonClose,
-                    onTap: _selected.isActive || _hasCustomEntry
+                    onTap:
+                        _selected.isActive ||
+                            _hasCustomEntry ||
+                            widget.preserveOnEmpty
                         ? _apply
                         : () => Navigator.of(context).pop(),
                   ),

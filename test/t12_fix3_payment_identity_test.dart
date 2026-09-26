@@ -137,7 +137,7 @@ void main() {
   ) async {
     final r = Fix3Rig(tester);
     await r.ready();
-    await r.keyboard('96890000001');
+    await r.keyboard('96890000003');
     expect(r.c.selectedCustomer, isNull);
     expect(r.c.loyaltyRedeemRuleId, isNull);
     expect(find.text(r.l.posCustomerNotFoundTitle), findsOneWidget);

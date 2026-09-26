@@ -30,6 +30,22 @@ import 'package:mithqal_softpos/mithqal_softpos.dart';
 // HTTP-only model of the four real API handlers named in the fix order.
 // Exact phone lookup, per-customer accounts, failed ACKs and clamped debits.
 class CustomerServer {
+  bool canonicalMode = false;
+  static String? canonicalPhone(String raw) {
+    const arabic = '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹';
+    var digits = raw
+        .split('')
+        .map((ch) {
+          final i = arabic.indexOf(ch);
+          return i < 0 ? ch : (i % 10).toString();
+        })
+        .join()
+        .replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.startsWith('00')) digits = digits.substring(2);
+    if (digits.length < 8) return null;
+    return digits.length == 8 ? '968$digits' : digits;
+  }
+
   final customers = <int, Map<String, dynamic>>{
     5: {
       'id': 5,
@@ -173,6 +189,28 @@ class CustomerServer {
                     (a, b) =>
                         a['name'].toString().compareTo(b['name'].toString()),
                   );
+            if (canonicalMode &&
+                RegExp(r'^[0-9٠-٩۰-۹ +()\-]+$').hasMatch(q) &&
+                canonicalPhone(q) != null) {
+              final exact =
+                  customers.values
+                      .where(
+                        (c) =>
+                            canonicalPhone(c['phone'] as String) ==
+                            canonicalPhone(q),
+                      )
+                      .toList()
+                    ..sort(
+                      (a, b) => (a['id'] as int).compareTo(b['id'] as int),
+                    );
+              if (exact.isNotEmpty) hits.insert(0, exact.first);
+              final seen = <String>{};
+              hits.removeWhere(
+                (c) => !seen.add(
+                  canonicalPhone(c['phone'] as String) ?? 'id:${c['id']}',
+                ),
+              );
+            }
             value = {
               'customers': [
                 for (final c in hits.take(25)) profile(c['id'] as int),
@@ -182,9 +220,18 @@ class CustomerServer {
               o.path.endsWith('/device/customers')) {
             final data = Map<String, dynamic>.from(o.data as Map);
             posts.add(data);
-            final existing = customers.values.where(
-              (c) => c['phone'] == data['phone'],
-            );
+            final existing =
+                customers.values
+                    .where(
+                      (c) =>
+                          c['phone'] == data['phone'] ||
+                          (canonicalMode &&
+                              canonicalPhone(data['phone'] as String) != null &&
+                              canonicalPhone(c['phone'] as String) ==
+                                  canonicalPhone(data['phone'] as String)),
+                    )
+                    .toList()
+                  ..sort((a, b) => (a['id'] as int).compareTo(b['id'] as int));
             final id = existing.isEmpty
                 ? 900 + posts.length
                 : existing.first['id'] as int;
@@ -227,7 +274,19 @@ class CustomerServer {
             Response(
               requestOptions: o,
               statusCode: 200,
-              data: {'data': value ?? {}},
+              data: {
+                'data': value ?? {},
+                if (o.path.contains('/config'))
+                  'meta': {
+                    'terminal_id': 'TEST-ONLY',
+                    'terminal_pin': '0000',
+                    'softpos': {
+                      'provider': 'mosambee_dhofar',
+                      'enabled': true,
+                      'package_name': 'com.mosambee.dhofar.softpos',
+                    },
+                  },
+              },
             ),
           );
         },
@@ -444,6 +503,8 @@ class CustomerRig {
       debugOrderStorageOverride = null;
       await drive(() async {
         await coordinator.dispose();
+        // Drain reads already queued by flush listeners before closing SQLite.
+        await localDb.rawQuery('SELECT 1');
         await outbox.dispose();
         await driftDb.close();
         await localDb.close();
