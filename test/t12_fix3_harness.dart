@@ -29,6 +29,7 @@ class HttpGate {
 class Fix3Server extends CustomerServer {
   final gates = <HttpGate>[];
   int detailsStatus = 200;
+  int searchAttempts = 0;
   bool emptyDetails = false, failSearch = false;
   int? plateReplyId;
   @override
@@ -38,6 +39,7 @@ class Fix3Server extends CustomerServer {
     d.interceptors.add(
       InterceptorsWrapper(
         onRequest: (o, h) async {
+          if (o.path.endsWith('/search')) searchAttempts++;
           for (final g in gates.toList()) {
             if (!g.release.isCompleted && g.hits == 0 && g.match(o)) {
               g.hits++;

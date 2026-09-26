@@ -80,6 +80,8 @@ class PosController extends ChangeNotifier
   int _customerActionSequence = 0;
   final Set<CustomerActionTag> _pendingCustomerLookups = {};
   CustomerActionTag? _restoreCustomerLookup;
+  CustomerActionTag? _detailsCustomerLookup;
+  int? _detailsCustomerId;
   int _tableTransitionDepth = 0;
   int get orderGeneration => _orderGeneration;
   CustomerActionTag get customerActionTag =>
@@ -122,12 +124,19 @@ class PosController extends ChangeNotifier
     _pendingCustomerLookups.clear();
   }
 
-  CustomerActionTag? beginCustomerAction({bool lookup = false}) {
+  CustomerActionTag? beginCustomerAction({
+    bool lookup = false,
+    int? detailsCustomerId,
+  }) {
     if (customerTenderStarted) return null;
     if (!_cartMutationAllowed()) return null;
     final tag = CustomerActionTag(_orderGeneration, ++_customerActionSequence);
     _pendingCustomerLookups.clear();
     if (lookup) _pendingCustomerLookups.add(tag);
+    if (detailsCustomerId != null) {
+      _detailsCustomerLookup = tag;
+      _detailsCustomerId = detailsCustomerId;
+    }
     _notifySafely();
     return tag;
   }
@@ -181,11 +190,23 @@ class PosController extends ChangeNotifier
             digits == customerReferenceNumber);
   }
 
+  bool get attachedCustomerCheckPending =>
+      restoredCustomerLookupPending ||
+      (_detailsCustomerLookup != null &&
+          _detailsCustomerId == selectedCustomer?.id &&
+          customerActionCurrent(_detailsCustomerLookup!) &&
+          _pendingCustomerLookups.contains(_detailsCustomerLookup));
+
+  bool keepsAttachedCustomerCheck(String value) =>
+      selectedCustomer != null &&
+      attachedCustomerCheckPending &&
+      (value.trim().isEmpty || isSameCustomerNumber(value));
+
   bool confirmSameCustomerNumber() {
     if (!allowCustomerControl()) return false;
-    // Same-number Done supersedes keyboard/search replies, but the authoritative
-    // restore refresh must still complete (including its deleted-customer reply).
-    if (!restoredCustomerLookupPending) cancelCustomerLookups();
+    // Keyboard Done cannot discard an authoritative check of this customer.
+    // A different-id Details/search reply can still be superseded.
+    if (!attachedCustomerCheckPending) cancelCustomerLookups();
     _notifySafely();
     return true;
   }
@@ -240,13 +261,14 @@ class PosController extends ChangeNotifier
       return message;
     }
     // Reprice only before a tender starts; a changed total requires another tap.
-    if (!_hasLoyaltyRedemption &&
-        !customerTenderStarted &&
+    if (!customerTenderStarted &&
         !recoveryBlocked &&
         !hasRecordedSplitPayments) {
-      final before = total;
+      // Compare with the last displayed price BEFORE asking the clock again.
+      final before = (_priceCache ?? _price).grandTotalBaisas;
+      _invalidatePriceCache();
       maybeAutoApplyOrderDiscount();
-      if (total != before) {
+      if (_price.grandTotalBaisas != before) {
         final changed = _l10n.localeName.startsWith('ar')
             ? 'تم تحديث الإجمالي بعد تطبيق الخصم — راجع المبلغ ثم ادفع مرة أخرى'
             : 'The discount updated the total — check the amount, then pay again';
@@ -1515,11 +1537,28 @@ class PosController extends ChangeNotifier
       ..sort((left, right) => left.sortOrder.compareTo(right.sortOrder));
   }
 
+  pricing.PriceResult? _tenderPrice;
+  OrderSnapshot? _tenderSnapshot;
+
+  void _freezeTenderPrice() {
+    if (_tenderPrice != null) return; // Paid split legs own this same price.
+    _tenderPrice = _price;
+    _tenderSnapshot = snapshot();
+  }
+
+  void _releaseTenderPrice() {
+    if (hasRecordedSplitPayments) return;
+    _tenderPrice = null;
+    _tenderSnapshot = null;
+    _invalidatePriceCache();
+  }
+
   pricing.PriceResult? _priceCache;
   int _priceCacheNonce = -1;
   DateTime? _priceCacheAt;
 
   pricing.PriceResult get _price {
+    if (_tenderPrice != null) return _tenderPrice!;
     final now = clock();
     final stale =
         _priceCache == null ||
@@ -1960,6 +1999,7 @@ class PosController extends ChangeNotifier
         ? null
         : _findDiningFloorById(activeTable.floorId);
     final priced = _price;
+    final frozen = _tenderSnapshot;
 
     // P-F9 — freeze the applied offers (flattened allocations).
     final frozenOffers = <Map<String, dynamic>>[
@@ -1985,21 +2025,31 @@ class PosController extends ChangeNotifier
       receiptNumber: receiptNumber, // P-F8 — '' until allocated
       offers: frozenOffers, // P-F9
       orderType: selectedOrderType.storageValue,
-      items: [for (final item in _cart) _snapshotItem(item, priced: priced)],
+      items:
+          frozen?.items ??
+          [for (final item in _cart) _snapshotItem(item, priced: priced)],
       rawSubtotal: pricing.baisasToOmr(priced.rawSubtotalBaisas),
       discountAmount: pricing.baisasToOmr(priced.discountTotalBaisas),
-      discountLabel: discount.label,
-      discountId: discount.discountId,
-      discountAmountType: discount.amountType,
-      discountReason: discount.reason,
+      discountLabel: frozen == null ? discount.label : frozen.discountLabel,
+      discountId: frozen == null ? discount.discountId : frozen.discountId,
+      discountAmountType: frozen == null
+          ? discount.amountType
+          : frozen.discountAmountType,
+      discountReason: frozen == null ? discount.reason : frozen.discountReason,
       loyaltyRedeemRuleId: loyaltyRedeemRuleId,
       loyaltyRedeemPoints: loyaltyRedeemPoints,
       loyaltyRedeemStamps: loyaltyRedeemStamps,
       compAmount: pricing.baisasToOmr(priced.compTotalBaisas),
-      compReasonId: appliedComp?.reasonId,
-      compReasonName: appliedComp?.reasonName ?? '',
-      compLineIndex: appliedComp?.lineIndex,
-      compQty: appliedComp?.qty,
+      compReasonId: frozen == null
+          ? appliedComp?.reasonId
+          : frozen.compReasonId,
+      compReasonName: frozen == null
+          ? appliedComp?.reasonName ?? ''
+          : frozen.compReasonName,
+      compLineIndex: frozen == null
+          ? appliedComp?.lineIndex
+          : frozen.compLineIndex,
+      compQty: frozen == null ? appliedComp?.qty : frozen.compQty,
       subtotal: pricing.baisasToOmr(priced.subtotalBaisas),
       tax: pricing.baisasToOmr(priced.taxTotalBaisas),
       total: pricing.baisasToOmr(priced.grandTotalBaisas),
@@ -3521,6 +3571,7 @@ class PosController extends ChangeNotifier
     }
     final trimmedReference = reference.trim();
     if (trimmedReference.isEmpty) return null;
+    _freezeTenderPrice();
     isProcessingPayment = true;
     try {
       if (!await _combineMutationAllowed()) return lastPaymentMessage;
@@ -3566,6 +3617,7 @@ class PosController extends ChangeNotifier
       );
     } finally {
       isProcessingPayment = false;
+      _releaseTenderPrice();
     }
   }
 
@@ -3588,11 +3640,13 @@ class PosController extends ChangeNotifier
 
     _resetCharityRoundUp();
     _clearPaymentLaunchOverlay();
+    _freezeTenderPrice();
     isProcessingPayment = true;
     lastPaymentMessage = '';
 
     if (!await _combineMutationAllowed()) {
       isProcessingPayment = false;
+      _releaseTenderPrice();
       return lastPaymentMessage;
     }
 
@@ -3619,6 +3673,7 @@ class PosController extends ChangeNotifier
       }
       if (refusal != null) {
         isProcessingPayment = false;
+        _releaseTenderPrice();
         paymentStatus = 'Payment blocked';
         lastPaymentMessage = refusal;
         displayNote = refusal;
@@ -3826,6 +3881,7 @@ class PosController extends ChangeNotifier
     } finally {
       _clearPaymentLaunchOverlay();
       isProcessingPayment = false;
+      _releaseTenderPrice();
       _broadcast();
       await _restoreRearDisplayAfterPaymentIfNeeded();
     }
@@ -3866,10 +3922,12 @@ class PosController extends ChangeNotifier
     _clearPaymentLaunchOverlay();
     _activePaymentBaseOverride = cardBaseAmount;
     selectedPaymentMethod = 'Credit Card';
+    _freezeTenderPrice();
     isProcessingPayment = true;
     lastPaymentMessage = '';
     if (!await _combineMutationAllowed()) {
       isProcessingPayment = false;
+      _releaseTenderPrice();
       _activePaymentBaseOverride = null;
       return lastPaymentMessage;
     }
@@ -3985,6 +4043,7 @@ class PosController extends ChangeNotifier
       _activePaymentBaseOverride = null;
       _clearPaymentLaunchOverlay();
       isProcessingPayment = false;
+      _releaseTenderPrice();
       _broadcast();
       await _restoreRearDisplayAfterPaymentIfNeeded();
     }
@@ -4851,6 +4910,8 @@ class PosController extends ChangeNotifier
     String note = '',
   }) {
     _advanceOrderGeneration();
+    _tenderPrice = null;
+    _tenderSnapshot = null;
     _reservedDiningBill = null;
     _cart.clear();
     // Phase C2 — a leftover uuid (resumed-then-cleared cart) is dropped, not

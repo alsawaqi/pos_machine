@@ -6330,7 +6330,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<bool> _confirmCustomerNumber(String value) async {
-    if (controller.isSameCustomerNumber(value)) {
+    if (controller.keepsAttachedCustomerCheck(value) ||
+        controller.isSameCustomerNumber(value)) {
       final accepted = controller.confirmSameCustomerNumber();
       _syncCustomerFields();
       return accepted;
@@ -6425,7 +6426,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     final attachedId = controller.selectedCustomer?.id;
-    final tag = controller.beginCustomerAction(lookup: true);
+    final tag = controller.beginCustomerAction(
+      lookup: true,
+      detailsCustomerId: attachedId,
+    );
     if (tag == null) {
       _syncCustomerFields();
       return;

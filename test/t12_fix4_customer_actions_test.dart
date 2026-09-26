@@ -51,6 +51,7 @@ void main() {
       final searches = r.server.requestPaths
           .where((p) => p.endsWith('/search'))
           .length;
+      final searchAttempts = r.server.searchAttempts;
       await r.tap(find.byKey(const ValueKey('payment-customer-number')));
       await r.tap(r.dialog(find.text(r.l.commonDone)));
       expect(r.identity(), state);
@@ -58,6 +59,11 @@ void main() {
         r.server.requestPaths.where((p) => p.endsWith('/search')).length,
         searches,
         reason: 'Same-number Done must not issue any search',
+      );
+      expect(
+        r.server.searchAttempts,
+        searchAttempts,
+        reason: 'Same-number Done must not attempt even an offline search',
       );
       if (searchGate != null) {
         expect(searchGate.hits, 0);
