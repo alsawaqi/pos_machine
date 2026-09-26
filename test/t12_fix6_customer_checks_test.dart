@@ -73,8 +73,9 @@ void main() {
         );
         expect(r.c.selectedCustomer?.id, action == 'different' ? 6 : null);
         expect(r.c.loyaltyRedeemRuleId, isNull);
-        if (action == 'done' || action == 'same' || action == 'none')
+        if (action == 'done' || action == 'same' || action == 'none') {
           expect(r.notices, contains(deletedEn));
+        }
         await r.finishCash(expected: 2.7);
         await money(
           r,

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:pos_machine/models/pos_models.dart';
@@ -53,8 +52,9 @@ Future<void> cardEntered(Fix3Rig r) async {
     () => r.c.showCharityRoundUpPrompt || r.cardHits > 0,
     reason: 'real card prompt/channel',
   );
-  if (r.c.showCharityRoundUpPrompt)
+  if (r.c.showCharityRoundUpPrompt) {
     await r.tap(find.text(r.l.posCharityKeepOriginalTotal));
+  }
   await pumpUntilRealCondition(
     r.tester,
     () => r.cardHits > 0,
@@ -254,8 +254,9 @@ void main() {
     );
     expect(r.cardHits, 0);
     await r.finishCash(expected: 2.43);
-    if (r.c.lastPaymentMessage == changedTotal)
+    if (r.c.lastPaymentMessage == changedTotal) {
       await r.finishCash(expected: 2.43);
+    }
     await money(r, 'F57 cancel/retry', total: 2430, discount: 270);
   });
 }
