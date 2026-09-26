@@ -293,6 +293,15 @@ void main() {
       }
       await r.tap(r.dialog(find.text(r.l.commonDone)));
       expect(r.c.vehiclePlateNumber, 'A777');
+      // Only the external HTTP reply is adversarial; the real completed-order
+      // callback must keep the identity already chosen on the screen.
+      r.server.plateReplyId = 777;
+      r.server.customers[777] = {
+        'id': 777,
+        'name': 'Reply customer',
+        'phone': '777',
+        'plates': [],
+      };
       await r.finishCash(expected: 2.7);
       await r.measured('H plate A777', redeem: false, posts: 1, checked: 2.7);
       expect(r.server.posts.single['plate_number'], 'A777');
