@@ -260,9 +260,10 @@ class PosController extends ChangeNotifier
       _identityNotice(message);
       return message;
     }
-    // Check ownership before repricing can change the discount slot.
-    final loyaltyRefusal = _guardLoyaltyTender();
-    if (loyaltyRefusal != null) return loyaltyRefusal;
+    // Leave an inconsistent redemption untouched for the existing tender
+    // ownership guard. Repricing must not erase its evidence or move that
+    // refusal ahead of the normal delivery-details dialog.
+    if (_hasLoyaltyRedemption && !_loyaltyRedemptionConsistent) return null;
     // Reprice only before a tender starts; a changed total requires another tap.
     if (!customerTenderStarted &&
         !recoveryBlocked &&
