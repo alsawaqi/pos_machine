@@ -30,6 +30,7 @@ class B3Memory implements TableLedgerStore, OrderStorageService {
   final rounds = <String, LocalTableRound>{};
   final cancellations = <String, LocalLineCancellation>{};
   final verdicts = <TableSyncVerdict>[];
+  int tableSaveCount = 0;
   @override
   Future<int> fetchNextOrderNumber() async => 1451;
   @override
@@ -51,6 +52,7 @@ class B3Memory implements TableLedgerStore, OrderStorageService {
   @override
   Future<void> saveDiningTableSession(DiningTableSession s) async {
     tables[s.tableId] = s;
+    tableSaveCount++;
   }
 
   @override
@@ -275,8 +277,18 @@ class B3Harness {
       },
       onPrintFailure: () => failures++,
     )..attach();
+    final savesBeforeOpen = memory.tableSaveCount;
     await controller.openDiningTable('5');
-    await Future<void>.delayed(const Duration(milliseconds: 200));
+    // The seed already exists in storage. Wait for the controller's real
+    // debounced write, not merely for a non-null table or an elapsed delay.
+    final elapsed = Stopwatch()..start();
+    while (memory.tableSaveCount == savesBeforeOpen) {
+      if (elapsed.elapsed >= const Duration(seconds: 20)) {
+        fail('Timed out waiting for the opened table draft to be persisted');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    await bridge.settled;
     await coordinator.settled;
     addTearDown(() async {
       bridge.detach();
@@ -385,7 +397,9 @@ void main() {
       expect(h.preferences.getStringList('qr_round_printed_set_mock'), ['1']);
       h.controller.addProduct(b3Product);
       await h.controller.returnToDiningFloorPlan();
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+      // Leaving flushes the draft; the bridge then sends/prints that saved
+      // delta asynchronously. Await its actual work before checking evidence.
+      await h.bridge.settled;
       await h.coordinator.settled;
       expect(h.tickets.map((t) => t.items.single['qty']), [2, 1]);
       expect(h.printedIds, ['1', '2']);
