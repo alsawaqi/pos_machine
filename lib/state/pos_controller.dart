@@ -307,7 +307,11 @@ class PosController extends ChangeNotifier
     if (!customerTenderStarted &&
         !recoveryBlocked &&
         !hasRecordedSplitPayments) {
-      final displayed = _displayedPaymentAmounts;
+      // A local counter quote cannot price a canonical live-table bill.
+      // That path keeps its existing server snapshot/claim verification below.
+      final displayed = isLiveSharedTable?.call() == true
+          ? null
+          : _displayedPaymentAmounts;
       final before = displayed?.total;
       _invalidatePriceCache();
       maybeAutoApplyOrderDiscount();
