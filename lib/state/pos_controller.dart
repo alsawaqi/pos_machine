@@ -41,6 +41,24 @@ class CustomerActionTag {
   final int sequence;
 }
 
+/// Monetary values used by one payment-page render, in integer baisas.
+/// Background price readers must never replace this cashier-facing quote.
+class PaymentPageAmounts {
+  const PaymentPageAmounts({
+    required this.total,
+    required this.due,
+    required this.tendered,
+    required this.change,
+    required this.cardRemainder,
+  });
+  final int total;
+  final int due;
+  final int tendered;
+  final int change;
+  final int cardRemainder;
+  bool get isMixed => tendered > 0 && tendered < due;
+}
+
 class PosController extends ChangeNotifier
     implements machine_pricing.MachinePricingState {
   static const Duration _rearDisplaySyncDebounceDuration = Duration(
@@ -121,6 +139,7 @@ class PosController extends ChangeNotifier
 
   void _advanceOrderGeneration() {
     _orderGeneration++;
+    _displayedPaymentAmounts = null;
     _pendingCustomerLookups.clear();
   }
 
@@ -248,6 +267,26 @@ class PosController extends ChangeNotifier
 
   bool allowLoyaltyDialog() => _identityMutationAllowed(money: true);
 
+  PaymentPageAmounts? _displayedPaymentAmounts;
+
+  PaymentPageAmounts _paymentPageAmounts(double tendered) {
+    final due = pricing.omrToBaisas(activePaymentBaseTotal);
+    final cash = pricing.omrToBaisas(tendered);
+    return PaymentPageAmounts(
+      total: pricing.omrToBaisas(total),
+      due: due,
+      tendered: cash,
+      change: cash > due ? cash - due : 0,
+      cardRemainder: due > cash ? due - cash : 0,
+    );
+  }
+
+  /// Called only by the payment page as it builds the displayed values.
+  /// Does not notify listeners. Snapshot/config/rear-display reads cannot
+  /// replace this quote; only the next actual payment-page render does so.
+  PaymentPageAmounts recordPaymentPageAmounts(double tendered) =>
+      _displayedPaymentAmounts = _paymentPageAmounts(tendered);
+
   String? customerTenderRefusal({bool gift = false}) {
     final message = gift && _hasLoyaltyRedemption
         ? giftRedemptionMessage
@@ -268,11 +307,16 @@ class PosController extends ChangeNotifier
     if (!customerTenderStarted &&
         !recoveryBlocked &&
         !hasRecordedSplitPayments) {
-      // Compare with the last displayed price BEFORE asking the clock again.
-      final before = (_priceCache ?? _price).grandTotalBaisas;
+      final displayed = _displayedPaymentAmounts;
+      final before = displayed?.total;
       _invalidatePriceCache();
       maybeAutoApplyOrderDiscount();
-      if (_price.grandTotalBaisas != before) {
+      final fresh = _paymentPageAmounts((displayed?.tendered ?? 0) / 1000);
+      if (before != null &&
+          (fresh.total != before ||
+              fresh.due != displayed!.due ||
+              fresh.change != displayed.change ||
+              fresh.cardRemainder != displayed.cardRemainder)) {
         final changed = _l10n.localeName.startsWith('ar')
             ? 'تم تحديث الإجمالي بعد تطبيق الخصم — راجع المبلغ ثم ادفع مرة أخرى'
             : 'The discount updated the total — check the amount, then pay again';

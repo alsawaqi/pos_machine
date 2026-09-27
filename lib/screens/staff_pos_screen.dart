@@ -8616,6 +8616,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildPaymentBody({QrCheckoutController? qr, VoidCallback? exit}) {
+    final displayed = qr == null && !_liveTable
+        ? controller.recordPaymentPageAmounts(_tenderedCashAmount)
+        : null;
     return _glassPanel(
       padding: const EdgeInsets.all(18),
       tint: const Color(0xA8F7FBFD),
@@ -8630,17 +8633,27 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(width: 330, child: _buildPaymentOrderPanel(qr: qr)),
+          SizedBox(
+            width: 330,
+            child: _buildPaymentOrderPanel(qr: qr, displayed: displayed),
+          ),
           const SizedBox(width: 18),
           Expanded(
-            child: _buildPaymentConsole(qr: qr, exit: exit),
+            child: _buildPaymentConsole(
+              qr: qr,
+              exit: exit,
+              displayed: displayed,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildPaymentOrderPanel({QrCheckoutController? qr}) {
+  Widget _buildPaymentOrderPanel({
+    QrCheckoutController? qr,
+    PaymentPageAmounts? displayed,
+  }) {
     final l10n = L10n.of(context);
     final bill = qr == null
         ? _liveBill
@@ -8660,7 +8673,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         ? controller.subtotal
         : rawSubtotal - discount;
     final total = bill == null
-        ? controller.activePaymentBaseTotal
+        ? (displayed == null
+              ? controller.activePaymentBaseTotal
+              : displayed.due / 1000)
         : bill.total / 1000;
 
     return _glassPanel(
@@ -9053,7 +9068,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  Widget _buildPaymentConsole({QrCheckoutController? qr, VoidCallback? exit}) {
+  Widget _buildPaymentConsole({
+    QrCheckoutController? qr,
+    VoidCallback? exit,
+    PaymentPageAmounts? displayed,
+  }) {
     final l10n = L10n.of(context);
     final quickAmounts = _quickCashAmounts(
       total: qr == null ? null : qr.total / 1000,
@@ -9188,7 +9207,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                   children: [
                                     Text(
                                       (qr == null
-                                              ? _showMixedCardBalance
+                                              ? (displayed?.isMixed ??
+                                                    _showMixedCardBalance)
                                               : qrMixed)
                                           ? l10n.posPaymentCardBalance
                                           : l10n.posPaymentChange,
@@ -9202,9 +9222,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                     Text(
                                       SunmiReceiptService.money(
                                         qr == null
-                                            ? (_showMixedCardBalance
-                                                  ? _mixedCardBalance
-                                                  : _cashChangeAmount)
+                                            ? ((displayed?.isMixed ??
+                                                      _showMixedCardBalance)
+                                                  ? (displayed == null
+                                                        ? _mixedCardBalance
+                                                        : displayed
+                                                                  .cardRemainder /
+                                                              1000)
+                                                  : (displayed == null
+                                                        ? _cashChangeAmount
+                                                        : displayed.change /
+                                                              1000))
                                             : (qrMixed
                                                   ? (qr.total - qr.cashBaisas) /
                                                         1000
@@ -9216,7 +9244,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                         fontWeight: FontWeight.w900,
                                         color:
                                             (qr == null
-                                                ? _showMixedCardBalance
+                                                ? (displayed?.isMixed ??
+                                                      _showMixedCardBalance)
                                                 : qrMixed)
                                             ? const Color(0xFF1B6F37)
                                             : const Color(0xFF1FA153),
@@ -9273,7 +9302,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                         controller.activeSplitIndex,
                                         controller.splitCount,
                                         SunmiReceiptService.money(
-                                          controller.activePaymentBaseTotal,
+                                          (displayed == null
+                                              ? controller
+                                                    .activePaymentBaseTotal
+                                              : displayed.due / 1000),
                                         ),
                                       ),
                                       style: const TextStyle(
