@@ -949,6 +949,7 @@ Future<String?> showTableSearchKeyboard(
 );
 
 class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
+  late L10n _controllerL10n;
   TableShadowRepository? _tableShadow;
   RemoteTableSnapshot _remoteTables = const RemoteTableSnapshot();
   String _tableShadowMode = 'off';
@@ -1345,7 +1346,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // Phase C4 — controller/service-authored messages resolve through the
     // device language without a BuildContext (see l10nProvider). Stored
     // messages keep the language they were authored in until the next action.
-    controller.localize = () => ref.read(l10nProvider);
+    _controllerL10n = ref.read(l10nProvider);
+    controller.localize = () => _controllerL10n = ref.read(l10nProvider);
     _managerAuthorization.localize = () => ref.read(l10nProvider);
     // Keep the printing toggles in sync with Settings.
     final settings = ref.read(settingsControllerProvider);
@@ -2542,6 +2544,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   @override
   void dispose() {
+    // SQLite-backed table work may complete after this widget is unmounted.
+    // Keep its messages in the last device language without reading a dead ref.
+    final finalL10n = _controllerL10n;
+    controller.localize = () => finalL10n;
     controller.cancelCustomerLookups();
     _liveEditor?.removeListener(_liveEditorChanged);
     _liveEditor?.dispose();
