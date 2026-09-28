@@ -76,12 +76,23 @@ class LocalOrderStorageService
 
   @override
   Future<bool> tableOutboxArchived(String key, String eventsJson) async {
+    final saved = (await archivedTableOutbox())[key];
+    if (saved == null) return false;
+    if (saved != eventsJson) throw StateError('Archived request changed');
+    return true;
+  }
+
+  /// Every verified manager-discard archive is read once; an archive that no
+  /// longer proves itself fails closed for sending (callers decide display).
+  @override
+  Future<Map<String, String>> archivedTableOutbox() async {
     final db = await database;
     if ((await db.rawQuery(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='draft_recovery_closed_archive'",
     )).isEmpty) {
-      return false;
+      return const {};
     }
+    final archived = <String, String>{};
     for (final row in await db.query('draft_recovery_closed_archive')) {
       final raw =
           jsonDecode(row['local_json'] as String) as Map<String, dynamic>;
@@ -94,15 +105,13 @@ class LocalOrderStorageService
         throw const FormatException('Invalid saved-copy archive');
       }
       for (final event in copy.outbox) {
-        if (event['key'] == key) {
-          if (event['events_json'] != eventsJson) {
-            throw StateError('Archived request changed');
-          }
-          return true;
-        }
+        archived.putIfAbsent(
+          event['key'] as String,
+          () => event['events_json'] as String,
+        );
       }
     }
-    return false;
+    return archived;
   }
 
   Database? _database;

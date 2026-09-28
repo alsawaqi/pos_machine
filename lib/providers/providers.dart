@@ -287,6 +287,7 @@ final orderSyncRepositoryProvider = Provider<OrderSyncRepository>((ref) {
       debugOrderStorageOverride ?? LocalOrderStorageService.instance;
   if (localArchive is LocalOrderStorageService) {
     repository.tableCopyArchived = localArchive.tableOutboxArchived;
+    repository.archivedTableCopies = localArchive.archivedTableOutbox;
   }
   repository.addAckListener(
     ServerReceiptHistory(

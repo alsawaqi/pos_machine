@@ -194,4 +194,7 @@ class SavedCopyDiscard {
 /// acknowledged. Their immutable rows remain available in the outbox/archive.
 abstract interface class ArchivedTableOutbox {
   Future<bool> tableOutboxArchived(String key, String eventsJson);
+
+  /// Every archived request at once: outbox key → immutable events JSON.
+  Future<Map<String, String>> archivedTableOutbox();
 }

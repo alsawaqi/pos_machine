@@ -59,6 +59,11 @@ class OrderSyncRepository {
   /// Route comes from the immutable cancellation journal, never today's board.
   Future<String> Function(Map<String, dynamic>)? cancellationRoute;
   Future<bool> Function(String key, String eventsJson)? tableCopyArchived;
+
+  /// One read of every request archived with a manager-discarded table copy
+  /// (outbox key → immutable events JSON). Preferred over [tableCopyArchived]:
+  /// pending reads and streams check the archive once, not once per row.
+  Future<Map<String, String>> Function()? archivedTableCopies;
   final PosApiService _api;
   final AppDatabase _db;
 
@@ -155,11 +160,55 @@ class OrderSyncRepository {
 
   Future<List<OrderOutboxRow>> allRows() => _db.select(_db.orderOutbox).get();
 
-  Future<List<OrderOutboxRow>> pendingRows() async => [
-    for (final row in await _db.pendingOutbox())
-      if (await tableCopyArchived?.call(row.orderUuid, row.eventsJson) != true)
-        row,
-  ];
+  Future<List<OrderOutboxRow>> pendingRows() async =>
+      _withoutArchivedCopies(await _db.pendingOutbox());
+
+  /// Rows archived with a manager-discarded table copy stay in the outbox,
+  /// immutable and unsynced (never a fabricated ACK), but they are no longer
+  /// pending work anywhere: not sent, not counted as queued table work, not
+  /// shown as stuck or awaiting GPS, and they do not keep a table "pending".
+  Future<List<OrderOutboxRow>> _withoutArchivedCopies(
+    List<OrderOutboxRow> rows,
+  ) async {
+    if (rows.isEmpty) return rows;
+    final readAll = archivedTableCopies;
+    if (readAll != null) {
+      final archived = await readAll();
+      if (archived.isEmpty) return rows;
+      return [
+        for (final row in rows)
+          if (!_isArchivedCopy(row, archived)) row,
+      ];
+    }
+    final readOne = tableCopyArchived;
+    if (readOne == null) return rows;
+    return [
+      for (final row in rows)
+        if (await readOne(row.orderUuid, row.eventsJson) != true) row,
+    ];
+  }
+
+  static bool _isArchivedCopy(
+    OrderOutboxRow row,
+    Map<String, String> archived,
+  ) {
+    final saved = archived[row.orderUuid];
+    if (saved == null) return false;
+    if (saved != row.eventsJson) throw StateError('Archived request changed');
+    return true;
+  }
+
+  /// Display/status streams fall back to the raw rows (the visible,
+  /// conservative state) if the archive cannot be read; sending does not.
+  Future<List<OrderOutboxRow>> _visiblePending(
+    List<OrderOutboxRow> rows,
+  ) async {
+    try {
+      return await _withoutArchivedCopies(rows);
+    } catch (_) {
+      return rows;
+    }
+  }
 
   /// Serializes local archive admission with every preparation and push. The
   /// archive callback rechecks this copy's payment evidence; unrelated bills
@@ -854,7 +903,8 @@ class OrderSyncRepository {
     }
   }
 
-  Stream<List<OrderOutboxRow>> watchPending() => _db.watchPendingOutbox();
+  Stream<List<OrderOutboxRow>> watchPending() =>
+      _db.watchPendingOutbox().asyncMap(_visiblePending);
 
   Stream<List<OrderOutboxRow>> watchStuck() =>
       watchPending().map((rows) => rows.where(isStuck).toList(growable: false));
@@ -863,13 +913,14 @@ class OrderSyncRepository {
   /// rejected batch parked at the cap, or a fenced sale that cannot leave the
   /// durable outbox until this device obtains a complete GPS fix.
   Stream<List<OrderSyncAttention>> watchAttention() =>
-      _db.watchPendingOutboxWithBranch().map((snapshot) {
+      _db.watchPendingOutboxWithBranch().asyncMap((snapshot) async {
+        final rows = await _visiblePending(snapshot.rows);
         final branch = snapshot.branch;
         final branchIsFenced =
             branch?.latitude != null && branch?.longitude != null;
 
         return <OrderSyncAttention>[
-          for (final row in snapshot.rows)
+          for (final row in rows)
             if (isStuck(row))
               OrderSyncAttention(
                 row: row,
@@ -883,8 +934,9 @@ class OrderSyncRepository {
         ];
       });
 
-  Future<List<OrderOutboxRow>> stuckBatches() async =>
-      (await _db.pendingOutbox()).where(isStuck).toList(growable: false);
+  Future<List<OrderOutboxRow>> stuckBatches() async => (await _visiblePending(
+    await _db.pendingOutbox(),
+  )).where(isStuck).toList(growable: false);
 
   /// Retry every attention-worthy batch. Parked rows are first un-parked;
   /// GPS-held rows remain pending and [flush] retries them without changing

@@ -60,8 +60,9 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
   }) : clock = clock ?? DateTime.now,
        newUuid = newUuid ?? uuidV4 {
     if (store is ArchivedTableOutbox) {
-      outbox.tableCopyArchived =
-          (store as ArchivedTableOutbox).tableOutboxArchived;
+      final archive = store as ArchivedTableOutbox;
+      outbox.tableCopyArchived = archive.tableOutboxArchived;
+      outbox.archivedTableCopies = archive.archivedTableOutbox;
     }
     outbox.cancellationRoute = (event) async {
       final intent = (await store.readTableSyncVerdicts(limit: 1000000))
