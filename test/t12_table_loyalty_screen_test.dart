@@ -766,6 +766,11 @@ void runPaymentRegression({
           await tap(find.byIcon(Icons.arrow_back_rounded).first);
           await tap(find.text('Dine In').first);
           await tap(find.text('Table 1').first);
+          await pumpUntilRealCondition(
+            tester,
+            () => c.activeDiningTableId == '1' && !c.tableTransitionInProgress,
+            reason: 'selected table identity and transition are ready',
+          );
           // ignore: avoid_print
           print('GUARD $mode table cart reused');
           expectSync(c.activeDiningTableId, '1');
