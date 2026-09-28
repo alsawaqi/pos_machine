@@ -691,12 +691,18 @@ class PosApiService {
       .map((row) => Map<String, dynamic>.from(row as Map))
       .toList();
 
+  /// [exclude] (bulk review only) leaves out orders whose local payment
+  /// evidence on this device needs review; they are never cancelled.
   Future<Map<String, dynamic>> previewExpiredQuickCancellation(
-    String? uuid,
-  ) async => (await _send(
+    String? uuid, {
+    List<String> exclude = const [],
+  }) async => (await _send(
     () => _dio.get(
       '/device/qr/pending-orders/cancel-preview',
-      queryParameters: {'order_uuid': ?uuid},
+      queryParameters: {
+        'order_uuid': ?uuid,
+        if (exclude.isNotEmpty) 'exclude_order_uuids[]': exclude,
+      },
     ),
   )).dataMap;
 

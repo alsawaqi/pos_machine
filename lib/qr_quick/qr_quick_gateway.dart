@@ -96,8 +96,33 @@ class ApiQrQuickGateway
   @override
   Future<Map<String, dynamic>> previewCancel(String? uuid) async {
     _check();
-    final result = await api.previewExpiredQuickCancellation(uuid);
+    var result = await api.previewExpiredQuickCancellation(uuid);
     _check();
+    // A bulk review must not fail because one order's local payment evidence
+    // needs review: leave those orders out (never cancelled) and review the rest.
+    final leftOut = <Map<String, String>>[];
+    if (uuid == null) {
+      for (final row in (result['orders'] as List).map(qrMap)) {
+        try {
+          await cancellationGuard?.call(row['uuid'] as String);
+        } on StateError catch (error) {
+          leftOut.add({
+            'uuid': row['uuid'] as String,
+            'reference': row['reference'] as String,
+            'reason': error.message,
+          });
+        }
+        _check();
+      }
+      if (leftOut.isNotEmpty) {
+        result = await api.previewExpiredQuickCancellation(
+          null,
+          exclude: [for (final order in leftOut) order['uuid']!],
+        );
+        _check();
+      }
+    }
+    // Every order in the final review still passes the full guard.
     for (final row in (result['orders'] as List).map(qrMap)) {
       await cancellationGuard?.call(row['uuid'] as String);
       _check();
@@ -106,7 +131,7 @@ class ApiQrQuickGateway
         as String] = (result['orders'] as List)
         .map((row) => qrMap(row)['uuid'] as String)
         .toList();
-    return result;
+    return {...result, if (leftOut.isNotEmpty) 'left_out': leftOut};
   }
 
   @override

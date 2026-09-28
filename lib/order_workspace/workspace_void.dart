@@ -19,7 +19,9 @@ Future<void> assertWorkspaceVoidJournals(String scope, String uuid) async {
   if ((await (await SqliteQrQuickStore.open(
         scope,
       )).load()).any((request) => request.orderUuid == uuid) ||
-      await (await SqliteDineInStore.open(scope)).load() != null) {
+      // Only this bill's saved changes (or device-wide legacy round intents)
+      // block it; another table's pending adjustment does not.
+      await (await SqliteDineInStore.open(scope)).blocksBill(uuid)) {
     throw StateError('Resolve saved additions before cancellation');
   }
 }
@@ -165,6 +167,16 @@ String workspaceVoidError(Object error, bool ar) {
   };
   if (messages[code] case final text?) return text[ar ? 1 : 0];
   if (error is StateError) {
+    if (error.message == 'Payment evidence requires reconciliation') {
+      return ar
+          ? 'قد يكون دفع هذا الطلب قد تم على هذا الجهاز. يحتاج إلى مراجعة الدفع قبل إلغائه.'
+          : 'A payment for this order may already have been taken on this device. It needs a payment review before it can be cancelled.';
+    }
+    if (error.message == 'Resolve saved additions before cancellation') {
+      return ar
+          ? 'لهذه الفاتورة تغييرات محفوظة غير مرسلة على هذا الجهاز. افتحها وأرسلها أو تجاهلها أولاً.'
+          : 'This bill has unsent saved changes on this device. Open it and send or discard them first.';
+    }
     return ar
         ? 'لم يتم تأكيد الإلغاء. راجع بيانات الجهاز والطلبات المحفوظة ثم حدّث الفاتورة قبل أي إجراء آخر.'
         : 'Cancellation is not confirmed. Review device identity and saved requests, then refresh the bill before another action.';

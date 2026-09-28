@@ -49,6 +49,21 @@ class _CancelExpiredState extends State<_CancelExpired> {
   String text(String en, String ar) => widget.arabic ? ar : en;
   List<Map<String, dynamic>> get rows =>
       (preview?['orders'] as List? ?? []).map(qrMap).toList();
+
+  /// Orders this device left out of a bulk review (never cancelled).
+  List<Map<String, dynamic>> get leftOut =>
+      (preview?['left_out'] as List? ?? []).map(qrMap).toList();
+  String leftOutReason(Object? reason) => switch (reason) {
+    'Payment evidence requires reconciliation' => text(
+      'needs a payment review',
+      'تحتاج إلى مراجعة الدفع',
+    ),
+    'Resolve saved additions before cancellation' => text(
+      'has unsent saved changes on this device',
+      'بها تغييرات محفوظة غير مرسلة على هذا الجهاز',
+    ),
+    _ => text('needs review first', 'تحتاج إلى مراجعة أولاً'),
+  };
   @override
   void initState() {
     super.initState();
@@ -220,6 +235,23 @@ class _CancelExpiredState extends State<_CancelExpired> {
                             }
                           }),
                   ),
+                ],
+                if (leftOut.isNotEmpty) ...[
+                  Text(
+                    text('Left out — not cancelled:', 'مستبعدة — لن تُلغى:'),
+                    key: const ValueKey('quick-cancel-left-out'),
+                  ),
+                  for (final row in leftOut)
+                    Text(
+                      '${row['reference']} · ${leftOutReason(row['reason'])}',
+                    ),
+                  if (rows.isEmpty)
+                    Text(
+                      text(
+                        'No order can be cancelled now.',
+                        'لا يمكن إلغاء أي طلب الآن.',
+                      ),
+                    ),
                 ],
                 TextField(
                   key: const ValueKey('quick-cancel-reason'),
