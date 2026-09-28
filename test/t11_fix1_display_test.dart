@@ -511,12 +511,12 @@ void main() {
         debugPrint('T11 mounted');
         final dynamic host = tester.state(find.byType(StaffPosScreen));
         final PosController c = host.controller;
-        for (var i = 0; i < 30; i++) {
-          await tester.pump(const Duration(milliseconds: 100));
-          await drive(
-            () => Future<void>.delayed(const Duration(milliseconds: 25)),
-          );
-        }
+        await pumpUntilRealCondition(
+          tester,
+          () => c.diningTableSyncHooks is TableKitchenBridge,
+          timeout: const Duration(seconds: 20),
+          reason: 'real screen table startup hydration completed',
+        );
         c.applyCatalog(
           categories: const ['Drinks'],
           products: [product],
