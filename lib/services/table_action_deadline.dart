@@ -11,6 +11,13 @@ class TableActionDeadline {
   static final Object _zoneKey = Object();
   static TableActionDeadline? get current =>
       Zone.current[_zoneKey] as TableActionDeadline?;
+
+  /// A completed UI action may deliberately dispatch durable sync work. That
+  /// work keeps every other zone value, but must not inherit the UI's expired
+  /// wait budget when its HTTP response or serialized turn arrives later.
+  static T background<T>(T Function() operation) =>
+      runZoned(operation, zoneValues: {_zoneKey: null});
+
   static const bound = Duration(seconds: 8);
   final String action;
   final Stopwatch _clock;

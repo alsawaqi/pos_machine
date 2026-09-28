@@ -1,4 +1,5 @@
 import '../services/table_round_validation.dart';
+import '../services/table_action_deadline.dart';
 import '../draft_recovery/saved_copy_discard.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -257,7 +258,9 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
 
   void _hook(Future<void> Function() operation) {
     if (!live || _disposed) return;
-    unawaited(_serial(operation).catchError((Object _) {}));
+    TableActionDeadline.background(() {
+      unawaited(_serial(operation).catchError((Object _) {}));
+    });
   }
 
   DiningTableSession _copyIdentity(

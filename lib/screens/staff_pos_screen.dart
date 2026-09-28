@@ -667,7 +667,11 @@ class TableKitchenBridge implements DiningTableSyncHooks {
     // Capture before the controller resets; a later occupancy must never be
     // mistaken for the cart that just left this table.
     final session = activeSession() ?? coordinator.cachedSession(tableId);
-    if (session != null) unawaited(send(session).catchError((Object _) {}));
+    if (session != null) {
+      TableActionDeadline.background(() {
+        unawaited(send(session).catchError((Object _) {}));
+      });
+    }
   }
 
   @override
