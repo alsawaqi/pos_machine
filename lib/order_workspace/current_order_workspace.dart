@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../services/discount_display.dart';
 import 'package:flutter/foundation.dart';
 import '../qr_quick/qr_quick_models.dart';
 import '../models/pos_models.dart';
@@ -33,6 +34,7 @@ class WorkspaceBill {
   int get subtotal =>
       json['subtotal_baisas'] as int? ??
       items.fold(0, (sum, line) => sum + (line['line_total_baisas'] as int));
+  List<DiscountDisplayRow> get discountRows => serverDiscountDisplayRows(json);
   int get discount => json['discount_total_baisas'] as int? ?? 0;
   int get comp => json['comp_total_baisas'] as int? ?? 0;
   int get tax =>

@@ -691,6 +691,21 @@ class PosApiService {
       .map((row) => Map<String, dynamic>.from(row as Map))
       .toList();
 
+  Future<Map<String, dynamic>> previewExpiredQuickCancellation(
+    String? uuid,
+  ) async => (await _send(
+    () => _dio.get(
+      '/device/qr/pending-orders/cancel-preview',
+      queryParameters: {'order_uuid': ?uuid},
+    ),
+  )).dataMap;
+
+  Future<Map<String, dynamic>> cancelExpiredQuickOrders(
+    Map<String, dynamic> payload,
+  ) async => (await _send(
+    () => _dio.post('/device/qr/pending-orders/cancel', data: payload),
+  )).dataMap;
+
   Future<Map<String, dynamic>> fetchQuickInbox() async => (await _send(
     () => _dio.get(
       '/device/qr/pending-orders',
@@ -1021,6 +1036,38 @@ class PosApiService {
       if (last is! int || page >= last || rows.isEmpty) return null;
     }
     return null; // Bounded lookup: no proof means keep the local copy.
+  }
+
+  /// Manager-only local discard also handles an unsent copy whose UUID was
+  /// never canonical. This read identifies the latest closed bill on its table;
+  /// the caller must independently prove the table is free and no own tender.
+  Future<Map<String, dynamic>?> latestClosedTableBill(int tableId) async {
+    for (var page = 1; page <= 50; page++) {
+      final body = await _send(
+        () => _dio.get(
+          '/device/orders/history',
+          queryParameters: {'per_page': 100, 'page': page},
+        ),
+      );
+      final rows = body.dataMap['orders'];
+      if (rows is! List) throw const FormatException('Missing bill history');
+      for (final row in rows.whereType<Map>()) {
+        if (row['table_id'] == tableId &&
+            row['order_type'] == 'dine_in' &&
+            const {
+              'paid',
+              'void',
+              'voided',
+              'cancelled',
+              'refunded',
+            }.contains(row['status'])) {
+          return Map<String, dynamic>.from(row);
+        }
+      }
+      final last = body.metaMap['last_page'];
+      if (last is! int || page >= last || rows.isEmpty) return null;
+    }
+    return null;
   }
 
   /// GET /device/shift/current — the device's currently-open shift on the server,

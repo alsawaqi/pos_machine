@@ -134,6 +134,14 @@ String workspaceVoidError(Object error, bool ar) {
   final code = error is ApiException ? error.code : null;
   const messages = {
     'invalid_pin': ['Manager PIN not accepted.', 'لم يتم قبول رمز المشرف.'],
+    'qr_session_active': [
+      'The phone session is active. Refresh the list; this order was not cancelled.',
+      'جلسة الهاتف نشطة. حدّث القائمة؛ لم يُلغَ هذا الطلب.',
+    ],
+    'qr_waste_review_required': [
+      'Prepared stock needs review. No orders were cancelled. Review wastage and try again.',
+      'المخزون المحضر يحتاج إلى مراجعة. لم تُلغَ أي طلبات. راجع الهدر وحاول مجدداً.',
+    ],
     'void_preview_changed': [
       'The bill changed. Close this review and refresh before cancelling.',
       'تغيرت الفاتورة. أغلق المراجعة وحدّثها قبل الإلغاء.',

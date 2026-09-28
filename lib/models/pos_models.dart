@@ -1735,6 +1735,8 @@ class OrderSnapshot {
   final double rawSubtotal;
   final double discountAmount;
   final String discountLabel;
+  // Optional display-only server allocations; never used to price or sync.
+  final List<Map<String, dynamic>> discountSources;
   // When the applied discount is a merchant rule: its id + amount_type, sent on
   // order.create so the server snapshots the rule (by-rule report). Null = manual.
   final int? discountId;
@@ -1839,6 +1841,7 @@ class OrderSnapshot {
     this.discountId,
     this.discountAmountType,
     this.discountReason = '',
+    this.discountSources = const [],
     this.receiptNumber = '',
     this.serverReceipt = false,
     this.serverReceiptConfirmed = false,
@@ -1912,6 +1915,11 @@ class OrderSnapshot {
       discountAmount: (map['discountAmount'] as num?)?.toDouble() ?? 0,
       discountLabel: map['discountLabel']?.toString() ?? '',
       discountReason: map['discountReason']?.toString() ?? '',
+      discountSources: [
+        for (final row
+            in (map['discountSources'] as List? ?? const []).whereType<Map>())
+          Map<String, dynamic>.from(row),
+      ],
       discountId: (map['discountId'] as num?)?.toInt(),
       discountAmountType: map['discountAmountType']?.toString(),
       loyaltyRedeemRuleId: (map['loyaltyRedeemRuleId'] as num?)?.toInt(),
@@ -1993,6 +2001,7 @@ class OrderSnapshot {
       'discountAmount': discountAmount,
       'discountLabel': discountLabel,
       if (discountReason.isNotEmpty) 'discountReason': discountReason,
+      if (discountSources.isNotEmpty) 'discountSources': discountSources,
       if (discountId != null) 'discountId': discountId,
       if (discountAmountType != null) 'discountAmountType': discountAmountType,
       if (loyaltyRedeemRuleId != null)
@@ -2056,6 +2065,7 @@ class OrderSnapshot {
     int? discountId,
     String? discountAmountType,
     String? discountReason,
+    List<Map<String, dynamic>>? discountSources,
     String? receiptNumber,
     bool? serverReceipt,
     bool? serverReceiptConfirmed,
@@ -2110,6 +2120,7 @@ class OrderSnapshot {
       discountId: discountId ?? this.discountId,
       discountAmountType: discountAmountType ?? this.discountAmountType,
       discountReason: discountReason ?? this.discountReason,
+      discountSources: discountSources ?? this.discountSources,
       receiptNumber: receiptNumber ?? this.receiptNumber,
       serverReceipt: serverReceipt ?? this.serverReceipt,
       serverReceiptConfirmed:
@@ -2487,6 +2498,8 @@ class OrderHistoryRecord {
       'rawSubtotal': rawSubtotal,
       'subtotal': subtotal,
       'discountAmount': discountAmount,
+      'discountSources':
+          json['discount_sources'] ?? json['discounts'] ?? const [],
       'compAmount': omr('comp_total_baisas'),
       ...compFields,
       'tax': omr('tax_total_baisas'),

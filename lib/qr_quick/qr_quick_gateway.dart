@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'qr_expired_cancel.dart';
 import '../services/pos_api_service.dart';
 import 'qr_quick_controller.dart';
 import 'qr_quick_models.dart';
@@ -26,15 +27,25 @@ String quickDeviceScope(
 }
 
 /// Uses the app's existing authenticated client; never a server lookup for prices.
-class ApiQrQuickGateway implements QrQuickGateway, QrQuickWorkspaceGateway {
-  ApiQrQuickGateway(this.api, this.currentScope, {this.mutationGuard})
-    : scope = currentScope(),
-      token = api.tokenGetter();
+class ApiQrQuickGateway
+    implements
+        QrQuickGateway,
+        QrQuickWorkspaceGateway,
+        QrQuickCancellationGateway {
+  ApiQrQuickGateway(
+    this.api,
+    this.currentScope, {
+    this.mutationGuard,
+    this.cancellationGuard,
+  }) : scope = currentScope(),
+       token = api.tokenGetter();
   final PosApiService api;
   final String Function() currentScope;
   final String scope;
   final String? token;
   final Future<void> Function()? mutationGuard;
+  final Future<void> Function(String)? cancellationGuard;
+  final _cancellationReviews = <String, List<String>>{};
   void _check() {
     if (token == null ||
         token!.isEmpty ||
@@ -80,6 +91,40 @@ class ApiQrQuickGateway implements QrQuickGateway, QrQuickWorkspaceGateway {
             }.contains(error.code),
       );
     }
+  }
+
+  @override
+  Future<Map<String, dynamic>> previewCancel(String? uuid) async {
+    _check();
+    final result = await api.previewExpiredQuickCancellation(uuid);
+    _check();
+    for (final row in (result['orders'] as List).map(qrMap)) {
+      await cancellationGuard?.call(row['uuid'] as String);
+      _check();
+    }
+    _cancellationReviews[result['preview_token']
+        as String] = (result['orders'] as List)
+        .map((row) => qrMap(row)['uuid'] as String)
+        .toList();
+    return result;
+  }
+
+  @override
+  Future<Map<String, dynamic>> cancelExpired(
+    Map<String, dynamic> payload,
+  ) async {
+    _check();
+    await mutationGuard?.call();
+    final orders = _cancellationReviews[payload['preview_token']];
+    if (orders == null) throw StateError('Cancellation review is missing');
+    for (final uuid in orders) {
+      await cancellationGuard?.call(uuid);
+      _check();
+    }
+    _check();
+    final result = await api.cancelExpiredQuickOrders(payload);
+    _check();
+    return result;
   }
 
   @override

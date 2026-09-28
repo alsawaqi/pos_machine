@@ -1,4 +1,5 @@
 import '../services/table_round_validation.dart';
+import '../draft_recovery/saved_copy_discard.dart';
 import 'dart:async';
 import 'dart:convert';
 import '../dine_in/dine_in_models.dart';
@@ -57,6 +58,10 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
     String Function()? newUuid,
   }) : clock = clock ?? DateTime.now,
        newUuid = newUuid ?? uuidV4 {
+    if (store is ArchivedTableOutbox) {
+      outbox.tableCopyArchived =
+          (store as ArchivedTableOutbox).tableOutboxArchived;
+    }
     outbox.cancellationRoute = (event) async {
       final intent = (await store.readTableSyncVerdicts(limit: 1000000))
           .singleWhere(
@@ -78,6 +83,15 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
 
   /// Validated pay ACK summaries for the completion notice, keyed by canonical bill.
   final Map<String, Map<String, dynamic>> loyaltyEarnedByOrder = {};
+  final Set<String> _consumedLoyaltyNotices = {};
+
+  /// Receipt refresh and late ACK listeners share one consumption boundary.
+  /// A retry of the same canonical payment cannot publish the notice twice.
+  Map<String, dynamic>? takeLoyaltyEarned(String orderUuid) {
+    final earned = loyaltyEarnedByOrder.remove(orderUuid);
+    if (earned == null || !_consumedLoyaltyNotices.add(orderUuid)) return null;
+    return earned;
+  }
 
   final OrderSyncRepository outbox;
   final TableLedgerStore store;
@@ -1112,7 +1126,9 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
           )
           .firstOrNull;
       if (session == null) continue;
-      if (type == 'order.pay' && result['loyalty_earned'] is Map) {
+      if (type == 'order.pay' &&
+          result['loyalty_earned'] is Map &&
+          !_consumedLoyaltyNotices.contains(payload['order_uuid'])) {
         loyaltyEarnedByOrder[payload['order_uuid'] as String] =
             Map<String, dynamic>.from(result['loyalty_earned'] as Map);
       }

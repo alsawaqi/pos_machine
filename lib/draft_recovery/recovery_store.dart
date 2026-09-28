@@ -3,6 +3,8 @@ import 'package:sqflite/sqflite.dart';
 import '../bill_combine/combine_models.dart';
 import 'recovery_models.dart';
 import 'closed_round_proof.dart';
+import 'saved_copy_discard.dart';
+import '../services/table_action_deadline.dart';
 import 'recovery_local.dart'
     show
         assertRecoveryUnjoinedCopies,
@@ -41,6 +43,87 @@ class RecoveryStore {
     );
   }
 
+  Future<void> discardSavedCopy(
+    SavedCopyDiscard local, {
+    required Map<String, dynamic> bill,
+    required Map<String, dynamic> table,
+    required int requestedByStaffId,
+    required bool managerApproved,
+  }) async {
+    final proof = <String, dynamic>{
+      'bill': bill,
+      'table': table,
+      'authority': managerApproved ? 'existing_manager_approval' : null,
+      'requested_by_staff_id': requestedByStaffId,
+      'reason':
+          'Closed server bill; preserve unsent local copy without payment',
+    };
+    if (!local.proves(proof)) {
+      throw StateError('Saved copy proof or approval missing');
+    }
+    await db.transaction((txn) async {
+      TableActionDeadline.current?.check();
+      await assertNoCombine(txn);
+      await assertNonePending(txn);
+      await assertRecoveryUnjoinedCopies(txn, local.tableId);
+      await assertRecoveryPaymentHistory(
+        txn,
+        local.uuid,
+        allowConfirmedServerReceipt: true,
+      );
+      for (final original in local.rows) {
+        final found = await txn.query(
+          original['table'] as String,
+          where: '${original['pk']} = ?',
+          whereArgs: [original['value']],
+        );
+        if (found.length != 1 ||
+            recoveryJson(found.single) != recoveryJson(original['row'])) {
+          throw StateError('Saved copy changed; review it again');
+        }
+      }
+      for (final (table, key) in const [
+        ('local_table_rounds', 'rounds'),
+        ('local_line_cancellations', 'cancellations'),
+      ]) {
+        final current = await txn.query(
+          table,
+          where: 'table_id = ?',
+          whereArgs: ['${local.tableId}'],
+        );
+        if (recoveryJson(current) != recoveryJson(local.json[key])) {
+          throw StateError('Saved table journal changed; review it again');
+        }
+      }
+      await createClosedSchema(txn);
+      await txn.insert('draft_recovery_closed_archive', {
+        'order_uuid': local.uuid,
+        'scope': scope,
+        'local_json': recoveryJson(local.json),
+        'proof_json': recoveryJson(proof),
+        'archived_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      for (final original in local.rows) {
+        final row = recoveryMap(original['row']);
+        await txn.insert('draft_recovery_retired', {
+          'recovery_id': 'discard:${local.uuid}',
+          'order_uuid': local.uuid,
+          'table_id': '${local.tableId}',
+          'order_reference': local.draft['orderReference'],
+          'occupied_at': row['occupied_at'],
+          'seating_key': row['seating_key'],
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        await txn.delete(
+          original['table'] as String,
+          where: '${original['pk']} = ?',
+          whereArgs: [original['value']],
+        );
+      }
+      TableActionDeadline.current?.check();
+    });
+    await onChanged?.call();
+  }
+
   /// No server write, payment, receipt or local void. Original rows + proof and
   /// the retirement fence commit together, before UI state can forget the copy.
   Future<bool> retireClosed(
@@ -52,6 +135,7 @@ class RecoveryStore {
   }) async {
     if (!closedSentProof(local, bill, table)) return false;
     await db.transaction((txn) async {
+      TableActionDeadline.current?.check();
       await assertNoCombine(txn);
       await assertNonePending(txn);
       await verifyLocal(
@@ -100,6 +184,7 @@ class RecoveryStore {
         );
         if (count != 1) throw StateError('Original table copy changed');
       }
+      TableActionDeadline.current?.check();
     });
     await onChanged?.call();
     return true;
@@ -288,6 +373,29 @@ class RecoveryStore {
       "SELECT name FROM sqlite_master WHERE type='table' AND name='draft_recovery_closed_archive'",
     )).isNotEmpty) {
       for (final record in await db.query('draft_recovery_closed_archive')) {
+        final raw = recoveryMap(jsonDecode(record['local_json'] as String));
+        if (raw['kind'] == 'manager_discard') {
+          final local = SavedCopyDiscard(raw);
+          if (record['order_uuid'] != local.uuid ||
+              !local.proves(
+                recoveryMap(jsonDecode(record['proof_json'] as String)),
+              )) {
+            throw const FormatException(
+              'Cannot verify manager-discard archive',
+            );
+          }
+          for (final original in local.rows) {
+            final row = recoveryMap(original['row']);
+            retired.add({
+              'order_uuid': local.uuid,
+              'table_id': '${local.tableId}',
+              'order_reference': local.draft['orderReference'],
+              'occupied_at': row['occupied_at'],
+              'seating_key': row['seating_key'],
+            });
+          }
+          continue;
+        }
         final local = RecoveryLocal(
           recoveryMap(jsonDecode(record['local_json'] as String)),
         );

@@ -751,17 +751,15 @@ class _DineInScreenState extends State<DineInScreen>
 
   List<Widget> _adjustedSummary(Map<String, dynamic> value) {
     final bill = WorkspaceBill(value);
-    if ((value['manual_discount_baisas'] as int? ?? 0) == 0 &&
-        bill.comp == 0 &&
-        bill.customer == null) {
+    if (bill.discount == 0 && bill.comp == 0 && bill.customer == null) {
       return [];
     }
     String label(String en, String ar) => widget.arabic ? ar : en;
     return [
       Text('${label('Subtotal', 'المجموع الفرعي')}: ${money(bill.subtotal)}'),
-      if (bill.discount > 0)
+      for (final row in bill.discountRows)
         Text(
-          '${label('Discount', 'الخصم')} ${bill.discountLabel}: −${money(bill.discount)}',
+          '${row.label(arabic: widget.arabic)}: −${money(row.amountBaisas)}',
         ),
       if (bill.comp > 0)
         Text(

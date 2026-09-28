@@ -58,6 +58,7 @@ class OrderSyncRepository {
 
   /// Route comes from the immutable cancellation journal, never today's board.
   Future<String> Function(Map<String, dynamic>)? cancellationRoute;
+  Future<bool> Function(String key, String eventsJson)? tableCopyArchived;
   final PosApiService _api;
   final AppDatabase _db;
 
@@ -152,7 +153,19 @@ class OrderSyncRepository {
     );
   }
 
-  Future<List<OrderOutboxRow>> pendingRows() => _db.pendingOutbox();
+  Future<List<OrderOutboxRow>> allRows() => _db.select(_db.orderOutbox).get();
+
+  Future<List<OrderOutboxRow>> pendingRows() async => [
+    for (final row in await _db.pendingOutbox())
+      if (await tableCopyArchived?.call(row.orderUuid, row.eventsJson) != true)
+        row,
+  ];
+
+  /// Serializes local archive admission with every preparation and push. The
+  /// archive callback rechecks this copy's payment evidence; unrelated bills
+  /// cannot turn this manager-only merchandise action into a global dead end.
+  Future<T> admitSavedCopyDiscard<T>(Future<T> Function() operation) =>
+      _serialize(operation);
 
   /// Read-only combine admission: includes parked/GPS-blocked rows and waits
   /// for existing preparation/ACK callbacks. Never flushes or deletes a row.
@@ -577,7 +590,7 @@ class OrderSyncRepository {
       });
 
   Future<int> _flushOnce({String? recoveringTableEventId}) async {
-    final pending = await _db.pendingOutbox();
+    final pending = await pendingRows();
     final branch = await _db.getBranch();
     final branchIsFenced =
         branch?.latitude != null && branch?.longitude != null;

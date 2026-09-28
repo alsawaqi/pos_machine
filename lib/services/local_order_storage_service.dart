@@ -10,6 +10,8 @@ import '../models/remote_table_state.dart';
 import '../models/table_sync_models.dart';
 import '../bill_combine/combine_store.dart';
 import '../draft_recovery/recovery_store.dart';
+import 'table_action_deadline.dart';
+import '../draft_recovery/saved_copy_discard.dart';
 
 /// Optional capability: older test stores need not pretend to persist recovery.
 abstract interface class DraftRecoveryGuard {
@@ -26,6 +28,11 @@ abstract interface class DraftRecoveryGuard {
 
 abstract interface class ProvisionalReceiptRemoval {
   Future<void> removeProvisionalReceipt(String uuid);
+}
+
+/// A joined party is one saved bill: clearing it must commit all seats or none.
+abstract interface class AtomicDiningTableClear {
+  Future<void> clearDiningTables(Iterable<String> tableIds);
 }
 
 abstract class OrderStorageService {
@@ -57,6 +64,8 @@ class LocalOrderStorageService
         RemoteTableStore,
         TableLedgerStore,
         DraftRecoveryGuard,
+        ArchivedTableOutbox,
+        AtomicDiningTableClear,
         ProvisionalReceiptRemoval {
   LocalOrderStorageService._();
 
@@ -64,6 +73,37 @@ class LocalOrderStorageService
   LocalOrderStorageService.forTesting(Database database) : _database = database;
 
   static final LocalOrderStorageService instance = LocalOrderStorageService._();
+
+  @override
+  Future<bool> tableOutboxArchived(String key, String eventsJson) async {
+    final db = await database;
+    if ((await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='draft_recovery_closed_archive'",
+    )).isEmpty) {
+      return false;
+    }
+    for (final row in await db.query('draft_recovery_closed_archive')) {
+      final raw =
+          jsonDecode(row['local_json'] as String) as Map<String, dynamic>;
+      if (raw['kind'] != 'manager_discard') continue;
+      final copy = SavedCopyDiscard(raw);
+      if (row['order_uuid'] != copy.uuid ||
+          !copy.proves(
+            jsonDecode(row['proof_json'] as String) as Map<String, dynamic>,
+          )) {
+        throw const FormatException('Invalid saved-copy archive');
+      }
+      for (final event in copy.outbox) {
+        if (event['key'] == key) {
+          if (event['events_json'] != eventsJson) {
+            throw StateError('Archived request changed');
+          }
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 
   Database? _database;
   Future<Database>? _opening;
@@ -122,6 +162,7 @@ class LocalOrderStorageService
     String? occupiedAt,
     String? seatingKey,
   }) async {
+    TableActionDeadline.current?.check();
     if (_recoveryAdmission) throw StateError('Recovery admission is running.');
     await RecoveryStore.assertNonePending(db);
     await RecoveryStore.assertNotRetired(
@@ -132,6 +173,7 @@ class LocalOrderStorageService
       occupiedAt: occupiedAt,
       seatingKey: seatingKey,
     );
+    TableActionDeadline.current?.check();
   }
 
   Future<void> guardTableSession(DiningTableSession s) async {
@@ -346,6 +388,7 @@ class LocalOrderStorageService
             : jsonEncode(session.linkedTableIds),
         ...sync,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
+      TableActionDeadline.current?.check();
     });
   }
 
@@ -357,15 +400,22 @@ class LocalOrderStorageService
   }
 
   @override
-  Future<void> clearDiningTable(String tableId) async {
+  Future<void> clearDiningTable(String tableId) => clearDiningTables([tableId]);
+
+  @override
+  Future<void> clearDiningTables(Iterable<String> tableIds) async {
+    final ids = tableIds.toSet();
     final db = await database;
     await db.transaction((txn) async {
       await _guard(txn);
-      await txn.delete(
-        'dining_tables',
-        where: 'table_id = ?',
-        whereArgs: [tableId],
-      );
+      for (final id in ids) {
+        await txn.delete(
+          'dining_tables',
+          where: 'table_id = ?',
+          whereArgs: [id],
+        );
+      }
+      TableActionDeadline.current?.check();
     });
   }
 

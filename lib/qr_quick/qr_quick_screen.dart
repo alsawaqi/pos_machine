@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../order_workspace/current_order_workspace.dart';
 import 'qr_quick_controller.dart';
+import 'qr_expired_cancel.dart';
 import 'qr_quick_copy.dart';
 import 'qr_quick_models.dart';
 
@@ -81,6 +82,8 @@ class _QrQuickScreenState extends State<QrQuickScreen>
   bool foreground = true;
   int covered = 0;
   bool paying = false;
+  String search = '';
+  bool cancelling = false;
   late bool arabic = widget.arabic;
   QuickCopy get copy => QuickCopy(arabic);
   @override
@@ -137,6 +140,30 @@ class _QrQuickScreenState extends State<QrQuickScreen>
         await controller?.refresh();
         _schedule();
       }
+    }
+  }
+
+  Future<void> _cancel(String? uuid) async {
+    final c = controller;
+    if (c == null ||
+        c.busy ||
+        c.stale ||
+        cancelling ||
+        c.gateway is! QrQuickCancellationGateway) {
+      return;
+    }
+    setState(() => cancelling = true);
+    try {
+      await _child(() async {
+        await showQrExpiredCancel(
+          context,
+          c.gateway as QrQuickCancellationGateway,
+          uuid,
+          arabic: arabic,
+        );
+      });
+    } finally {
+      if (mounted) setState(() => cancelling = false);
     }
   }
 
@@ -252,6 +279,34 @@ class _QrQuickScreenState extends State<QrQuickScreen>
                   return ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      TextField(
+                        key: const ValueKey('quick-order-search'),
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.search),
+                          labelText: copy.pair(
+                            'Search order number or last 4 phone digits',
+                            'البحث برقم الطلب أو آخر 4 أرقام للهاتف',
+                          ),
+                        ),
+                        onChanged: (value) =>
+                            setState(() => search = value.trim().toLowerCase()),
+                      ),
+                      if (c.gateway is QrQuickCancellationGateway)
+                        Align(
+                          alignment: AlignmentDirectional.centerEnd,
+                          child: TextButton(
+                            key: const ValueKey('quick-clear-expired'),
+                            onPressed: c.busy || c.stale || cancelling
+                                ? null
+                                : () => _cancel(null),
+                            child: Text(
+                              copy.pair(
+                                'Clear all expired',
+                                'إلغاء جميع الطلبات المنتهية',
+                              ),
+                            ),
+                          ),
+                        ),
                       if (c.busy) const LinearProgressIndicator(),
                       if (c.stale) _notice(copy.stale),
                       if (c.notice != null) _notice(copy.message(c.notice!)),
@@ -278,7 +333,12 @@ class _QrQuickScreenState extends State<QrQuickScreen>
                             ),
                           ),
                         ),
-                      for (final order in c.orders)
+                      for (final order in c.orders.where(
+                        (o) =>
+                            search.isEmpty ||
+                            o.reference.toLowerCase().contains(search) ||
+                            (search.length == 4 && o.phoneTail == search),
+                      ))
                         Card(
                           key: ValueKey('quick-order-${order.uuid}'),
                           child: Padding(
@@ -311,6 +371,29 @@ class _QrQuickScreenState extends State<QrQuickScreen>
                                 Wrap(
                                   spacing: 8,
                                   children: [
+                                    if (c.gateway
+                                            is QrQuickCancellationGateway &&
+                                        const {
+                                          'closed',
+                                          'expired',
+                                        }.contains(order.session))
+                                      TextButton(
+                                        key: ValueKey(
+                                          'quick-cancel-${order.uuid}',
+                                        ),
+                                        onPressed:
+                                            c.busy ||
+                                                c.stale ||
+                                                cancelling ||
+                                                c.pending.containsKey(
+                                                  order.uuid,
+                                                )
+                                            ? null
+                                            : () => _cancel(order.uuid),
+                                        child: Text(
+                                          copy.pair('Cancel', 'إلغاء'),
+                                        ),
+                                      ),
                                     FilledButton.tonal(
                                       key: ValueKey(
                                         'quick-review-${order.uuid}',

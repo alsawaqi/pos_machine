@@ -16,6 +16,7 @@ import '../services/order_sync_payload.dart' show uuidV4;
 import '../services/pricing_adapter.dart' as machine_pricing;
 import '../services/presentation_service.dart';
 import '../services/sunmi_receipt_service.dart';
+import '../services/table_action_deadline.dart';
 
 /// The cashier's resolution of an unconfirmed card charge (the "Card charge not
 /// confirmed" prompt): cancel/abort the charge, force-record it as pending
@@ -398,14 +399,18 @@ class PosController extends ChangeNotifier
     String? seatingKey,
   }) async {
     try {
-      await _recoveryGuard?.assertDraftNotRetired(
-        uuid: uuid,
-        tableId: tableId,
-        reference: reference,
-        occupiedAt: occupiedAt,
-        seatingKey: seatingKey,
-      );
+      await _tablePhase('draft_guard', () async {
+        await _recoveryGuard?.assertDraftNotRetired(
+          uuid: uuid,
+          tableId: tableId,
+          reference: reference,
+          occupiedAt: occupiedAt,
+          seatingKey: seatingKey,
+        );
+      });
       return true;
+    } on TimeoutException {
+      rethrow;
     } catch (_) {
       lastPaymentMessage =
           'This local bill was archived. Use its canonical Dine-In bill.';
@@ -450,7 +455,7 @@ class PosController extends ChangeNotifier
       return false;
     }
     try {
-      await _orderStorage.assertNoPendingCombine();
+      await _tablePhase('combine_check', _orderStorage.assertNoPendingCombine);
       return await _draftAllowed(
         uuid: _activeServerOrderUuid,
         tableId: activeDiningTableId,
@@ -460,6 +465,8 @@ class PosController extends ChangeNotifier
         )?.occupiedAt?.toIso8601String(),
         seatingKey: _activeDiningTableSeatingKey,
       );
+    } on TimeoutException {
+      rethrow;
     } catch (_) {
       lastPaymentMessage = _l10n.localeName.startsWith('ar')
           ? 'أكمل دمج الفواتير المعلق في قسم داخل المطعم أولاً.'
@@ -2852,18 +2859,70 @@ class PosController extends ChangeNotifier
       _identityNotice(tableTransitionMessage);
       return;
     }
-    return _duringTableTransition(() => _returnToDiningFloorPlan());
+    return _boundedTableAction(
+      'returnToDiningFloorPlan',
+      () => _duringTableTransition(() => _returnToDiningFloorPlan()),
+    );
   }
 
-  Future<void> _returnToDiningFloorPlan() async {
-    if (!await _combineMutationAllowed(insideTableTransition: true)) return;
+  bool _reviewingSavedCopy = false;
+  Future<void> returnForSavedCopyReview() async {
+    if (tableTransitionInProgress ||
+        isProcessingPayment ||
+        hasRecordedSplitPayments) {
+      return;
+    }
+    _reviewingSavedCopy = true;
+    try {
+      await _boundedTableAction(
+        'clearActiveDiningTable',
+        () => _duringTableTransition(_returnToDiningFloorPlan),
+      );
+    } finally {
+      _reviewingSavedCopy = false;
+    }
+  }
+
+  Future<void> _boundedTableAction(
+    String name,
+    Future<void> Function() operation,
+  ) async {
+    final inherited = TableActionDeadline.current;
+    if (inherited != null) return operation();
+    final deadline = TableActionDeadline(name);
+    try {
+      await deadline.run(operation);
+    } on TimeoutException {
+      _identityNotice(
+        _l10n.localeName.startsWith('ar')
+            ? 'استغرق التحقق من الطاولة وقتاً طويلاً. احتفظنا بالنسخة المحفوظة. أعد الاتصال ثم حاول مرة أخرى.'
+            : 'The table check took too long. Your saved copy is kept. Reconnect and try again.',
+      );
+    }
+  }
+
+  Future<T> _tablePhase<T>(String phase, Future<T> Function() action) =>
+      TableActionDeadline.current?.step(phase, action) ?? action();
+
+  Future<void> _returnToDiningFloorPlan() => _boundedTableAction(
+    'returnToDiningFloorPlan',
+    _returnToDiningFloorPlanBody,
+  );
+
+  Future<void> _returnToDiningFloorPlanBody() async {
+    if (!await _tablePhase(
+      'combine_and_draft_guard',
+      () => _combineMutationAllowed(insideTableTransition: true),
+    )) {
+      return;
+    }
     if (selectedOrderType != OrderType.dineIn) return;
 
     final leavingTableId = activeDiningTableId;
     if (leavingTableId == null && _cart.isEmpty) return;
     _advanceOrderGeneration();
-    await _flushActiveDiningTablePersistence();
-    if (leavingTableId != null) {
+    await _tablePhase('persistence_flush', _flushActiveDiningTablePersistence);
+    if (leavingTableId != null && !_reviewingSavedCopy) {
       diningTableSyncHooks?.onTableLeft(leavingTableId);
     }
     _resetForNextOrder(
@@ -2874,8 +2933,28 @@ class PosController extends ChangeNotifier
     );
   }
 
-  Future<void> clearActiveDiningTable() async {
-    if (!await _combineMutationAllowed() || isProcessingPayment) return;
+  Future<void> _clearDiningGroup(Iterable<String> tableIds) async {
+    final storage = _orderStorage;
+    if (storage is AtomicDiningTableClear) {
+      await (storage as AtomicDiningTableClear).clearDiningTables(tableIds);
+    } else {
+      for (final id in tableIds) {
+        await storage.clearDiningTable(id);
+      }
+    }
+  }
+
+  Future<void> clearActiveDiningTable() =>
+      _boundedTableAction('clearActiveDiningTable', _clearActiveDiningTable);
+
+  Future<void> _clearActiveDiningTable() async {
+    if (!await _tablePhase(
+          'combine_and_draft_guard',
+          _combineMutationAllowed,
+        ) ||
+        isProcessingPayment) {
+      return;
+    }
     final tableId = activeDiningTableId;
     if (tableId == null) return;
 
@@ -2883,8 +2962,8 @@ class PosController extends ChangeNotifier
     // Discarding the bill frees the whole joined party, not just the head.
     final groupIds = _diningGroupIds(tableId);
     final clearedHead = diningSessionFor(_diningGroupHeadId(tableId));
+    await _tablePhase('persistence_clear', () => _clearDiningGroup(groupIds));
     for (final id in groupIds) {
-      await _orderStorage.clearDiningTable(id);
       _diningHookOccupancies.remove(id);
     }
     diningTableSyncHooks?.onTablesCleared(groupIds, clearedHead);
@@ -2898,8 +2977,19 @@ class PosController extends ChangeNotifier
     );
   }
 
-  Future<void> clearDiningTableById(String tableId) async {
-    if (!await _combineMutationAllowed() || isProcessingPayment) return;
+  Future<void> clearDiningTableById(String tableId) => _boundedTableAction(
+    'clearActiveDiningTable',
+    () => _clearDiningTableById(tableId),
+  );
+
+  Future<void> _clearDiningTableById(String tableId) async {
+    if (!await _tablePhase(
+          'combine_and_draft_guard',
+          _combineMutationAllowed,
+        ) ||
+        isProcessingPayment) {
+      return;
+    }
     // Resolve to the whole party (head + linked seats) so discarding any one
     // table frees the joined group together.
     final groupIds = _diningGroupIds(tableId);
@@ -2910,8 +3000,8 @@ class PosController extends ChangeNotifier
       _cancelPendingDiningTablePersistence();
     }
 
+    await _tablePhase('persistence_clear', () => _clearDiningGroup(groupIds));
     for (final id in groupIds) {
-      await _orderStorage.clearDiningTable(id);
       _diningHookOccupancies.remove(id);
     }
     diningTableSyncHooks?.onTablesCleared(groupIds, clearedHead);
@@ -4818,6 +4908,7 @@ class PosController extends ChangeNotifier
   }
 
   Future<void> _persistActiveDiningTableSession() async {
+    final notifyHooks = !_reviewingSavedCopy;
     // Persistence belongs to the transition itself, including its final flush.
     if (!await _combineMutationAllowed(insideTableTransition: true)) return;
     if (selectedOrderType != OrderType.dineIn || activeDiningTableId == null) {
@@ -4834,17 +4925,20 @@ class PosController extends ChangeNotifier
         // Empty cart — free the WHOLE joined party (head + its linked seats)
         // from memory + storage, so the linked seats don't orphan.
         final groupIds = _diningGroupIds(tableId);
+        await _clearDiningGroup(groupIds);
         diningTableSessions = List<DiningTableSession>.from(diningTableSessions)
           ..removeWhere((s) => groupIds.contains(s.tableId));
         for (final id in groupIds) {
-          await _orderStorage.clearDiningTable(id);
           _diningHookOccupancies.remove(id);
         }
-        diningTableSyncHooks?.onTablesCleared(groupIds, existing);
+        if (notifyHooks) {
+          diningTableSyncHooks?.onTablesCleared(groupIds, existing);
+        }
         _notifySafely();
       } else {
         await _orderStorage.saveDiningTableSession(session);
         final occupancy = '${session.orderReference}|${session.occupiedAt}';
+        if (!notifyHooks) return;
         if (_diningHookOccupancies[tableId] == occupancy) {
           diningTableSyncHooks?.onTableDraftPersisted(session);
         } else {

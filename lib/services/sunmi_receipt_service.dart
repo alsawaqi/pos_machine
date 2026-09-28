@@ -1,4 +1,5 @@
 import 'server_receipt_history.dart';
+import 'discount_display.dart';
 import 'package:mithqal_softpos/mithqal_softpos.dart';
 import 'dart:convert';
 
@@ -179,12 +180,9 @@ class SunmiReceiptService {
     }
 
     await SunmiPrinter.printText('--------------------------------');
-    if (order.discountAmount > 0) {
+    for (final discount in snapshotDiscountDisplayRows(order)) {
       await SunmiPrinter.printText(
-        row(
-          order.discountLabel.isEmpty ? 'Discount' : order.discountLabel,
-          '-${money(order.discountAmount)}',
-        ),
+        row(discount.label(), '-${money(discount.amountBaisas / 1000)}'),
       );
     }
     // Phase B — the manager comp write-off, printed as its own line so it is

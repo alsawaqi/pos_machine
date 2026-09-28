@@ -13,6 +13,8 @@ import '../qr_quick/qr_quick_store.dart';
 import '../services/config_mapper.dart';
 import 'qr_pending_sheet.dart';
 import 'workspace_void.dart';
+import '../order_workspace/workspace_void.dart'
+    show assertWorkspaceVoidJournals;
 
 List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
   if (catalog == null) return [];
@@ -98,6 +100,26 @@ class QrQuickOrdersScreen extends ConsumerWidget {
           session.branchId,
           session.kioskId,
         ),
+        cancellationGuard: (uuid) async {
+          if (ref
+                  .read(qrSettlementCoordinatorProvider)
+                  .pendingManagerRecoveries
+                  .isNotEmpty ||
+              await ref
+                  .read(orderSyncRepositoryProvider)
+                  .hasUnresolvedStandaloneQrPay(uuid)) {
+            throw StateError('Payment evidence requires reconciliation');
+          }
+          await assertWorkspaceVoidJournals(
+            quickDeviceScope(
+              api.quickOrderBaseUrl,
+              session.companyId,
+              session.branchId,
+              session.kioskId,
+            ),
+            uuid,
+          );
+        },
         mutationGuard: () =>
             (debugOrderStorageOverride ?? LocalOrderStorageService.instance)
                 .assertNoPendingCombine(),
