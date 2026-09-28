@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../order_workspace/workspace_void.dart';
+import '../services/pos_api_service.dart' show ApiException;
 import 'qr_quick_models.dart';
 
 abstract interface class QrQuickCancellationGateway {
@@ -40,6 +41,10 @@ class _CancelExpiredState extends State<_CancelExpired> {
   Map<String, dynamic>? preview;
   final prepared = <String>{};
   bool busy = true, sent = false;
+
+  /// After the first submission the reason and wastage choices are fixed, so a
+  /// retry after a refused PIN sends the identical request (same request id).
+  bool frozen = false;
   String? error;
   String text(String en, String ar) => widget.arabic ? ar : en;
   List<Map<String, dynamic>> get rows =>
@@ -103,6 +108,7 @@ class _CancelExpiredState extends State<_CancelExpired> {
     setState(() {
       busy = true;
       sent = true;
+      frozen = true;
       error = null;
     });
     try {
@@ -136,7 +142,16 @@ class _CancelExpiredState extends State<_CancelExpired> {
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) setState(() => error = workspaceVoidError(e, widget.arabic));
+      // The server checks the manager PIN before any effect: a refused PIN is
+      // definitive and may be re-entered. Any other or uncertain outcome keeps
+      // the review locked (close, refresh and review again).
+      final retryPin = e is ApiException && e.code == 'invalid_pin';
+      if (mounted) {
+        setState(() {
+          error = workspaceVoidError(e, widget.arabic);
+          if (retryPin) sent = false;
+        });
+      }
     } finally {
       pin.clear();
       if (mounted) setState(() => busy = false);
@@ -195,7 +210,7 @@ class _CancelExpiredState extends State<_CancelExpired> {
                       ),
                     ),
                     value: prepared.contains(row['uuid']),
-                    onChanged: busy || sent || row['prepared'] == true
+                    onChanged: busy || frozen || row['prepared'] == true
                         ? null
                         : (value) => setState(() {
                             if (value == true) {
@@ -209,7 +224,7 @@ class _CancelExpiredState extends State<_CancelExpired> {
                 TextField(
                   key: const ValueKey('quick-cancel-reason'),
                   controller: reason,
-                  enabled: !busy && !sent,
+                  enabled: !busy && !frozen,
                   maxLength: 200,
                   decoration: InputDecoration(
                     labelText: text('Cancellation reason', 'سبب الإلغاء'),
