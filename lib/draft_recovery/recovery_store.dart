@@ -49,12 +49,14 @@ class RecoveryStore {
     required Map<String, dynamic> table,
     required int requestedByStaffId,
     required bool managerApproved,
+    Map<String, dynamic>? approvedBy,
   }) async {
     final proof = <String, dynamic>{
       'bill': bill,
       'table': table,
       'authority': managerApproved ? 'existing_manager_approval' : null,
       'requested_by_staff_id': requestedByStaffId,
+      'approved_by': ?approvedBy,
       'reason':
           'Closed server bill; preserve unsent local copy without payment',
     };

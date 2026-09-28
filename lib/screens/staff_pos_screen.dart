@@ -4797,9 +4797,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           ],
         ),
       );
-      if (confirmed != true || !mounted || !await _authorizeManager()) {
-        return false;
-      }
+      if (confirmed != true || !mounted) return false;
+      final approvedBy = await _authorizeManagerRecord();
+      if (approvedBy == null) return false;
       sameScope();
       final commit = TableActionDeadline('clearActiveDiningTable');
       await commit.run(() async {
@@ -4831,6 +4831,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 table: latest.detail.json,
                 requestedByStaffId: session.staff!.id,
                 managerApproved: true,
+                approvedBy: approvedBy,
               );
               archived = true;
             } finally {
@@ -6626,6 +6627,39 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
     if (!mounted) return false;
     return _openManagerPinDialog();
+  }
+
+  /// The existing manager approval, also returning who approved for the audit
+  /// record. The registered device fingerprint stores no staff id, so it is
+  /// recorded as that method only; the PIN path records the verified staff.
+  Future<Map<String, dynamic>?> _authorizeManagerRecord({
+    String? subtitle,
+    String? description,
+  }) async {
+    if (await _managerAuthorization.isManagerRegistered()) {
+      if (!mounted) return null;
+      final ok = await _managerAuthorization.authenticateManagerApproval(
+        subtitle: subtitle,
+        description: description,
+      );
+      if (ok) return {'method': 'device_manager_fingerprint'};
+      if (!mounted) return null;
+    }
+    if (!mounted) return null;
+    final approver = await showDialog<LoyaltyApprover>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => _ManagerPinDialog(
+        api: ref.read(apiServiceProvider),
+        identityRequired: true,
+      ),
+    );
+    if (approver == null) return null;
+    return {
+      'method': 'manager_pin',
+      'staff_id': approver.id,
+      'name': approver.name,
+    };
   }
 
   Future<bool> _openManagerPinDialog() async {
