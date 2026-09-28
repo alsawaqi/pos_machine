@@ -44,7 +44,7 @@ class ThrowAfterLeave implements DiningTableSyncHooks {
       real?.onTablePaid(s, p);
 }
 
-Future<void> saved(Fix3Rig r, String route) async {
+Future<void> saved(Fix3Rig r, String route, {bool boundedSetup = false}) async {
   await r.exit();
   if (route == 'held') {
     await r.tap(find.text('Hold').first);
@@ -54,6 +54,63 @@ Future<void> saved(Fix3Rig r, String route) async {
       reason: 'hold finished',
     );
     await r.closeNotice();
+  } else if (boundedSetup) {
+    final floorReference = r.c.currentOrderReference;
+    final floorTable = r.c.activeDiningTableId;
+    final floorIdentity = jsonEncode(r.identity());
+    await r.tap(find.text('Back To Floor').first);
+    var retriedFloor = false, retryReadStarted = false, retryReadReady = false;
+    Object? retryReadError;
+    // One original 60-second wait owns both attempts. Poll real I/O completion
+    // so Flutter frames keep advancing; do not introduce another wait budget.
+    await pumpUntilRealCondition(r.tester, () async {
+      if (r.c.activeDiningTableId == null && !r.c.tableTransitionInProgress) {
+        return true;
+      }
+      if (retryReadError != null) return true;
+      final notice = find.text(
+        'The table check took too long. Your saved copy is kept. Reconnect and try again.',
+      );
+      if (!retriedFloor &&
+          !r.c.tableTransitionInProgress &&
+          r.c.lastPaymentMessage ==
+              'The table check took too long. Your saved copy is kept. Reconnect and try again.' &&
+          (retryReadStarted || notice.evaluate().isNotEmpty)) {
+        expect(r.c.tableTransitionInProgress, isFalse);
+        expect(r.c.activeDiningTableId, floorTable);
+        expect(r.c.currentOrderReference, floorReference);
+        expect(jsonEncode(r.identity()), floorIdentity);
+        final back = find.text('Back To Floor').hitTestable();
+        expect(back, findsOneWidget);
+        expect(
+          r.tester
+              .widget<InkWell>(
+                find.ancestor(of: back, matching: find.byType(InkWell)).first,
+              )
+              .onTap,
+          isNotNull,
+        );
+        if (!retryReadStarted) {
+          expect(notice, findsWidgets);
+          retryReadStarted = true;
+          unawaited(
+            r.storage.assertNoPendingCombine().then(
+              (_) => retryReadReady = true,
+              onError: (Object error) {
+                retryReadError = error;
+              },
+            ),
+          );
+          return false;
+        }
+        if (!retryReadReady) return false;
+        retriedFloor = true;
+        await r.tester.tap(back);
+      }
+      return r.c.activeDiningTableId == null && !r.c.tableTransitionInProgress;
+    }, reason: 'table save completed');
+    expect(retryReadError, isNull);
+    expect(r.c.activeDiningTableId, isNull);
   } else {
     await r.floor();
   }
@@ -185,7 +242,11 @@ void main() {
         await r.payPage();
         await r.attach();
         await r.redeem();
-        await saved(r, route);
+        await saved(
+          r,
+          route,
+          boundedSetup: route == 'table' && outcome == '500',
+        );
         // ignore: avoid_print
         print('F43_PHASE saved');
         if (outcome == 'deleted') r.server.customers.remove(5);

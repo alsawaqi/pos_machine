@@ -446,12 +446,88 @@ void main() {
               reason: 'held draft saved',
             );
           } else {
+            final floorReference = c.currentOrderReference;
+            final floorTable = c.activeDiningTableId;
+            final floorIdentity = jsonEncode({
+              'customer': c.selectedCustomer?.id,
+              'items': c.snapshot().items,
+              'discount': c.discount.toMap(),
+              'rule': c.loyaltyRedeemRuleId,
+              'points': c.loyaltyRedeemPoints,
+              'stamps': c.loyaltyRedeemStamps,
+              'owner': c.loyaltyRedeemCustomerId,
+            });
             await tap(find.text('Back To Floor').first, 'Back To Floor');
-            await pumpUntilRealCondition(
-              tester,
-              () => c.activeDiningTableId == null,
-              reason: 'floor plan restored',
-            );
+            var retriedFloor = false,
+                retryReadStarted = false,
+                retryReadReady = false;
+            Object? retryReadError;
+            // One original 60-second wait owns both attempts. Poll real I/O completion
+            // so Flutter frames keep advancing; do not introduce another wait budget.
+            await pumpUntilRealCondition(tester, () async {
+              if (c.activeDiningTableId == null &&
+                  !c.tableTransitionInProgress) {
+                return true;
+              }
+              if (retryReadError != null) return true;
+              final notice = find.text(
+                'The table check took too long. Your saved copy is kept. Reconnect and try again.',
+              );
+              if (scenario == 'reopen' &&
+                  !retriedFloor &&
+                  !c.tableTransitionInProgress &&
+                  c.lastPaymentMessage ==
+                      'The table check took too long. Your saved copy is kept. Reconnect and try again.' &&
+                  (retryReadStarted || notice.evaluate().isNotEmpty)) {
+                expect(c.tableTransitionInProgress, isFalse);
+                expect(c.activeDiningTableId, floorTable);
+                expect(c.currentOrderReference, floorReference);
+                expect(
+                  jsonEncode({
+                    'customer': c.selectedCustomer?.id,
+                    'items': c.snapshot().items,
+                    'discount': c.discount.toMap(),
+                    'rule': c.loyaltyRedeemRuleId,
+                    'points': c.loyaltyRedeemPoints,
+                    'stamps': c.loyaltyRedeemStamps,
+                    'owner': c.loyaltyRedeemCustomerId,
+                  }),
+                  floorIdentity,
+                );
+                final back = find.text('Back To Floor').hitTestable();
+                expect(back, findsOneWidget);
+                expect(
+                  tester
+                      .widget<InkWell>(
+                        find
+                            .ancestor(of: back, matching: find.byType(InkWell))
+                            .first,
+                      )
+                      .onTap,
+                  isNotNull,
+                );
+                if (!retryReadStarted) {
+                  expect(notice, findsWidgets);
+                  retryReadStarted = true;
+                  unawaited(
+                    storage.assertNoPendingCombine().then(
+                      (_) => retryReadReady = true,
+                      onError: (Object error) {
+                        retryReadError = error;
+                      },
+                    ),
+                  );
+                  return false;
+                }
+                if (!retryReadReady) return false;
+                retriedFloor = true;
+                await tester.tap(back);
+              }
+              return c.activeDiningTableId == null &&
+                  !c.tableTransitionInProgress;
+            }, reason: 'floor plan restored');
+            expect(retryReadError, isNull);
+            expect(c.activeDiningTableId, isNull);
           }
           if (legacy) {
             await drive(() async {
