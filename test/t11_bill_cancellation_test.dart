@@ -520,12 +520,16 @@ void main() {
         debugPrint('T11 mounted');
         final dynamic host = tester.state(find.byType(StaffPosScreen));
         final PosController c = host.controller;
-        for (var i = 0; i < 30; i++) {
-          await tester.pump(const Duration(milliseconds: 100));
-          await drive(
-            () => Future<void>.delayed(const Duration(milliseconds: 25)),
-          );
-        }
+        // Real readiness, not a fixed frame count: local storage is loaded and
+        // the screen's table startup (bridge + coordinator hydration) finished.
+        await pumpUntilRealCondition(
+          tester,
+          () =>
+              !c.isLoadingStorage &&
+              c.diningTableSyncHooks is TableKitchenBridge,
+          timeout: const Duration(seconds: 20),
+          reason: 'real screen storage load and table startup completed',
+        );
         c.applyCatalog(
           categories: const ['Drinks'],
           products: [product],
@@ -570,12 +574,18 @@ void main() {
           c.addProduct(product);
           c.addProduct(product);
         });
-        for (var i = 0; i < 15; i++) {
-          await tester.pump(const Duration(milliseconds: 100));
-          await drive(
-            () => Future<void>.delayed(const Duration(milliseconds: 25)),
-          );
-        }
+        // Wait for the opened table's real debounced save instead of a fixed
+        // frame count; the original assertions below are unchanged.
+        await pumpUntilRealCondition(
+          tester,
+          () async =>
+              c.diningSessionFor('1') != null &&
+              (await localDb.query('dining_tables')).any(
+                (row) => row['table_id'] == '1' && row['draft_json'] != null,
+              ),
+          timeout: const Duration(seconds: 20),
+          reason: 'opened table draft persisted',
+        );
         await drive(() async {
           expect(c.cart, hasLength(1), reason: c.lastPaymentMessage);
           expect(c.diningSessionFor('1'), isNotNull, reason: c.displayNote);
