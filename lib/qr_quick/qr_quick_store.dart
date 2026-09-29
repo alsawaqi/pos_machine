@@ -1,3 +1,4 @@
+import 'package:pos_machine/tenancy/tenant_sqlite.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'qr_quick_models.dart';
@@ -17,7 +18,7 @@ class SqliteQrQuickStore implements QrQuickStore {
 
   static Future<SqliteQrQuickStore> open(String scope) async {
     final directory = await getDatabasesPath();
-    final db = await openDatabase(
+    final db = await openBusinessDatabase(
       '$directory/qr_quick_requests.db',
       version: 1,
       onCreate: (db, _) => createSchema(db),

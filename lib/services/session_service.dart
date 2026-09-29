@@ -1,3 +1,4 @@
+import '../tenancy/business_identity.dart';
 import 'dart:convert';
 import 'package:mithqal_softpos/mithqal_softpos.dart';
 
@@ -165,21 +166,47 @@ class SessionService {
   /// Store a successful device activation: device token + kiosk ID + terminal ID
   /// + company/branch. Layer-1 data that PERSISTS (only [clearForRePair] removes it).
   Future<void> saveActivation(PairResult result) async {
-    _deviceToken = result.deviceToken;
-    await _secure.write(key: _kDeviceToken, value: result.deviceToken);
-    if (result.kioskId != null) {
-      await _prefs.setString(_kKioskId, result.kioskId!);
+    if (BusinessBoundary.initialized &&
+        (result.companyId == null ||
+            result.branchId == null ||
+            (result.deviceUuid ?? '').isEmpty)) {
+      throw StateError(
+        'Activation did not include a complete device identity.',
+      );
     }
-    if (result.terminalId != null) {
-      await _prefs.setString(_kTerminalId, result.terminalId!);
+    Future<void> install() async {
+      if (result.deviceUuid != null)
+        await _prefs.setString('device_uuid', result.deviceUuid!);
+
+      if (result.kioskId != null) {
+        await _prefs.setString(_kKioskId, result.kioskId!);
+      }
+      if (result.terminalId != null) {
+        await _prefs.setString(_kTerminalId, result.terminalId!);
+      }
+      await saveTerminalPin(result.terminalPin);
+      await saveSoftpos(result.softpos);
+      if (result.companyId != null) {
+        await _prefs.setInt(_kCompanyId, result.companyId!);
+      }
+      if (result.branchId != null) {
+        await _prefs.setInt(_kBranchId, result.branchId!);
+      }
+      await _secure.write(key: _kDeviceToken, value: result.deviceToken);
+      _deviceToken = result.deviceToken;
     }
-    await saveTerminalPin(result.terminalPin);
-    await saveSoftpos(result.softpos);
-    if (result.companyId != null) {
-      await _prefs.setInt(_kCompanyId, result.companyId!);
-    }
-    if (result.branchId != null) {
-      await _prefs.setInt(_kBranchId, result.branchId!);
+
+    if (BusinessBoundary.initialized) {
+      await BusinessBoundary.accept(
+        BusinessIdentity(
+          result.companyId!,
+          result.branchId!,
+          result.deviceUuid!,
+        ),
+        install: install,
+      );
+    } else {
+      await install();
     }
   }
 
@@ -280,18 +307,8 @@ class SessionService {
   /// Full reset back to device setup (only on a 401 / revoked device). Clears
   /// the layer-1 identity too, so the device must be re-activated with a new code.
   Future<void> clearForRePair() async {
+    BusinessBoundary.block('device_reactivation_required');
     _deviceToken = null;
-    await saveTerminalPin(null);
-    await _prefs.remove('softpos_profile');
     await _secure.delete(key: _kDeviceToken);
-    await _prefs.remove(_kStaff);
-    await _prefs.remove(_kShift);
-    await _prefs.remove(_kCompanyId);
-    await _prefs.remove(_kBranchId);
-    await _prefs.remove(_kKioskId);
-    await _prefs.remove(_kTerminalId);
-    await _prefs.remove(_kTerminalPin);
-    await _prefs.remove(_kWebsocket);
-    await _prefs.remove(_kLastShiftSummary);
   }
 }

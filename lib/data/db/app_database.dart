@@ -1,3 +1,5 @@
+import 'dart:convert';
+import '../../tenancy/business_identity.dart';
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
@@ -36,7 +38,9 @@ part 'app_database.g.dart';
   ],
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(driftDatabase(name: 'pos_machine_cache'));
+  AppDatabase() : super(driftDatabase(name: 'pos_machine_cache')) {
+    _registerTenancy();
+  }
 
   /// For unit tests: inject an in-memory executor.
   AppDatabase.forTesting(super.executor);
@@ -46,149 +50,239 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
-        onUpgrade: (m, from, to) async {
-          // The cache is re-fetched + fully replaced on every login, so these
-          // upgrades are purely additive.
-          if (from < 2) {
-            // v2 added the company-taxes cache.
-            await m.createTable(taxCache);
+    onCreate: (m) => m.createAll(),
+    beforeOpen: BusinessBoundary.initialized
+        ? (_) async {
+            _openedForTenancy = true;
+            if (BusinessBoundary.canWork) await prepareTenancy();
           }
-          if (from < 3) {
-            // v3 added floor-plan layout columns to the tables cache.
-            await m.addColumn(posTables, posTables.positionX);
-            await m.addColumn(posTables, posTables.positionY);
-            await m.addColumn(posTables, posTables.width);
-            await m.addColumn(posTables, posTables.height);
-          }
-          if (from < 4) {
-            // v4 added per-product add-on group ids (the modifier sheet).
-            await m.addColumn(products, products.addonGroupIds);
-          }
-          if (from < 5) {
-            // v5 added the order push outbox (offline-first order sync).
-            await m.createTable(orderOutbox);
-          }
-          if (from < 6) {
-            // v6 added delivery providers + per-product delivery pricing.
-            await m.addColumn(products, products.deliveryPriceBaisas);
-            await m.addColumn(products, products.deliveryPricesJson);
-            await m.createTable(deliveryProviders);
-          }
-          if (from < 7) {
-            // v7 added stock mode + recipe + per-branch ingredient balances
-            // (device sold-out enforcement).
-            await m.addColumn(products, products.stockMode);
-            await m.addColumn(products, products.recipeJson);
-            await m.createTable(branchIngredientStock);
-          }
-          if (from < 8) {
-            // v8 added cached merchant discount rules (from-API discounts).
-            await m.createTable(discounts);
-          }
-          if (from < 9) {
-            // v9 added cached loyalty rules + a customer slice (loyalty earn/
-            // redeem + offline customer lookup).
-            await m.createTable(loyaltyRules);
-            await m.createTable(cachedCustomers);
-          }
-          if (from < 10) {
-            // v10 added the ingredient catalogue (id+name+unit) for the device
-            // restock-request picker.
-            await m.createTable(ingredients);
-          }
-          if (from < 11) {
-            // v11 cached per-customer loyalty balances (offline points/redeem).
-            await m.addColumn(cachedCustomers, cachedCustomers.loyaltyJson);
-          }
-          if (from < 12) {
-            // v12 added company expense categories (dynamic expense-log picker).
-            await m.createTable(expenseCategories);
-          }
-          if (from < 13) {
-            // v13 cached the order-cancel positions policy (device cancel gate).
-            await m.addColumn(syncMeta, syncMeta.orderCancelPositions);
-          }
-          if (from < 14) {
-            // v14 cached the per-branch custom receipt template.
-            await m.addColumn(branchCache, branchCache.receiptTemplateJson);
-          }
-          if (from < 15) {
-            // v15 — Phase A ingredient piece model (day-end counts in pieces).
-            await m.addColumn(ingredients, ingredients.pieceUnitLabel);
-            await m.addColumn(ingredients, ingredients.pieceUnitLabelAr);
-            await m.addColumn(ingredients, ingredients.unitsPerPiece);
-            await m.addColumn(ingredients, ingredients.allowFractionalPieces);
-          }
-          if (from < 16) {
-            // v16 — Phase B restaurant controls: void/comp reason lists,
-            // modifier-group constraints + defaults, category group bindings.
-            await m.createTable(voidReasons);
-            await m.createTable(compReasons);
-            await m.addColumn(addonGroups, addonGroups.minSelections);
-            await m.addColumn(addonGroups, addonGroups.maxSelections);
-            await m.addColumn(addons, addons.isDefault);
-            await m.addColumn(categories, categories.addonGroupIdsJson);
-          }
-          if (from < 17) {
-            // v17 — Gap sweep G1: per-product daily availability window.
-            await m.addColumn(products, products.availableFrom);
-            await m.addColumn(products, products.availableUntil);
-          }
-          if (from < 18) {
-            // v18 — P-F2: cached vehicle-plate links per customer.
-            await m.addColumn(cachedCustomers, cachedCustomers.platesJson);
-          }
-          if (from < 19) {
-            // v19 — P-F4: order-scope auto-apply flag on discount rules.
-            await m.addColumn(discounts, discounts.autoApply);
-          }
-          if (from < 20) {
-            // v20 — P-F6: the device-reports access policy.
-            await m.addColumn(syncMeta, syncMeta.reportsPositions);
-          }
-          if (from < 21) {
-            // v21 — P-F8: the merchant order-numbering config.
-            await m.addColumn(syncMeta, syncMeta.orderNumberingJson);
-          }
-          if (from < 22) {
-            // v22 — P-F9: merchant offers (promotions).
-            await m.createTable(offers);
-          }
-          if (from < 23) {
-            // v23 — P-G1: the device Kitchen-screen access policy.
-            await m.addColumn(syncMeta, syncMeta.kitchenPositions);
-          }
-          if (from < 24) {
-            // v24 — P-G3: the product behind a product-as-add-on option.
-            await m.addColumn(addons, addons.linkedProductId);
-          }
-          if (from < 25) {
-            // v25 — P-G6: staff announcements from the portal.
-            await m.createTable(staffMessages);
-          }
-          if (from < 26) {
-            // v26 — PD3b: per-option stock-usage lines (availability gating).
-            await m.addColumn(addons, addons.consumptionJson);
-          }
-          if (from < 27) {
-            // v27 — Phase 3: marketing advertising sliders for the customer
-            // (secondary) screen.
-            await m.createTable(marketingSliders);
-            await m.createTable(marketingSliderItems);
-          }
-          if (from >= 5 && from < 28) {
-            // v28 — MC-001: count deterministic server rejections separately
-            // from transport failures so rejected revenue can park after five.
-            // A pre-v5 upgrade creates the latest outbox table above, including
-            // this column, so only existing outbox installations add it here.
-            await m.addColumn(orderOutbox, orderOutbox.serverRejections);
-          }
-          if (from < 29) {
-            await m.addColumn(syncMeta, syncMeta.tableSessionsMode);
-          }
-        },
+        : null,
+    onUpgrade: (m, from, to) async {
+      // The cache is re-fetched + fully replaced on every login, so these
+      // upgrades are purely additive.
+      if (from < 2) {
+        // v2 added the company-taxes cache.
+        await m.createTable(taxCache);
+      }
+      if (from < 3) {
+        // v3 added floor-plan layout columns to the tables cache.
+        await m.addColumn(posTables, posTables.positionX);
+        await m.addColumn(posTables, posTables.positionY);
+        await m.addColumn(posTables, posTables.width);
+        await m.addColumn(posTables, posTables.height);
+      }
+      if (from < 4) {
+        // v4 added per-product add-on group ids (the modifier sheet).
+        await m.addColumn(products, products.addonGroupIds);
+      }
+      if (from < 5) {
+        // v5 added the order push outbox (offline-first order sync).
+        await m.createTable(orderOutbox);
+      }
+      if (from < 6) {
+        // v6 added delivery providers + per-product delivery pricing.
+        await m.addColumn(products, products.deliveryPriceBaisas);
+        await m.addColumn(products, products.deliveryPricesJson);
+        await m.createTable(deliveryProviders);
+      }
+      if (from < 7) {
+        // v7 added stock mode + recipe + per-branch ingredient balances
+        // (device sold-out enforcement).
+        await m.addColumn(products, products.stockMode);
+        await m.addColumn(products, products.recipeJson);
+        await m.createTable(branchIngredientStock);
+      }
+      if (from < 8) {
+        // v8 added cached merchant discount rules (from-API discounts).
+        await m.createTable(discounts);
+      }
+      if (from < 9) {
+        // v9 added cached loyalty rules + a customer slice (loyalty earn/
+        // redeem + offline customer lookup).
+        await m.createTable(loyaltyRules);
+        await m.createTable(cachedCustomers);
+      }
+      if (from < 10) {
+        // v10 added the ingredient catalogue (id+name+unit) for the device
+        // restock-request picker.
+        await m.createTable(ingredients);
+      }
+      if (from < 11) {
+        // v11 cached per-customer loyalty balances (offline points/redeem).
+        await m.addColumn(cachedCustomers, cachedCustomers.loyaltyJson);
+      }
+      if (from < 12) {
+        // v12 added company expense categories (dynamic expense-log picker).
+        await m.createTable(expenseCategories);
+      }
+      if (from < 13) {
+        // v13 cached the order-cancel positions policy (device cancel gate).
+        await m.addColumn(syncMeta, syncMeta.orderCancelPositions);
+      }
+      if (from < 14) {
+        // v14 cached the per-branch custom receipt template.
+        await m.addColumn(branchCache, branchCache.receiptTemplateJson);
+      }
+      if (from < 15) {
+        // v15 — Phase A ingredient piece model (day-end counts in pieces).
+        await m.addColumn(ingredients, ingredients.pieceUnitLabel);
+        await m.addColumn(ingredients, ingredients.pieceUnitLabelAr);
+        await m.addColumn(ingredients, ingredients.unitsPerPiece);
+        await m.addColumn(ingredients, ingredients.allowFractionalPieces);
+      }
+      if (from < 16) {
+        // v16 — Phase B restaurant controls: void/comp reason lists,
+        // modifier-group constraints + defaults, category group bindings.
+        await m.createTable(voidReasons);
+        await m.createTable(compReasons);
+        await m.addColumn(addonGroups, addonGroups.minSelections);
+        await m.addColumn(addonGroups, addonGroups.maxSelections);
+        await m.addColumn(addons, addons.isDefault);
+        await m.addColumn(categories, categories.addonGroupIdsJson);
+      }
+      if (from < 17) {
+        // v17 — Gap sweep G1: per-product daily availability window.
+        await m.addColumn(products, products.availableFrom);
+        await m.addColumn(products, products.availableUntil);
+      }
+      if (from < 18) {
+        // v18 — P-F2: cached vehicle-plate links per customer.
+        await m.addColumn(cachedCustomers, cachedCustomers.platesJson);
+      }
+      if (from < 19) {
+        // v19 — P-F4: order-scope auto-apply flag on discount rules.
+        await m.addColumn(discounts, discounts.autoApply);
+      }
+      if (from < 20) {
+        // v20 — P-F6: the device-reports access policy.
+        await m.addColumn(syncMeta, syncMeta.reportsPositions);
+      }
+      if (from < 21) {
+        // v21 — P-F8: the merchant order-numbering config.
+        await m.addColumn(syncMeta, syncMeta.orderNumberingJson);
+      }
+      if (from < 22) {
+        // v22 — P-F9: merchant offers (promotions).
+        await m.createTable(offers);
+      }
+      if (from < 23) {
+        // v23 — P-G1: the device Kitchen-screen access policy.
+        await m.addColumn(syncMeta, syncMeta.kitchenPositions);
+      }
+      if (from < 24) {
+        // v24 — P-G3: the product behind a product-as-add-on option.
+        await m.addColumn(addons, addons.linkedProductId);
+      }
+      if (from < 25) {
+        // v25 — P-G6: staff announcements from the portal.
+        await m.createTable(staffMessages);
+      }
+      if (from < 26) {
+        // v26 — PD3b: per-option stock-usage lines (availability gating).
+        await m.addColumn(addons, addons.consumptionJson);
+      }
+      if (from < 27) {
+        // v27 — Phase 3: marketing advertising sliders for the customer
+        // (secondary) screen.
+        await m.createTable(marketingSliders);
+        await m.createTable(marketingSliderItems);
+      }
+      if (from >= 5 && from < 28) {
+        // v28 — MC-001: count deterministic server rejections separately
+        // from transport failures so rejected revenue can park after five.
+        // A pre-v5 upgrade creates the latest outbox table above, including
+        // this column, so only existing outbox installations add it here.
+        await m.addColumn(orderOutbox, orderOutbox.serverRejections);
+      }
+      if (from < 29) {
+        await m.addColumn(syncMeta, syncMeta.tableSessionsMode);
+      }
+    },
+  );
+
+  final _ownerGeneration = BusinessBoundary.generation.value;
+  bool _openedForTenancy = false;
+  Future<void> prepareTenancy() async {
+    if (!BusinessBoundary.initialized || BusinessBoundary.current == null)
+      return;
+    final identity = BusinessBoundary.current!.encoded.replaceAll("'", "''");
+    for (final table in allTables) {
+      final name = table.actualTableName;
+      final columns = await customSelect('PRAGMA table_info("$name")').get();
+      if (!columns.any((row) => row.data['name'] == '_business_identity')) {
+        await customStatement(
+          'ALTER TABLE "$name" ADD COLUMN _business_identity TEXT',
+        );
+      }
+      await customStatement('DROP TRIGGER IF EXISTS "_p0_stamp_$name"');
+      await customStatement(
+        'CREATE TRIGGER "_p0_stamp_$name" AFTER INSERT ON "$name" '
+        "WHEN NEW._business_identity IS NULL BEGIN UPDATE \"$name\" "
+        "SET _business_identity = '$identity' WHERE rowid = NEW.rowid; END",
       );
+      final foreign = await customSelect(
+        'SELECT rowid AS _p0_rowid, * FROM "$name" '
+        'WHERE _business_identity IS NULL OR _business_identity != ?',
+        variables: [Variable(BusinessBoundary.current!.encoded)],
+      ).get();
+      for (final row in foreign) {
+        if (name == orderOutbox.actualTableName) {
+          await BusinessBoundary.quarantine(
+            'drift:$name',
+            (row.data['order_uuid'] ?? row.data['_p0_rowid']).toString(),
+            row.data,
+          );
+        }
+        await customStatement('DELETE FROM "$name" WHERE rowid = ?', [
+          row.data['_p0_rowid'],
+        ]);
+      }
+    }
+  }
+
+  Future<void> wipeTenantData() async {
+    // Opening an existing cache is necessary even when the catalog has never
+    // been visited in this process. The beforeOpen hook must not adopt old rows.
+    final rows = await customSelect('SELECT * FROM order_outbox').get();
+    for (final row in rows) {
+      if (row.data['synced_at'] != null) continue;
+      await BusinessBoundary.quarantine(
+        'drift:order_outbox',
+        row.data['order_uuid'].toString(),
+        row.data,
+      );
+    }
+    await transaction(() async {
+      for (final table in allTables.toList().reversed) {
+        await delete(table).go();
+      }
+    });
+  }
+
+  static Future<void> wipePersistedTenantData() async {
+    final db = AppDatabase();
+    try {
+      await db.wipeTenantData();
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<void> _refreshTenancy() async {
+    if (_openedForTenancy) await prepareTenancy();
+  }
+
+  void _registerTenancy() {
+    BusinessBoundary.registerWiper(wipeTenantData);
+    BusinessBoundary.registerActivator(_refreshTenancy);
+  }
+
+  @override
+  Future<void> close() async {
+    BusinessBoundary.unregisterWiper(wipeTenantData);
+    BusinessBoundary.unregisterActivator(_refreshTenancy);
+    await super.close();
+  }
 
   // ---------------------------------------------------------------------------
   // Reads / streams (consumed by the catalog bridge → PosController)
@@ -198,29 +292,35 @@ class AppDatabase extends _$AppDatabase {
 
   Stream<SyncMetaRow?> watchSyncMeta() => select(syncMeta).watchSingleOrNull();
 
-  Stream<List<CategoryRow>> watchCategories() =>
-      (select(categories)..orderBy([(c) => OrderingTerm(expression: c.displayOrder)])).watch();
+  Stream<List<CategoryRow>> watchCategories() => (select(
+    categories,
+  )..orderBy([(c) => OrderingTerm(expression: c.displayOrder)])).watch();
 
   Stream<List<ProductRow>> watchProducts() => select(products).watch();
 
-  Stream<List<FloorRow>> watchFloors() =>
-      (select(floors)..orderBy([(f) => OrderingTerm(expression: f.displayOrder)])).watch();
+  Stream<List<FloorRow>> watchFloors() => (select(
+    floors,
+  )..orderBy([(f) => OrderingTerm(expression: f.displayOrder)])).watch();
 
-  Stream<List<TableRow>> watchTables() =>
-      (select(posTables)..orderBy([(t) => OrderingTerm(expression: t.displayOrder)])).watch();
+  Stream<List<TableRow>> watchTables() => (select(
+    posTables,
+  )..orderBy([(t) => OrderingTerm(expression: t.displayOrder)])).watch();
 
   Stream<List<AddonGroupRow>> watchAddonGroups() => select(addonGroups).watch();
 
   Stream<List<AddonRow>> watchAddons() => select(addons).watch();
 
-  Stream<List<TaxRow>> watchTaxes() =>
-      (select(taxCache)..orderBy([(t) => OrderingTerm(expression: t.id)])).watch();
+  Stream<List<TaxRow>> watchTaxes() => (select(
+    taxCache,
+  )..orderBy([(t) => OrderingTerm(expression: t.id)])).watch();
 
-  Stream<List<DeliveryProviderRow>> watchDeliveryProviders() =>
-      (select(deliveryProviders)..orderBy([(d) => OrderingTerm(expression: d.sortOrder)])).watch();
+  Stream<List<DeliveryProviderRow>> watchDeliveryProviders() => (select(
+    deliveryProviders,
+  )..orderBy([(d) => OrderingTerm(expression: d.sortOrder)])).watch();
 
-  Stream<List<ExpenseCategoryRow>> watchExpenseCategories() =>
-      (select(expenseCategories)..orderBy([(e) => OrderingTerm(expression: e.sortOrder)])).watch();
+  Stream<List<ExpenseCategoryRow>> watchExpenseCategories() => (select(
+    expenseCategories,
+  )..orderBy([(e) => OrderingTerm(expression: e.sortOrder)])).watch();
 
   Stream<List<BranchIngredientStockRow>> watchBranchIngredientStock() =>
       select(branchIngredientStock).watch();
@@ -230,39 +330,43 @@ class AppDatabase extends _$AppDatabase {
   Stream<List<OfferRow>> watchOffers() => select(offers).watch();
 
   // Phase 3 — marketing sliders + their slides for the customer-screen ad loop.
-  Stream<List<MarketingSliderRow>> watchSliders() => (select(marketingSliders)
-        ..orderBy([(s) => OrderingTerm(expression: s.displayOrder)]))
-      .watch();
+  Stream<List<MarketingSliderRow>> watchSliders() => (select(
+    marketingSliders,
+  )..orderBy([(s) => OrderingTerm(expression: s.displayOrder)])).watch();
 
-  Stream<List<MarketingSliderItemRow>> watchSliderItems() =>
-      (select(marketingSliderItems)
-            ..orderBy([(i) => OrderingTerm(expression: i.sortOrder)]))
-          .watch();
+  Stream<List<MarketingSliderItemRow>> watchSliderItems() => (select(
+    marketingSliderItems,
+  )..orderBy([(i) => OrderingTerm(expression: i.sortOrder)])).watch();
 
   // P-G6 — staff announcements, newest first.
-  Stream<List<StaffMessageRow>> watchStaffMessages() => (select(staffMessages)
-        ..orderBy([
-          (s) => OrderingTerm(expression: s.createdAt, mode: OrderingMode.desc)
-        ]))
-      .watch();
+  Stream<List<StaffMessageRow>> watchStaffMessages() =>
+      (select(staffMessages)..orderBy([
+            (s) =>
+                OrderingTerm(expression: s.createdAt, mode: OrderingMode.desc),
+          ]))
+          .watch();
 
   Stream<List<LoyaltyRuleRow>> watchLoyaltyRules() =>
       select(loyaltyRules).watch();
 
   Stream<List<CustomerRow>> watchCustomers() => select(cachedCustomers).watch();
 
-  Stream<List<IngredientRow>> watchIngredients() =>
-      (select(ingredients)..orderBy([(i) => OrderingTerm(expression: i.name)])).watch();
+  Stream<List<IngredientRow>> watchIngredients() => (select(
+    ingredients,
+  )..orderBy([(i) => OrderingTerm(expression: i.name)])).watch();
 
   // Phase B — void/comp reason lists for the cancel + comp dialogs.
-  Stream<List<VoidReasonRow>> watchVoidReasons() =>
-      (select(voidReasons)..orderBy([(r) => OrderingTerm(expression: r.sortOrder)])).watch();
+  Stream<List<VoidReasonRow>> watchVoidReasons() => (select(
+    voidReasons,
+  )..orderBy([(r) => OrderingTerm(expression: r.sortOrder)])).watch();
 
-  Stream<List<CompReasonRow>> watchCompReasons() =>
-      (select(compReasons)..orderBy([(r) => OrderingTerm(expression: r.sortOrder)])).watch();
+  Stream<List<CompReasonRow>> watchCompReasons() => (select(
+    compReasons,
+  )..orderBy([(r) => OrderingTerm(expression: r.sortOrder)])).watch();
 
-  Future<List<TaxRow>> getTaxes() =>
-      (select(taxCache)..orderBy([(t) => OrderingTerm(expression: t.id)])).get();
+  Future<List<TaxRow>> getTaxes() => (select(
+    taxCache,
+  )..orderBy([(t) => OrderingTerm(expression: t.id)])).get();
 
   Future<SyncMetaRow?> getSyncMeta() =>
       (select(syncMeta)..where((m) => m.id.equals(1))).getSingleOrNull();
@@ -270,34 +374,57 @@ class AppDatabase extends _$AppDatabase {
   // ---------------------------------------------------------------------------
   // Order push outbox (offline-first order sync → /device/sync/push)
   // ---------------------------------------------------------------------------
-  Future<void> enqueueOutbox(OrderOutboxCompanion row) =>
-      into(orderOutbox).insertOnConflictUpdate(row);
+  Future<void> enqueueOutbox(OrderOutboxCompanion row) async {
+    BusinessBoundary.assertWritable();
+    if (BusinessBoundary.initialized && row.eventsJson.present) {
+      final events = (jsonDecode(row.eventsJson.value) as List).cast<Map>();
+      row = row.copyWith(
+        eventsJson: Value(
+          jsonEncode([
+            for (final event in events)
+              BusinessBoundary.stamp(event.cast<String, dynamic>()),
+          ]),
+        ),
+      );
+    }
+    await into(orderOutbox).insertOnConflictUpdate(row);
+  }
 
-  Future<OrderOutboxRow?> getOutbox(String key) =>
-      (select(orderOutbox)..where((row) => row.orderUuid.equals(key)))
-          .getSingleOrNull();
+  Future<void> quarantineOutbox(OrderOutboxRow row) async {
+    await BusinessBoundary.quarantine(
+      'drift:order_outbox',
+      row.orderUuid,
+      jsonDecode(row.eventsJson),
+    );
+    await (delete(
+      orderOutbox,
+    )..where((entry) => entry.orderUuid.equals(row.orderUuid))).go();
+  }
+
+  Future<OrderOutboxRow?> getOutbox(String key) => (select(
+    orderOutbox,
+  )..where((row) => row.orderUuid.equals(key))).getSingleOrNull();
 
   /// Retire a payment attempt that the server affirmatively refused and whose
   /// physical tender has been resolved by staff. Keeping the row preserves the
   /// evidence while removing it from automatic outbox replay.
   Future<void> retireOutbox(String key, String reason, DateTime at) =>
       (update(orderOutbox)..where((row) => row.orderUuid.equals(key))).write(
-        OrderOutboxCompanion(
-          lastError: Value(reason),
-          syncedAt: Value(at),
-        ),
+        OrderOutboxCompanion(lastError: Value(reason), syncedAt: Value(at)),
       );
 
   /// Orders not yet ACKed by the server, oldest first.
-  Future<List<OrderOutboxRow>> pendingOutbox() => (select(orderOutbox)
-        ..where((o) => o.syncedAt.isNull())
-        ..orderBy([(o) => OrderingTerm(expression: o.createdAt)]))
-      .get();
+  Future<List<OrderOutboxRow>> pendingOutbox() =>
+      (select(orderOutbox)
+            ..where((o) => o.syncedAt.isNull())
+            ..orderBy([(o) => OrderingTerm(expression: o.createdAt)]))
+          .get();
 
-  Stream<List<OrderOutboxRow>> watchPendingOutbox() => (select(orderOutbox)
-        ..where((o) => o.syncedAt.isNull())
-        ..orderBy([(o) => OrderingTerm(expression: o.createdAt)]))
-      .watch();
+  Stream<List<OrderOutboxRow>> watchPendingOutbox() =>
+      (select(orderOutbox)
+            ..where((o) => o.syncedAt.isNull())
+            ..orderBy([(o) => OrderingTerm(expression: o.createdAt)]))
+          .watch();
 
   /// Pending revenue together with the cached branch fence that governs it.
   ///
@@ -305,12 +432,13 @@ class AppDatabase extends _$AppDatabase {
   /// keeps operator-attention surfaces accurate when a branch fence changes,
   /// even if no outbox row is inserted or updated at the same time.
   Stream<({List<OrderOutboxRow> rows, BranchRow? branch})>
-      watchPendingOutboxWithBranch() {
-    final query = select(orderOutbox).join([
-      leftOuterJoin(branchCache, const Constant(true)),
-    ])
-      ..where(orderOutbox.syncedAt.isNull())
-      ..orderBy([OrderingTerm(expression: orderOutbox.createdAt)]);
+  watchPendingOutboxWithBranch() {
+    final query =
+        select(
+            orderOutbox,
+          ).join([leftOuterJoin(branchCache, const Constant(true))])
+          ..where(orderOutbox.syncedAt.isNull())
+          ..orderBy([OrderingTerm(expression: orderOutbox.createdAt)]);
 
     return query.watch().map((joinedRows) {
       if (joinedRows.isEmpty) {
@@ -326,33 +454,38 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> markOutboxSynced(String orderUuid, DateTime at) =>
-      (update(orderOutbox)..where((o) => o.orderUuid.equals(orderUuid)))
-          .write(OrderOutboxCompanion(syncedAt: Value(at)));
-
-  Future<void> markOutboxAttempt(String orderUuid, int attempts, String? error) =>
       (update(orderOutbox)..where((o) => o.orderUuid.equals(orderUuid))).write(
-        OrderOutboxCompanion(attempts: Value(attempts), lastError: Value(error)),
+        OrderOutboxCompanion(syncedAt: Value(at)),
       );
+
+  Future<void> markOutboxAttempt(
+    String orderUuid,
+    int attempts,
+    String? error,
+  ) => (update(orderOutbox)..where((o) => o.orderUuid.equals(orderUuid))).write(
+    OrderOutboxCompanion(attempts: Value(attempts), lastError: Value(error)),
+  );
 
   Future<void> markOutboxServerRejection(
     String orderUuid,
     int attempts,
     int serverRejections,
     String error,
-  ) =>
-      (update(orderOutbox)..where((o) => o.orderUuid.equals(orderUuid))).write(
-        OrderOutboxCompanion(
-          attempts: Value(attempts),
-          serverRejections: Value(serverRejections),
-          lastError: Value(error),
-        ),
-      );
+  ) => (update(orderOutbox)..where((o) => o.orderUuid.equals(orderUuid))).write(
+    OrderOutboxCompanion(
+      attempts: Value(attempts),
+      serverRejections: Value(serverRejections),
+      lastError: Value(error),
+    ),
+  );
 
   Future<int> resetStuckOutbox(int rejectionLimit) =>
-      (update(orderOutbox)
-            ..where((o) => o.syncedAt.isNull() &
+      (update(orderOutbox)..where(
+            (o) =>
+                o.syncedAt.isNull() &
                 o.serverRejections.isBiggerOrEqualValue(rejectionLimit) &
-                o.orderUuid.like('%:pay').not()))
+                o.orderUuid.like('%:pay').not(),
+          ))
           .write(const OrderOutboxCompanion(serverRejections: Value(0)));
 
   /// #3 — locally decrement finite shelf stock (unit/cooked products) after a
@@ -364,14 +497,15 @@ class AppDatabase extends _$AppDatabase {
     if (soldById.isEmpty) return;
     await transaction(() async {
       for (final entry in soldById.entries) {
-        final row =
-            await (select(products)..where((p) => p.id.equals(entry.key)))
-                .getSingleOrNull();
+        final row = await (select(
+          products,
+        )..where((p) => p.id.equals(entry.key))).getSingleOrNull();
         final current = row?.branchStockQty;
         if (current == null) continue; // not shelf-tracked locally
         final next = current - entry.value;
-        await (update(products)..where((p) => p.id.equals(entry.key)))
-            .write(ProductsCompanion(branchStockQty: Value(next < 0 ? 0 : next)));
+        await (update(products)..where((p) => p.id.equals(entry.key))).write(
+          ProductsCompanion(branchStockQty: Value(next < 0 ? 0 : next)),
+        );
       }
     });
   }
@@ -410,6 +544,7 @@ class AppDatabase extends _$AppDatabase {
     required SyncMetaCompanion meta,
   }) {
     return transaction(() async {
+      BusinessBoundary.assertGeneration(_ownerGeneration);
       await delete(branchCache).go();
       await delete(categories).go();
       await delete(products).go();
@@ -513,6 +648,7 @@ class AppDatabase extends _$AppDatabase {
     String? tableSessionsMode,
   }) {
     return transaction(() async {
+      BusinessBoundary.assertGeneration(_ownerGeneration);
       // Upserts (changed rows only — untouched rows survive).
       if (hasBranch) {
         await into(branchCache).insertOnConflictUpdate(branch);
@@ -531,7 +667,10 @@ class AppDatabase extends _$AppDatabase {
         b.insertAllOnConflictUpdate(taxCache, taxRows);
         b.insertAllOnConflictUpdate(deliveryProviders, deliveryProviderRows);
         b.insertAllOnConflictUpdate(expenseCategories, expenseCategoryRows);
-        b.insertAllOnConflictUpdate(branchIngredientStock, branchIngredientStockRows);
+        b.insertAllOnConflictUpdate(
+          branchIngredientStock,
+          branchIngredientStockRows,
+        );
         b.insertAllOnConflictUpdate(discounts, discountRows);
         b.insertAllOnConflictUpdate(loyaltyRules, loyaltyRuleRows);
         b.insertAllOnConflictUpdate(cachedCustomers, customerRows);
@@ -546,73 +685,95 @@ class AppDatabase extends _$AppDatabase {
 
       // Purge soft-deleted ids.
       if (deletedCategoryIds.isNotEmpty) {
-        await (delete(categories)..where((t) => t.id.isIn(deletedCategoryIds))).go();
+        await (delete(
+          categories,
+        )..where((t) => t.id.isIn(deletedCategoryIds))).go();
       }
       if (deletedProductIds.isNotEmpty) {
-        await (delete(products)..where((t) => t.id.isIn(deletedProductIds))).go();
+        await (delete(
+          products,
+        )..where((t) => t.id.isIn(deletedProductIds))).go();
       }
       if (deletedFloorIds.isNotEmpty) {
         await (delete(floors)..where((t) => t.id.isIn(deletedFloorIds))).go();
       }
       if (deletedTableIds.isNotEmpty) {
-        await (delete(posTables)..where((t) => t.id.isIn(deletedTableIds))).go();
+        await (delete(
+          posTables,
+        )..where((t) => t.id.isIn(deletedTableIds))).go();
       }
       if (deletedAddonGroupIds.isNotEmpty) {
-        await (delete(addonGroups)..where((t) => t.id.isIn(deletedAddonGroupIds))).go();
+        await (delete(
+          addonGroups,
+        )..where((t) => t.id.isIn(deletedAddonGroupIds))).go();
       }
       if (deletedAddonIds.isNotEmpty) {
         await (delete(addons)..where((t) => t.id.isIn(deletedAddonIds))).go();
       }
       if (deletedIngredientIds.isNotEmpty) {
-        await (delete(ingredients)..where((t) => t.id.isIn(deletedIngredientIds))).go();
+        await (delete(
+          ingredients,
+        )..where((t) => t.id.isIn(deletedIngredientIds))).go();
       }
       if (deletedDiscountIds.isNotEmpty) {
-        await (delete(discounts)..where((t) => t.id.isIn(deletedDiscountIds))).go();
+        await (delete(
+          discounts,
+        )..where((t) => t.id.isIn(deletedDiscountIds))).go();
       }
       if (deletedLoyaltyRuleIds.isNotEmpty) {
-        await (delete(loyaltyRules)..where((t) => t.id.isIn(deletedLoyaltyRuleIds))).go();
+        await (delete(
+          loyaltyRules,
+        )..where((t) => t.id.isIn(deletedLoyaltyRuleIds))).go();
       }
       if (deletedCustomerIds.isNotEmpty) {
-        await (delete(cachedCustomers)..where((t) => t.id.isIn(deletedCustomerIds))).go();
+        await (delete(
+          cachedCustomers,
+        )..where((t) => t.id.isIn(deletedCustomerIds))).go();
       }
       if (deletedDeliveryProviderIds.isNotEmpty) {
-        await (delete(deliveryProviders)..where((t) => t.id.isIn(deletedDeliveryProviderIds))).go();
+        await (delete(
+          deliveryProviders,
+        )..where((t) => t.id.isIn(deletedDeliveryProviderIds))).go();
       }
       if (deletedExpenseCategoryIds.isNotEmpty) {
-        await (delete(expenseCategories)..where((t) => t.id.isIn(deletedExpenseCategoryIds))).go();
+        await (delete(
+          expenseCategories,
+        )..where((t) => t.id.isIn(deletedExpenseCategoryIds))).go();
       }
       if (deletedOfferIds.isNotEmpty) {
         await (delete(offers)..where((t) => t.id.isIn(deletedOfferIds))).go();
       }
       if (deletedStaffMessageIds.isNotEmpty) {
-        await (delete(staffMessages)
-              ..where((t) => t.id.isIn(deletedStaffMessageIds)))
-            .go();
+        await (delete(
+          staffMessages,
+        )..where((t) => t.id.isIn(deletedStaffMessageIds))).go();
       }
 
       // Advance the cursor only — keep company/branch (absent = unchanged).
       // The cancel-policy is refreshed when present (always emitted by pos_api),
       // left untouched when null so a stray delta can't blank it.
-      await into(syncMeta).insertOnConflictUpdate(SyncMetaCompanion(
-        id: const Value(1),
-        lastConfigSyncAt: Value(now),
-        configSchemaVersion: Value(cursor),
-        orderCancelPositions: orderCancelPositions == null
-            ? const Value.absent()
-            : Value(orderCancelPositions),
-        reportsPositions: reportsPositions == null
-            ? const Value.absent()
-            : Value(reportsPositions),
-        kitchenPositions: kitchenPositions == null
-            ? const Value.absent()
-            : Value(kitchenPositions),
-        orderNumberingJson: orderNumberingJson == null
-            ? const Value.absent()
-            : Value(orderNumberingJson),
-        tableSessionsMode: tableSessionsMode == null
-            ? const Value.absent()
-            : Value(tableSessionsMode),
-      ));
+      await into(syncMeta).insertOnConflictUpdate(
+        SyncMetaCompanion(
+          id: const Value(1),
+          lastConfigSyncAt: Value(now),
+          configSchemaVersion: Value(cursor),
+          orderCancelPositions: orderCancelPositions == null
+              ? const Value.absent()
+              : Value(orderCancelPositions),
+          reportsPositions: reportsPositions == null
+              ? const Value.absent()
+              : Value(reportsPositions),
+          kitchenPositions: kitchenPositions == null
+              ? const Value.absent()
+              : Value(kitchenPositions),
+          orderNumberingJson: orderNumberingJson == null
+              ? const Value.absent()
+              : Value(orderNumberingJson),
+          tableSessionsMode: tableSessionsMode == null
+              ? const Value.absent()
+              : Value(tableSessionsMode),
+        ),
+      );
     });
   }
 }

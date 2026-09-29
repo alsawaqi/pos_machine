@@ -1,3 +1,5 @@
+import '../tenancy/business_identity.dart';
+import '../tenancy/tenant_sqlite.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../bill_combine/combine_models.dart';
@@ -286,6 +288,8 @@ class RecoveryStore {
   }
 
   static Future<bool> pending(DatabaseExecutor db) async {
+    if (BusinessBoundary.initialized)
+      await scrubBusinessRows(db, onlyTables: {'draft_recovery_journal'});
     var pending = false;
     for (final row in await db.query(
       'draft_recovery_journal',
@@ -299,6 +303,8 @@ class RecoveryStore {
   }
 
   static Future<void> assertNonePending(DatabaseExecutor db) async {
+    if (BusinessBoundary.initialized)
+      await scrubBusinessRows(db, onlyTables: {'draft_recovery_journal'});
     if (await pending(db)) {
       throw StateError(
         'Finish the saved bill draft recovery in Dine-In first.',
@@ -443,6 +449,8 @@ class RecoveryStore {
   }
 
   Future<RecoveryAttempt?> active() async {
+    if (BusinessBoundary.initialized)
+      await scrubBusinessRows(db, onlyTables: {'draft_recovery_journal'});
     final rows = await db.query(
       'draft_recovery_journal',
       columns: journalColumns,

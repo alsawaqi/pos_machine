@@ -1,3 +1,5 @@
+import '../tenancy/device_heartbeat.dart';
+import '../tenancy/tenancy_interceptor.dart';
 import 'package:mithqal_softpos/mithqal_softpos.dart';
 
 import 'package:dio/dio.dart';
@@ -37,6 +39,7 @@ class PosApiService {
                headers: {'Accept': 'application/json'},
              ),
            ) {
+    _dio.interceptors.add(TenancyInterceptor());
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
@@ -56,6 +59,7 @@ class PosApiService {
         },
       ),
     );
+    DeviceHeartbeat.start(_dio, 'pos_machine/1.0.0+1');
   }
 
   Future<Map<String, dynamic>> reversalRequest(

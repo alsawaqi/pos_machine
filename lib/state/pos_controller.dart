@@ -1,3 +1,4 @@
+import '../tenancy/business_identity.dart';
 import '../services/server_receipt_history.dart';
 import 'dart:async';
 import 'dart:ui' show Locale;
@@ -1111,7 +1112,11 @@ class PosController extends ChangeNotifier
   Timer? _pendingReconEscalationTimer;
   double _pendingReconAmount = 0;
 
+  bool _hasRealCatalog = false;
+  final bool releaseBuild;
+
   PosController({
+    this.releaseBuild = kReleaseMode,
     OrderStorageService? orderStorage,
     pricing.PriceResult Function(pricing.PricingInput)? priceOrderOverride,
   }) : _orderStorage =
@@ -1119,6 +1124,12 @@ class PosController extends ChangeNotifier
            debugOrderStorageOverride ??
            LocalOrderStorageService.instance,
        _priceOrder = priceOrderOverride ?? pricing.priceOrder {
+    if (releaseBuild) {
+      allProducts = [];
+      categories = [];
+      diningFloors = [];
+      diningTableDefinitions = [];
+    }
     _paymentBridge.setLaunchStateListener(_handlePaymentLaunchState);
     _recoveryGuard?.recoveryBlocked.addListener(_notifySafely);
   }
@@ -1213,6 +1224,7 @@ class PosController extends ChangeNotifier
     List<SliderSlide> adSlides = const <SliderSlide>[],
     int? branchId,
   }) {
+    _hasRealCatalog = branchId != null;
     this.categories = categories;
     this.categoryNamesAr = categoryNamesAr;
     _baseProducts = products;
@@ -2639,6 +2651,9 @@ class PosController extends ChangeNotifier
   }
 
   void addProduct(Product product) {
+    BusinessBoundary.assertWritable();
+    if (releaseBuild && !_hasRealCatalog)
+      throw StateError('Load this branch configuration before selling.');
     if (!_cartMutationAllowed()) return;
     // #3 — a finite-shelf product (unit/cooked) can't be sold past the
     // produced/allocated count; once the cart holds the whole shelf, stop.

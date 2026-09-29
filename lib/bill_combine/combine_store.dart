@@ -1,3 +1,5 @@
+import '../tenancy/business_identity.dart';
+import '../tenancy/tenant_sqlite.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../draft_recovery/recovery_store.dart';
@@ -16,6 +18,8 @@ class CombineStore {
   }
 
   static Future<void> assertNonePending(DatabaseExecutor db) async {
+    if (BusinessBoundary.initialized)
+      await scrubBusinessRows(db, onlyTables: {'bill_combine_journal'});
     final rows = await db.query(
       'bill_combine_journal',
       columns: ['id'],
@@ -28,6 +32,8 @@ class CombineStore {
   }
 
   Future<CombineAttempt?> active() async {
+    if (BusinessBoundary.initialized)
+      await scrubBusinessRows(db, onlyTables: {'bill_combine_journal'});
     final rows = await db.query(
       'bill_combine_journal',
       where: "scope = ? AND state IN ('pending', 'confirmed')",

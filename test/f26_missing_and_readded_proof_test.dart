@@ -353,6 +353,8 @@ void main() {
             await localDb.close();
             await boards.close();
           });
+          // Drain the completed SQLite callbacks before FakeAsync checks timers.
+          await tester.pump();
         });
         Future<void> mount() async {
           await pumpWorkspaceMachine(

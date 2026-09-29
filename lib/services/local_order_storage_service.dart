@@ -1,3 +1,5 @@
+import '../tenancy/business_identity.dart';
+import 'package:pos_machine/tenancy/tenant_sqlite.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -72,7 +74,15 @@ class LocalOrderStorageService
   @visibleForTesting
   LocalOrderStorageService.forTesting(Database database) : _database = database;
 
-  static final LocalOrderStorageService instance = LocalOrderStorageService._();
+  static LocalOrderStorageService _instance = LocalOrderStorageService._();
+  static LocalOrderStorageService get instance {
+    if (_instance._ownerGeneration != BusinessBoundary.generation.value) {
+      _instance = LocalOrderStorageService._();
+    }
+    return _instance;
+  }
+
+  final _ownerGeneration = BusinessBoundary.generation.value;
 
   @override
   Future<bool> tableOutboxArchived(String key, String eventsJson) async {
@@ -197,7 +207,12 @@ class LocalOrderStorageService
   }
 
   Future<Database> get database async {
-    if (_database != null) return _database!;
+    BusinessBoundary.assertGeneration(_ownerGeneration);
+    if (_database != null) {
+      if (_database!.isOpen) return _database!;
+      _database = null;
+      _opening = null;
+    }
     _database = await (_opening ??= _openDatabase());
     return _database!;
   }
@@ -467,7 +482,7 @@ class LocalOrderStorageService
     final databasePath = await databaseFactory.getDatabasesPath();
     final path = p.join(databasePath, 'mithqal_orders.db');
 
-    return openDatabase(
+    return openBusinessDatabase(
       path,
       version: 10,
       onCreate: (db, version) async {

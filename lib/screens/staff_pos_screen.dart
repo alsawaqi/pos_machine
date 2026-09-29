@@ -3531,7 +3531,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final session = bridge.activeSession();
     if (session == null) return;
     await bridge.coordinator.settled;
+    if (!mounted || refresh != _tableSentRefresh) return;
     final delta = await bridge.coordinator.delta(session);
+    if (!mounted || refresh != _tableSentRefresh) return;
     final seat = bridge.coordinator.cachedSession(session.tableId)?.seatingKey;
     final rounds = seat == null
         ? <LocalTableRound>[]

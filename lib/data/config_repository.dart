@@ -1,3 +1,4 @@
+import '../tenancy/business_identity.dart';
 import 'dart:async';
 
 import '../services/config_mapper.dart';
@@ -11,6 +12,7 @@ import 'db/app_database.dart';
 class ConfigRepository {
   ConfigRepository(this._api, this._db, this._session);
 
+  final _ownerGeneration = BusinessBoundary.generation.value;
   final PosApiService _api;
   final AppDatabase _db;
   final SessionService _session;
@@ -18,7 +20,9 @@ class ConfigRepository {
   /// Online refresh: pull `/device/config`, replace the cache atomically, and
   /// persist the device's terminal ID (from meta) for the Soft POS.
   Future<void> fetchAndCache() async {
+    BusinessBoundary.assertGeneration(_ownerGeneration);
     final config = await _api.fetchConfig();
+    BusinessBoundary.assertGeneration(_ownerGeneration);
     final parsed = ConfigMapper.parse(config.data, cursor: config.generatedAt);
     await _db.replaceConfig(
       branch: parsed.branch,
@@ -47,12 +51,17 @@ class ConfigRepository {
       sliderItemRows: parsed.sliderItems,
       meta: parsed.meta,
     );
+    BusinessBoundary.assertGeneration(_ownerGeneration);
     await _session.saveTerminalId(config.terminalId);
+    BusinessBoundary.assertGeneration(_ownerGeneration);
     await _session.saveTerminalPin(config.terminalPin);
+    BusinessBoundary.assertGeneration(_ownerGeneration);
     await _session.saveSoftpos(config.softpos);
     // Phase C3 — where to dial Reverb (null = live push off server-side).
+    BusinessBoundary.assertGeneration(_ownerGeneration);
     await _session.saveWebsocketConfig(config.websocket);
     // Marketing #46 — the admin-set audience-measurement consent.
+    BusinessBoundary.assertGeneration(_ownerGeneration);
     await _session.saveServerAudienceMeasurement(config.audienceMeasurement);
   }
 
@@ -72,6 +81,7 @@ class ConfigRepository {
     }
     try {
       final res = await _api.fetchConfigDelta(cursor);
+      BusinessBoundary.assertGeneration(_ownerGeneration);
       final delta = ConfigMapper.parseDelta(res.data, cursor: res.generatedAt);
       final c = delta.changed;
       final d = delta.deleted;
@@ -123,11 +133,16 @@ class ConfigRepository {
         orderNumberingJson: c.meta.orderNumberingJson.value,
         tableSessionsMode: c.meta.tableSessionsMode.value,
       );
+      BusinessBoundary.assertGeneration(_ownerGeneration);
       await _session.saveTerminalId(res.terminalId);
+      BusinessBoundary.assertGeneration(_ownerGeneration);
       await _session.saveTerminalPin(res.terminalPin);
+      BusinessBoundary.assertGeneration(_ownerGeneration);
       await _session.saveSoftpos(res.softpos);
+      BusinessBoundary.assertGeneration(_ownerGeneration);
       await _session.saveWebsocketConfig(res.websocket);
       // Marketing #46 — the admin-set audience-measurement consent.
+      BusinessBoundary.assertGeneration(_ownerGeneration);
       await _session.saveServerAudienceMeasurement(res.audienceMeasurement);
     } catch (_) {
       // Self-heal: drop back to a full sync on any delta failure.

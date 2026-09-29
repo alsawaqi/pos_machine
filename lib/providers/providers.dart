@@ -1,3 +1,4 @@
+import '../tenancy/business_identity.dart';
 import '../services/server_receipt_history.dart';
 import 'dart:async';
 import 'dart:ui' show Locale;
@@ -135,7 +136,23 @@ class SessionController extends Notifier<SessionState> {
   SessionState build() => _svc.snapshot();
 
   Future<void> saveActivation(PairResult result) async {
+    final oldIdentity = BusinessBoundary.current?.encoded;
+    final oldGeneration = BusinessBoundary.generation.value;
     await _svc.saveActivation(result);
+    if (oldGeneration != BusinessBoundary.generation.value ||
+        oldIdentity != BusinessBoundary.current?.encoded) {
+      ref.invalidate(configRepositoryProvider);
+      ref.invalidate(orderSyncRepositoryProvider);
+      ref.invalidate(tableSyncCoordinatorProvider);
+      ref.invalidate(tableShadowRepositoryProvider);
+      ref.invalidate(remoteTableStoreProvider);
+      ref.invalidate(tableLedgerStoreProvider);
+      ref.invalidate(qrRoundAutoPrintControllerProvider);
+      ref.invalidate(catalogProvider);
+      ref.invalidate(appDatabaseProvider);
+      ref.invalidate(liveSyncProvider);
+      ref.invalidate(shiftReconciliationProvider);
+    }
     state = _svc.snapshot();
   }
 

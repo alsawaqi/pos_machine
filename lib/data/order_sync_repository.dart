@@ -1,3 +1,4 @@
+import '../tenancy/business_identity.dart';
 import 'dart:async';
 import 'dart:convert';
 import '../table_cancellation/table_bill_cancellation.dart';
@@ -70,6 +71,7 @@ class OrderSyncRepository {
   /// Rechecked inside the serialized queue before any outbox mutation or push.
   /// Reads stay available while a durable draft recovery blocks new work.
   final Future<void> Function()? mutationGuard;
+  final _ownerGeneration = BusinessBoundary.generation.value;
   Future<void> _flushTail = Future<void>.value();
   final Object _ackMutationScopeKey = Object();
   final List<OutboxAckListener> _ackListeners = [];
@@ -85,7 +87,13 @@ class OrderSyncRepository {
   Future<void> dispose() => _flushCompletions.close();
 
   Future<T> _serialize<T>(Future<T> Function() operation) {
-    final run = _flushTail.then((_) => operation());
+    final generation = BusinessBoundary.generation.value;
+    BusinessBoundary.assertGeneration(_ownerGeneration);
+    final run = _flushTail.then((_) {
+      BusinessBoundary.assertGeneration(generation);
+      BusinessBoundary.assertWritable();
+      return operation();
+    });
     _flushTail = run.then<void>((_) {}, onError: (Object _, StackTrace _) {});
     return run;
   }
@@ -132,7 +140,11 @@ class OrderSyncRepository {
               (table) => table.orderUuid.equals(key) & table.syncedAt.isNull(),
             ))
             .write(
-              OrderOutboxCompanion(eventsJson: Value(jsonEncode([prepared]))),
+              OrderOutboxCompanion(
+                eventsJson: Value(
+                  jsonEncode([BusinessBoundary.stamp(prepared)]),
+                ),
+              ),
             );
       }
     });
@@ -581,6 +593,7 @@ class OrderSyncRepository {
   /// rejection of an event is recorded (lastError) for visibility. Returns the
   /// number of orders confirmed synced this run.
   Future<int> flush() {
+    if (!BusinessBoundary.canWork) return Future.value(0);
     // Multiple triggers can overlap (startup, reconnect, and a newly-enqueued
     // sale). Queue each pass so rejection counters cannot race or page twice.
     // A pass requested mid-flush still runs afterwards and sees any new rows.
@@ -669,6 +682,12 @@ class OrderSyncRepository {
           row.attempts + 1,
           'corrupt outbox payload: $e',
         );
+        continue;
+      }
+
+      if (!BusinessBoundary.canWork) break;
+      if (events.any((event) => !BusinessBoundary.owns(event['identity']))) {
+        await _db.quarantineOutbox(row);
         continue;
       }
 

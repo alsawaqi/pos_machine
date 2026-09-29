@@ -223,6 +223,14 @@ class PresentationService {
     return usableDisplays.isEmpty ? null : usableDisplays.first;
   }
 
+  Future<void> wipeBusinessPresentation() async {
+    _billOwner = null;
+    _billDisplay = null;
+    _lastStaffOrder = null;
+    _lastSlides = const [];
+    await closeRearDisplay();
+  }
+
   Future<void> closeRearDisplay() async {
     if (!_supportsRearDisplay) return;
     if (_activeDisplayId == null) return;

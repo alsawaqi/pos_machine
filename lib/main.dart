@@ -1,3 +1,11 @@
+import 'services/presentation_service.dart';
+import 'tenancy/device_heartbeat.dart';
+import 'data/db/app_database.dart';
+import 'tenancy/business_identity.dart';
+import 'tenancy/tenant_preferences.dart';
+import 'tenancy/tenant_sqlite.dart';
+import 'tenancy/tenancy_gate.dart';
+import 'screens/device_setup_screen.dart';
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
@@ -21,7 +29,14 @@ Future<void> main() async {
   await _configureKioskMode();
   developer.log('Launching staff display entrypoint.', name: 'POSBootstrap');
 
-  final prefs = await SharedPreferences.getInstance();
+  final rawPreferences = await SharedPreferences.getInstance();
+  await BusinessBoundary.initialize(rawPreferences);
+  BusinessBoundary.registerWiper(wipeBusinessDatabases);
+  BusinessBoundary.registerWiper(AppDatabase.wipePersistedTenantData);
+  BusinessBoundary.registerWiper(
+    PresentationService.instance.wipeBusinessPresentation,
+  );
+  final prefs = TenantPreferences(rawPreferences);
   const secureStorage = FlutterSecureStorage();
   final session = SessionService(secureStorage, prefs);
   final buildMode = ProviderContainer();
@@ -35,7 +50,20 @@ Future<void> main() async {
     buildMode.dispose();
   }
   await session.load();
+  DeviceHeartbeat.pendingCount = () async {
+    final db = AppDatabase();
+    try {
+      return (await db.pendingOutbox()).length;
+    } finally {
+      await db.close();
+    }
+  };
 
+  BusinessBoundary.blocked.addListener(() {
+    if (BusinessBoundary.blocked.value != null) {
+      PresentationService.instance.closeRearDisplay().catchError((_) {});
+    }
+  });
   final app = ProviderScope(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
@@ -152,7 +180,10 @@ class StaffApp extends ConsumerWidget {
       locale: locale,
       supportedLocales: L10n.supportedLocales,
       localizationsDelegates: L10n.localizationsDelegates,
-      builder: (context, child) => AppOrderAttention(child: child!),
+      builder: (context, child) => TenancyGate(
+        activation: (_) => const DeviceSetupScreen(),
+        child: AppOrderAttention(child: child!),
+      ),
       home: const _FullscreenShell(child: StaffStartupGate()),
     );
   }

@@ -1,3 +1,4 @@
+import 'package:pos_machine/tenancy/tenant_sqlite.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'qr_checkout_models.dart';
@@ -20,7 +21,7 @@ class SqliteCheckoutStore implements CheckoutStore, CheckoutReceiptJournal {
   final String scope;
   static Future<SqliteCheckoutStore> open(String scope) async {
     final directory = await getDatabasesPath();
-    final db = await openDatabase(
+    final db = await openBusinessDatabase(
       '$directory/qr_checkout_attempts.db',
       version: 1,
       onCreate: (db, _) => createSchema(db),

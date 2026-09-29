@@ -1,3 +1,4 @@
+import '../tenancy/business_identity.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mithqal_softpos/mithqal_softpos.dart';
 import 'package:uuid/uuid.dart';
@@ -30,6 +31,7 @@ class CardReversalController extends ChangeNotifier {
     this.originalAuth,
     String Function()? newId,
   }) : _newId = newId ?? const Uuid().v4;
+  final _identityGeneration = BusinessBoundary.generation.value;
   final ReversalRequest request;
   final ReversalBankCall bank;
   final ReversalPrinter printSlip;
@@ -49,6 +51,16 @@ class CardReversalController extends ChangeNotifier {
   final Set<String> _launched = {}, _printAttempted = {};
   Map<String, dynamic>? _report;
   SoftPosOutcome? _outcome;
+  Future<Map<String, dynamic>> _ownedRequest(
+    String method,
+    String path,
+    Map<String, dynamic>? body,
+  ) {
+    BusinessBoundary.assertWritable();
+    BusinessBoundary.assertGeneration(_identityGeneration);
+    return request(method, path, body);
+  }
+
   void _emit() {
     if (!_disposed) notifyListeners();
   }
@@ -61,7 +73,7 @@ class CardReversalController extends ChangeNotifier {
 
   Future<void> load(String orderUuid) async {
     _orderUuid = orderUuid;
-    final data = await request(
+    final data = await _ownedRequest(
       'GET',
       '/device/orders/$orderUuid/payments',
       null,
@@ -71,7 +83,7 @@ class CardReversalController extends ChangeNotifier {
   }
 
   Future<void> recover() async {
-    final data = await request(
+    final data = await _ownedRequest(
       'GET',
       '/device/payments/reversals?status=pending,uncertain',
       null,
@@ -95,6 +107,8 @@ class CardReversalController extends ChangeNotifier {
     int? customAmountBaisas,
     required Future<bool> Function(int baisas, String currency) confirmAmount,
   }) async {
+    BusinessBoundary.assertWritable();
+    BusinessBoundary.assertGeneration(_identityGeneration);
     if (busy || _attemptedReserve || needsRecovery) {
       throw StateError('reversal_in_progress');
     }
@@ -137,7 +151,7 @@ class CardReversalController extends ChangeNotifier {
       if (name == null) throw StateError('invalid_manager_pin');
       _approver = name;
       _attemptedReserve = true;
-      final data = await request(
+      final data = await _ownedRequest(
         'POST',
         '/device/payments/${payment['payment_uuid']}/reversals',
         {
@@ -166,6 +180,8 @@ class CardReversalController extends ChangeNotifier {
               'Operator cancelled before the bank application opened',
         });
       } else {
+        BusinessBoundary.assertWritable();
+        BusinessBoundary.assertGeneration(_identityGeneration);
         if (!_launched.add(uuid)) throw StateError('reversal_already_launched');
         final contract = softPosObject(data['softpos']);
         final args = <String, dynamic>{
@@ -236,7 +252,7 @@ class CardReversalController extends ChangeNotifier {
   Future<void> _sendReport() async {
     final reserved = reservation!;
     final uuid = reserved['reversal_uuid'] as String;
-    result = await request(
+    result = await _ownedRequest(
       'POST',
       '/device/payments/reversals/$uuid/result',
       _report!,

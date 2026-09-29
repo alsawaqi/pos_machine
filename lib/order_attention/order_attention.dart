@@ -1,10 +1,10 @@
+import 'package:pos_machine/tenancy/tenant_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// A device/server ledger survives staff logout; credentials never enter storage.
 class AttentionIdentity {
@@ -68,7 +68,7 @@ class PreferencesAttentionLedger implements AttentionLedger {
 
   @override
   Future<Set<String>?> read(String scope) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await businessPreferences();
     await prefs.reload();
     final raw = prefs.getString(_key(scope));
     if (raw == null) return null;
@@ -90,7 +90,7 @@ class PreferencesAttentionLedger implements AttentionLedger {
 
   @override
   Future<void> write(String scope, Set<String> keys) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await businessPreferences();
     final saved = await prefs.setString(
       _key(scope),
       jsonEncode({'version': 1, 'keys': keys.toList()..sort()}),

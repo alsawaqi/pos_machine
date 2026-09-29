@@ -1,3 +1,4 @@
+import 'package:pos_machine/tenancy/tenant_sqlite.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'dine_in_models.dart';
@@ -25,7 +26,7 @@ class SqliteDineInStore implements DineInStore, DineInDraftStore {
   final String scope;
   static Future<SqliteDineInStore> open(String scope) async {
     final directory = await getDatabasesPath();
-    final db = await openDatabase(
+    final db = await openBusinessDatabase(
       '$directory/dine_in_requests.db',
       version: 2,
       onUpgrade: (db, old, next) => _createDrafts(db),

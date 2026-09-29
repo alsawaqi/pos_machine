@@ -1,7 +1,7 @@
+import 'package:pos_machine/tenancy/tenant_preferences.dart';
 import 'dart:ui' show Locale;
 
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/l10n.dart';
 
@@ -16,7 +16,7 @@ class ManagerAuthorizationService {
   L10n get _l10n => localize?.call() ?? lookupL10n(const Locale('en'));
 
   Future<bool> isManagerRegistered() async {
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await businessPreferences();
     return preferences.getBool(_registeredKey) ?? false;
   }
 
@@ -29,7 +29,7 @@ class ManagerAuthorizationService {
     );
     if (!approved) return false;
 
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = await businessPreferences();
     await preferences.setBool(_registeredKey, true);
     return true;
   }
