@@ -712,6 +712,18 @@ class PosApiService {
     () => _dio.post('/device/qr/pending-orders/cancel', data: payload),
   )).dataMap;
 
+  /// Manager payment review of a stuck QR quick order (idempotent per
+  /// client_request_id; the server never stores the PIN).
+  Future<Map<String, dynamic>> reviewQuickPayment(
+    String uuid,
+    Map<String, dynamic> payload,
+  ) async => (await _send(
+    () => _dio.post(
+      '/device/qr/pending-orders/$uuid/payment-review',
+      data: payload,
+    ),
+  )).dataMap;
+
   Future<Map<String, dynamic>> fetchQuickInbox() async => (await _send(
     () => _dio.get(
       '/device/qr/pending-orders',

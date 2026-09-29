@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'qr_expired_cancel.dart';
+import 'qr_payment_review.dart';
+import '../qr_checkout/payment_review_store.dart';
 import '../services/pos_api_service.dart';
 import 'qr_quick_controller.dart';
 import 'qr_quick_models.dart';
@@ -31,12 +33,17 @@ class ApiQrQuickGateway
     implements
         QrQuickGateway,
         QrQuickWorkspaceGateway,
-        QrQuickCancellationGateway {
+        QrQuickCancellationGateway,
+        QrQuickPaymentReviewGateway {
   ApiQrQuickGateway(
     this.api,
     this.currentScope, {
     this.mutationGuard,
     this.cancellationGuard,
+    this.localPaymentOrders,
+    this.loadPaymentEvidence,
+    this.recordPaymentReview,
+    this.currentGps,
   }) : scope = currentScope(),
        token = api.tokenGetter();
   final PosApiService api;
@@ -45,6 +52,16 @@ class ApiQrQuickGateway
   final String? token;
   final Future<void> Function()? mutationGuard;
   final Future<void> Function(String)? cancellationGuard;
+  final Future<Set<String>> Function()? localPaymentOrders;
+  final Future<PaymentReviewEvidence> Function(String)? loadPaymentEvidence;
+  final Future<void> Function(
+    String uuid,
+    PaymentReviewEvidence evidence,
+    String requestId,
+    Map<String, dynamic> result,
+  )?
+  recordPaymentReview;
+  final Future<Map<String, double>?> Function()? currentGps;
   final _cancellationReviews = <String, List<String>>{};
   void _check() {
     if (token == null ||
@@ -149,6 +166,65 @@ class ApiQrQuickGateway
     _check();
     final result = await api.cancelExpiredQuickOrders(payload);
     _check();
+    return result;
+  }
+
+  @override
+  Future<Set<String>> ordersWithLocalPaymentEvidence() async {
+    _check();
+    final orders = await localPaymentOrders?.call() ?? <String>{};
+    _check();
+    return orders;
+  }
+
+  @override
+  Future<PaymentReviewEvidence> paymentEvidence(String uuid) async {
+    _check();
+    final evidence =
+        await loadPaymentEvidence?.call(uuid) ?? const PaymentReviewEvidence();
+    _check();
+    return evidence;
+  }
+
+  @override
+  Future<Map<String, dynamic>> reviewPayment(
+    String uuid,
+    PaymentReviewEvidence evidence,
+    Map<String, dynamic> payload,
+  ) async {
+    _check();
+    await mutationGuard?.call();
+    // The till's saved payments must still be exactly what the manager saw.
+    final fresh = await paymentEvidence(uuid);
+    if (fresh.blocked ||
+        fresh.attemptIds.join(',') != evidence.attemptIds.join(',')) {
+      throw StateError('Saved checkout changed; review again');
+    }
+    // The ordinary payment keeps its location check; a retry may re-read it.
+    final gps = payload['decision'] == 'paid' ? await currentGps?.call() : null;
+    _check();
+    final result = await api.reviewQuickPayment(uuid, {
+      ...payload,
+      'gps': ?gps,
+    });
+    _check();
+    if (result['order_uuid'] != uuid ||
+        result['decision'] != payload['decision'] ||
+        result['reference'] != payload['reference'] ||
+        result['status'] != (payload['decision'] == 'paid' ? 'paid' : 'held') ||
+        result['replayed'] is! bool) {
+      throw const FormatException('Payment review acknowledgement mismatch');
+    }
+    try {
+      await recordPaymentReview?.call(
+        uuid,
+        fresh,
+        payload['client_request_id'] as String,
+        result,
+      );
+    } catch (_) {
+      throw const PaymentReviewNotSaved();
+    }
     return result;
   }
 

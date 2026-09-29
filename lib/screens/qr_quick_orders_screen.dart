@@ -15,6 +15,9 @@ import 'qr_pending_sheet.dart';
 import 'workspace_void.dart';
 import '../order_workspace/workspace_void.dart'
     show assertWorkspaceVoidJournals;
+import '../qr_checkout/payment_review_store.dart';
+import '../qr_checkout/qr_checkout_store.dart';
+import '../services/qr_settlement_coordinator.dart' show GeolocatorQrLocation;
 
 List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
   if (catalog == null) return [];
@@ -92,14 +95,15 @@ class QrQuickOrdersScreen extends ConsumerWidget {
     createController: () async {
       final api = ref.read(apiServiceProvider);
       final session = ref.read(sessionServiceProvider);
+      String scope() => quickDeviceScope(
+        api.quickOrderBaseUrl,
+        session.companyId,
+        session.branchId,
+        session.kioskId,
+      );
       final gateway = ApiQrQuickGateway(
         api,
-        () => quickDeviceScope(
-          api.quickOrderBaseUrl,
-          session.companyId,
-          session.branchId,
-          session.kioskId,
-        ),
+        scope,
         cancellationGuard: (uuid) async {
           if (ref
                   .read(qrSettlementCoordinatorProvider)
@@ -123,6 +127,39 @@ class QrQuickOrdersScreen extends ConsumerWidget {
         mutationGuard: () =>
             (debugOrderStorageOverride ?? LocalOrderStorageService.instance)
                 .assertNoPendingCombine(),
+        localPaymentOrders: () async {
+          final at = scope();
+          return ordersWithUnreviewedPayments(
+            (await SqliteCheckoutStore.open(at)).db,
+            at,
+          );
+        },
+        loadPaymentEvidence: (uuid) async {
+          final at = scope();
+          return loadPaymentReviewEvidence(
+            (await SqliteCheckoutStore.open(at)).db,
+            at,
+            uuid,
+            sending: await ref
+                .read(orderSyncRepositoryProvider)
+                .hasUnresolvedStandaloneQrPay(uuid),
+          );
+        },
+        recordPaymentReview: (uuid, evidence, requestId, result) async {
+          final at = scope();
+          await recordPaymentReview(
+            (await SqliteCheckoutStore.open(at)).db,
+            at,
+            uuid,
+            evidence,
+            requestId,
+            result,
+          );
+        },
+        currentGps: () async {
+          final fix = await const GeolocatorQrLocation().currentFix();
+          return fix == null ? null : {'lat': fix.lat, 'lng': fix.lng};
+        },
       );
       final store = await SqliteQrQuickStore.open(gateway.scope);
       return QrQuickController(gateway, store);

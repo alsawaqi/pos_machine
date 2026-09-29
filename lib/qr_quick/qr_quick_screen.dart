@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../order_workspace/current_order_workspace.dart';
 import 'qr_quick_controller.dart';
 import 'qr_expired_cancel.dart';
+import 'qr_payment_review.dart';
 import 'qr_quick_copy.dart';
 import 'qr_quick_models.dart';
 
@@ -84,6 +85,10 @@ class _QrQuickScreenState extends State<QrQuickScreen>
   bool paying = false;
   String search = '';
   bool cancelling = false;
+  bool reviewing = false;
+
+  /// Orders with a payment saved on this till that a manager has not reviewed.
+  Set<String> localPayments = {};
   late bool arabic = widget.arabic;
   QuickCopy get copy => QuickCopy(arabic);
   @override
@@ -108,6 +113,7 @@ class _QrQuickScreenState extends State<QrQuickScreen>
       if (!mounted) return;
       setState(() {});
       _schedule();
+      unawaited(_refreshLocalPayments());
     } catch (_) {
       if (mounted) setState(() => failed = true);
     }
@@ -118,7 +124,25 @@ class _QrQuickScreenState extends State<QrQuickScreen>
     if (!foreground || covered > 0 || !mounted) return;
     timer = Timer.periodic(const Duration(seconds: 5), (_) {
       unawaited(controller?.refresh());
+      unawaited(_refreshLocalPayments());
     });
+  }
+
+  Future<void> _refreshLocalPayments() async {
+    final gateway = controller?.gateway;
+    if (gateway is! QrQuickPaymentReviewGateway) return;
+    try {
+      final value = await (gateway as QrQuickPaymentReviewGateway)
+          .ordersWithLocalPaymentEvidence();
+      if (mounted &&
+          (value.length != localPayments.length ||
+              !value.containsAll(localPayments))) {
+        setState(() => localPayments = value);
+      }
+    } catch (_) {
+      // Unreadable journals keep the last known set; the review dialog and
+      // the cancellation guard both re-read and fail closed.
+    }
   }
 
   @override
@@ -138,6 +162,7 @@ class _QrQuickScreenState extends State<QrQuickScreen>
       covered--;
       if (mounted) {
         await controller?.refresh();
+        await _refreshLocalPayments();
         _schedule();
       }
     }
@@ -164,6 +189,30 @@ class _QrQuickScreenState extends State<QrQuickScreen>
       });
     } finally {
       if (mounted) setState(() => cancelling = false);
+    }
+  }
+
+  Future<void> _review(QrQuickOrder order) async {
+    final c = controller;
+    if (c == null ||
+        c.busy ||
+        c.stale ||
+        reviewing ||
+        c.gateway is! QrQuickPaymentReviewGateway) {
+      return;
+    }
+    setState(() => reviewing = true);
+    try {
+      await _child(
+        () => showQrPaymentReview(
+          context,
+          c.gateway as QrQuickPaymentReviewGateway,
+          order,
+          arabic: arabic,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => reviewing = false);
     }
   }
 
@@ -366,11 +415,42 @@ class _QrQuickScreenState extends State<QrQuickScreen>
                                 ),
                                 if (order.refusal != null)
                                   Text(copy.message(order.refusal!)),
+                                if (localPayments.contains(order.uuid))
+                                  Text(
+                                    copy.pair(
+                                      'A payment for this order is saved on this till. A manager must review it.',
+                                      'يوجد دفع محفوظ لهذا الطلب على هذا الجهاز. يجب أن يراجعه المشرف.',
+                                    ),
+                                  ),
                                 if (c.pending.containsKey(order.uuid))
                                   Text(copy.uncertain),
                                 Wrap(
                                   spacing: 8,
                                   children: [
+                                    if (c.gateway
+                                            is QrQuickPaymentReviewGateway &&
+                                        (order.charge == 'uncertain' ||
+                                            localPayments.contains(order.uuid)))
+                                      FilledButton(
+                                        key: ValueKey(
+                                          'quick-payment-review-${order.uuid}',
+                                        ),
+                                        onPressed:
+                                            c.busy ||
+                                                c.stale ||
+                                                reviewing ||
+                                                c.pending.containsKey(
+                                                  order.uuid,
+                                                )
+                                            ? null
+                                            : () => _review(order),
+                                        child: Text(
+                                          copy.pair(
+                                            'Review payment',
+                                            'مراجعة الدفع',
+                                          ),
+                                        ),
+                                      ),
                                     if (c.gateway
                                             is QrQuickCancellationGateway &&
                                         const {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/pos_api_service.dart';
 import '../qr_checkout/qr_checkout_models.dart';
+import '../qr_checkout/payment_review_store.dart';
 import '../qr_checkout/qr_checkout_store.dart';
 import '../qr_quick/qr_quick_store.dart';
 import '../dine_in/dine_in_store.dart';
@@ -15,7 +16,15 @@ Future<void> assertWorkspaceVoidJournals(String scope, String uuid) async {
     where: 'scope = ?',
     whereArgs: [scope],
   );
-  assertWorkspaceVoidAttempts(rows, uuid);
+  final reviews = await paymentReviewDecisions(checkout.db);
+  assertWorkspaceVoidAttempts(
+    rows,
+    uuid,
+    notTaken: {
+      for (final entry in reviews.entries)
+        if (entry.value == 'not_paid') entry.key,
+    },
+  );
   if ((await (await SqliteQrQuickStore.open(
         scope,
       )).load()).any((request) => request.orderUuid == uuid) ||
@@ -26,14 +35,22 @@ Future<void> assertWorkspaceVoidJournals(String scope, String uuid) async {
   }
 }
 
-void assertWorkspaceVoidAttempts(List<Map<String, Object?>> rows, String uuid) {
+/// [notTaken]: handed-over checkouts a manager reviewed as "no money taken"
+/// (confirmed by the server); only those stop blocking their own bill.
+void assertWorkspaceVoidAttempts(
+  List<Map<String, Object?>> rows,
+  String uuid, {
+  Set<String> notTaken = const {},
+}) {
   for (final row in rows) {
     final attempt = CheckoutAttempt.decode(row['payload'] as String);
     if (attempt.id != row['id'] || attempt.state != row['state']) {
       throw StateError('Invalid checkout journal');
     }
     if ((!const {'paid', 'released', 'managed'}.contains(attempt.state)) ||
-        (attempt.orderUuid == uuid && attempt.state != 'released')) {
+        (attempt.orderUuid == uuid &&
+            attempt.state != 'released' &&
+            !(attempt.state == 'managed' && notTaken.contains(attempt.id)))) {
       throw StateError('Payment evidence requires reconciliation');
     }
   }
