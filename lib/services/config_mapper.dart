@@ -195,6 +195,21 @@ class ConfigDelta {
   final DeletedIds deleted;
 }
 
+/// Bundled coffee photography shown for catalog products (the till renders
+/// local assets only, so it works offline). Assigned deterministically by
+/// product id: the same product always shows the same photo, on the staff
+/// grid, the cart and the customer display (pos_handheld parity).
+const List<String> kProductPlaceholderAssets = [
+  'assets/images/latte.png',
+  'assets/images/cappuccino.png',
+  'assets/images/americano.png',
+  'assets/images/espresso_blue.png',
+  'assets/images/espresso_white.png',
+];
+
+String productPlaceholderAsset(int productId) => kProductPlaceholderAssets[
+    productId.abs() % kProductPlaceholderAssets.length];
+
 /// Two-way mapping: API JSON → Drift companions, and Drift rows → existing UI
 /// models. Money stays integer baisas in Drift and becomes `double` OMR only in
 /// [toCatalog] (the boundary into the existing pos_machine models).
@@ -757,6 +772,7 @@ class ConfigMapper {
               category: idToName[p.categoryId] ?? '',
               categoryId: p.categoryId,
               price: p.basePriceBaisas / 1000.0,
+              imageAsset: productPlaceholderAsset(p.id),
               addonGroupIds: _idsFromCsv(p.addonGroupIds),
               deliveryPrice: p.deliveryPriceBaisas != null
                   ? p.deliveryPriceBaisas! / 1000.0
