@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/tenancy/business_identity.dart';
 import 'package:pos_machine/tenancy/device_heartbeat.dart';
+import 'package:pos_machine/tenancy/tenancy_gate.dart';
 import 'package:pos_machine/tenancy/tenancy_interceptor.dart';
 
 import 'support/fix2_release_storage.dart';
@@ -117,4 +119,29 @@ void main() {
     expect(BusinessBoundary.canWork, isTrue);
     expect(BusinessBoundary.current!.isProvisional, isTrue);
   });
+
+  testWidgets(
+    'E6 a suspended activated device explains the wait instead of offering activation',
+    (tester) async {
+      await tester.runAsync(loadFix2ReleaseStorage);
+      BusinessBoundary.block('company_suspended');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TenancyGate(
+            activation: (_) => const Scaffold(body: Text('activation form')),
+            child: const Scaffold(body: Text('selling screen')),
+          ),
+        ),
+      );
+      expect(find.text('Account suspended'), findsOneWidget);
+      expect(
+        find.textContaining(
+          'resume automatically when the merchant account is reactivated',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Activate device'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }

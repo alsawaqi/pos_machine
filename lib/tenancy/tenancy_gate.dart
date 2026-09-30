@@ -41,6 +41,12 @@ class _BlockedScreenState extends State<_BlockedScreen> {
         onGenerateRoute: (_) => MaterialPageRoute(builder: widget.activation),
       );
     final ar = Localizations.localeOf(context).languageCode == 'ar';
+    // A suspension of an activated device lifts by itself once the merchant
+    // is reactivated (the heartbeat keeps checking): offering activation
+    // there is misleading. A device suspended before it was ever activated
+    // still needs the way back to activation.
+    final waitForReactivation =
+        widget.suspended && BusinessBoundary.current != null;
     return PopScope(
       canPop: false,
       child: Scaffold(
@@ -63,10 +69,19 @@ class _BlockedScreenState extends State<_BlockedScreen> {
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: () => setState(() => activating = true),
-                    child: Text(ar ? 'تفعيل الجهاز' : 'Activate device'),
-                  ),
+                  if (waitForReactivation)
+                    Text(
+                      ar
+                          ? 'ستُستأنف المبيعات تلقائيًا عند إعادة تفعيل حساب التاجر. تبقى المبيعات غير المُرسلة محفوظة على هذا الجهاز.'
+                          : 'Sales will resume automatically when the merchant account is reactivated. Unsent sales stay saved on this device.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    )
+                  else
+                    FilledButton(
+                      onPressed: () => setState(() => activating = true),
+                      child: Text(ar ? 'تفعيل الجهاز' : 'Activate device'),
+                    ),
                 ],
               ),
             ),
