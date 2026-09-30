@@ -39,7 +39,6 @@ import '../services/presentation_service.dart';
 import '../order_attention/order_attention.dart';
 import '../order_attention/order_attention_host.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 import '../l10n/l10n.dart';
@@ -1303,6 +1302,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // The shadow feed still projects tables/printing but cannot ring twice.
     _qrRoundAutoPrintController = ref.read(qrRoundAutoPrintControllerProvider);
     controller.onOrderCompleted = _handleOrderCompleted;
+    controller.paidSaleDurable = (key) =>
+        ref.read(orderSyncRepositoryProvider).hasDurableRow(key);
     controller.canonicalDiningBillUuid = () => _tableKitchen?.coordinator
         .cachedSession(controller.activeDiningTableId ?? '')
         ?.serverOrderUuid;

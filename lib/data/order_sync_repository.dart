@@ -130,6 +130,11 @@ class OrderSyncRepository {
     return operation();
   });
 
+  /// Whether a durable outbox row exists for [key] (sent or not). Completion
+  /// uses it to tell "saved for sending" from "kept only as evidence".
+  Future<bool> hasDurableRow(String key) async =>
+      await _db.getOutbox(key) != null;
+
   /// A generic durable single-event row. An existing key is immutable: retries
   /// retain the first event ID/payload, including rows already acknowledged.
   Future<void> enqueueEvent(

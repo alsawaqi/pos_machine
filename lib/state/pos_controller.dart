@@ -1037,6 +1037,11 @@ class PosController extends ChangeNotifier
   /// outbox so the order reaches pos_api. Fire-and-forget — it must never block
   /// or fail order completion.
   FutureOr<void> Function(OrderSnapshot snapshot)? onOrderCompleted;
+
+  /// Whether the outbox already holds a durable row for this sale key. A
+  /// live-table pay row is saved before its local journal step, so a failure
+  /// after that point must not be reported as "not saved".
+  Future<bool> Function(String key)? paidSaleDurable;
   String? Function()? canonicalDiningBillUuid;
   Future<OrderSnapshot> Function(OrderSnapshot)? refreshServerReceipt;
 
@@ -4342,6 +4347,10 @@ class PosController extends ChangeNotifier
         'identity': _businessIdentity,
         'snapshot': paid.toMap(),
         'card_charge': _lastCardCharge?.toMap(),
+        // A live table is charged from the server's reserved bill, under its
+        // canonical bill uuid, not from the local cart.
+        if (_reservedDiningBill != null) 'reserved_bill': _reservedDiningBill,
+        if (_paidSaleKey != null) 'bill_uuid': _paidSaleKey,
       },
     );
     if (!BusinessBoundary.owns(_businessIdentity)) {
@@ -4355,6 +4364,7 @@ class PosController extends ChangeNotifier
     // A captured tender must finish durably even if access was suspended
     // while the bank/cash confirmation was in progress.
     _paidSaleQueued = false;
+    _paidSaleKey = null;
     try {
       return await BusinessBoundary.persistPaid(
         _businessIdentity,
@@ -4369,12 +4379,21 @@ class PosController extends ChangeNotifier
       // durable, the cashier must be told, and the till must be free for the
       // next customer.
       debugPrint('Paid sale completion failed: $error');
-      if (!_paidSaleQueued) await preserve();
+      var durable = _paidSaleQueued;
+      final key = _paidSaleKey;
+      if (!durable && key != null && paidSaleDurable != null) {
+        try {
+          durable = await paidSaleDurable!(key);
+        } catch (_) {
+          // Unknown stays "not saved": evidence is kept instead.
+        }
+      }
+      if (!durable) await preserve();
       _resetForNextOrder(
         advanceOrderNumber: !isDineInPayment,
         clearActiveDiningTable: true,
       );
-      lastPaymentMessage = _paidSaleQueued
+      lastPaymentMessage = durable
           ? successMessage
           : _l10n.ctrlMsgPaidSaleKeptForReview;
       displayNote = lastPaymentMessage;
@@ -4386,6 +4405,9 @@ class PosController extends ChangeNotifier
   /// Set once the paid sale is durable for sending (the outbox for a local
   /// sale, the table journal for a live shared table).
   bool _paidSaleQueued = false;
+
+  /// The outbox key of the sale being completed, once it is final.
+  String? _paidSaleKey;
 
   Future<String> _finishCompletedOrderAdmitted({
     required bool isDineInPayment,
@@ -4452,6 +4474,7 @@ class PosController extends ChangeNotifier
       if (!ok) _reportPrintFailure('kitchen');
     }
     await _saveCompletedOrder(completedSnapshot);
+    _paidSaleKey = completedSnapshot.serverOrderUuid;
     // Push the finalized order to pos_api (via the durable outbox). Fire-and-
     // forget: completion never waits on, or fails because of, the network.
     await onOrderCompleted?.call(completedSnapshot);

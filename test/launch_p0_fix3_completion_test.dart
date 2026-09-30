@@ -130,6 +130,32 @@ void main() {
   );
 
   test(
+    'D3 a failure after the sale is already in the outbox is not reported as unsaved',
+    () async {
+      // Live-table shape: the pay row is saved, then a later journal step
+      // throws. The sale WILL be sent, so no evidence copy and no alarm.
+      final till = await _releaseTill();
+      final before = (await till.db.pendingOutbox()).length;
+      final c = _cashTill(till.product, FakeOrderStorage());
+      c.paidSaleDurable = till.sync.hasDurableRow;
+      c.onOrderCompleted = (snapshot) async {
+        await till.sync.enqueue(snapshot, staffId: 7, lat: 23.59, lng: 58.37);
+        throw StateError('table journal write failed');
+      };
+
+      final result = await c.payAndPrint(
+        cashTenderedAmount: till.product.price,
+      );
+
+      expect(result, isNot(contains('manager review')));
+      expect((await till.db.pendingOutbox()).length, before + 1);
+      expect(BusinessBoundary.quarantinedCount, 0);
+      expect(c.cart, isEmpty);
+      expect(c.isProcessingPayment, false);
+    },
+  );
+
+  test(
     'D5 the post-sale GPS step falls back to the last known position (release parity)',
     () async {
       final till = await _releaseTill();
