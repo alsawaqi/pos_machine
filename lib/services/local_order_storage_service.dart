@@ -213,8 +213,13 @@ class LocalOrderStorageService
       _database = null;
       _opening = null;
     }
-    _database = await (_opening ??= _openDatabase());
-    return _database!;
+    try {
+      _database = await (_opening ??= _openDatabase());
+      return _database!;
+    } catch (_) {
+      _opening = null;
+      rethrow;
+    }
   }
 
   @override

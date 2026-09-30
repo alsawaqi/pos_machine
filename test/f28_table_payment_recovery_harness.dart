@@ -370,6 +370,7 @@ void runTablePaymentRecovery(String scenario) {
         );
         c.selectPaymentMethod('Cash');
         await drive(() => c.payAndPrint(cashTenderedAmount: 20));
+        await drive(() => outbox.settled);
         final journal = (await drive(
           () => SqliteCheckoutStore.open('inspection'),
         ))!;
@@ -619,6 +620,7 @@ void runTablePaymentRecovery(String scenario) {
         }, reason: 'next table canonical editor ready');
         restarted.selectPaymentMethod('Cash');
         await drive(() => restarted.payAndPrint(cashTenderedAmount: 20));
+        await drive(() => outbox.settled);
         final attemptsAfterNext = (await drive(
           () => journal.db.query('qr_checkout_attempts'),
         ))!;
@@ -634,6 +636,12 @@ void runTablePaymentRecovery(String scenario) {
           reason: 'Only deliberate second-table payment gets another id',
         );
         await tester.pumpWidget(const SizedBox.shrink());
+        // Drain SQLite work started by the final ACK before Flutter checks
+        // pending timers; all money and next-sale assertions remain above.
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)),
+        );
+        await drive(() => localDb.rawQuery('SELECT 1'));
         await tester.pump(const Duration(milliseconds: 1));
       },
     );

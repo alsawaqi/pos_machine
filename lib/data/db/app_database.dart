@@ -204,10 +204,11 @@ class AppDatabase extends _$AppDatabase {
 
   final _ownerGeneration = BusinessBoundary.generation.value;
   bool _openedForTenancy = false;
-  Future<void> prepareTenancy() async {
+  Future<void> prepareTenancy() => transaction(_prepareTenancy);
+  Future<void> _prepareTenancy() async {
     if (!BusinessBoundary.initialized || BusinessBoundary.current == null)
       return;
-    final owner = BusinessBoundary.current!.encoded;
+    final owner = BusinessBoundary.storageIdentity!.encoded;
     final context = await customSelect(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='_p0_owner'",
     ).get();
@@ -240,29 +241,6 @@ class AppDatabase extends _$AppDatabase {
           await customStatement('UPDATE "$name" SET _business_identity=?', [
             owner,
           ]);
-          if (name == 'order_outbox') {
-            for (final row in await customSelect(
-              'SELECT order_uuid,events_json FROM order_outbox',
-            ).get()) {
-              final events =
-                  jsonDecode(row.data['events_json'] as String) as List;
-              await customStatement(
-                'UPDATE order_outbox SET events_json=? WHERE order_uuid=?',
-                [
-                  jsonEncode([
-                    for (final event in events)
-                      {
-                        ...(event as Map),
-                        'identity':
-                            event['identity'] ??
-                            BusinessBoundary.current!.toJson(),
-                      },
-                  ]),
-                  row.data['order_uuid'],
-                ],
-              );
-            }
-          }
         }
       }
       final installed = await customSelect(
@@ -285,7 +263,7 @@ class AppDatabase extends _$AppDatabase {
       final foreign = await customSelect(
         'SELECT rowid AS _p0_rowid, * FROM "$name" '
         'WHERE _business_identity IS NULL OR _business_identity != ?',
-        variables: [Variable(BusinessBoundary.current!.encoded)],
+        variables: [Variable(BusinessBoundary.storageIdentity!.encoded)],
       ).get();
       for (final row in foreign) {
         if (name == orderOutbox.actualTableName) {
@@ -448,7 +426,7 @@ class AppDatabase extends _$AppDatabase {
         eventsJson: Value(
           jsonEncode([
             for (final event in events)
-              BusinessBoundary.stamp(event.cast<String, dynamic>()),
+              BusinessBoundary.stampEvent(event.cast<String, dynamic>()),
           ]),
         ),
       );

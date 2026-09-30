@@ -1,0 +1,60 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="flutter.table_local_kitchen_3_REF-9074658105_2026-09-23 23:12:26.581564">{}</string>
+    <string name="flutter.table_local_kitchen_1_REF-0922400206_2026-09-27 15:40:24.002440">{}</string>
+    <boolean name="flutter.manager_biometric_registered" value="true" />
+    <string name="flutter.table_local_kitchen_4_REF-0674833201_2026-09-19 12:32:28.339512">{}</string>
+    <string name="flutter.table_local_kitchen_4_REF-9629410801_2026-09-19 09:38:14.113786">{}</string>
+    <string name="flutter.table_local_kitchen_1_REF-3185670502_2026-09-20 23:17:36.706069">{}</string>
+    <string name="flutter.table_shadow_scope">http://localhost:8088/api/v1|1|1|6766541</string>
+    <string name="flutter.table_local_kitchen_3_REF-4357091701_2026-09-18 18:59:30.926242">{}</string>
+    <long name="flutter.branch_id" value="1" />
+    <string name="flutter.websocket_config_json">{&quot;app_key&quot;:&quot;ce3294d03f1fefb8e6453e9c1e43b915&quot;,&quot;host&quot;:null,&quot;port&quot;:8085,&quot;scheme&quot;:&quot;http&quot;}</string>
+    <boolean name="flutter.print_qr_kitchen_rounds" value="true" />
+    <string name="flutter.staff_session_json">{&quot;id&quot;:1,&quot;name&quot;:&quot;abdallah&quot;,&quot;uuid&quot;:&quot;78bf77d0-39ce-4481-ba7c-ddfe4edcb6c0&quot;,&quot;position&quot;:&quot;manager&quot;,&quot;branch_id&quot;:1}</string>
+    <string name="flutter.table_local_kitchen_2_REF-0246246801_2026-09-16 00:01:02.481454">{}</string>
+    <long name="flutter.company_id" value="1" />
+    <string name="flutter.open_shift_json">{&quot;uuid&quot;:&quot;a87f2e9a-8614-40bc-9afb-c24e1a83503d&quot;,&quot;opening_cash_baisas&quot;:80000,&quot;opened_at&quot;:&quot;2026-07-27T13:14:05.000Z&quot;,&quot;staff_id&quot;:1}</string>
+    <boolean name="flutter.audience_measurement" value="true" />
+    <string name="flutter.terminal_id">10000428</string>
+    <string name="flutter.table_local_kitchen_1001_REF-2634371301_2026-09-12 19:19:03.723878">{}</string>
+    <string name="flutter.table_local_kitchen_4_REF-0332294602_2026-09-19 11:35:22.947354">{}</string>
+    <string name="flutter.table_local_kitchen_1_REF-9333919701_2026-09-19 08:48:59.205700">{}</string>
+    <string name="flutter.table_local_kitchen_1_REF-2079612901_2026-09-21 23:59:56.131361">{}</string>
+    <string name="flutter.qr_round_print_cursor_6766541">eyJpdiI6IllOdVRrZ1c3TlEzRElGK3AwZC9zTnc9PSIsInZhbHVlIjoidUl0ZS9TWDVpelpBQS9ybUNpS0RVR3JiUjBrV3dYQVM1cEhQdS9KVmZJejVsVFJYNi96RUFZbnpaaUtUb2pQZGVMK3JaL1ZEek03R1U0NEZSWXVlbHc9PSIsIm1hYyI6ImI0NTM2Mzc4YjYxNDIyYmYzNWViNDU5MTk4MjY0ZmU3YTRjNGY3NjQ2MTEwODM1MDRiOTAxNWFhZmY4ZjJmNDMiLCJ0YWciOiIifQ==</string>
+    <string name="flutter.table_local_kitchen_1_REF-5059061801_2026-09-18 20:56:30.628622">{}</string>
+    <string name="flutter.table_local_kitchen_4_REF-1242711503_2026-09-19 14:07:07.115600">{}</string>
+    <string name="flutter.table_local_kitchen_2_REF-9403368003_2026-09-17 01:27:13.682462">{}</string>
+    <string name="flutter.qr_round_print_cursor_TD-TILL-1">eyJpdiI6IkM2Vm9FcUluRFl1YzRkTktVU05HelE9PSIsInZhbHVlIjoiSGVJL3VnbHZMK3BWOTdFcUloQ1BKakdpTE5SV2RHTWhBcS9wY0J6NURMQWRSeUVWYkxmK21qaktGWUh6azFTUko5dUxMaEp1eE9SanJxMjBwczdlUkE9PSIsIm1hYyI6IjAyNjgzNWY2Nzg1MzFmZWRlMTUxYjMwYmM4NDk3ZDVhZGFhNDM5ZTNkNWEzNTU3Mzg2NGMzMDhjZDUzOGI1NTQiLCJ0YWciOiIifQ==</string>
+    <boolean name="flutter.audience_measurement_server" value="true" />
+    <string name="flutter.table_local_kitchen_1_REF-0553582605_2026-09-19 12:12:15.826891">{}</string>
+    <string name="flutter.table_local_kitchen_5_REF-3067249301_2026-09-20 22:57:52.495247">{}</string>
+    <string name="flutter.order_attention_v1_c2514fe881272a718e6520f6c5d58e14427260ed44e827e949b39d58301c4cc8">{&quot;version&quot;:1,&quot;keys&quot;:[&quot;quick:19ea4a61-d3d7-48b3-8d0a-e986772e81f0&quot;,&quot;quick:59b753de-a841-49f4-8b2a-5691a99aca70&quot;,&quot;quick:823c83d1-48a5-43f4-b5e5-5fb2270eb994&quot;,&quot;quick:9af8b735-8279-447d-a543-c97463a2dac3&quot;,&quot;quick:b33b53c8-c74a-4513-b29b-5d56f14b6ccf&quot;,&quot;quick:b4b6b03b-4a14-49ac-b433-86a20edd9f7b&quot;]}</string>
+    <string name="flutter.qr_round_printed_set_TD-TILL-1">VGhpcyBpcyB0aGUgcHJlZml4IGZvciBhIGxpc3Qu![]</string>
+    <string name="flutter.table_local_kitchen_1_REF-2896256901_2026-09-18 14:56:02.573796">{}</string>
+    <string name="flutter.table_local_kitchen_1_REF-0372981203_2026-09-19 11:42:09.812828">{}</string>
+    <string name="flutter.table_local_kitchen_4_REF-1182967602_2026-09-19 13:57:09.676516">{}</string>
+    <string name="flutter.softpos_profile">{&quot;provider&quot;:&quot;mosambee_dhofar&quot;,&quot;package&quot;:&quot;com.mosambee.dhofar.softpos&quot;,&quot;currency&quot;:&quot;0512&quot;,&quot;refund_needs_transaction_id&quot;:true,&quot;void_needs_session_id&quot;:false,&quot;requires_manual_first_launch&quot;:true,&quot;login_requires_approved_code&quot;:true,&quot;send_currency&quot;:true,&quot;blocked_reason&quot;:null,&quot;blocked_at&quot;:null}</string>
+    <string name="flutter.table_local_kitchen_2_REF-9430921604_2026-09-17 01:31:49.216657">{}</string>
+    <string name="flutter.table_local_kitchen_2_REF-6851741602_2026-09-17 22:08:37.417204">{}</string>
+    <string name="flutter.table_local_kitchen_5_REF-0928821402_2026-09-20 17:01:28.215696">{}</string>
+    <string name="flutter.table_local_kitchen_1_REF-9343529602_2026-09-17 01:17:15.298968">{}</string>
+    <string name="flutter.table_local_kitchen_1_REF-6797009501_2026-09-19 01:46:10.106648">{}</string>
+    <string name="flutter.table_local_kitchen_1_REF-4737935105_2026-09-26 22:29:39.351931">{}</string>
+    <string name="flutter.table_local_kitchen_4_REF-1167445001_2026-09-19 13:54:34.455166">{}</string>
+    <string name="flutter.order_attention_v1_4a32c54e59e1c65516f0c2fa3665affe072ac59372107e528e8c037520dbf12f">{&quot;version&quot;:1,&quot;keys&quot;:[&quot;quick:063c3ae4-de3e-4849-a3cb-99e8e94eae79&quot;,&quot;quick:08d3e752-5415-4fcb-a8c0-62e4f12c96b3&quot;,&quot;quick:0c2d90c8-ac58-43c4-93da-779b047cef2a&quot;,&quot;quick:0e651e63-af9a-41b3-9d7d-57a35675648f&quot;,&quot;quick:101e4a27-4417-4f8a-aef8-437336170440&quot;,&quot;quick:2e18d29c-fc6c-4c28-90d2-a0656c6cc707&quot;,&quot;quick:2e3420ce-bfd9-42f7-97f4-f3c9e9ac07e2&quot;,&quot;quick:3832c815-44d4-46fd-b96d-ed089ec48e81&quot;,&quot;quick:45f5c585-3135-4075-ad81-75aee6f048a0&quot;,&quot;quick:4b8fea50-7295-433d-a342-9c7c958fa298&quot;,&quot;quick:4d7fffcc-20e2-4eaf-af91-94d1f16e06ac&quot;,&quot;quick:53d2aeb1-53e5-47fa-8b7a-f0475bbb8d4f&quot;,&quot;quick:61c3422b-52ca-48f7-9fcb-69f2cf2050db&quot;,&quot;quick:63ed2d46-5f55-4212-8ac3-23962207803b&quot;,&quot;quick:67a8c5e4-4652-4e0e-b6f2-ab4b832dc7c7&quot;,&quot;quick:6ce0948e-3dcd-477d-adb3-306b3ead62eb&quot;,&quot;quick:7905f1a9-2324-43aa-b6de-76c64e8f87f2&quot;,&quot;quick:791deace-9100-4d7a-96ee-3f531fca7013&quot;,&quot;quick:79a0accb-45e3-4b68-b083-4a280f682859&quot;,&quot;quick:84512076-d8c9-4c48-907c-b1015945baca&quot;,&quot;quick:8e468cf0-6410-46fe-9b51-c9f09d0072b4&quot;,&quot;quick:933b17a8-0df4-43f7-8e79-7e5d674c68d8&quot;,&quot;quick:94003451-1ba9-48c2-a603-3b3c2411356b&quot;,&quot;quick:9dbca2e2-f5b2-4b18-b601-f75ad79793c1&quot;,&quot;quick:9e3fe721-8f4f-453d-b8cf-79d7ac694901&quot;,&quot;quick:acdb20c6-0e25-44c2-b758-6a2c8f9fb492&quot;,&quot;quick:bbf398a8-576e-4ca2-94e9-976aa066590a&quot;,&quot;quick:c2c8f2f1-09c3-44fe-8d6b-c0e2f2886f60&quot;,&quot;quick:de200fbf-2452-4d3c-a317-5b513d118186&quot;,&quot;quick:df926d2d-4cf2-4076-9156-9ccd007a0186&quot;,&quot;quick:e455e956-483f-463e-8f30-36a4507b75e2&quot;,&quot;quick:ec25e31b-342a-4288-8806-741ac6e8720d&quot;,&quot;quick:ee204a54-89e1-40d6-a6dc-9b6e51f85710&quot;,&quot;quick:ef4845dc-5dbb-4ebb-a7a1-c6417fd221fe&quot;,&quot;quick:f991e17c-a984-4769-bcab-f7f77ca8e716&quot;,&quot;quick:f9962359-dba5-4913-9c38-f35852dcd400&quot;,&quot;round:105:04bcfdc8-a5cd-4e3d-84ec-97465a4c5837&quot;,&quot;round:107:a26568fe-f42d-4fe5-90a1-ea0d18b0c9dc&quot;,&quot;round:110:28b4fc62-1467-4983-a638-9bf5a66369af&quot;,&quot;round:114:b2b6f696-28e2-4340-8be8-a23e4b8a012e&quot;,&quot;round:119:95a87f80-5baa-4fd9-895c-cc428564e720&quot;,&quot;round:121:152645dc-efda-4d28-b75e-fa18f768dec0&quot;,&quot;round:125:c12dcfac-e690-4db2-9759-da940a0e6de2&quot;,&quot;round:128:8ae23057-e4a2-4fdf-8fb8-6eb9ab731f2a&quot;,&quot;round:135:1f1fd181-8682-4137-89cf-7a3159bee3ae&quot;,&quot;round:138:54745df3-9674-4f30-bade-d2dd94b0ce76&quot;,&quot;round:141:c40f8ea9-6a70-4ece-b898-a7ea3eb76d0d&quot;,&quot;round:165:fbf473af-b355-4a31-b0b9-96dc4638a341&quot;,&quot;round:170:e5c3523d-73de-4238-8c60-11867a86d236&quot;,&quot;round:19:26a42177-52cb-48bc-ac95-44b53a7d26a6&quot;,&quot;round:1:1ee5aa02-6097-4e2d-ae63-b21c6e9403d2&quot;,&quot;round:20:1d239143-2c6f-49ee-bde0-fabf0cb3d872&quot;,&quot;round:21:b369d936-1c60-4d26-8fbd-f927f4bf3501&quot;,&quot;round:22:9795ffe0-ae2c-4fb4-8b9d-be603263eca4&quot;,&quot;round:2:a73b33b6-cf04-43a4-97e6-044f2e034b16&quot;,&quot;round:38:c75eb51c-5ab0-4fcf-a4c1-92243ff21636&quot;,&quot;round:39:e57f3165-bbf2-4364-afdf-71d1b94bbf5a&quot;,&quot;round:40:2d6cdac7-8dcb-4602-ab37-87aa0538d61a&quot;,&quot;round:41:1ac5308d-a5a5-4f34-934c-cf2d54d7f104&quot;,&quot;round:42:188e4348-4cf9-4bfa-b596-eb50bd0d4f20&quot;,&quot;round:64:bcdac9fc-0062-4edc-ad8e-a31f75089bb4&quot;,&quot;round:68:c305bc5d-5c45-4f8e-83e5-8be629842c86&quot;,&quot;round:73:53031ca5-d4a5-4015-bc86-949ce886e988&quot;,&quot;round:76:43286fb6-9b4b-464a-873e-829d1bcb20cf&quot;]}</string>
+    <string name="flutter.table_local_kitchen_1_REF-4954658604_2026-09-04 23:19:06.586954">{}</string>
+    <string name="flutter.qr_round_printed_set_6766541">VGhpcyBpcyB0aGUgcHJlZml4IGZvciBhIGxpc3Qu![&quot;5&quot;,&quot;33&quot;,&quot;36&quot;,&quot;37&quot;,&quot;43&quot;,&quot;45&quot;,&quot;108&quot;,&quot;115&quot;,&quot;116&quot;,&quot;124&quot;,&quot;127&quot;,&quot;134&quot;,&quot;137&quot;]</string>
+    <string name="flutter.kiosk_id">6766541</string>
+    <boolean name="flutter.print_kitchen_tickets" value="true" />
+    <string name="flutter.table_local_kitchen_4_REF-1328442704_2026-09-19 14:21:24.428050">{}</string>
+    <string name="flutter.table_local_kitchen_2_REF-6115825801_2026-09-17 22:00:50.445010">{}</string>
+    <string name="flutter.table_local_kitchen_1_REF-8691444001_2026-09-23 22:08:34.444673">{}</string>
+    <string name="flutter.table_local_kitchen_4_REF-0455507304_2026-09-19 11:55:55.074317">{}</string>
+    <string name="flutter.table_local_kitchen_3_REF-5857275801_2026-09-18 23:09:32.765462">{}</string>
+    <string name="flutter.table_local_kitchen_1_REF-0447340501_2026-09-21 19:27:53.407309">{}</string>
+    <string name="flutter.table_local_kitchen_1_REF-0282416701_2026-09-19 11:27:04.173081">{}</string>
+    <string name="flutter.table_local_kitchen_1_REF-4274760401_2026-09-21 02:19:07.606361">{}</string>
+    <string name="flutter.table_local_kitchen_5_REF-4634335802_2026-09-26 22:12:23.358574">{}</string>
+    <string name="flutter.table_local_kitchen_1_REF-5776877201_2026-09-18 22:56:08.779414">{}</string>
+</map>

@@ -63,7 +63,10 @@ class _Coord extends WorkspaceTableCoordinator implements DiningTableSyncHooks {
   bool get live => true;
   int payments = 0;
   @override
-  void onTablePaid(DiningTableSession paid, OrderSnapshot snapshot) {
+  Future<void> onTablePaid(
+    DiningTableSession paid,
+    OrderSnapshot snapshot,
+  ) async {
     payments++;
   }
 

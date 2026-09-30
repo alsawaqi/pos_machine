@@ -376,6 +376,7 @@ void main() {
           );
         }
         expect(done, true);
+        await drive(() => outbox.settled);
         expect(c.cart, isEmpty);
         expect(c.activeDiningTableId, isNull);
         final closed = await drive(() => localDb.query('dining_tables'));

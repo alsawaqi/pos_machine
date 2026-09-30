@@ -30,15 +30,15 @@ Future<void> ensureBusinessTable(DatabaseExecutor db, String name) async {
     );
     await db.insert('_p0_owner', {
       'id': 1,
-      'identity': BusinessBoundary.current!.encoded,
+      'identity': BusinessBoundary.storageIdentity!.encoded,
     });
   } else {
     final rows = await db.query('_p0_owner', where: 'id=1');
     if (rows.isEmpty ||
-        rows.single['identity'] != BusinessBoundary.current!.encoded) {
+        rows.single['identity'] != BusinessBoundary.storageIdentity!.encoded) {
       await db.insert('_p0_owner', {
         'id': 1,
-        'identity': BusinessBoundary.current!.encoded,
+        'identity': BusinessBoundary.storageIdentity!.encoded,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
@@ -51,7 +51,7 @@ Future<void> ensureBusinessTable(DatabaseExecutor db, String name) async {
     );
     if (BusinessBoundary.adoptingLegacy) {
       await db.update(name, {
-        businessIdentityColumn: BusinessBoundary.current!.encoded,
+        businessIdentityColumn: BusinessBoundary.storageIdentity!.encoded,
       });
     }
   }
@@ -79,13 +79,15 @@ Future<void> ensureBusinessTable(DatabaseExecutor db, String name) async {
 Future<void> prepareBusinessDatabase(Database db) async {
   if (!BusinessBoundary.initialized) return;
   BusinessBoundary.assertWritable();
-  final tables = await db.rawQuery(
-    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'android_%' AND name NOT LIKE '_p0_%'",
-  );
-  for (final row in tables) {
-    await ensureBusinessTable(db, row['name'] as String);
-  }
-  await scrubBusinessRows(db);
+  await db.transaction((txn) async {
+    final tables = await txn.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'android_%' AND name NOT LIKE '_p0_%'",
+    );
+    for (final row in tables) {
+      await ensureBusinessTable(txn, row['name'] as String);
+    }
+    await scrubBusinessRows(txn);
+  });
 }
 
 /// Quarantine precedes removal, so a failed archive write leaves the original
@@ -112,7 +114,7 @@ Future<void> scrubBusinessRows(
         : ' WHERE $businessIdentityColumn IS NULL OR $businessIdentityColumn != ?';
     final args = where.isEmpty
         ? <Object?>[]
-        : [BusinessBoundary.current?.encoded ?? 'unactivated'];
+        : [BusinessBoundary.storageIdentity?.encoded ?? 'unactivated'];
     final rows = await db.rawQuery(
       'SELECT rowid AS _p0_rowid, * FROM $table$where',
       args,

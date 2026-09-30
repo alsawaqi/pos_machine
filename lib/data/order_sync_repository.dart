@@ -74,9 +74,32 @@ class OrderSyncRepository {
   final _ownerIdentity = BusinessBoundary.current;
   final _ownerGeneration = BusinessBoundary.generation.value;
   Future<void> _flushTail = Future<void>.value();
+  final _enrichingCustomers = <String>{};
+  final _enrichmentTasks = <Future<void>>{};
+  bool _disposed = false;
   final Object _ackMutationScopeKey = Object();
   final List<OutboxAckListener> _ackListeners = [];
   final _flushCompletions = StreamController<bool>.broadcast();
+
+  Future<void> get settled async {
+    while (_enrichmentTasks.isNotEmpty) {
+      await Future.wait(_enrichmentTasks.toList());
+    }
+    await _flushTail;
+  }
+
+  void _startEnrichment(
+    String key,
+    Object? owner,
+    Future<int?> Function() resolve,
+    List<int> rules,
+    bool gps,
+  ) {
+    _enrichingCustomers.add(key);
+    final task = _completeCustomer(key, owner, resolve, rules, gps);
+    _enrichmentTasks.add(task);
+    unawaited(task.whenComplete(() => _enrichmentTasks.remove(task)));
+  }
 
   Stream<bool> get flushCompletions => _flushCompletions.stream;
 
@@ -85,7 +108,10 @@ class OrderSyncRepository {
   void removeAckListener(OutboxAckListener listener) =>
       _ackListeners.remove(listener);
 
-  Future<void> dispose() => _flushCompletions.close();
+  Future<void> dispose() {
+    _disposed = true;
+    return _flushCompletions.close();
+  }
 
   Future<T> _serialize<T>(Future<T> Function() operation) {
     final generation = BusinessBoundary.generation.value;
@@ -110,12 +136,14 @@ class OrderSyncRepository {
     String key,
     Map<String, dynamic> event, {
     DateTime? createdAt,
+    bool waitForSync = true,
+    bool enrichGps = false,
     Future<Map<String, dynamic>> Function()? beforeFlush,
     Map<String, Map<String, dynamic>> followingEvents = const {},
   }) async {
     // Serialize preparation with pushes: a local kitchen print and its
     // evidence must finish before any pass can see this newly durable row.
-    await _prepare(() async {
+    Future<void> persist() => _prepare(() async {
       if (await _db.getOutbox(key) != null) return;
       await _db.transaction(() async {
         final at = createdAt ?? DateTime.now();
@@ -143,13 +171,33 @@ class OrderSyncRepository {
             .write(
               OrderOutboxCompanion(
                 eventsJson: Value(
-                  jsonEncode([BusinessBoundary.stamp(prepared)]),
+                  jsonEncode([BusinessBoundary.stampEvent(prepared)]),
                 ),
               ),
             );
       }
     });
-    await flush();
+    if (event['event_type'] == 'order.pay') {
+      final owner = event['identity'] ?? _ownerIdentity?.toJson();
+      if (!BusinessBoundary.owns(owner)) {
+        await BusinessBoundary.quarantine('table-paid', key, {
+          'identity': owner,
+          'events': [event],
+        });
+        return;
+      }
+      await BusinessBoundary.persistPaid(owner, persist);
+      if (enrichGps) {
+        _startEnrichment(key, owner, () async => null, const [], true);
+      } else if (waitForSync) {
+        await flush();
+      } else {
+        unawaited(flush().catchError((Object _) => 0));
+      }
+    } else {
+      await persist();
+      await flush();
+    }
   }
 
   Future<void> enqueueAfterAcknowledgement(
@@ -368,6 +416,9 @@ class OrderSyncRepository {
     String? plateNumber,
     String? deliveryProviderName,
     CardCharge? cardCharge,
+    Future<int?> Function()? resolveCustomer,
+    bool enrichGps = false,
+    bool waitForSync = true,
     List<int> loyaltyRuleIds = const <int>[],
   }) async {
     final payload = buildOrderSyncPayload(
@@ -389,7 +440,8 @@ class OrderSyncRepository {
       for (final event in payload.events)
         {
           ...event,
-          if (BusinessBoundary.initialized)
+          if (BusinessBoundary.initialized &&
+              BusinessIdentity.parse(owner)?.isProvisional == false)
             'identity': event['identity'] ?? owner,
         },
     ];
@@ -398,51 +450,125 @@ class OrderSyncRepository {
       payload.orderUuid,
       {'identity': owner, 'events': events, 'order_uuid': payload.orderUuid},
     );
-    if (BusinessBoundary.initialized &&
-        (!BusinessBoundary.canWork ||
-            !BusinessBoundary.owns(owner) ||
-            BusinessBoundary.generation.value != _ownerGeneration)) {
+    if (BusinessBoundary.initialized && !BusinessBoundary.owns(owner)) {
       await preserve();
       return;
     }
     bool enqueued;
     try {
-      enqueued = await _prepare(() async {
-        // A snapshot with no pushable lines (e.g. only non-catalog demo products)
-        // has nothing to persist server-side — skip it rather than queue a payload
-        // the server will reject for an empty `lines`.
-        final createPayload =
-            payload.events.first['payload'] as Map<String, dynamic>;
-        final order = createPayload['order'] as Map<String, dynamic>;
-        if ((order['lines'] as List).isEmpty) {
-          return false;
-        }
+      enqueued = await BusinessBoundary.persistPaid(
+        owner,
+        () => _prepare(() async {
+          // A snapshot with no pushable lines (e.g. only non-catalog demo products)
+          // has nothing to persist server-side — skip it rather than queue a payload
+          // the server will reject for an empty `lines`.
+          final createPayload =
+              payload.events.first['payload'] as Map<String, dynamic>;
+          final order = createPayload['order'] as Map<String, dynamic>;
+          if ((order['lines'] as List).isEmpty) {
+            return false;
+          }
 
-        await _db.enqueueOutbox(
-          OrderOutboxCompanion(
-            orderUuid: Value(payload.orderUuid),
-            eventsJson: Value(jsonEncode(events)),
-            orderNumber: Value(snapshot.orderNumber),
-            createdAt: Value(DateTime.now()),
-          ),
-        );
-        sentryBreadcrumb(
-          'sync',
-          'order enqueued',
-          data: {'order': payload.orderUuid, 'events': payload.events.length},
-        );
-        return true;
-      });
+          await _db.enqueueOutbox(
+            OrderOutboxCompanion(
+              orderUuid: Value(payload.orderUuid),
+              eventsJson: Value(jsonEncode(events)),
+              orderNumber: Value(snapshot.orderNumber),
+              createdAt: Value(DateTime.now()),
+            ),
+          );
+          sentryBreadcrumb(
+            'sync',
+            'order enqueued',
+            data: {'order': payload.orderUuid, 'events': payload.events.length},
+          );
+          return true;
+        }),
+      );
     } catch (_) {
-      if (!BusinessBoundary.initialized) rethrow;
+      if (BusinessBoundary.owns(owner)) rethrow;
       await preserve();
       return;
     }
-    // Only network work follows durable storage.
     if (enqueued) {
+      if (resolveCustomer != null || enrichGps) {
+        _startEnrichment(
+          payload.orderUuid,
+          owner,
+          resolveCustomer ?? () async => null,
+          loyaltyRuleIds,
+          enrichGps,
+        );
+      } else {
+        if (waitForSync) {
+          await flush();
+        } else {
+          unawaited(flush().catchError((Object _) => 0));
+        }
+      }
+    }
+  }
+
+  Future<void> _completeCustomer(
+    String key,
+    Object? owner,
+    Future<int?> Function() resolve,
+    List<int> loyaltyRuleIds,
+    bool enrichGps,
+  ) async {
+    try {
+      // Both operations run only after the immutable payment evidence is durable.
+      final gps = enrichGps
+          ? _acquireFreshFix()
+          : Future<({double lat, double lng})?>.value();
+      int? customer;
       try {
-        await flush();
-      } catch (_) {}
+        customer = await resolve();
+      } catch (_) {
+        /* Optional customer linkage. */
+      }
+      final fix = await gps;
+      if (_disposed || BusinessBoundary.generation.value != _ownerGeneration) {
+        return;
+      }
+      if ((customer != null || fix != null) && BusinessBoundary.owns(owner)) {
+        await BusinessBoundary.persistPaid(
+          owner,
+          () => _prepare(() async {
+            final row = await _db.getOutbox(key);
+            if (row == null || row.syncedAt != null) return;
+            final events = (jsonDecode(row.eventsJson) as List).cast<Map>();
+            for (final event in events) {
+              if (event['event_type'] == 'order.create' && customer != null) {
+                (event['payload']['order'] as Map)['customer_id'] = customer;
+              } else if (event['event_type'] == 'order.pay' &&
+                  loyaltyRuleIds.isNotEmpty) {
+                (event['payload'] as Map)['loyalty_rule_ids'] = loyaltyRuleIds;
+              }
+            }
+            if (fix != null) {
+              for (final container in _missingGpsContainers(
+                events.map((e) => Map<String, dynamic>.from(e)).toList(),
+              )) {
+                container['gps'] = {'lat': fix.lat, 'lng': fix.lng};
+              }
+            }
+            await (_db.update(
+              _db.orderOutbox,
+            )..where((t) => t.orderUuid.equals(key))).write(
+              OrderOutboxCompanion(eventsJson: Value(jsonEncode(events))),
+            );
+          }),
+        );
+      }
+    } catch (_) {
+      // Customer linkage is optional; the paid sale is already durable.
+    } finally {
+      _enrichingCustomers.remove(key);
+      // Activation owns the replacement repository and its durable backlog.
+      if (!_disposed && BusinessBoundary.generation.value == _ownerGeneration) {
+        unawaited(Future<int>.sync(flush).catchError((Object _) => 0));
+      }
     }
   }
 
@@ -499,39 +625,53 @@ class OrderSyncRepository {
     String Function()? newUuid,
   }) async {
     final key = '$orderUuid:pay';
-    final existingResult = await _prepare<StandaloneQrPayResult?>(() async {
-      final existing = await _db.getOutbox(key);
-      if (existing != null) {
-        final explicitlyRetired =
-            existing.syncedAt != null &&
-            (existing.lastError ?? '').startsWith(_retiredQrPayMarker);
-        if (!explicitlyRetired) return _standaloneQrResult(existing);
-      }
+    final event = buildStandaloneQrPayEvent(
+      orderUuid: orderUuid,
+      frozenAmountBaisas: frozenAmountBaisas,
+      method: method,
+      cardCharge: cardCharge,
+      lat: lat,
+      lng: lng,
+      paidAt: paidAt,
+      newUuid: newUuid,
+    );
+    if (!BusinessBoundary.owns(_ownerIdentity?.toJson())) {
+      await BusinessBoundary.quarantine('qr-paid', key, {
+        'identity': _ownerIdentity?.toJson(),
+        'events': [event],
+      });
+      return StandaloneQrPayResult(
+        state: StandaloneQrPayState.pending,
+        outboxKey: key,
+        clientEventId: event['client_event_id'] as String,
+      );
+    }
+    final existingResult = await BusinessBoundary.persistPaid(
+      _ownerIdentity?.toJson(),
+      () => _prepare<StandaloneQrPayResult?>(() async {
+        final existing = await _db.getOutbox(key);
+        if (existing != null) {
+          final explicitlyRetired =
+              existing.syncedAt != null &&
+              (existing.lastError ?? '').startsWith(_retiredQrPayMarker);
+          if (!explicitlyRetired) return _standaloneQrResult(existing);
+        }
 
-      final event = buildStandaloneQrPayEvent(
-        orderUuid: orderUuid,
-        frozenAmountBaisas: frozenAmountBaisas,
-        method: method,
-        cardCharge: cardCharge,
-        lat: lat,
-        lng: lng,
-        paidAt: paidAt,
-        newUuid: newUuid,
-      );
-      await _db.enqueueOutbox(
-        OrderOutboxCompanion(
-          orderUuid: Value(key),
-          eventsJson: Value(jsonEncode(<Map<String, dynamic>>[event])),
-          orderNumber: const Value(0),
-          createdAt: Value(paidAt ?? DateTime.now()),
-          attempts: const Value(0),
-          serverRejections: const Value(0),
-          lastError: const Value(null),
-          syncedAt: const Value(null),
-        ),
-      );
-      return null;
-    });
+        await _db.enqueueOutbox(
+          OrderOutboxCompanion(
+            orderUuid: Value(key),
+            eventsJson: Value(jsonEncode(<Map<String, dynamic>>[event])),
+            orderNumber: const Value(0),
+            createdAt: Value(paidAt ?? DateTime.now()),
+            attempts: const Value(0),
+            serverRejections: const Value(0),
+            lastError: const Value(null),
+            syncedAt: const Value(null),
+          ),
+        );
+        return null;
+      }),
+    );
     if (existingResult != null) return existingResult;
 
     await flush();
@@ -636,54 +776,60 @@ class OrderSyncRepository {
 
   /// Re-open only the SAME durable table pay for ACK recovery. No new event,
   /// tender or payload. This also heals the historical synced/pending split.
-  Future<int> recoverTablePayment(String orderUuid, String eventId) =>
-      _prepare(() async {
-        // The durable key may be the snapshot's original serverOrderUuid
-        // while the event has since been rebound to the canonical bill.
-        // Match BOTH immutable event id and canonical uuid; never :pay rows.
-        final matching = (await _db.select(_db.orderOutbox).get()).where((row) {
-          if (row.orderUuid.endsWith(':pay')) return false;
-          try {
-            final events = jsonDecode(row.eventsJson);
-            return events is List &&
-                events.length == 1 &&
-                events.single is Map &&
-                events.single['event_type'] == 'order.pay' &&
-                events.single['client_event_id'] == eventId &&
-                events.single['payload'] is Map &&
-                events.single['payload']['order_uuid'] == orderUuid;
-          } catch (_) {
-            return false;
-          }
-        }).toList();
-        if (matching.length != 1) {
-          throw StateError('Saved table payment is unavailable');
-        }
-        final row = matching.single;
-        final events = (jsonDecode(row.eventsJson) as List).cast<Map>();
-        if (events.length != 1 ||
-            events.single['event_type'] != 'order.pay' ||
-            events.single['client_event_id'] != eventId ||
-            (events.single['payload'] as Map)['order_uuid'] != orderUuid) {
-          throw StateError('Saved table payment identity differs');
-        }
-        if (row.syncedAt != null || isStuck(row)) {
-          // Replay this named payment once to obtain an authoritative result.
-          // Keep the saved payload/id; do not unpark unrelated sales.
-          await (_db.update(_db.orderOutbox)..where(
-                (t) =>
-                    t.orderUuid.equals(row.orderUuid) &
-                    t.eventsJson.equals(row.eventsJson),
-              ))
-              .write(
-                const OrderOutboxCompanion(
-                  syncedAt: Value(null),
-                  serverRejections: Value(0),
-                ),
-              );
-        }
-        return _flushOnce(recoveringTableEventId: eventId);
-      });
+  Future<int> recoverTablePayment(
+    String orderUuid,
+    String eventId, {
+    Future<bool> Function()? stillPending,
+  }) => _prepare(() async {
+    // The recovery request may have waited behind this payment's live ACK.
+    // Recheck its journal inside the serialized queue before replaying.
+    if (stillPending != null && !await stillPending()) return 0;
+    // The durable key may be the snapshot's original serverOrderUuid
+    // while the event has since been rebound to the canonical bill.
+    // Match BOTH immutable event id and canonical uuid; never :pay rows.
+    final matching = (await _db.select(_db.orderOutbox).get()).where((row) {
+      if (row.orderUuid.endsWith(':pay')) return false;
+      try {
+        final events = jsonDecode(row.eventsJson);
+        return events is List &&
+            events.length == 1 &&
+            events.single is Map &&
+            events.single['event_type'] == 'order.pay' &&
+            events.single['client_event_id'] == eventId &&
+            events.single['payload'] is Map &&
+            events.single['payload']['order_uuid'] == orderUuid;
+      } catch (_) {
+        return false;
+      }
+    }).toList();
+    if (matching.length != 1) {
+      throw StateError('Saved table payment is unavailable');
+    }
+    final row = matching.single;
+    final events = (jsonDecode(row.eventsJson) as List).cast<Map>();
+    if (events.length != 1 ||
+        events.single['event_type'] != 'order.pay' ||
+        events.single['client_event_id'] != eventId ||
+        (events.single['payload'] as Map)['order_uuid'] != orderUuid) {
+      throw StateError('Saved table payment identity differs');
+    }
+    if (row.syncedAt != null || isStuck(row)) {
+      // Replay this named payment once to obtain an authoritative result.
+      // Keep the saved payload/id; do not unpark unrelated sales.
+      await (_db.update(_db.orderOutbox)..where(
+            (t) =>
+                t.orderUuid.equals(row.orderUuid) &
+                t.eventsJson.equals(row.eventsJson),
+          ))
+          .write(
+            const OrderOutboxCompanion(
+              syncedAt: Value(null),
+              serverRejections: Value(0),
+            ),
+          );
+    }
+    return _flushOnce(recoveringTableEventId: eventId);
+  });
 
   Future<int> _flushOnce({String? recoveringTableEventId}) async {
     final pending = await pendingRows();
@@ -695,6 +841,7 @@ class OrderSyncRepository {
     var successful = true;
 
     for (final queuedRow in pending) {
+      if (_enrichingCustomers.contains(queuedRow.orderUuid)) continue;
       // A preceding table ACK may have rebound a later payment in this very
       // pass. Decode its current durable payload, not the captured snapshot.
       final row = await _db.getOutbox(queuedRow.orderUuid);
@@ -720,7 +867,9 @@ class OrderSyncRepository {
       }
 
       if (!BusinessBoundary.canWork) break;
-      if (events.any((event) => !BusinessBoundary.owns(event['identity']))) {
+      if (events.any(
+        (event) => !BusinessBoundary.ownsEvent(event['identity']),
+      )) {
         await _db.quarantineOutbox(row);
         continue;
       }

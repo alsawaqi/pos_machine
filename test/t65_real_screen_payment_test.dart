@@ -1020,6 +1020,7 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           reason: 'real payment completed',
         );
         expect(done, true);
+        await drive(() => outbox.settled);
         expect(c.cart, isEmpty, reason: c.lastPaymentMessage);
         expect(c.activeDiningTableId, isNull);
         final closed = await drive(() => localDb.query('dining_tables'));

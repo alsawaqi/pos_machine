@@ -1,0 +1,23 @@
+{
+  "release": "01d17de",
+  "files_sha256": {
+    "card-pay.json": "08c641010a978bbee97959d4d6e4a43a034b21bb0050a403792f26b99f9363ed",
+    "expected.json": "74f8bae2d3e62136e0e06426abca8e6c995fb4acbfb6a449fdefd5ff872425eb",
+    "held.json": "c0f65ad65419d09273dde31f4fe4f4e86979edd4459b2ab42f4c91e658faa694",
+    "payloads.json": "77fd1fa088d6b04ead52297d56f9e88fa20db2bcd5bb8fef883fc4a557e3970a",
+    "prefs.json": "218686583e979cf30beb6881d81dd36d6f78df5bbc8611e9ac25b2bafb6e3ede",
+    "snapshots.json": "8e7c91dc04b060428420da4295721557974a15fd8db7429867128b246508efb8",
+    "generated/dine_in_requests.db": "e0197bb8a6e1b016ee792db38b02a9b1207b5b5a353e345b3e4fc2b9140f81c9",
+    "generated/FlutterSharedPreferences.xml": "10fca4ee600be9e927402ecb457706814a38b1bd87c5011d86f8879d70428c58",
+    "generated/mithqal_orders.db": "101be42ef06d2d5e5af5040e0daf4133a8b45c3e9b9855aaf77827bd42d114f0",
+    "generated/pos_machine_cache.sqlite": "b030f66db7ce16fece3c843730c0d7d89c44d8f5a1dda0d5fcc9dc3d3dee8d65",
+    "generated/qr_checkout_attempts.db": "88c30e3d9659de7dc5aa239f3248691bf3eef20335d426b0c88a43ff5c7910b5",
+    "generated/qr_quick_requests.db": "37a4255a9a630ffbf2d5fd1bf8c189262dd7a761c08f870430893e5f80821981",
+    "t3/dine_in_requests.db": "e0197bb8a6e1b016ee792db38b02a9b1207b5b5a353e345b3e4fc2b9140f81c9",
+    "t3/FlutterSharedPreferences.xml": "10fca4ee600be9e927402ecb457706814a38b1bd87c5011d86f8879d70428c58",
+    "t3/mithqal_orders.db": "a892beb0e43ff34e45111f83dd8f614d5dbd7aff709b23140bb240752643cd1d",
+    "t3/pos_machine_cache.sqlite": "0bf519baa635a4b12aa98dfeb67adfd18f1154661a3e2cf648fc25690de1b29b",
+    "t3/qr_checkout_attempts.db": "88c30e3d9659de7dc5aa239f3248691bf3eef20335d426b0c88a43ff5c7910b5",
+    "t3/qr_quick_requests.db": "37a4255a9a630ffbf2d5fd1bf8c189262dd7a761c08f870430893e5f80821981"
+  }
+}

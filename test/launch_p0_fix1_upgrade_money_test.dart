@@ -1,3 +1,7 @@
+import 'package:pos_machine/tenancy/tenant_sqlite.dart';
+import 'package:pos_machine/services/local_order_storage_service.dart';
+import 'support/fix2_release_storage.dart';
+import 'launch_p0_fix2_money_test.dart' show BlockedCapture;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -31,48 +35,20 @@ void main() {
   test(
     'B1 main-format Drift outbox survives upgrade and sends its original events',
     () async {
-      final directory = await Directory.systemTemp.createTemp(
-        'fix1-till-upgrade-',
+      final directory = await loadFix2ReleaseStorage();
+      final expected =
+          jsonDecode(
+                File(
+                  'test/fixtures/release_01d17de/expected.json',
+                ).readAsStringSync(),
+              )
+              as Map;
+      final db = AppDatabase.forTesting(
+        NativeDatabase(File(directory.path + '/pos_machine_cache.sqlite')),
       );
-      final file = File(directory.path + '/release.sqlite');
-      SharedPreferences.setMockInitialValues({
-        'company_id': 11,
-        'branch_id': 21,
-        'device_uuid': 'legacy-device',
-      });
-      // The release format: real v29 Drift tables, no P0 column or event identity.
-      var db = AppDatabase.forTesting(NativeDatabase(file));
-      await db.enqueueOutbox(
-        OrderOutboxCompanion(
-          orderUuid: const Value('legacy-paid'),
-          createdAt: Value(DateTime.utc(2026)),
-          eventsJson: Value(
-            jsonEncode([
-              {
-                'client_event_id': 'old-create',
-                'event_type': 'order.create',
-                'payload': {},
-              },
-              {
-                'client_event_id': 'old-pay',
-                'event_type': 'order.pay',
-                'payload': {'amount_baisas': 1200},
-              },
-            ]),
-          ),
-        ),
-      );
-      await db.close();
-      final raw = await SharedPreferences.getInstance();
-      await BusinessBoundary.initialize(raw);
-      await SessionService(
-        const FlutterSecureStorage(),
-        TenantPreferences(raw),
-      ).load();
-      db = AppDatabase.forTesting(NativeDatabase(file));
       final api = _Api();
       final sync = OrderSyncRepository(api, db);
-      expect(await db.pendingOutbox(), hasLength(1));
+      expect(await db.pendingOutbox(), hasLength(3));
       final before = await db.customSelect('PRAGMA schema_version').getSingle();
       await db.prepareTenancy();
       expect(
@@ -80,11 +56,11 @@ void main() {
         before.data,
       );
       await sync.flush();
-      expect(api.sent.map((e) => e['client_event_id']), [
-        'old-create',
-        'old-pay',
-      ]);
-      expect(api.sent.every((e) => owner.matches(e['identity'])), true);
+      expect(
+        api.sent.map((e) => e['client_event_id']),
+        containsAll(expected['generated_event_ids']),
+      );
+      expect(api.sent.every((e) => !e.containsKey('identity')), true);
       expect(await db.pendingOutbox(), isEmpty);
       expect(BusinessBoundary.quarantinedCount, 0);
       await sync.dispose();
@@ -96,31 +72,31 @@ void main() {
     test(
       'B2 real till completion preserves ' + method + ' after block',
       () async {
-        SharedPreferences.setMockInitialValues({
-          BusinessBoundary.identityKey: owner.encoded,
-          'terminal_id': 'T',
-          '_p0.tag.terminal_id': owner.encoded,
-        });
-        await BusinessBoundary.initialize(
-          await SharedPreferences.getInstance(),
+        final directory = await loadFix2ReleaseStorage();
+        final db = AppDatabase.forTesting(
+          NativeDatabase(File(directory.path + '/pos_machine_cache.sqlite')),
         );
-        final db = AppDatabase.forTesting(NativeDatabase.memory());
         final sync = OrderSyncRepository(_Api(), db);
-        final c = PosController(orderStorage: FakeOrderStorage());
+        final c = PosController(
+          orderStorage: FakeOrderStorage(),
+          paymentBridge: BlockedCapture(),
+        );
         addTearDown(c.dispose);
         addTearDown(() async {
           await sync.dispose();
           await db.close();
         });
-        const product = Product(
-          id: '7',
-          name: 'Coffee',
-          category: 'Drinks',
-          price: 2,
+        final local = await openBusinessDatabase(
+          directory.path + '/mithqal_orders.db',
         );
+        final held =
+            (await LocalOrderStorageService.forTesting(local).loadHeldOrders())
+                .singleWhere((h) => h.orderReference == 'FIX2-RELEASE-HELD');
+        final product = held.draft.items.first.product;
+        addTearDown(local.close);
         c.applyCatalog(
           categories: const ['Drinks'],
-          products: const [product],
+          products: [product],
           floors: const [],
           tables: const [],
         );
@@ -129,17 +105,12 @@ void main() {
         c.printReceipts = false;
         c.printKitchenTickets = false;
         c.onOrderCompleted = (snapshot) async {
-          await sync.enqueue(snapshot);
+          BusinessBoundary.block('company_suspended');
+          await sync.enqueue(snapshot, cardCharge: c.lastCardCharge);
         };
-        const channel = MethodChannel('com.example.mosambee');
-        final messenger =
-            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-        messenger.setMockMethodCallHandler(channel, (call) async {
-          BusinessBoundary.block('device_reactivation_required');
-          return '{"status":"success","responseCode":"00","rrn":"captured-bank-ref"}';
+        c.addListener(() {
+          if (c.showCharityRoundUpPrompt) c.confirmCharityRoundUp(false);
         });
-        addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
-        if (method == 'Cash') BusinessBoundary.block('company_suspended');
         await c.payAndPrint(cashTenderedAmount: method == 'Cash' ? 2 : null);
         // The production completion path reaches durable outbox or quarantine.
         expect(
@@ -149,7 +120,7 @@ void main() {
         final raw = await SharedPreferences.getInstance();
         if (method == 'Credit Card')
           expect(
-            raw.getKeys().map(raw.get).join(' '),
+            (await db.pendingOutbox()).map((r) => r.eventsJson).join(' '),
             contains('captured-bank-ref'),
           );
       },

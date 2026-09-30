@@ -398,8 +398,9 @@ void main() {
       );
       await h.queuePay('already-synced', original, synced: true);
       await h.queuePay('$original:pay', original);
-      final syncedBefore = (await h.outbox.rowForKey('already-synced'))!
-          .eventsJson;
+      final syncedBefore = (await h.outbox.rowForKey(
+        'already-synced',
+      ))!.eventsJson;
       h.adapter.answer = (event) => {
         ...h.adapter._answer(event),
         'order_uuid': _winner,
@@ -426,9 +427,9 @@ void main() {
         syncedBefore,
       );
       final qr =
-          (jsonDecode(
-                (await h.outbox.rowForKey('$original:pay'))!.eventsJson,
-              ) as List).single
+          (jsonDecode((await h.outbox.rowForKey('$original:pay'))!.eventsJson)
+                      as List)
+                  .single
               as Map;
       expect((qr['payload'] as Map)['order_uuid'], original);
       expect(h.table.serverOrderUuid, _winner);
@@ -856,8 +857,9 @@ void main() {
       };
       h.adapter.online = true;
       await h.outbox.flush();
-      h.coordinator.onTablePaid(h.table, snapshot);
+      await h.coordinator.onTablePaid(h.table, snapshot);
       await h.coordinator.settled;
+      await h.outbox.settled;
       final row = await h.outbox.rowForKey(original);
       final event = (jsonDecode(row!.eventsJson) as List).single as Map;
       expect((event['payload'] as Map)['order_uuid'], _winner);
@@ -923,8 +925,9 @@ void main() {
         rawSubtotal: 4,
         paymentMethod: 'Card',
       );
-      h.coordinator.onTablePaid(h.table, snapshot);
+      await h.coordinator.onTablePaid(h.table, snapshot);
       await h.coordinator.settled;
+      await h.outbox.settled;
       expect(h.events.map((e) => e['event_type']), [
         'table.session.open',
         'table.session.round',

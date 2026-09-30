@@ -35,7 +35,7 @@ abstract class DiningTableSyncHooks {
   void onTableTransferred(String fromId, DiningTableSession moved);
   void onTablesJoined(DiningTableSession head, DiningTableSession seat);
   void onTablesCleared(Set<String> groupIds, DiningTableSession? head);
-  void onTablePaid(DiningTableSession paid, OrderSnapshot snapshot);
+  FutureOr<void> onTablePaid(DiningTableSession paid, OrderSnapshot snapshot);
 }
 
 class CustomerActionTag {
@@ -73,8 +73,23 @@ class PosController extends ChangeNotifier
   );
 
   final PresentationService _presentation = PresentationService.instance;
-  final MosambeePaymentService _paymentBridge = MosambeePaymentService();
-  final OrderStorageService _orderStorage;
+  final MosambeePaymentService _paymentBridge;
+  final OrderStorageService? _orderStorageOverride;
+  OrderStorageService get _orderStorage =>
+      _orderStorageOverride ?? LocalOrderStorageService.instance;
+  DraftRecoveryGuard? _observedRecoveryGuard;
+  void _refreshStorageAfterActivation() {
+    _observedRecoveryGuard?.recoveryBlocked.removeListener(_notifySafely);
+    _observedRecoveryGuard = _recoveryGuard;
+    _observedRecoveryGuard?.recoveryBlocked.addListener(_notifySafely);
+    unawaited(
+      _observedRecoveryGuard?.refreshRecoveryGuard().catchError(
+            (Object _) {},
+          ) ??
+          Future.value(),
+    );
+  }
+
   final pricing.PriceResult Function(pricing.PricingInput) _priceOrder;
 
   /// Gap sweep G1 — injectable wall clock for the daily availability windows
@@ -1120,11 +1135,10 @@ class PosController extends ChangeNotifier
   PosController({
     this.releaseBuild = kReleaseMode,
     OrderStorageService? orderStorage,
+    MosambeePaymentService? paymentBridge,
     pricing.PriceResult Function(pricing.PricingInput)? priceOrderOverride,
-  }) : _orderStorage =
-           orderStorage ??
-           debugOrderStorageOverride ??
-           LocalOrderStorageService.instance,
+  }) : _paymentBridge = paymentBridge ?? MosambeePaymentService(),
+       _orderStorageOverride = orderStorage ?? debugOrderStorageOverride,
        _priceOrder = priceOrderOverride ?? pricing.priceOrder {
     if (releaseBuild) {
       allProducts = [];
@@ -1133,7 +1147,11 @@ class PosController extends ChangeNotifier
       diningTableDefinitions = [];
     }
     _paymentBridge.setLaunchStateListener(_handlePaymentLaunchState);
-    _recoveryGuard?.recoveryBlocked.addListener(_notifySafely);
+    _observedRecoveryGuard = _recoveryGuard;
+    _observedRecoveryGuard?.recoveryBlocked.addListener(_notifySafely);
+    BusinessBoundary.activationCompleted.addListener(
+      _refreshStorageAfterActivation,
+    );
   }
 
   Future<void> init() async {
@@ -4326,22 +4344,23 @@ class PosController extends ChangeNotifier
         'card_charge': _lastCardCharge?.toMap(),
       },
     );
-    try {
-      if (BusinessBoundary.initialized &&
-          (!BusinessBoundary.canWork ||
-              !BusinessBoundary.owns(_businessIdentity))) {
-        await preserve();
-        return successMessage;
-      }
-      return await _finishCompletedOrderAdmitted(
-        isDineInPayment: isDineInPayment,
-        successMessage: successMessage,
-      );
-    } catch (_) {
-      if (!BusinessBoundary.initialized) rethrow;
+    if (!BusinessBoundary.owns(_businessIdentity)) {
       await preserve();
+      _resetForNextOrder(
+        advanceOrderNumber: !isDineInPayment,
+        clearActiveDiningTable: true,
+      );
       return successMessage;
     }
+    // A captured tender must finish durably even if access was suspended
+    // while the bank/cash confirmation was in progress.
+    return BusinessBoundary.persistPaid(
+      _businessIdentity,
+      () => _finishCompletedOrderAdmitted(
+        isDineInPayment: isDineInPayment,
+        successMessage: successMessage,
+      ),
+    );
   }
 
   Future<String> _finishCompletedOrderAdmitted({
@@ -4424,7 +4443,7 @@ class PosController extends ChangeNotifier
         paidSnapshot: completedSnapshot,
       );
       if (paid != null) {
-        diningTableSyncHooks?.onTablePaid(paid, completedSnapshot);
+        await diningTableSyncHooks?.onTablePaid(paid, completedSnapshot);
       }
     }
     if (serverOwned && refreshServerReceipt != null) {
@@ -4446,7 +4465,6 @@ class PosController extends ChangeNotifier
     // is cleared, so the next order can't oversell the produced count.
     _consumeShelfStockFromCart();
 
-    await Future.delayed(const Duration(milliseconds: 700));
     _resetForNextOrder(
       advanceOrderNumber: !isDineInPayment,
       nextOrderType: isDineInPayment ? OrderType.dineIn : OrderType.quickOrder,
@@ -4492,7 +4510,10 @@ class PosController extends ChangeNotifier
 
   @override
   void dispose() {
-    _recoveryGuard?.recoveryBlocked.removeListener(_notifySafely);
+    BusinessBoundary.activationCompleted.removeListener(
+      _refreshStorageAfterActivation,
+    );
+    _observedRecoveryGuard?.recoveryBlocked.removeListener(_notifySafely);
     cancelCustomerLookups();
     _isDisposed = true;
     _rearDisplaySyncTimer?.cancel();
@@ -4897,6 +4918,7 @@ class PosController extends ChangeNotifier
       await refreshOrderHistory();
     } catch (error) {
       debugPrint('Failed to save completed order: $error');
+      rethrow;
     }
   }
 
@@ -5104,7 +5126,7 @@ class PosController extends ChangeNotifier
       for (final id in freeIds) {
         await _orderStorage.clearDiningTable(id);
       }
-      diningTableSyncHooks?.onTablePaid(paidSession, completedSnapshot);
+      await diningTableSyncHooks?.onTablePaid(paidSession, completedSnapshot);
     } catch (error) {
       debugPrint('Failed to mark dining table as paid: $error');
     }

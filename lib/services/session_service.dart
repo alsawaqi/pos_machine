@@ -309,6 +309,7 @@ class SessionService {
   /// the layer-1 identity too, so the device must be re-activated with a new code.
   Future<void> clearForRePair() async {
     BusinessBoundary.block('device_reactivation_required');
+    await BusinessBoundary.paymentsSettled;
     _deviceToken = null;
     await _secure.delete(key: _kDeviceToken);
   }

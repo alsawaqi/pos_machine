@@ -1,3 +1,4 @@
+import '../tenancy/device_heartbeat.dart';
 import 'package:flutter/foundation.dart';
 import '../data/order_sync_repository.dart';
 import '../models/pos_models.dart';
@@ -386,7 +387,9 @@ class QrSettlementCoordinator implements QrSettlementFlow {
     }
 
     try {
-      final result = await _settleHeldClaim(claim, tender);
+      final result = await DeviceHeartbeat.trackTender(
+        () => _settleHeldClaim(claim, tender),
+      );
       if (result.managerRequired || result.releaseError != null) {
         _pendingManagerRecoveries[claim.orderUuid] = result;
       }

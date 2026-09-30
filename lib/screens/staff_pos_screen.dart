@@ -689,7 +689,7 @@ class TableKitchenBridge implements DiningTableSyncHooks {
   }
 
   @override
-  void onTablePaid(DiningTableSession paid, OrderSnapshot snapshot) =>
+  Future<void> onTablePaid(DiningTableSession paid, OrderSnapshot snapshot) =>
       coordinator.onTablePaid(paid, snapshot);
 }
 
@@ -1312,6 +1312,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       // The coordinator's ACK change also consumes it if confirmation is late.
       _pendingLoyaltyNoticeOrders.add(snapshot.serverOrderUuid);
       try {
+        // Wait for durable table preparation, not optional GPS/customer work.
+        // The ACK listener refreshes the receipt when that later work finishes.
         await coordinator.settled.timeout(const Duration(seconds: 8));
       } catch (_) {
         /* The durable outbox retains the event for normal retry. */
@@ -1576,32 +1578,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // this callback returns its synchronous prefix.
     final joinedTableIds = controller.joinedTableIdsFor(snapshot.diningTableId);
 
-    double? lat;
-    double? lng;
-    try {
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      ).timeout(const Duration(seconds: 5));
-      lat = pos.latitude;
-      lng = pos.longitude;
-    } catch (_) {
-      try {
-        final last = await Geolocator.getLastKnownPosition();
-        lat = last?.latitude;
-        lng = last?.longitude;
-      } catch (_) {
-        // No immediate fix available. The durable outbox flush holds fenced
-        // create/pay events locally until it can add a fresh GPS fix.
-      }
-    }
-
+    // GPS enrichment runs in the outbox after this sale is durable.
     if (sharedContext != null) {
       sharedContext.complete(
         TablePaymentContext(
-          lat: lat,
-          lng: lng,
           cardCharge: cardCharge,
           eventId: tableCheckout?.attempt?.id,
           prepareEvent: tableCheckout?.journalTablePay,
@@ -1612,58 +1592,41 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final staffId = producingStaffId;
     final tableId = int.tryParse(snapshot.diningTableId);
 
-    // Resolve the customer (find-or-create on phone, + register the plate).
-    // Best-effort: offline, the order still saves — the plate rides on the
-    // order itself, only the customer LINK is deferred.
-    int? customerId;
-    if (searchedCustomer != null) {
-      customerId = searchedCustomer.id;
-      if (plate.isNotEmpty && searchedCustomer.phone.isNotEmpty) {
-        try {
-          // Register against the exact stored phone; never replace the attached id.
-          await ref
-              .read(apiServiceProvider)
-              .saveCustomer(
-                name: searchedCustomer.name,
-                phone: searchedCustomer.phone,
-                plateNumber: plate,
-              );
-        } catch (_) {
-          // Plate linkage remains best-effort; the sale still carries the plate.
+    final customerApi = ref.read(apiServiceProvider);
+    Future<int?> resolveCustomer() async {
+      if (searchedCustomer != null) {
+        if (plate.isNotEmpty && searchedCustomer.phone.isNotEmpty) {
+          await customerApi.saveCustomer(
+            name: searchedCustomer.name,
+            phone: searchedCustomer.phone,
+            plateNumber: plate,
+          );
         }
+        return searchedCustomer.id;
       }
-    } else if (phone.isNotEmpty) {
-      try {
-        customerId = await ref
-            .read(apiServiceProvider)
-            .saveCustomer(
-              name:
-                  phone, // no separate name field at the POS; phone is the key
-              phone: phone,
-              plateNumber: plate.isEmpty ? null : plate,
-            );
-      } catch (_) {
-        // leave customerId null; the order is not blocked on this
-      }
+      if (phone.isEmpty) return null;
+      return customerApi.saveCustomer(
+        name: phone,
+        phone: phone,
+        plateNumber: plate.isEmpty ? null : plate,
+      );
     }
 
-    // Loyalty earn (v2 #3): an identified customer accrues under every active
-    // earn program — unless P-F3's picker recorded an explicit choice for
-    // this order (effectiveEarnRuleIds). Phase D4 — a GIFTED order earns
-    // nothing (no spend ⇒ no points; the server also guards this).
     final loyaltyRuleIds =
-        customerId != null && snapshot.paymentMethod != 'Gift'
+        snapshot.paymentMethod != 'Gift' &&
+            (searchedCustomer != null || phone.isNotEmpty)
         ? earnedRuleIds
         : const <int>[];
 
     await completedOrderRepository.enqueue(
       snapshot,
-      lat: lat,
-      lng: lng,
       staffId: staffId,
       tableId: tableId,
       joinedTableIds: joinedTableIds,
-      customerId: customerId,
+      customerId: searchedCustomer?.id,
+      resolveCustomer: resolveCustomer,
+      enrichGps: true,
+      waitForSync: false,
       plateNumber: plate.isEmpty ? null : plate,
       deliveryProviderName: deliveryProviderName,
       cardCharge: cardCharge,
@@ -2871,7 +2834,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         if (saved.state == 'pending') {
           await ref
               .read(orderSyncRepositoryProvider)
-              .recoverTablePayment(saved.orderUuid, saved.id);
+              .recoverTablePayment(
+                saved.orderUuid,
+                saved.id,
+                stillPending: () async {
+                  final latest = await checkout.store.active();
+                  return latest?.id == saved.id && latest?.state == 'pending';
+                },
+              );
         }
         final remaining = await checkout.store.active();
         pending = remaining?.id == saved.id;

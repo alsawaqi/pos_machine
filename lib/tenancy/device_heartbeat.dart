@@ -14,7 +14,7 @@ class DeviceHeartbeat {
     final token = Object();
     _tenders.add(token);
     try {
-      return await action();
+      return await BusinessBoundary.trackPayment(action);
     } finally {
       _tenders.remove(token);
     }
@@ -48,6 +48,21 @@ class DeviceHeartbeat {
     _sending = true;
     final generation = BusinessBoundary.generation.value;
     try {
+      if (BusinessBoundary.current?.isProvisional == true) {
+        final identity = await client.get<dynamic>('/device/identity');
+        final data = identity.data is Map
+            ? (identity.data as Map)['data']
+            : null;
+        if (data is Map) {
+          final resolved = BusinessIdentity.parse({
+            'company_id': data['company_id'],
+            'branch_id': data['branch_id'],
+            'device_uuid': data['uuid'],
+          });
+          if (resolved != null)
+            await BusinessBoundary.completeIdentity(resolved, generation);
+        }
+      }
       final data = await metadata();
       BusinessBoundary.assertGeneration(generation);
       final response = await client.post<dynamic>(

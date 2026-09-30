@@ -31,7 +31,9 @@ class TenantPreferences implements SharedPreferences {
       final value = raw.get(key);
       final packed = BusinessBoundary.decodePreference(value);
       final owner = packed?['identity'] ?? raw.getString('_p0.tag.$key');
-      if (BusinessBoundary.owns(owner)) continue;
+      if (BusinessBoundary.owns(owner) ||
+          BusinessBoundary.legacyPreference(key) != null)
+        continue;
       final businessKey = packed?['key'] as String? ?? key;
       Object? record = packed?['value'] ?? value;
       if (BusinessBoundary.financialStore(businessKey)) {
@@ -61,7 +63,7 @@ class TenantPreferences implements SharedPreferences {
     // Read compatibility with the first P0 candidate's two-field format.
     return BusinessBoundary.owns(raw.getString('_p0.tag.$key'))
         ? raw.get(key)
-        : null;
+        : BusinessBoundary.legacyPreference(key);
   }
 
   Future<bool> _write(
@@ -107,7 +109,11 @@ class TenantPreferences implements SharedPreferences {
   bool containsKey(String key) => get(key) != null;
   @override
   Set<String> getKeys() {
-    final keys = <String>{};
+    final keys = <String>{
+      ...((BusinessBoundary.legacyPreferences?['values'] as Map?)?.keys
+              .cast<String>() ??
+          <String>[]),
+    };
     for (final key in raw.getKeys()) {
       if (key.startsWith(BusinessBoundary.recordPrefix)) {
         final packed = BusinessBoundary.decodePreference(raw.get(key));
@@ -140,6 +146,7 @@ class TenantPreferences implements SharedPreferences {
     if (_unscoped(key)) return raw.remove(key);
     final physical = _key(key);
     final owner = BusinessBoundary.current;
+    await BusinessBoundary.removeLegacyPreference(key);
     if (physical != null && !await raw.remove(physical)) return false;
     if (owner?.matches(raw.getString('_p0.tag.$key')) == true) {
       await raw.remove(key);

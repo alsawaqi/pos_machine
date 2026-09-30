@@ -1,0 +1,12 @@
+{
+  "release": "01d17de",
+  "source": "D:\\launch-work\\p0fix1\\t3-release-storage-01d17de",
+  "sha256": {
+    "dine_in_requests.db": "e0197bb8a6e1b016ee792db38b02a9b1207b5b5a353e345b3e4fc2b9140f81c9",
+    "FlutterSharedPreferences.xml": "10fca4ee600be9e927402ecb457706814a38b1bd87c5011d86f8879d70428c58",
+    "mithqal_orders.db": "a892beb0e43ff34e45111f83dd8f614d5dbd7aff709b23140bb240752643cd1d",
+    "pos_machine_cache.sqlite": "0bf519baa635a4b12aa98dfeb67adfd18f1154661a3e2cf648fc25690de1b29b",
+    "qr_checkout_attempts.db": "88c30e3d9659de7dc5aa239f3248691bf3eef20335d426b0c88a43ff5c7910b5",
+    "qr_quick_requests.db": "37a4255a9a630ffbf2d5fd1bf8c189262dd7a761c08f870430893e5f80821981"
+  }
+}

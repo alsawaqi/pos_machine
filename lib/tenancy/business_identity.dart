@@ -9,6 +9,7 @@ class BusinessIdentity {
   final int companyId;
   final int branchId;
   final String deviceUuid;
+  bool get isProvisional => deviceUuid.isEmpty;
   Map<String, dynamic> toJson() => {
     'company_id': companyId,
     'branch_id': branchId,
@@ -21,20 +22,29 @@ class BusinessIdentity {
       if (map is! Map ||
           map['company_id'] is! num ||
           map['branch_id'] is! num ||
-          map['device_uuid'] is! String ||
-          (map['device_uuid'] as String).isEmpty)
+          (map['company_id'] as num) <= 0 ||
+          (map['branch_id'] as num) <= 0 ||
+          (map['device_uuid'] != null && map['device_uuid'] is! String))
         return null;
       return BusinessIdentity(
         (map['company_id'] as num).toInt(),
         (map['branch_id'] as num).toInt(),
-        map['device_uuid'] as String,
+        (map['device_uuid'] as String?) ?? '',
       );
     } catch (_) {
       return null;
     }
   }
 
-  bool matches(Object? value) => parse(value)?.encoded == encoded;
+  bool matches(Object? value) {
+    final other = parse(value);
+    return other != null &&
+        companyId == other.companyId &&
+        branchId == other.branchId &&
+        (isProvisional ||
+            other.isProvisional ||
+            deviceUuid == other.deviceUuid);
+  }
 }
 
 /// The durable activation boundary, independent of staff login. A refusal never
@@ -43,9 +53,44 @@ class BusinessBoundary {
   static const identityKey = '_p0.business_identity';
   static const recordPrefix = '_p0.record.';
   static const legacyKey = '_p0.legacy_identity';
+  static const legacyPreferencesKey = '_p0.legacy_preferences';
+  // Keep local row ownership stable when the server fills the missing UUID.
+  // Wire identity is independent: old events are never relabelled.
+  static BusinessIdentity? get storageIdentity {
+    final legacy = BusinessIdentity.parse(_prefs?.getString(legacyKey));
+    return current?.matches(legacy?.toJson()) == true ? legacy : current;
+  }
+
+  static Map<String, dynamic>? get legacyPreferences {
+    final value = _prefs?.getString(legacyPreferencesKey);
+    if (value == null) return null;
+    final record = jsonDecode(value) as Map<String, dynamic>;
+    return owns(record['identity']) ? record : null;
+  }
+
+  static Object? legacyPreference(String key) =>
+      (legacyPreferences?['values'] as Map?)?[key];
+  static Future<void> removeLegacyPreference(String key) async {
+    final record = legacyPreferences;
+    if (record == null) return;
+    final values = Map<String, dynamic>.from(record['values'] as Map)
+      ..remove(key);
+    if (!await _prefs!.setString(
+      legacyPreferencesKey,
+      jsonEncode({...record, 'values': values}),
+    ))
+      throw StateError('Legacy preference removal failed.');
+  }
+
   static String recordKey(String key, BusinessIdentity owner) =>
       recordPrefix +
-      base64Url.encode(utf8.encode(owner.encoded)) +
+      base64Url.encode(
+        utf8.encode(
+          current?.matches(owner.toJson()) == true
+              ? storageIdentity!.encoded
+              : owner.encoded,
+        ),
+      ) +
       '.' +
       base64Url.encode(utf8.encode(key));
   static bool get adoptingLegacy =>
@@ -80,63 +125,62 @@ class BusinessBoundary {
       return false;
     final company = prefs.getInt('company_id'),
         branch = prefs.getInt('branch_id');
-    final uuid = prefs.getString('device_uuid');
-    if (company == null ||
-        company <= 0 ||
-        branch == null ||
-        branch <= 0 ||
-        (uuid ?? '').isEmpty)
+    if (company == null || company <= 0 || branch == null || branch <= 0)
       return false;
-    final owner = BusinessIdentity(company, branch, uuid!);
-    await prefs.setString(legacyKey, owner.encoded);
-    for (final key in prefs.getKeys().toList()) {
-      if (privatePreference(key) ||
-          keepPreference(key) ||
-          identityPreference(key))
-        continue;
-      Object? value = prefs.get(key);
-      if (value == null) continue;
-      if (key.contains('outbox') && value is String) {
-        try {
-          final rows = jsonDecode(value);
-          if (rows is List) {
-            value = jsonEncode([
-              for (final row in rows)
-                if (row is Map)
-                  {
-                    ...row,
-                    'identity': row['identity'] ?? owner.toJson(),
-                    if (row['events'] is List)
-                      'events': [
-                        for (final event in row['events'] as List)
-                          if (event is Map)
-                            {
-                              ...event,
-                              'identity': event['identity'] ?? owner.toJson(),
-                            }
-                          else
-                            event,
-                      ],
-                  }
-                else
-                  row,
-            ]);
-          }
-        } catch (_) {
-          /* Keep unreadable money evidence intact for its store. */
+    final owner = BusinessIdentity(
+      company,
+      branch,
+      prefs.getString('device_uuid') ?? '',
+    );
+    // One atomic preference value is both the snapshot and the crash marker.
+    // Never remove an original key before this complete snapshot is durable.
+    if (!prefs.containsKey(legacyPreferencesKey)) {
+      final values = <String, Object>{};
+      for (final key in prefs.getKeys()) {
+        if (!privatePreference(key) &&
+            !keepPreference(key) &&
+            !identityPreference(key)) {
+          final value = prefs.get(key);
+          if (value != null) values[key] = value;
         }
       }
-      final record = jsonEncode(preferenceRecord(key, value!, owner));
-      if (!await prefs.setString(recordKey(key, owner), record))
-        throw StateError('Legacy storage could not be tagged.');
-      await prefs.remove(key);
-      await prefs.remove('_p0.tag.$key');
+      if (!await prefs.setString(
+        legacyPreferencesKey,
+        jsonEncode({'identity': owner.toJson(), 'values': values}),
+      ))
+        throw StateError('Legacy snapshot could not be saved.');
     }
-    if (!await prefs.setString(identityKey, owner.encoded))
+    if (!await prefs.setString(legacyKey, owner.encoded) ||
+        !await prefs.setString(identityKey, owner.encoded))
       throw StateError('Legacy identity could not be saved.');
     current = owner;
     blocked.value = prefs.getString(blockedKey);
+    final values = legacyPreferences?['values'] as Map? ?? {};
+    for (final key in values.keys.cast<String>()) {
+      await prefs.remove(key);
+      await prefs.remove('_p0.tag.' + key);
+    }
     return true;
+  }
+
+  static Future<void> completeIdentity(
+    BusinessIdentity next,
+    int expectedGeneration,
+  ) async {
+    if (generation.value != expectedGeneration ||
+        current == null ||
+        !current!.isProvisional ||
+        next.isProvisional)
+      return;
+    if (!current!.matches(next.toJson())) {
+      block('device_reactivation_required');
+      return;
+    }
+    // A single durable identity commit. Store keys/owners remain stable.
+    if (!await _prefs!.setString(identityKey, next.encoded))
+      throw StateError('Device identity could not be completed.');
+    current = next;
+    await _prefs!.setString('device_uuid', next.deviceUuid);
   }
 
   static const blockedKey = '_p0.blocked';
@@ -210,8 +254,39 @@ class BusinessBoundary {
     blocked.value = null;
   }
 
+  static int _payments = 0;
+  static Completer<void>? _paymentsDone;
+  static Future<void> get paymentsSettled =>
+      _paymentsDone?.future ?? Future.value();
+  static Future<T> trackPayment<T>(Future<T> Function() action) async {
+    if (_payments++ == 0) _paymentsDone = Completer<void>();
+    try {
+      return await action();
+    } finally {
+      if (--_payments == 0) {
+        _paymentsDone?.complete();
+        _paymentsDone = null;
+      }
+    }
+  }
+
+  // Only the captured sale's original owner may bypass suspension for its
+  // durable completion. This capability is never used to authorize a tender.
+  static bool get _savingPaid =>
+      Zone.current['p0.paid'] == true && owns(Zone.current['p0.paidOwner']);
+  static Future<T> persistPaid<T>(
+    Object? owner,
+    Future<T> Function() save,
+  ) async {
+    if (!owns(owner))
+      throw StateError('The paid sale belongs to another identity.');
+    return runZoned(save, zoneValues: {'p0.paid': true, 'p0.paidOwner': owner});
+  }
+
   static void assertWritable() {
-    if (!canWork && !(Zone.current['p0.activation'] == true && current != null))
+    if (!canWork &&
+        !_savingPaid &&
+        !(Zone.current['p0.activation'] == true && current != null))
       throw StateError(
         'Business access is blocked: ' +
             (blocked.value ?? 'activation required'),
@@ -219,7 +294,7 @@ class BusinessBoundary {
   }
 
   static void assertGeneration(int expected) {
-    if (generation.value != expected)
+    if (generation.value != expected && !_savingPaid)
       throw StateError('The device identity changed during this operation.');
   }
 
@@ -228,6 +303,17 @@ class BusinessBoundary {
     assertWritable();
     return {...record, 'identity': record['identity'] ?? current!.toJson()};
   }
+
+  static Map<String, dynamic> stampEvent(Map<String, dynamic> event) {
+    if (initialized && current?.isProvisional == true) {
+      assertWritable();
+      return event;
+    }
+    return stamp(event);
+  }
+
+  static bool ownsEvent(Object? identity) =>
+      (identity == null && adoptingLegacy) || owns(identity);
 
   static bool owns(Object? identity) =>
       !initialized || (current?.matches(identity) ?? false);
@@ -284,13 +370,14 @@ class BusinessBoundary {
     BusinessIdentity next, {
     Future<void> Function()? install,
   }) async {
+    await paymentsSettled;
     final prefs = _prefs;
     if (prefs == null) {
       current = next;
       await install?.call();
       return false;
     }
-    final changed = current?.encoded != next.encoded;
+    final changed = !(current?.matches(next.toJson()) ?? false);
     await prefs.setString(blockedKey, 'device_reactivation_required');
     blocked.value = 'device_reactivation_required';
     generation.value++;
@@ -321,9 +408,24 @@ class BusinessBoundary {
         await prefs.remove(key);
         await prefs.remove('_p0.tag.$key');
       }
+      final legacy = legacyPreferences;
+      if (legacy != null) {
+        for (final item in (legacy['values'] as Map).entries) {
+          if (financialStore(item.key as String)) {
+            await quarantine('legacy-preferences', item.key as String, {
+              'identity': legacy['identity'],
+              'value': item.value,
+            });
+          }
+        }
+      }
+      await prefs.remove(legacyPreferencesKey);
       await prefs.remove(legacyKey);
       await prefs.setString(identityKey, next.encoded);
       current = next;
+    }
+    if (!changed && current?.isProvisional == true && !next.isProvisional) {
+      await completeIdentity(next, generation.value);
     }
     if (install != null) {
       await runZoned(install, zoneValues: {'p0.activation': true});
@@ -340,6 +442,8 @@ class BusinessBoundary {
 
   @visibleForTesting
   static void resetForTest() {
+    _payments = 0;
+    _paymentsDone = null;
     _prefs = null;
     current = null;
     _wipers.clear();

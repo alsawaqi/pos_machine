@@ -1,3 +1,4 @@
+import '../tenancy/business_identity.dart';
 import '../services/table_round_validation.dart';
 import '../services/table_action_deadline.dart';
 import '../draft_recovery/saved_copy_discard.dart';
@@ -491,39 +492,46 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
   }
 
   @override
-  void onTablePaid(DiningTableSession paid, OrderSnapshot snapshot) {
+  Future<void> onTablePaid(
+    DiningTableSession paid,
+    OrderSnapshot snapshot,
+  ) async {
     if (!live) return;
     final context =
         paymentContext?.call(snapshot) ??
         Future.value(const TablePaymentContext());
-    _hook(() async {
-      final session = await _remember(paid);
-      if (session.seatingKey == null) {
-        throw StateError('A Live table payment must have a seating.');
-      }
-      final payment = await context;
-      final bill = session.serverOrderUuid ?? snapshot.serverOrderUuid;
-      final event = buildOrderPayEvent(
-        snapshot,
-        orderUuid: bill,
-        suppressDeviceLoyaltyRedeem: true,
-        lat: payment.lat,
-        lng: payment.lng,
-        cardCharge: payment.cardCharge,
-        now: clock(),
-        newUuid: payment.eventId == null ? newUuid : () => payment.eventId!,
-      );
-      // The original local UUID remains the key after an ACK rebind, so a
-      // manager's later history-based void can resolve the canonical bill.
-      await outbox.enqueueEvent(
-        snapshot.serverOrderUuid.isEmpty ? bill : snapshot.serverOrderUuid,
-        event,
-        createdAt: clock(),
-        beforeFlush: payment.prepareEvent == null
-            ? null
-            : () => payment.prepareEvent!(event),
-      );
-    });
+    await _serial(
+      () => BusinessBoundary.persistPaid(snapshot.businessIdentity, () async {
+        final session = await _remember(paid);
+        if (session.seatingKey == null) {
+          throw StateError('A Live table payment must have a seating.');
+        }
+        final payment = await context;
+        final bill = session.serverOrderUuid ?? snapshot.serverOrderUuid;
+        final event = buildOrderPayEvent(
+          snapshot,
+          orderUuid: bill,
+          suppressDeviceLoyaltyRedeem: true,
+          lat: payment.lat,
+          lng: payment.lng,
+          cardCharge: payment.cardCharge,
+          now: clock(),
+          newUuid: payment.eventId == null ? newUuid : () => payment.eventId!,
+        );
+        // The original local UUID remains the key after an ACK rebind, so a
+        // manager's later history-based void can resolve the canonical bill.
+        await outbox.enqueueEvent(
+          snapshot.serverOrderUuid.isEmpty ? bill : snapshot.serverOrderUuid,
+          event,
+          createdAt: clock(),
+          waitForSync: false,
+          enrichGps: payment.lat == null || payment.lng == null,
+          beforeFlush: payment.prepareEvent == null
+              ? null
+              : () => payment.prepareEvent!(event),
+        );
+      }),
+    );
   }
 
   Future<List<Map<String, dynamic>>> delta(DiningTableSession session) async {
