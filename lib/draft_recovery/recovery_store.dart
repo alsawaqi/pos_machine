@@ -29,12 +29,16 @@ class RecoveryStore {
       '''CREATE TABLE draft_recovery_journal (
       id TEXT PRIMARY KEY, scope TEXT NOT NULL, state TEXT NOT NULL, payload TEXT NOT NULL)''',
     );
+    if (BusinessBoundary.initialized)
+      await ensureBusinessTable(db, 'draft_recovery_journal');
     await db.execute('''CREATE UNIQUE INDEX draft_recovery_one_active ON
       draft_recovery_journal(scope) WHERE state IN $activeStates''');
     await db.execute('''CREATE TABLE draft_recovery_retired (
       recovery_id TEXT NOT NULL, order_uuid TEXT NOT NULL, table_id TEXT NOT NULL,
       order_reference TEXT, occupied_at TEXT, seating_key TEXT,
       PRIMARY KEY (recovery_id, table_id))''');
+    if (BusinessBoundary.initialized)
+      await ensureBusinessTable(db, 'draft_recovery_retired');
   }
 
   static Future<void> createClosedSchema(DatabaseExecutor db) async {
@@ -43,6 +47,8 @@ class RecoveryStore {
       order_uuid TEXT PRIMARY KEY, scope TEXT NOT NULL, local_json TEXT NOT NULL,
       proof_json TEXT NOT NULL, archived_at TEXT NOT NULL)''',
     );
+    if (BusinessBoundary.initialized)
+      await ensureBusinessTable(db, 'draft_recovery_closed_archive');
   }
 
   Future<void> discardSavedCopy(

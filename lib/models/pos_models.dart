@@ -1729,6 +1729,7 @@ class OrderSessionDraft {
 }
 
 class OrderSnapshot {
+  final Map<String, dynamic>? businessIdentity;
   final int orderNumber;
   final String orderType;
   final List<Map<String, dynamic>> items;
@@ -1810,6 +1811,7 @@ class OrderSnapshot {
   final String deliveryDriverPhone;
 
   const OrderSnapshot({
+    this.businessIdentity,
     required this.orderNumber,
     required this.orderType,
     required this.items,
@@ -1903,6 +1905,8 @@ class OrderSnapshot {
 
   factory OrderSnapshot.fromMap(Map<String, dynamic> map) {
     return OrderSnapshot(
+      businessIdentity: (map['businessIdentity'] as Map?)
+          ?.cast<String, dynamic>(),
       orderNumber: (map['orderNumber'] as num?)?.toInt() ?? 1450,
       orderType: map['orderType']?.toString() ?? 'quick_order',
       items: ((map['items'] as List?) ?? [])
@@ -1994,6 +1998,7 @@ class OrderSnapshot {
 
   Map<String, dynamic> toMap() {
     return {
+      'businessIdentity': businessIdentity,
       'orderNumber': orderNumber,
       'orderType': orderType,
       'items': items,
@@ -2111,6 +2116,7 @@ class OrderSnapshot {
     String? deliveryDriverPhone,
   }) {
     return OrderSnapshot(
+      businessIdentity: businessIdentity,
       orderNumber: orderNumber ?? this.orderNumber,
       orderType: orderType ?? this.orderType,
       items: items ?? this.items,

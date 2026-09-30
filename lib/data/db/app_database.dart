@@ -38,6 +38,8 @@ part 'app_database.g.dart';
   ],
 )
 class AppDatabase extends _$AppDatabase {
+  static final _liveDatabases = <AppDatabase>{};
+  static AppDatabase? get liveDatabase => _liveDatabases.firstOrNull;
   AppDatabase() : super(driftDatabase(name: 'pos_machine_cache')) {
     _registerTenancy();
   }
@@ -205,7 +207,28 @@ class AppDatabase extends _$AppDatabase {
   Future<void> prepareTenancy() async {
     if (!BusinessBoundary.initialized || BusinessBoundary.current == null)
       return;
-    final identity = BusinessBoundary.current!.encoded.replaceAll("'", "''");
+    final owner = BusinessBoundary.current!.encoded;
+    final context = await customSelect(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='_p0_owner'",
+    ).get();
+    if (context.isEmpty) {
+      await customStatement(
+        'CREATE TABLE _p0_owner(id INTEGER PRIMARY KEY CHECK(id=1), identity TEXT NOT NULL)',
+      );
+      await customStatement('INSERT INTO _p0_owner(id,identity) VALUES(1,?)', [
+        owner,
+      ]);
+    } else {
+      final prior = await customSelect(
+        'SELECT identity FROM _p0_owner WHERE id=1',
+      ).get();
+      if (prior.isEmpty || prior.single.data['identity'] != owner) {
+        await customStatement(
+          'INSERT OR REPLACE INTO _p0_owner(id,identity) VALUES(1,?)',
+          [owner],
+        );
+      }
+    }
     for (final table in allTables) {
       final name = table.actualTableName;
       final columns = await customSelect('PRAGMA table_info("$name")').get();
@@ -213,13 +236,52 @@ class AppDatabase extends _$AppDatabase {
         await customStatement(
           'ALTER TABLE "$name" ADD COLUMN _business_identity TEXT',
         );
+        if (BusinessBoundary.adoptingLegacy) {
+          await customStatement('UPDATE "$name" SET _business_identity=?', [
+            owner,
+          ]);
+          if (name == 'order_outbox') {
+            for (final row in await customSelect(
+              'SELECT order_uuid,events_json FROM order_outbox',
+            ).get()) {
+              final events =
+                  jsonDecode(row.data['events_json'] as String) as List;
+              await customStatement(
+                'UPDATE order_outbox SET events_json=? WHERE order_uuid=?',
+                [
+                  jsonEncode([
+                    for (final event in events)
+                      {
+                        ...(event as Map),
+                        'identity':
+                            event['identity'] ??
+                            BusinessBoundary.current!.toJson(),
+                      },
+                  ]),
+                  row.data['order_uuid'],
+                ],
+              );
+            }
+          }
+        }
       }
-      await customStatement('DROP TRIGGER IF EXISTS "_p0_stamp_$name"');
-      await customStatement(
-        'CREATE TRIGGER "_p0_stamp_$name" AFTER INSERT ON "$name" '
-        "WHEN NEW._business_identity IS NULL BEGIN UPDATE \"$name\" "
-        "SET _business_identity = '$identity' WHERE rowid = NEW.rowid; END",
-      );
+      final installed = await customSelect(
+        "SELECT name FROM sqlite_master WHERE type='trigger' AND name=?",
+        variables: [Variable('_p0_stamp_v2_' + name)],
+      ).get();
+      if (installed.isEmpty) {
+        final old = await customSelect(
+          "SELECT name FROM sqlite_master WHERE type='trigger' AND name=?",
+          variables: [Variable('_p0_stamp_' + name)],
+        ).get();
+        if (old.isNotEmpty)
+          await customStatement('DROP TRIGGER "_p0_stamp_$name"');
+        await customStatement(
+          'CREATE TRIGGER "_p0_stamp_v2_$name" AFTER INSERT ON "$name" '
+          'WHEN NEW._business_identity IS NULL BEGIN UPDATE "$name" '
+          'SET _business_identity=(SELECT identity FROM _p0_owner WHERE id=1) WHERE rowid=NEW.rowid; END',
+        );
+      }
       final foreign = await customSelect(
         'SELECT rowid AS _p0_rowid, * FROM "$name" '
         'WHERE _business_identity IS NULL OR _business_identity != ?',
@@ -260,6 +322,8 @@ class AppDatabase extends _$AppDatabase {
   }
 
   static Future<void> wipePersistedTenantData() async {
+    if (_liveDatabases.isNotEmpty)
+      return; // Each live handle is already a registered wiper.
     final db = AppDatabase();
     try {
       await db.wipeTenantData();
@@ -273,12 +337,14 @@ class AppDatabase extends _$AppDatabase {
   }
 
   void _registerTenancy() {
+    _liveDatabases.add(this);
     BusinessBoundary.registerWiper(wipeTenantData);
     BusinessBoundary.registerActivator(_refreshTenancy);
   }
 
   @override
   Future<void> close() async {
+    _liveDatabases.remove(this);
     BusinessBoundary.unregisterWiper(wipeTenantData);
     BusinessBoundary.unregisterActivator(_refreshTenancy);
     await super.close();

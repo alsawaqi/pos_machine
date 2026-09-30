@@ -1546,6 +1546,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       _orderPreparations.run(() => _prepareCompletedOrder(snapshot));
 
   Future<void> _prepareCompletedOrder(OrderSnapshot snapshot) async {
+    final completedOrderRepository = ref.read(orderSyncRepositoryProvider);
+    final producingStaffId = ref.read(sessionServiceProvider).staff?.id;
     final sharedTable =
         ref.read(tableSessionsModeProvider) == 'live' &&
         snapshot.diningTableId.isNotEmpty;
@@ -1607,8 +1609,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       );
       return; // B2 onTablePaid emits pay only; no customer/create/donation path.
     }
-    if (!mounted) return;
-    final staffId = ref.read(sessionServiceProvider).staff?.id;
+    final staffId = producingStaffId;
     final tableId = int.tryParse(snapshot.diningTableId);
 
     // Resolve the customer (find-or-create on phone, + register the plate).
@@ -1655,26 +1656,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         ? earnedRuleIds
         : const <int>[];
 
-    try {
-      await ref
-          .read(orderSyncRepositoryProvider)
-          .enqueue(
-            snapshot,
-            lat: lat,
-            lng: lng,
-            staffId: staffId,
-            tableId: tableId,
-            joinedTableIds: joinedTableIds,
-            customerId: customerId,
-            plateNumber: plate.isEmpty ? null : plate,
-            deliveryProviderName: deliveryProviderName,
-            cardCharge: cardCharge,
-            loyaltyRuleIds: loyaltyRuleIds,
-          );
-    } catch (_) {
-      // The outbox persists the order before any network call, so it is queued
-      // even if this throws; flush() retries on the next reconnect.
-    }
+    await completedOrderRepository.enqueue(
+      snapshot,
+      lat: lat,
+      lng: lng,
+      staffId: staffId,
+      tableId: tableId,
+      joinedTableIds: joinedTableIds,
+      customerId: customerId,
+      plateNumber: plate.isEmpty ? null : plate,
+      deliveryProviderName: deliveryProviderName,
+      cardCharge: cardCharge,
+      loyaltyRuleIds: loyaltyRuleIds,
+    );
   }
 
   /// Phase C2 — mirror a held order to pos_api via the durable outbox (an

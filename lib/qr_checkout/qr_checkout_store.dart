@@ -1,3 +1,4 @@
+import 'package:pos_machine/tenancy/business_identity.dart';
 import 'package:pos_machine/tenancy/tenant_sqlite.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
@@ -33,6 +34,8 @@ class SqliteCheckoutStore implements CheckoutStore, CheckoutReceiptJournal {
     await db.execute('''CREATE TABLE qr_checkout_attempts (
       id TEXT PRIMARY KEY, scope TEXT NOT NULL, state TEXT NOT NULL,
       payload TEXT NOT NULL)''');
+    if (BusinessBoundary.initialized)
+      await ensureBusinessTable(db, 'qr_checkout_attempts');
     await db.execute('''CREATE UNIQUE INDEX qr_checkout_one_active
       ON qr_checkout_attempts(scope)
       WHERE state NOT IN ('paid', 'released', 'managed')''');

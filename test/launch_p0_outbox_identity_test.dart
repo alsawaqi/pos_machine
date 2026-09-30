@@ -3,12 +3,12 @@ import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../lib/data/db/app_database.dart';
-import '../lib/data/order_sync_repository.dart';
-import '../lib/services/pos_api_service.dart';
-import '../lib/state/pos_controller.dart';
-import '../lib/tenancy/business_identity.dart';
-import '../lib/tenancy/device_heartbeat.dart';
+import 'package:pos_machine/data/db/app_database.dart';
+import 'package:pos_machine/data/order_sync_repository.dart';
+import 'package:pos_machine/services/pos_api_service.dart';
+import 'package:pos_machine/state/pos_controller.dart';
+import 'package:pos_machine/tenancy/business_identity.dart';
+import 'package:pos_machine/tenancy/device_heartbeat.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

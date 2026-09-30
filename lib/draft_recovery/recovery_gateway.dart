@@ -27,6 +27,7 @@ class ApiRecoveryGateway implements DraftRecoveryGateway, DineInGateway {
     try {
       value = await operation();
     } on ApiException catch (error) {
+      check(); // A discarded stale response still invalidates the pinned recovery.
       if (error.code == 'adjusted_bill_not_supported') {
         throw StateError('adjusted_bill_not_supported');
       }

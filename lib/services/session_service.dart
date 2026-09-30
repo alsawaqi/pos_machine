@@ -142,6 +142,7 @@ class SessionService {
   /// Read the persisted token into memory at startup.
   Future<void> load() async {
     _deviceToken = await _secure.read(key: _kDeviceToken);
+    await BusinessBoundary.adoptLegacy(_deviceToken);
     _terminalPin = await _secure.read(key: _kTerminalPin);
     final legacy = _prefs.getString(_kTerminalPin);
     if (_terminalPin == null && legacy != null && legacy.trim().isNotEmpty) {

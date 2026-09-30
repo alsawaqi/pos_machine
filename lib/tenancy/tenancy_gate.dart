@@ -9,12 +9,18 @@ class TenancyGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<String?>(
     valueListenable: BusinessBoundary.blocked,
-    builder: (context, reason, _) => reason == null
-        ? child
-        : _BlockedScreen(
+    builder: (context, reason, _) => Stack(
+      fit: StackFit.expand,
+      children: [
+        // Preserve the navigator and any bank callback until evidence is saved.
+        Offstage(offstage: reason != null, child: child),
+        if (reason != null)
+          _BlockedScreen(
             suspended: reason == 'company_suspended',
             activation: activation,
           ),
+      ],
+    ),
   );
 }
 
@@ -30,7 +36,7 @@ class _BlockedScreenState extends State<_BlockedScreen> {
   bool activating = false;
   @override
   Widget build(BuildContext context) {
-    if (activating && !widget.suspended)
+    if (activating)
       return Navigator(
         onGenerateRoute: (_) => MaterialPageRoute(builder: widget.activation),
       );
@@ -57,11 +63,10 @@ class _BlockedScreenState extends State<_BlockedScreen> {
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 16),
-                  if (!widget.suspended)
-                    FilledButton(
-                      onPressed: () => setState(() => activating = true),
-                      child: Text(ar ? 'تفعيل الجهاز' : 'Activate device'),
-                    ),
+                  FilledButton(
+                    onPressed: () => setState(() => activating = true),
+                    child: Text(ar ? 'تفعيل الجهاز' : 'Activate device'),
+                  ),
                 ],
               ),
             ),

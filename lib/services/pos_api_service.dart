@@ -39,7 +39,7 @@ class PosApiService {
                headers: {'Accept': 'application/json'},
              ),
            ) {
-    _dio.interceptors.add(TenancyInterceptor());
+    _dio.interceptors.add(TenancyInterceptor(tokenGetter: tokenGetter));
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
@@ -59,7 +59,7 @@ class PosApiService {
         },
       ),
     );
-    DeviceHeartbeat.start(_dio, 'pos_machine/1.0.0+1');
+    DeviceHeartbeat.start(_dio);
   }
 
   Future<Map<String, dynamic>> reversalRequest(

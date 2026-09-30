@@ -1,3 +1,5 @@
+import 'package:pos_machine/tenancy/business_identity.dart';
+import '../tenancy/tenant_sqlite.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'recovery_admission.dart';
@@ -48,6 +50,8 @@ class CheckoutRecovery {
         requested_by_staff_id INTEGER NOT NULL, authority TEXT NOT NULL,
         reason TEXT NOT NULL)''',
       );
+      if (BusinessBoundary.initialized)
+        await ensureBusinessTable(txn, 'qr_checkout_recovery_archive');
       await txn.insert('qr_checkout_recovery_archive', {
         'attempt_id': original['id'],
         'original_row': jsonEncode(original),

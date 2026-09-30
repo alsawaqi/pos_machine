@@ -5,11 +5,11 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../lib/tenancy/business_identity.dart';
-import '../lib/tenancy/tenant_preferences.dart';
-import '../lib/tenancy/tenancy_gate.dart';
-import '../lib/tenancy/tenancy_interceptor.dart';
-import '../lib/tenancy/device_heartbeat.dart';
+import 'package:pos_machine/tenancy/business_identity.dart';
+import 'package:pos_machine/tenancy/tenant_preferences.dart';
+import 'package:pos_machine/tenancy/tenancy_gate.dart';
+import 'package:pos_machine/tenancy/tenancy_interceptor.dart';
+import 'package:pos_machine/tenancy/device_heartbeat.dart';
 
 const oldOwner = BusinessIdentity(11, 21, 'device-uuid');
 const newOwner = BusinessIdentity(12, 22, 'device-uuid');
@@ -49,7 +49,12 @@ void main() {
         'config',
       ]) {
         await prefs.setString(key, 'old merchant data');
-        expect(raw.getString('_p0.tag.$key'), oldOwner.encoded);
+        expect(
+          BusinessBoundary.decodePreference(
+            raw.getString(BusinessBoundary.recordKey(key, oldOwner)),
+          )!['identity'],
+          oldOwner.toJson(),
+        );
       }
       await prefs.setString(
         'order_outbox_v1',
@@ -99,8 +104,13 @@ void main() {
       );
       release.complete();
       await rejected;
-      expect(raw.getString('draft'), 'new owner draft');
-      expect(raw.getString('_p0.tag.draft'), newOwner.encoded);
+      expect(TenantPreferences(raw).getString('draft'), 'new owner draft');
+      expect(
+        BusinessBoundary.decodePreference(
+          raw.getString(BusinessBoundary.recordKey('draft', newOwner)),
+        )!['identity'],
+        newOwner.toJson(),
+      );
     },
   );
 
@@ -125,13 +135,13 @@ void main() {
       Future<void> fail() async => throw StateError('storage unavailable');
       BusinessBoundary.registerWiper(fail);
       await expectLater(BusinessBoundary.accept(newOwner), throwsStateError);
-      expect(raw.getString('draft'), 'old');
+      expect(TenantPreferences(raw).getString('draft'), 'old');
       expect(raw.containsKey(BusinessBoundary.transitionKey), true);
       await BusinessBoundary.initialize(raw);
       expect(BusinessBoundary.canWork, false);
       BusinessBoundary.unregisterWiper(fail);
       await BusinessBoundary.accept(newOwner);
-      expect(raw.getString('draft'), isNull);
+      expect(TenantPreferences(raw).getString('draft'), isNull);
       expect(BusinessBoundary.canWork, true);
     },
   );
@@ -194,7 +204,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(raw.getString('draft'), 'preserved');
+      expect(TenantPreferences(raw).getString('draft'), 'preserved');
       expect(BusinessBoundary.canWork, false);
       await tester.pumpWidget(const SizedBox.shrink());
     });
@@ -272,17 +282,14 @@ class _PausedTagRemoval implements SharedPreferences {
   final Completer<void> entered;
   final Completer<void> release;
   @override
-  Future<bool> remove(String key) async {
-    final result = await raw.remove(key);
-    if (key == '_p0.tag.draft') {
+  Future<bool> setString(String key, String value) async {
+    if (key == BusinessBoundary.recordKey('draft', oldOwner)) {
       entered.complete();
       await release.future;
     }
-    return result;
+    return raw.setString(key, value);
   }
 
-  @override
-  Future<bool> setString(String key, String value) => raw.setString(key, value);
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw UnsupportedError('Unexpected test preference operation');

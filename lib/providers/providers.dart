@@ -118,7 +118,7 @@ final l10nProvider = Provider<L10n>(
 );
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
-  final db = AppDatabase();
+  final db = AppDatabase.liveDatabase ?? AppDatabase();
   ref.onDispose(db.close);
   return db;
 });
@@ -141,6 +141,10 @@ class SessionController extends Notifier<SessionState> {
     await _svc.saveActivation(result);
     if (oldGeneration != BusinessBoundary.generation.value ||
         oldIdentity != BusinessBoundary.current?.encoded) {
+      ref.invalidate(qrSettlementOutboxProvider);
+      ref.invalidate(stuckOrderSyncProvider);
+      ref.invalidate(orderSyncAttentionProvider);
+      ref.invalidate(geofenceProvider);
       ref.invalidate(configRepositoryProvider);
       ref.invalidate(orderSyncRepositoryProvider);
       ref.invalidate(tableSyncCoordinatorProvider);

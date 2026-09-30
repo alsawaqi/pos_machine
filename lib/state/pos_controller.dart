@@ -1,4 +1,5 @@
 import '../tenancy/business_identity.dart';
+import '../tenancy/device_heartbeat.dart';
 import '../services/server_receipt_history.dart';
 import 'dart:async';
 import 'dart:ui' show Locale;
@@ -63,6 +64,7 @@ class PaymentPageAmounts {
 
 class PosController extends ChangeNotifier
     implements machine_pricing.MachinePricingState {
+  final _businessIdentity = BusinessBoundary.current?.toJson();
   static const Duration _rearDisplaySyncDebounceDuration = Duration(
     milliseconds: 250,
   );
@@ -1019,7 +1021,7 @@ class PosController extends ChangeNotifier
   /// (after the local save + receipt). The screen wires this to the order-push
   /// outbox so the order reaches pos_api. Fire-and-forget — it must never block
   /// or fail order completion.
-  void Function(OrderSnapshot snapshot)? onOrderCompleted;
+  FutureOr<void> Function(OrderSnapshot snapshot)? onOrderCompleted;
   String? Function()? canonicalDiningBillUuid;
   Future<OrderSnapshot> Function(OrderSnapshot)? refreshServerReceipt;
 
@@ -2092,6 +2094,7 @@ class PosController extends ChangeNotifier
     ];
 
     return OrderSnapshot(
+      businessIdentity: _businessIdentity,
       orderNumber: currentOrderNumber,
       receiptNumber: receiptNumber, // P-F8 — '' until allocated
       offers: frozenOffers, // P-F9
@@ -3778,7 +3781,11 @@ class PosController extends ChangeNotifier
     }
   }
 
-  Future<String?> payAndPrint({double? cashTenderedAmount}) async {
+  Future<String?> payAndPrint({double? cashTenderedAmount}) =>
+      DeviceHeartbeat.trackTender(
+        () => _payAndPrintAdmitted(cashTenderedAmount: cashTenderedAmount),
+      );
+  Future<String?> _payAndPrintAdmitted({double? cashTenderedAmount}) async {
     final customerRefusal = customerTenderRefusal(
       gift: selectedPaymentMethod == 'Gift',
     );
@@ -4044,7 +4051,13 @@ class PosController extends ChangeNotifier
     }
   }
 
-  Future<String?> payMixedCashAndCard({required double cashAmount}) async {
+  Future<String?> payMixedCashAndCard({required double cashAmount}) =>
+      DeviceHeartbeat.trackTender(
+        () => _payMixedCashAndCardAdmitted(cashAmount: cashAmount),
+      );
+  Future<String?> _payMixedCashAndCardAdmitted({
+    required double cashAmount,
+  }) async {
     final customerRefusal = customerTenderRefusal();
     if (customerRefusal != null) return customerRefusal;
     final loyaltyRefusal = _guardLoyaltyTender();
@@ -4301,6 +4314,40 @@ class PosController extends ChangeNotifier
     required bool isDineInPayment,
     required String successMessage,
   }) async {
+    final paid = snapshot().copyWith(
+      serverOrderUuid: _activeServerOrderUuid ?? uuidV4(),
+    );
+    Future<void> preserve() => BusinessBoundary.quarantine(
+      'paid-sale-completion',
+      paid.serverOrderUuid,
+      {
+        'identity': _businessIdentity,
+        'snapshot': paid.toMap(),
+        'card_charge': _lastCardCharge?.toMap(),
+      },
+    );
+    try {
+      if (BusinessBoundary.initialized &&
+          (!BusinessBoundary.canWork ||
+              !BusinessBoundary.owns(_businessIdentity))) {
+        await preserve();
+        return successMessage;
+      }
+      return await _finishCompletedOrderAdmitted(
+        isDineInPayment: isDineInPayment,
+        successMessage: successMessage,
+      );
+    } catch (_) {
+      if (!BusinessBoundary.initialized) rethrow;
+      await preserve();
+      return successMessage;
+    }
+  }
+
+  Future<String> _finishCompletedOrderAdmitted({
+    required bool isDineInPayment,
+    required String successMessage,
+  }) async {
     _assignFinalOrderNumber();
     // Stamp the server order_uuid now, so the saved record + the order.create
     // push share it — a later full-cancel can then emit a matching order.void.
@@ -4364,7 +4411,7 @@ class PosController extends ChangeNotifier
     await _saveCompletedOrder(completedSnapshot);
     // Push the finalized order to pos_api (via the durable outbox). Fire-and-
     // forget: completion never waits on, or fails because of, the network.
-    onOrderCompleted?.call(completedSnapshot);
+    await onOrderCompleted?.call(completedSnapshot);
     if (isDineInPayment && !serverOwned) {
       await _markActiveDiningTablePaid(completedSnapshot);
     }

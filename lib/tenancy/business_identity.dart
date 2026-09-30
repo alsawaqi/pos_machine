@@ -41,6 +41,104 @@ class BusinessIdentity {
 /// clears business data. Only a successful activation can commit another owner.
 class BusinessBoundary {
   static const identityKey = '_p0.business_identity';
+  static const recordPrefix = '_p0.record.';
+  static const legacyKey = '_p0.legacy_identity';
+  static String recordKey(String key, BusinessIdentity owner) =>
+      recordPrefix +
+      base64Url.encode(utf8.encode(owner.encoded)) +
+      '.' +
+      base64Url.encode(utf8.encode(key));
+  static bool get adoptingLegacy =>
+      current != null && current!.matches(_prefs?.getString(legacyKey));
+  static Map<String, dynamic> preferenceRecord(
+    String key,
+    Object value,
+    BusinessIdentity owner,
+  ) => {'key': key, 'identity': owner.toJson(), 'value': value};
+  static Map<String, dynamic>? decodePreference(Object? value) {
+    try {
+      final decoded = value is String ? jsonDecode(value) : value;
+      return decoded is Map &&
+              decoded.containsKey('key') &&
+              decoded.containsKey('identity') &&
+              decoded.containsKey('value')
+          ? decoded.cast<String, dynamic>()
+          : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Called by the real session loader after reading the secure legacy token.
+  /// A server refusal remains durable; adoption never clears that refusal.
+  static Future<bool> adoptLegacy(String? token) async {
+    final prefs = _prefs;
+    if (prefs == null ||
+        current != null ||
+        (token ?? '').trim().isEmpty ||
+        prefs.containsKey(transitionKey))
+      return false;
+    final company = prefs.getInt('company_id'),
+        branch = prefs.getInt('branch_id');
+    final uuid = prefs.getString('device_uuid');
+    if (company == null ||
+        company <= 0 ||
+        branch == null ||
+        branch <= 0 ||
+        (uuid ?? '').isEmpty)
+      return false;
+    final owner = BusinessIdentity(company, branch, uuid!);
+    await prefs.setString(legacyKey, owner.encoded);
+    for (final key in prefs.getKeys().toList()) {
+      if (privatePreference(key) ||
+          keepPreference(key) ||
+          identityPreference(key))
+        continue;
+      Object? value = prefs.get(key);
+      if (value == null) continue;
+      if (key.contains('outbox') && value is String) {
+        try {
+          final rows = jsonDecode(value);
+          if (rows is List) {
+            value = jsonEncode([
+              for (final row in rows)
+                if (row is Map)
+                  {
+                    ...row,
+                    'identity': row['identity'] ?? owner.toJson(),
+                    if (row['events'] is List)
+                      'events': [
+                        for (final event in row['events'] as List)
+                          if (event is Map)
+                            {
+                              ...event,
+                              'identity': event['identity'] ?? owner.toJson(),
+                            }
+                          else
+                            event,
+                      ],
+                  }
+                else
+                  row,
+            ]);
+          }
+        } catch (_) {
+          /* Keep unreadable money evidence intact for its store. */
+        }
+      }
+      final record = jsonEncode(preferenceRecord(key, value!, owner));
+      if (!await prefs.setString(recordKey(key, owner), record))
+        throw StateError('Legacy storage could not be tagged.');
+      await prefs.remove(key);
+      await prefs.remove('_p0.tag.$key');
+    }
+    if (!await prefs.setString(identityKey, owner.encoded))
+      throw StateError('Legacy identity could not be saved.');
+    current = owner;
+    blocked.value = prefs.getString(blockedKey);
+    return true;
+  }
+
   static const blockedKey = '_p0.blocked';
   static const transitionKey = '_p0.transition';
   static SharedPreferences? _prefs;
@@ -92,7 +190,7 @@ class BusinessBoundary {
   static void observeError(int? status, String? code) {
     final reason = switch ((status, code)) {
       (401, 'device_reactivation_required') => 'device_reactivation_required',
-      (403, 'company_suspended') => 'company_suspended',
+      (403 || 503, 'company_suspended') => 'company_suspended',
       (409, 'device_unassigned') => 'device_reactivation_required',
       _ => null,
     };
@@ -143,7 +241,7 @@ class BusinessBoundary {
     final prefs = _prefs;
     if (prefs == null) return;
     final id = base64Url.encode(utf8.encode('$source|$key'));
-    await prefs.setString(
+    final saved = await prefs.setString(
       '_p0.quarantine.$id',
       jsonEncode({
         'source': source,
@@ -153,6 +251,7 @@ class BusinessBoundary {
         'record': record,
       }),
     );
+    if (!saved) throw StateError('Financial quarantine could not be saved.');
   }
 
   static bool keepPreference(String key) => const {
@@ -178,7 +277,7 @@ class BusinessBoundary {
   }.contains(key);
   static bool privatePreference(String key) => key.startsWith('_p0.');
   static bool financialStore(String key) => RegExp(
-    r'outbox|combine|recovery|journal|reversal|pending.*charge',
+    r'outbox|combine|recovery|journal|reversal|pending.*charge|local_table_events|checkout.*attempt',
   ).hasMatch(key);
 
   static Future<bool> accept(
@@ -195,7 +294,7 @@ class BusinessBoundary {
     await prefs.setString(blockedKey, 'device_reactivation_required');
     blocked.value = 'device_reactivation_required';
     generation.value++;
-    if (changed || prefs.containsKey(transitionKey)) {
+    if (changed) {
       // Retryable crash marker. A partially completed wipe cannot open sales.
       await prefs.setString(transitionKey, next.encoded);
       blocked.value = 'device_reactivation_required';
@@ -203,21 +302,26 @@ class BusinessBoundary {
         await wipe();
       }
       for (final key in prefs.getKeys().toList()) {
-        if (privatePreference(key) || keepPreference(key)) continue;
+        if ((privatePreference(key) && !key.startsWith(recordPrefix)) ||
+            keepPreference(key))
+          continue;
         final value = prefs.get(key);
-        if (financialStore(key)) {
-          Object? record = value;
+        final packed = decodePreference(value);
+        final businessKey = packed?['key'] as String? ?? key;
+        if (financialStore(businessKey)) {
+          Object? record = packed?['value'] ?? value;
           try {
-            if (value is String) record = jsonDecode(value);
+            if (record is String) record = jsonDecode(record);
           } catch (_) {}
           await quarantine('preferences', key, {
-            'identity': prefs.getString('_p0.tag.$key'),
+            'identity': packed?['identity'] ?? prefs.getString('_p0.tag.$key'),
             'value': record,
           }, count: record is List ? record.length : 1);
         }
         await prefs.remove(key);
         await prefs.remove('_p0.tag.$key');
       }
+      await prefs.remove(legacyKey);
       await prefs.setString(identityKey, next.encoded);
       current = next;
     }

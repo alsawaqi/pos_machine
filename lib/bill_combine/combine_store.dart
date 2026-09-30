@@ -13,6 +13,8 @@ class CombineStore {
     await db.execute('''CREATE TABLE bill_combine_journal (
       id TEXT PRIMARY KEY, scope TEXT NOT NULL, state TEXT NOT NULL,
       payload TEXT NOT NULL)''');
+    if (BusinessBoundary.initialized)
+      await ensureBusinessTable(db, 'bill_combine_journal');
     await db.execute('''CREATE UNIQUE INDEX bill_combine_one_active ON
       bill_combine_journal(scope) WHERE state IN ('pending', 'confirmed')''');
   }

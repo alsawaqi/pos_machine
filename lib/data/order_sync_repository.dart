@@ -71,6 +71,7 @@ class OrderSyncRepository {
   /// Rechecked inside the serialized queue before any outbox mutation or push.
   /// Reads stay available while a durable draft recovery blocks new work.
   final Future<void> Function()? mutationGuard;
+  final _ownerIdentity = BusinessBoundary.current;
   final _ownerGeneration = BusinessBoundary.generation.value;
   Future<void> _flushTail = Future<void>.value();
   final Object _ackMutationScopeKey = Object();
@@ -369,47 +370,80 @@ class OrderSyncRepository {
     CardCharge? cardCharge,
     List<int> loyaltyRuleIds = const <int>[],
   }) async {
-    final enqueued = await _prepare(() async {
-      final payload = buildOrderSyncPayload(
-        snapshot,
-        lat: lat,
-        lng: lng,
-        staffId: staffId,
-        tableId: tableId,
-        joinedTableIds: joinedTableIds,
-        customerId: customerId,
-        plateNumber: plateNumber,
-        deliveryProviderName: deliveryProviderName,
-        cardCharge: cardCharge,
-        loyaltyRuleIds: loyaltyRuleIds,
-      );
+    final payload = buildOrderSyncPayload(
+      snapshot,
+      lat: lat,
+      lng: lng,
+      staffId: staffId,
+      tableId: tableId,
+      joinedTableIds: joinedTableIds,
+      customerId: customerId,
+      plateNumber: plateNumber,
+      deliveryProviderName: deliveryProviderName,
+      cardCharge: cardCharge,
+      loyaltyRuleIds: loyaltyRuleIds,
+    );
 
-      // A snapshot with no pushable lines (e.g. only non-catalog demo products)
-      // has nothing to persist server-side — skip it rather than queue a payload
-      // the server will reject for an empty `lines`.
-      final createPayload =
-          payload.events.first['payload'] as Map<String, dynamic>;
-      final order = createPayload['order'] as Map<String, dynamic>;
-      if ((order['lines'] as List).isEmpty) {
-        return false;
-      }
+    final owner = snapshot.businessIdentity ?? _ownerIdentity?.toJson();
+    final events = [
+      for (final event in payload.events)
+        {
+          ...event,
+          if (BusinessBoundary.initialized)
+            'identity': event['identity'] ?? owner,
+        },
+    ];
+    Future<void> preserve() => BusinessBoundary.quarantine(
+      'paid-sale',
+      payload.orderUuid,
+      {'identity': owner, 'events': events, 'order_uuid': payload.orderUuid},
+    );
+    if (BusinessBoundary.initialized &&
+        (!BusinessBoundary.canWork ||
+            !BusinessBoundary.owns(owner) ||
+            BusinessBoundary.generation.value != _ownerGeneration)) {
+      await preserve();
+      return;
+    }
+    bool enqueued;
+    try {
+      enqueued = await _prepare(() async {
+        // A snapshot with no pushable lines (e.g. only non-catalog demo products)
+        // has nothing to persist server-side — skip it rather than queue a payload
+        // the server will reject for an empty `lines`.
+        final createPayload =
+            payload.events.first['payload'] as Map<String, dynamic>;
+        final order = createPayload['order'] as Map<String, dynamic>;
+        if ((order['lines'] as List).isEmpty) {
+          return false;
+        }
 
-      await _db.enqueueOutbox(
-        OrderOutboxCompanion(
-          orderUuid: Value(payload.orderUuid),
-          eventsJson: Value(jsonEncode(payload.events)),
-          orderNumber: Value(snapshot.orderNumber),
-          createdAt: Value(DateTime.now()),
-        ),
-      );
-      sentryBreadcrumb(
-        'sync',
-        'order enqueued',
-        data: {'order': payload.orderUuid, 'events': payload.events.length},
-      );
-      return true;
-    });
-    if (enqueued) await flush();
+        await _db.enqueueOutbox(
+          OrderOutboxCompanion(
+            orderUuid: Value(payload.orderUuid),
+            eventsJson: Value(jsonEncode(events)),
+            orderNumber: Value(snapshot.orderNumber),
+            createdAt: Value(DateTime.now()),
+          ),
+        );
+        sentryBreadcrumb(
+          'sync',
+          'order enqueued',
+          data: {'order': payload.orderUuid, 'events': payload.events.length},
+        );
+        return true;
+      });
+    } catch (_) {
+      if (!BusinessBoundary.initialized) rethrow;
+      await preserve();
+      return;
+    }
+    // Only network work follows durable storage.
+    if (enqueued) {
+      try {
+        await flush();
+      } catch (_) {}
+    }
   }
 
   /// Enqueue an `order.void` for an already-pushed order (a full cancellation),

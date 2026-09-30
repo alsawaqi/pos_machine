@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'services/sunmi_receipt_service.dart';
+import 'tenancy/merchant_caches.dart';
 import 'services/presentation_service.dart';
 import 'tenancy/device_heartbeat.dart';
 import 'data/db/app_database.dart';
@@ -31,6 +34,7 @@ Future<void> main() async {
 
   final rawPreferences = await SharedPreferences.getInstance();
   await BusinessBoundary.initialize(rawPreferences);
+  BusinessBoundary.registerWiper(wipeMerchantCaches);
   BusinessBoundary.registerWiper(wipeBusinessDatabases);
   BusinessBoundary.registerWiper(AppDatabase.wipePersistedTenantData);
   BusinessBoundary.registerWiper(
@@ -51,13 +55,15 @@ Future<void> main() async {
   }
   await session.load();
   DeviceHeartbeat.pendingCount = () async {
-    final db = AppDatabase();
-    try {
-      return (await db.pendingOutbox()).length;
-    } finally {
-      await db.close();
-    }
+    final db = AppDatabase.liveDatabase ?? AppDatabase();
+    final rows = await db.pendingOutbox();
+    final outbox = rows.fold<int>(
+      0,
+      (count, row) => count + (jsonDecode(row.eventsJson) as List).length,
+    );
+    return outbox + await pendingSqliteBusinessWork();
   };
+  DeviceHeartbeat.printerStatus = () => SunmiReceiptService.lastPrinterStatus;
 
   BusinessBoundary.blocked.addListener(() {
     if (BusinessBoundary.blocked.value != null) {

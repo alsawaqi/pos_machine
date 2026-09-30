@@ -11,6 +11,7 @@ import 'kitchen_ticket.dart';
 import 'shift_summary.dart';
 
 class SunmiReceiptService {
+  static String? lastPrinterStatus;
   static Future<bool> printReversalSlip(List<SlipLine> lines) => _printLines([
     for (final line in lines)
       KitchenTicketLine(
@@ -64,12 +65,15 @@ class SunmiReceiptService {
   }) async {
     try {
       await _printReceiptBody(order, template: template);
+      lastPrinterStatus = 'ready';
       return true;
     } on MissingPluginException {
       printerPluginAvailable = false;
+      lastPrinterStatus = printerPluginAvailable ? 'error' : 'unavailable';
       return false;
     } catch (error) {
       debugPrint('Receipt print failed: $error');
+      lastPrinterStatus = printerPluginAvailable ? 'error' : 'unavailable';
       return false;
     }
   }
@@ -320,12 +324,15 @@ class SunmiReceiptService {
       }
       await SunmiPrinter.lineWrap(3);
       await SunmiPrinter.cutPaper();
+      lastPrinterStatus = 'ready';
       return true;
     } on MissingPluginException {
       printerPluginAvailable = false;
+      lastPrinterStatus = printerPluginAvailable ? 'error' : 'unavailable';
       return false;
     } catch (error) {
       debugPrint('Ticket print failed: $error');
+      lastPrinterStatus = printerPluginAvailable ? 'error' : 'unavailable';
       return false;
     }
   }

@@ -1,3 +1,5 @@
+import 'package:pos_machine/tenancy/business_identity.dart';
+import '../tenancy/tenant_sqlite.dart';
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'qr_checkout_models.dart';
@@ -132,6 +134,8 @@ Future<void> recordPaymentReview(
       decision TEXT NOT NULL, reference TEXT NOT NULL,
       request_id TEXT NOT NULL, server_result TEXT NOT NULL,
       reviewed_at TEXT NOT NULL)''');
+  if (BusinessBoundary.initialized)
+    await ensureBusinessTable(txn, '$paymentReviewTable');
   for (final item in evidence.saved) {
     final found = await txn.query(
       'qr_checkout_attempts',

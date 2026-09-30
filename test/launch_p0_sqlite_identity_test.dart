@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import '../lib/tenancy/business_identity.dart';
-import '../lib/tenancy/tenant_sqlite.dart';
-import '../lib/bill_combine/combine_store.dart';
-import '../lib/draft_recovery/recovery_store.dart';
+import 'package:pos_machine/tenancy/business_identity.dart';
+import 'package:pos_machine/tenancy/tenant_sqlite.dart';
+import 'package:pos_machine/bill_combine/combine_store.dart';
+import 'package:pos_machine/draft_recovery/recovery_store.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
