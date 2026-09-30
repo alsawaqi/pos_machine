@@ -519,7 +519,7 @@ class OrderSyncRepository {
     try {
       // Both operations run only after the immutable payment evidence is durable.
       final gps = enrichGps
-          ? _acquireFreshFix()
+          ? _acquireCompletionFix()
           : Future<({double lat, double lng})?>.value();
       int? customer;
       try {
@@ -1055,6 +1055,21 @@ class OrderSyncRepository {
         ),
       ).timeout(const Duration(seconds: 5));
       return (lat: position.latitude, lng: position.longitude);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The sale's own fix, taken right after it is durable: a fresh fix, else
+  /// the platform's last known position (release completion behaviour). An
+  /// indoor till rarely locks a fresh fix, and a fenced branch refuses a
+  /// sale without one, so dropping the fallback would hold the sale.
+  Future<({double lat, double lng})?> _acquireCompletionFix() async {
+    final fresh = await _acquireFreshFix();
+    if (fresh != null) return fresh;
+    try {
+      final last = await Geolocator.getLastKnownPosition();
+      return last == null ? null : (lat: last.latitude, lng: last.longitude);
     } catch (_) {
       return null;
     }

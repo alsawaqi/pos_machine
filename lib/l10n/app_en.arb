@@ -839,6 +839,7 @@
   "ctrlMsgCashierCompletingCash": "The cashier is completing a cash payment.",
   "ctrlMsgCashPaymentRecorded": "Cash payment recorded successfully.",
   "ctrlMsgCashPaymentCompleted": "Cash payment completed. Thank you.",
+  "ctrlMsgPaidSaleKeptForReview": "The payment was taken, but this sale could not be saved for sending. It is kept on this device for manager review. Do not charge the customer again.",
   "ctrlMsgTapToPayRoundUp": "Thank you for rounding up for charity. Tap your card or phone on the rear NFC area to pay.",
   "ctrlMsgTapToPay": "Tap your card or phone on the rear NFC area to pay.",
   "ctrlMsgCardPendingReconRecorded": "Card recorded as pending reconciliation. The bank settlement will confirm it.",

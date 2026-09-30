@@ -4354,14 +4354,38 @@ class PosController extends ChangeNotifier
     }
     // A captured tender must finish durably even if access was suspended
     // while the bank/cash confirmation was in progress.
-    return BusinessBoundary.persistPaid(
-      _businessIdentity,
-      () => _finishCompletedOrderAdmitted(
-        isDineInPayment: isDineInPayment,
-        successMessage: successMessage,
-      ),
-    );
+    _paidSaleQueued = false;
+    try {
+      return await BusinessBoundary.persistPaid(
+        _businessIdentity,
+        () => _finishCompletedOrderAdmitted(
+          isDineInPayment: isDineInPayment,
+          successMessage: successMessage,
+        ),
+      );
+    } catch (error) {
+      // The money is already taken. Whatever failed (local storage, the
+      // outbox write, the live-table journal), the paid sale must stay
+      // durable, the cashier must be told, and the till must be free for the
+      // next customer.
+      debugPrint('Paid sale completion failed: $error');
+      if (!_paidSaleQueued) await preserve();
+      _resetForNextOrder(
+        advanceOrderNumber: !isDineInPayment,
+        clearActiveDiningTable: true,
+      );
+      lastPaymentMessage = _paidSaleQueued
+          ? successMessage
+          : _l10n.ctrlMsgPaidSaleKeptForReview;
+      displayNote = lastPaymentMessage;
+      _broadcast();
+      return lastPaymentMessage;
+    }
   }
+
+  /// Set once the paid sale is durable for sending (the outbox for a local
+  /// sale, the table journal for a live shared table).
+  bool _paidSaleQueued = false;
 
   Future<String> _finishCompletedOrderAdmitted({
     required bool isDineInPayment,
@@ -4431,6 +4455,7 @@ class PosController extends ChangeNotifier
     // Push the finalized order to pos_api (via the durable outbox). Fire-and-
     // forget: completion never waits on, or fails because of, the network.
     await onOrderCompleted?.call(completedSnapshot);
+    if (!serverOwned) _paidSaleQueued = true;
     if (isDineInPayment && !serverOwned) {
       await _markActiveDiningTablePaid(completedSnapshot);
     }
@@ -4445,6 +4470,7 @@ class PosController extends ChangeNotifier
       if (paid != null) {
         await diningTableSyncHooks?.onTablePaid(paid, completedSnapshot);
       }
+      _paidSaleQueued = true;
     }
     if (serverOwned && refreshServerReceipt != null) {
       try {
@@ -4917,8 +4943,10 @@ class PosController extends ChangeNotifier
       }
       await refreshOrderHistory();
     } catch (error) {
+      // Local history is a display copy; the outbox, not history, carries
+      // the sale to the server. Its failure must never stop that (release
+      // behaviour).
       debugPrint('Failed to save completed order: $error');
-      rethrow;
     }
   }
 

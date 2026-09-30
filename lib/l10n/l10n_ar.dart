@@ -1232,6 +1232,10 @@ class L10nAr extends L10n {
   String get ctrlMsgCashPaymentCompleted => 'اكتمل الدفع النقدي. شكرًا لك.';
 
   @override
+  String get ctrlMsgPaidSaleKeptForReview =>
+      'تم استلام الدفع، لكن تعذّر حفظ هذه العملية للإرسال. تم الاحتفاظ بها على هذا الجهاز لمراجعة المدير. لا تحصّل المبلغ من العميل مرة أخرى.';
+
+  @override
   String get ctrlMsgTapToPayRoundUp =>
       'شكرًا لتقريب المبلغ للتبرع الخيري. قرّب بطاقتك أو هاتفك من منطقة NFC الخلفية لإتمام الدفع.';
 

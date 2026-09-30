@@ -48,33 +48,54 @@ class DeviceHeartbeat {
     _sending = true;
     final generation = BusinessBoundary.generation.value;
     try {
-      if (BusinessBoundary.current?.isProvisional == true) {
-        final identity = await client.get<dynamic>('/device/identity');
-        final data = identity.data is Map
-            ? (identity.data as Map)['data']
-            : null;
-        if (data is Map) {
-          final resolved = BusinessIdentity.parse({
-            'company_id': data['company_id'],
-            'branch_id': data['branch_id'],
-            'device_uuid': data['uuid'],
-          });
-          if (resolved != null)
-            await BusinessBoundary.completeIdentity(resolved, generation);
-        }
-      }
+      await _completeProvisionalIdentity(client, generation);
       final data = await metadata();
       BusinessBoundary.assertGeneration(generation);
       final response = await client.post<dynamic>(
         '/device/heartbeat',
         data: data,
       );
-      if (response.statusCode == 200)
+      if (response.statusCode == 200) {
+        final wasSuspended =
+            BusinessBoundary.blocked.value == 'company_suspended';
         await BusinessBoundary.confirmHeartbeat(generation);
+        // The suspension refused the identity lookup above; finish it now
+        // that business access is back instead of waiting a whole cycle.
+        if (wasSuspended) {
+          await _completeProvisionalIdentity(client, generation);
+        }
+      }
     } catch (_) {
       // Refusals are handled by the credential-aware interceptor.
     } finally {
       _sending = false;
+    }
+  }
+
+  /// An upgraded release device learns its UUID here. Best-effort: while
+  /// access is blocked the interceptor refuses the lookup, and no failure
+  /// (refusal, 404, 5xx, offline) may skip the heartbeat, which is the only
+  /// request that lifts a company_suspended block.
+  static Future<void> _completeProvisionalIdentity(
+    Dio client,
+    int generation,
+  ) async {
+    if (BusinessBoundary.current?.isProvisional != true) return;
+    try {
+      final identity = await client.get<dynamic>('/device/identity');
+      final data = identity.data is Map ? (identity.data as Map)['data'] : null;
+      if (data is Map) {
+        final resolved = BusinessIdentity.parse({
+          'company_id': data['company_id'],
+          'branch_id': data['branch_id'],
+          'device_uuid': data['uuid'],
+        });
+        if (resolved != null) {
+          await BusinessBoundary.completeIdentity(resolved, generation);
+        }
+      }
+    } catch (_) {
+      // Retried on the next heartbeat.
     }
   }
 

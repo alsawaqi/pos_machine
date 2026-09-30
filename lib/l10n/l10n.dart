@@ -2041,6 +2041,12 @@ abstract class L10n {
   /// **'Cash payment completed. Thank you.'**
   String get ctrlMsgCashPaymentCompleted;
 
+  /// No description provided for @ctrlMsgPaidSaleKeptForReview.
+  ///
+  /// In en, this message translates to:
+  /// **'The payment was taken, but this sale could not be saved for sending. It is kept on this device for manager review. Do not charge the customer again.'**
+  String get ctrlMsgPaidSaleKeptForReview;
+
   /// No description provided for @ctrlMsgTapToPayRoundUp.
   ///
   /// In en, this message translates to:

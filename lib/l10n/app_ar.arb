@@ -547,6 +547,7 @@
   "ctrlMsgCashierCompletingCash": "يقوم الكاشير بإتمام الدفع النقدي.",
   "ctrlMsgCashPaymentRecorded": "تم تسجيل الدفع النقدي بنجاح.",
   "ctrlMsgCashPaymentCompleted": "اكتمل الدفع النقدي. شكرًا لك.",
+  "ctrlMsgPaidSaleKeptForReview": "تم استلام الدفع، لكن تعذّر حفظ هذه العملية للإرسال. تم الاحتفاظ بها على هذا الجهاز لمراجعة المدير. لا تحصّل المبلغ من العميل مرة أخرى.",
   "ctrlMsgTapToPayRoundUp": "شكرًا لتقريب المبلغ للتبرع الخيري. قرّب بطاقتك أو هاتفك من منطقة NFC الخلفية لإتمام الدفع.",
   "ctrlMsgTapToPay": "قرّب بطاقتك أو هاتفك من منطقة NFC الخلفية لإتمام الدفع.",
   "ctrlMsgCardPendingReconRecorded": "تم تسجيل عملية البطاقة قيد التسوية، وستؤكدها تسوية البنك.",

@@ -1228,6 +1228,10 @@ class L10nEn extends L10n {
       'Cash payment completed. Thank you.';
 
   @override
+  String get ctrlMsgPaidSaleKeptForReview =>
+      'The payment was taken, but this sale could not be saved for sending. It is kept on this device for manager review. Do not charge the customer again.';
+
+  @override
   String get ctrlMsgTapToPayRoundUp =>
       'Thank you for rounding up for charity. Tap your card or phone on the rear NFC area to pay.';
 
