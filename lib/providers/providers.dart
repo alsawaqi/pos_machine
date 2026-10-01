@@ -141,25 +141,33 @@ class SessionController extends Notifier<SessionState> {
     final oldIdentity = BusinessBoundary.current?.encoded;
     final oldGeneration = BusinessBoundary.generation.value;
     await _svc.saveActivation(result);
-    if (oldGeneration != BusinessBoundary.generation.value ||
-        oldIdentity != BusinessBoundary.current?.encoded) {
-      ref.invalidate(qrSettlementOutboxProvider);
-      ref.invalidate(stuckOrderSyncProvider);
-      ref.invalidate(orderSyncAttentionProvider);
-      ref.invalidate(geofenceProvider);
-      ref.invalidate(configRepositoryProvider);
-      ref.invalidate(orderSyncRepositoryProvider);
-      ref.invalidate(tableSyncCoordinatorProvider);
-      ref.invalidate(tableShadowRepositoryProvider);
-      ref.invalidate(remoteTableStoreProvider);
-      ref.invalidate(tableLedgerStoreProvider);
-      ref.invalidate(qrRoundAutoPrintControllerProvider);
-      ref.invalidate(catalogProvider);
-      ref.invalidate(appDatabaseProvider);
-      ref.invalidate(liveSyncProvider);
-      ref.invalidate(shiftReconciliationProvider);
+    // Some of these providers listen to this controller, so invalidating them
+    // through its own ref is a circular dependency (thrown in debug builds).
+    // The container does it without that check. Whatever happens, the gate
+    // must reflect the activation that is already saved.
+    final container = ref.container;
+    try {
+      if (oldGeneration != BusinessBoundary.generation.value ||
+          oldIdentity != BusinessBoundary.current?.encoded) {
+        container.invalidate(qrSettlementOutboxProvider);
+        container.invalidate(stuckOrderSyncProvider);
+        container.invalidate(orderSyncAttentionProvider);
+        container.invalidate(geofenceProvider);
+        container.invalidate(configRepositoryProvider);
+        container.invalidate(orderSyncRepositoryProvider);
+        container.invalidate(tableSyncCoordinatorProvider);
+        container.invalidate(tableShadowRepositoryProvider);
+        container.invalidate(remoteTableStoreProvider);
+        container.invalidate(tableLedgerStoreProvider);
+        container.invalidate(qrRoundAutoPrintControllerProvider);
+        container.invalidate(catalogProvider);
+        container.invalidate(appDatabaseProvider);
+        container.invalidate(liveSyncProvider);
+        container.invalidate(shiftReconciliationProvider);
+      }
+    } finally {
+      state = _svc.snapshot();
     }
-    state = _svc.snapshot();
   }
 
   Future<void> saveStaff(StaffSessionData staff) async {

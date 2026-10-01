@@ -36,10 +36,15 @@ class _BlockedScreenState extends State<_BlockedScreen> {
   bool activating = false;
   @override
   Widget build(BuildContext context) {
-    if (activating)
-      return Navigator(
-        onGenerateRoute: (_) => MaterialPageRoute(builder: widget.activation),
+    // The app's own navigator stays mounted (offstage) underneath, and two
+    // navigators may not share the app's HeroController.
+    if (activating) {
+      return HeroControllerScope.none(
+        child: Navigator(
+          onGenerateRoute: (_) => MaterialPageRoute(builder: widget.activation),
+        ),
       );
+    }
     final ar = Localizations.localeOf(context).languageCode == 'ar';
     // A suspension of an activated device lifts by itself once the merchant
     // is reactivated (the heartbeat keeps checking): offering activation
