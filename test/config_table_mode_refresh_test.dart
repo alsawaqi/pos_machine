@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/data/config_repository.dart';
 import 'package:pos_machine/data/db/app_database.dart';
 import 'package:pos_machine/providers/providers.dart';
+import 'package:pos_machine/services/device_location_mode.dart';
 import 'package:pos_machine/services/pos_api_service.dart';
 import 'package:pos_machine/services/session_service.dart';
 
@@ -19,6 +20,7 @@ typedef _ConfigResult = ({
   String? generatedAt,
   Map<String, dynamic>? websocket,
   bool? audienceMeasurement,
+  DeviceLocationMode? locationMode,
 });
 
 class _Api implements PosApiService {
@@ -37,6 +39,7 @@ class _Api implements PosApiService {
     generatedAt: cursor,
     websocket: null,
     audienceMeasurement: null,
+    locationMode: null,
   );
 
   @override

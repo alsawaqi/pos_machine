@@ -2,10 +2,12 @@ import '../tenancy/business_identity.dart';
 import 'dart:convert';
 import 'package:mithqal_softpos/mithqal_softpos.dart';
 
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_models.dart';
+import 'device_location_mode.dart';
 
 /// The cached open cash-drawer shift (null = no open shift). Shared shifts are
 /// staff-owned; a foreign shift may survive logout only long enough for the next
@@ -94,8 +96,31 @@ class SessionService {
   static const _kWebsocket = 'websocket_config_json';
   static const _kLastShiftSummary = 'last_shift_summary_json';
   static const _kAudienceServer = 'audience_measurement_server';
+  static const _kLocationMode = 'location_mode';
 
   String? _deviceToken; // in-memory cache for the dio interceptor
+
+  /// LAUNCH-P1 decision 2a — where this till may sell. Defaults to `branch`
+  /// (the geofence applies) until the server says `any`.
+  DeviceLocationMode get locationMode =>
+      DeviceLocationMode.fromWire(_prefs.getString(_kLocationMode)) ??
+      DeviceLocationMode.branch;
+
+  /// Fires when activation or a config sync changes [locationMode], so the
+  /// geofence gate re-evaluates without a restart.
+  ValueListenable<DeviceLocationMode> get locationModeListenable =>
+      _locationMode;
+  final _locationMode = ValueNotifier<DeviceLocationMode>(
+    DeviceLocationMode.branch,
+  );
+
+  /// Persist the server's location mode. Null (an older server that does not
+  /// send it) keeps the stored value.
+  Future<void> saveLocationMode(DeviceLocationMode? mode) async {
+    if (mode == null) return;
+    await _prefs.setString(_kLocationMode, mode.wire);
+    _locationMode.value = mode;
+  }
 
   /// Synchronous token accessor for [PosApiService.tokenGetter].
   String? get deviceToken => _deviceToken;
@@ -150,6 +175,7 @@ class SessionService {
       _terminalPin = legacy.trim();
     }
     await _prefs.remove(_kTerminalPin);
+    _locationMode.value = locationMode;
   }
 
   SessionState snapshot() => SessionState(
@@ -193,6 +219,9 @@ class SessionService {
       if (result.branchId != null) {
         await _prefs.setInt(_kBranchId, result.branchId!);
       }
+      // A new enrollment never inherits a previous one's mode: absent means
+      // the fail-closed default.
+      await saveLocationMode(result.locationMode ?? DeviceLocationMode.branch);
       await _secure.write(key: _kDeviceToken, value: result.deviceToken);
       _deviceToken = result.deviceToken;
     }

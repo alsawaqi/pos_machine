@@ -108,6 +108,14 @@ class MainActivity : FlutterActivity() {
                 ManagerBiometricBridge.CHANNEL,
             ),
         )
+
+        // LAUNCH-P1 — the sticker serial sent with device activation.
+        DeviceIdentityBridge.configure(
+            MethodChannel(
+                flutterEngine.dartExecutor.binaryMessenger,
+                DeviceIdentityBridge.CHANNEL,
+            ),
+        )
     }
 
     /**

@@ -949,6 +949,24 @@ abstract class L10n {
   /// **'Device setup failed. Please try again.'**
   String get deviceSetupErrorFailed;
 
+  /// No description provided for @deviceSetupErrorDeviceMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'This activation code belongs to another device. Ask the administrator for this device\'s code.'**
+  String get deviceSetupErrorDeviceMismatch;
+
+  /// No description provided for @deviceSetupErrorSerialMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read this device\'s serial number, so the code cannot be checked. Restart the device and try again. If it keeps happening, contact support.'**
+  String get deviceSetupErrorSerialMissing;
+
+  /// No description provided for @deviceSetupErrorAppMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'This code is for a different kind of device. Ask the administrator to check the device type, or use the matching app.'**
+  String get deviceSetupErrorAppMismatch;
+
   /// No description provided for @deviceSetupErrorCameraBlocked.
   ///
   /// In en, this message translates to:

@@ -546,6 +546,18 @@ class L10nEn extends L10n {
   String get deviceSetupErrorFailed => 'Device setup failed. Please try again.';
 
   @override
+  String get deviceSetupErrorDeviceMismatch =>
+      'This activation code belongs to another device. Ask the administrator for this device\'s code.';
+
+  @override
+  String get deviceSetupErrorSerialMissing =>
+      'Could not read this device\'s serial number, so the code cannot be checked. Restart the device and try again. If it keeps happening, contact support.';
+
+  @override
+  String get deviceSetupErrorAppMismatch =>
+      'This code is for a different kind of device. Ask the administrator to check the device type, or use the matching app.';
+
+  @override
   String get deviceSetupErrorCameraBlocked =>
       'Camera access is blocked. Enable it in Settings to scan the code (or enter it manually).';
 

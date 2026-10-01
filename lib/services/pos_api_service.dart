@@ -11,6 +11,8 @@ import '../models/pos_models.dart';
 import '../models/qr_till_models.dart';
 import '../models/qr_pending_order.dart';
 import 'api_models.dart';
+import 'device_hardware_identity.dart';
+import 'device_location_mode.dart';
 import 'session_service.dart' show OpenShiftData;
 import 'table_shadow_service.dart';
 
@@ -114,12 +116,37 @@ class PosApiService {
   /// POST /auth/device/activate — one-time device setup: the device exchanges
   /// the single admin-generated activation code for a device token + its kiosk
   /// ID + terminal ID.
-  Future<PairResult> activateDevice({required String code}) async {
+  ///
+  /// LAUNCH-P1: the device also says what it is — its sticker [hardware]
+  /// serial, build manufacturer/model, and that this is the till app — so the
+  /// server can refuse a code made for another device (422
+  /// `activation_device_mismatch`), an unreadable serial
+  /// (`activation_serial_missing`) or another device type
+  /// (`activation_app_mismatch`). A refusal throws [ApiException] with that
+  /// code and changes nothing on the device.
+  Future<PairResult> activateDevice({
+    required String code,
+    DeviceHardwareIdentity hardware = DeviceHardwareIdentity.unknown,
+  }) async {
     final body = await _send(
-      () => _dio.post('/auth/device/activate', data: {'code': code}),
+      () => _dio.post(
+        '/auth/device/activate',
+        data: {
+          'code': code,
+          if (hardware.serial != null) 'serial': hardware.serial,
+          'app': deviceApp,
+          if (hardware.manufacturer != null)
+            'manufacturer': hardware.manufacturer,
+          if (hardware.model != null) 'model': hardware.model,
+        },
+      ),
+      topLevelErrorCode: true,
     );
     return PairResult.fromJson(body.dataMap);
   }
+
+  /// The app type the server checks against the device record at activation.
+  static const deviceApp = 'till';
 
   /// POST /auth/pos/login — staff PIN login (Bearer device token). [lat]/[lng]
   /// carry the device's live GPS for the server-side login geofence check; at a
@@ -231,6 +258,7 @@ class PosApiService {
       String? generatedAt,
       Map<String, dynamic>? websocket,
       bool? audienceMeasurement,
+      DeviceLocationMode? locationMode,
     })
   >
   fetchConfig() async {
@@ -246,6 +274,8 @@ class PosApiService {
       websocket: (body.metaMap['websocket'] as Map?)?.cast<String, dynamic>(),
       // Marketing #46 — server-driven audience gate; absent on older servers.
       audienceMeasurement: body.metaMap['audience_measurement'] as bool?,
+      // LAUNCH-P1 decision 2a — null on servers that do not send it.
+      locationMode: DeviceLocationMode.fromConfig(body.dataMap, body.metaMap),
     );
   }
 
@@ -261,6 +291,7 @@ class PosApiService {
       String? generatedAt,
       Map<String, dynamic>? websocket,
       bool? audienceMeasurement,
+      DeviceLocationMode? locationMode,
     })
   >
   fetchConfigDelta(String since) async {
@@ -278,6 +309,8 @@ class PosApiService {
       websocket: (body.metaMap['websocket'] as Map?)?.cast<String, dynamic>(),
       // Marketing #46 — server-driven audience gate; absent on older servers.
       audienceMeasurement: body.metaMap['audience_measurement'] as bool?,
+      // LAUNCH-P1 decision 2a — null on servers that do not send it.
+      locationMode: DeviceLocationMode.fromConfig(body.dataMap, body.metaMap),
     );
   }
 
@@ -1248,14 +1281,17 @@ class PosApiService {
   // Internals
   // ---------------------------------------------------------------------------
 
-  Future<_Envelope> _send(Future<Response<dynamic>> Function() request) async {
+  Future<_Envelope> _send(
+    Future<Response<dynamic>> Function() request, {
+    bool topLevelErrorCode = false,
+  }) async {
     final Response<dynamic> resp;
     try {
       resp = await request();
     } on DioException catch (e) {
       // Transport-level failure (no/again-unreachable server, timeout, ...).
       if (e.response != null) {
-        return _interpret(e.response!);
+        return _interpret(e.response!, topLevelErrorCode: topLevelErrorCode);
       }
       throw ApiException(
         message: 'Cannot reach the server. Check the connection and try again.',
@@ -1263,10 +1299,16 @@ class PosApiService {
         isNetwork: true,
       );
     }
-    return _interpret(resp);
+    return _interpret(resp, topLevelErrorCode: topLevelErrorCode);
   }
 
-  _Envelope _interpret(Response<dynamic> resp) {
+  /// [topLevelErrorCode]: also accept a refusal shaped `{message, code}`
+  /// (no `errors[]`), as the LAUNCH-P1 activation refusals are. Opt-in per
+  /// call, so no other endpoint's error classification changes.
+  _Envelope _interpret(
+    Response<dynamic> resp, {
+    bool topLevelErrorCode = false,
+  }) {
     final status = resp.statusCode ?? 0;
     final body = resp.data;
 
@@ -1284,6 +1326,21 @@ class PosApiService {
         throw ApiException.fromErrors(
           errors,
           status,
+          retryAfter: _retryAfter(resp),
+        );
+      }
+      final topCode = map['code'];
+      if (topLevelErrorCode &&
+          status >= 400 &&
+          status != 401 &&
+          topCode is String &&
+          topCode.trim().isNotEmpty) {
+        throw ApiException(
+          message: (map['message'] ?? 'Request failed (HTTP $status).')
+              .toString(),
+          statusCode: status,
+          code: topCode.trim(),
+          hasStructuredErrorCode: true,
           retryAfter: _retryAfter(resp),
         );
       }

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pos_machine/data/config_repository.dart';
 import 'package:pos_machine/data/db/app_database.dart';
+import 'package:pos_machine/services/device_location_mode.dart';
 import 'package:pos_machine/services/pos_api_service.dart';
 import 'package:pos_machine/services/session_service.dart';
 
@@ -29,7 +30,8 @@ class _FakeApi implements PosApiService {
       SoftPosProfile softpos,
         String? generatedAt,
         Map<String, dynamic>? websocket,
-        bool? audienceMeasurement
+        bool? audienceMeasurement,
+        DeviceLocationMode? locationMode
       })> fetchConfig() async {
     fullCalls++;
     return (
@@ -40,6 +42,7 @@ class _FakeApi implements PosApiService {
       generatedAt: 'CURSOR-$fullCalls',
       websocket: null,
       audienceMeasurement: null,
+      locationMode: null,
     );
   }
 
@@ -52,7 +55,8 @@ class _FakeApi implements PosApiService {
       SoftPosProfile softpos,
         String? generatedAt,
         Map<String, dynamic>? websocket,
-        bool? audienceMeasurement
+        bool? audienceMeasurement,
+        DeviceLocationMode? locationMode
       })> fetchConfigDelta(String since) async {
     deltaCalls++;
     final delta = deltaPayload;
@@ -65,6 +69,7 @@ class _FakeApi implements PosApiService {
       generatedAt: 'CURSOR-D$deltaCalls',
       websocket: null,
       audienceMeasurement: null,
+      locationMode: null,
     );
   }
 

@@ -63,6 +63,11 @@ class ConfigRepository {
     // Marketing #46 — the admin-set audience-measurement consent.
     BusinessBoundary.assertGeneration(_ownerGeneration);
     await _session.saveServerAudienceMeasurement(config.audienceMeasurement);
+    // LAUNCH-P1 decision 2a — the admin's per-device location mode.
+    if (config.locationMode != null) {
+      BusinessBoundary.assertGeneration(_ownerGeneration);
+      await _session.saveLocationMode(config.locationMode);
+    }
   }
 
   /// Incremental sync (Phase 7): a DELTA when we hold a cursor from a prior
@@ -144,6 +149,10 @@ class ConfigRepository {
       // Marketing #46 — the admin-set audience-measurement consent.
       BusinessBoundary.assertGeneration(_ownerGeneration);
       await _session.saveServerAudienceMeasurement(res.audienceMeasurement);
+      if (res.locationMode != null) {
+        BusinessBoundary.assertGeneration(_ownerGeneration);
+        await _session.saveLocationMode(res.locationMode);
+      }
     } catch (_) {
       // Self-heal: drop back to a full sync on any delta failure.
       await fetchAndCache();

@@ -1,6 +1,16 @@
 import 'dart:math';
 
-enum FenceState { inside, outside, locating, disabled, noPermission }
+enum FenceState {
+  inside,
+  outside,
+  locating,
+  disabled,
+  noPermission,
+
+  /// LAUNCH-P1 decision 2a — the admin set this device to "any location":
+  /// the till never locks on location. Sales still carry GPS when available.
+  anyLocation,
+}
 
 class GeofenceStatus {
   const GeofenceStatus(this.state, {this.distanceM, this.radiusM = 0});
@@ -9,11 +19,15 @@ class GeofenceStatus {
   final double? distanceM;
   final double radiusM;
 
-  /// POS ordering is allowed only when confirmed inside the fence, or when the
-  /// branch has no fence configured. Everything else (outside, still locating,
-  /// permission/location unavailable) fails closed to a lock screen — matching
-  /// the server's fail-closed enforcement on order.create / order.pay.
-  bool get allowsPos => state == FenceState.inside || state == FenceState.disabled;
+  /// POS ordering is allowed only when confirmed inside the fence, when the
+  /// branch has no fence configured, or when the device may sell anywhere.
+  /// Everything else (outside, still locating, permission/location
+  /// unavailable) fails closed to a lock screen — matching the server's
+  /// fail-closed enforcement on order.create / order.pay.
+  bool get allowsPos =>
+      state == FenceState.inside ||
+      state == FenceState.disabled ||
+      state == FenceState.anyLocation;
   bool get isLocked => !allowsPos;
 }
 

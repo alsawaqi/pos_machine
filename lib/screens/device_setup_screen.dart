@@ -10,6 +10,15 @@ import 'card_reversal_sheet.dart';
 import '../services/mosambee_payment_service.dart';
 import 'settings_screen.dart';
 
+/// LAUNCH-P1: the server's activation refusals in the operator's language.
+/// Other refusals keep the server's own message.
+String activationRefusalText(L10n l10n, ApiException e) => switch (e.code) {
+  'activation_device_mismatch' => l10n.deviceSetupErrorDeviceMismatch,
+  'activation_serial_missing' => l10n.deviceSetupErrorSerialMissing,
+  'activation_app_mismatch' => l10n.deviceSetupErrorAppMismatch,
+  _ => e.message,
+};
+
 /// Layer 1 (one-time, admin): scan OR type the single activation code generated
 /// in the admin portal for this device. The app activates → stores the device
 /// token + kiosk ID + terminal ID (for the Soft POS) → and moves on to the staff
@@ -44,7 +53,15 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
       _error = null;
     });
     try {
-      final result = await ref.read(apiServiceProvider).activateDevice(code: code);
+      // LAUNCH-P1 decision 1a: the server locks the code to this device's
+      // sticker serial. An unreadable serial is still sent as absent; the
+      // server decides whether that is acceptable.
+      final hardware = await ref
+          .read(deviceHardwareIdentityReaderProvider)
+          .read();
+      final result = await ref
+          .read(apiServiceProvider)
+          .activateDevice(code: code, hardware: hardware);
       await ref.read(sessionControllerProvider.notifier).saveActivation(result);
       // Layer 1 immediately pulls this device's branch config from the API —
       // including the branch latitude / longitude / geofence radius the admin
@@ -56,7 +73,9 @@ class _DeviceSetupScreenState extends ConsumerState<DeviceSetupScreen> {
       } catch (_) {}
       // The startup gate rebuilds into the staff PIN login automatically.
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      // A refusal changes nothing on the device: any existing enrollment
+      // stays as it was, and the installer stays here to retry.
+      if (mounted) setState(() => _error = activationRefusalText(l10n, e));
     } catch (_) {
       if (mounted) setState(() => _error = l10n.deviceSetupErrorFailed);
     } finally {

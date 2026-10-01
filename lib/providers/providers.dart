@@ -25,6 +25,8 @@ import '../data/order_sync_repository.dart';
 import '../services/api_models.dart';
 import '../services/audience_service.dart';
 import '../services/config_mapper.dart';
+import '../services/device_hardware_identity.dart';
+import '../services/device_location_mode.dart';
 import '../services/expense_restock_service.dart';
 import '../services/geofence_service.dart';
 import '../services/live_sync.dart';
@@ -275,6 +277,13 @@ final apiServiceProvider = Provider<PosApiService>((ref) {
     },
   );
 });
+
+/// LAUNCH-P1 decision 1a — reads the sticker serial and build info that the
+/// activation request carries (platform channel `mithqal/device_identity`).
+final deviceHardwareIdentityReaderProvider =
+    Provider<DeviceHardwareIdentityReader>(
+      (ref) => const DeviceHardwareIdentityReader(),
+    );
 
 /// Opens / closes cash-drawer shifts through the device sync pipeline.
 final shiftServiceProvider = Provider<ShiftService>(
@@ -687,11 +696,33 @@ final liveSyncProvider = Provider<LiveSyncService>((ref) {
 });
 
 // --- geofence --------------------------------------------------------------
+/// LAUNCH-P1 decision 2a — the device's stored location mode. Rebuilds when an
+/// activation or a config sync changes it, so dependants re-evaluate live.
+final deviceLocationModeProvider = Provider<DeviceLocationMode>((ref) {
+  final listenable = ref.watch(sessionServiceProvider).locationModeListenable;
+  void changed() => ref.invalidateSelf();
+  listenable.addListener(changed);
+  ref.onDispose(() => listenable.removeListener(changed));
+  return listenable.value;
+});
+
 /// Streams the geofence status by comparing live GPS to the cached branch fence.
 /// Fails closed: no fix / no permission ⇒ locked. If the branch has no fence
-/// configured, ordering is allowed (the server enforces nothing there).
-final geofenceProvider = StreamProvider<GeofenceStatus>((ref) async* {
-  final repo = ref.read(configRepositoryProvider);
+/// configured, ordering is allowed (the server enforces nothing there). A
+/// device the admin set to "any location" is never locked (decision 2a).
+final geofenceProvider = StreamProvider<GeofenceStatus>((ref) {
+  // Watched synchronously in build: an admin's mode change re-runs the fence.
+  ref.watch(deviceLocationModeProvider);
+  return _geofenceStatus(
+    ref.read(configRepositoryProvider),
+    ref.read(sessionServiceProvider),
+  );
+});
+
+Stream<GeofenceStatus> _geofenceStatus(
+  ConfigRepository repo,
+  SessionService session,
+) async* {
   // Pull the latest branch fence (radius / lat / lng) from the server first, so
   // edits made by the admin in pos_admin take effect on the device. Without this
   // the device keeps whatever was cached at login and never sees the change.
@@ -704,6 +735,11 @@ final geofenceProvider = StreamProvider<GeofenceStatus>((ref) async* {
     await repo.syncConfig();
   } catch (_) {
     // keep going with the cached branch
+  }
+  // Read after the sync, which may have just delivered the admin's change.
+  if (session.locationMode == DeviceLocationMode.any) {
+    yield const GeofenceStatus(FenceState.anyLocation);
+    return;
   }
   final branch = await repo.getBranch();
   if (branch == null || branch.latitude == null || branch.longitude == null) {
@@ -749,4 +785,4 @@ final geofenceProvider = StreamProvider<GeofenceStatus>((ref) async* {
       radiusM: radius,
     );
   });
-});
+}

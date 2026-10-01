@@ -1,5 +1,7 @@
 import 'package:mithqal_softpos/mithqal_softpos.dart';
 
+import 'device_location_mode.dart';
+
 // Plain DTOs for the auth responses from pos_api. The config bundle itself is
 // handled as a raw Map and mapped in config_mapper.dart.
 
@@ -17,6 +19,7 @@ class PairResult {
     this.terminalPin,
     this.softpos = const SoftPosProfile(),
     this.deviceName,
+    this.locationMode,
   });
 
   final String deviceToken;
@@ -28,6 +31,9 @@ class PairResult {
   final SoftPosProfile softpos;
   final String? terminalPin; // bank-issued Mosambee PIN (null = card disabled)
   final String? deviceName;
+
+  /// LAUNCH-P1 decision 2a; null when the server did not send it.
+  final DeviceLocationMode? locationMode;
 
   factory PairResult.fromJson(Map<String, dynamic> json) {
     final device = json['device'] as Map<String, dynamic>?;
@@ -43,6 +49,7 @@ class PairResult {
         (device?['softpos'] as Map?)?.cast<String, dynamic>(),
       ),
       deviceName: device?['name'] as String?,
+      locationMode: DeviceLocationMode.fromActivation(json),
     );
   }
 }

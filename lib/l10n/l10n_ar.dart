@@ -545,6 +545,18 @@ class L10nAr extends L10n {
       'فشل إعداد الجهاز. يرجى المحاولة مرة أخرى.';
 
   @override
+  String get deviceSetupErrorDeviceMismatch =>
+      'رمز التفعيل هذا يخص جهازًا آخر. اطلب من المسؤول رمز هذا الجهاز.';
+
+  @override
+  String get deviceSetupErrorSerialMissing =>
+      'تعذّرت قراءة الرقم التسلسلي لهذا الجهاز، لذلك لا يمكن التحقق من الرمز. أعد تشغيل الجهاز وحاول مرة أخرى. إذا تكرر ذلك، تواصل مع الدعم.';
+
+  @override
+  String get deviceSetupErrorAppMismatch =>
+      'هذا الرمز مخصص لنوع آخر من الأجهزة. اطلب من المسؤول التحقق من نوع الجهاز، أو استخدم التطبيق المطابق.';
+
+  @override
   String get deviceSetupErrorCameraBlocked =>
       'تم حظر الوصول إلى الكاميرا. فعِّله من الإعدادات لمسح الرمز (أو أدخله يدويًا).';
 
