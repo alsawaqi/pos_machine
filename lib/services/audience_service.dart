@@ -40,6 +40,10 @@ class AudienceService {
   final List<_Sample> _buffer = <_Sample>[];
 
   bool _starting = false;
+  // Bumped by every stop(): a start() still opening the camera when the POS
+  // screen leaves (a 401 or a suspension right after launch) must not leave
+  // the camera and the detector running behind the activation screen.
+  int _generation = 0;
   bool _busy = false;
   int _lastProcessMs = 0;
 
@@ -58,18 +62,22 @@ class AudienceService {
   Future<void> start() async {
     if (running || _starting) return;
     _starting = true;
+    final generation = _generation;
+    bool stopped() => generation != _generation;
+    FaceDetector? detector;
+    CameraController? controller;
     try {
       final status = await Permission.camera.request();
-      if (!status.isGranted) return;
+      if (!status.isGranted || stopped()) return;
 
       final cameras = await availableCameras();
-      if (cameras.isEmpty) return;
+      if (cameras.isEmpty || stopped()) return;
       final camera = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       );
 
-      _detector = FaceDetector(
+      detector = FaceDetector(
         options: FaceDetectorOptions(
           performanceMode: FaceDetectorMode.fast,
           enableTracking: true, // tracking ids → distinct people, no recount
@@ -77,24 +85,50 @@ class AudienceService {
         ),
       );
 
-      final controller = CameraController(
+      controller = CameraController(
         camera,
         ResolutionPreset.medium,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.nv21, // ML Kit's preferred format
       );
       await controller.initialize();
+      if (stopped()) return;
+      _detector = detector;
       await controller.startImageStream(_onFrame);
+      if (stopped()) return;
       _controller = controller;
+      detector = null;
+      controller = null;
     } catch (e) {
       debugPrint('AudienceService start failed: $e');
-      await stop();
+      if (!stopped()) await stop();
     } finally {
       _starting = false;
+      // Whatever this start opened but never handed over is released here.
+      if (controller != null) await _release(controller, detector);
     }
   }
 
+  Future<void> _release(
+    CameraController controller,
+    FaceDetector? detector,
+  ) async {
+    if (identical(_detector, detector)) _detector = null;
+    try {
+      if (controller.value.isStreamingImages) {
+        await controller.stopImageStream();
+      }
+    } catch (_) {/* ignore */}
+    try {
+      await controller.dispose();
+    } catch (_) {/* ignore */}
+    try {
+      await detector?.close();
+    } catch (_) {/* ignore */}
+  }
+
   Future<void> stop() async {
+    _generation++;
     final controller = _controller;
     _controller = null;
     _buffer.clear();
