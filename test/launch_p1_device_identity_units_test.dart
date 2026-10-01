@@ -3,7 +3,6 @@
 // mode (P1-6) from activation and /device/config through to the live gate.
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:drift/native.dart';

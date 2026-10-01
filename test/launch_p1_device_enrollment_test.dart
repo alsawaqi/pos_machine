@@ -11,7 +11,6 @@
 // preference key, widgets), so it compiles on the base commit and fails there
 // by behaviour.
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
