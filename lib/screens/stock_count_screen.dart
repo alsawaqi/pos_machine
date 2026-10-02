@@ -16,9 +16,9 @@ import '../services/expense_restock_service.dart';
 /// the base unit otherwise. A blank row is skipped. Submitting pushes one
 /// `stock.count` event over the device sync pipeline (online-required, like
 /// restock requests); the server reconciles: shortfall → waste movement
-/// (reason reconciliation_variance), overage → adjustment. Only after submit
-/// does the result snackbar report how many lines varied (when the server
-/// says so).
+/// (reason reconciliation_variance), overage → adjustment. The device then
+/// only confirms the submit — the variance is shown in the portal, to users
+/// who may see stock values, never on the till.
 class StockCountScreen extends ConsumerStatefulWidget {
   const StockCountScreen({super.key});
 
@@ -84,12 +84,11 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
       _error = null;
     });
     try {
-      final result =
-          await ref.read(expenseRestockServiceProvider).submitStockCount(
-                lines: lines,
-                staffId: staffId,
-                note: note.isEmpty ? null : note,
-              );
+      await ref.read(expenseRestockServiceProvider).submitStockCount(
+            lines: lines,
+            staffId: staffId,
+            note: note.isEmpty ? null : note,
+          );
       // Refresh the cached config so the device's copy of the corrected
       // balances is current without waiting for the next scheduled sync.
       // Best-effort: the count itself already settled server-side.
@@ -97,17 +96,10 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
         await ref.read(configRepositoryProvider).syncConfig();
       } catch (_) {}
       if (mounted) {
-        // No variance figure in the result → a neutral confirmation, never
-        // "everything matched".
-        final variance = (result['lines_with_variance'] as num?)?.toInt();
+        // Blind count (LAUNCH-P2): the same neutral confirmation whatever
+        // the server found — never a variance figure or "matched".
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(variance == null
-                ? l10n.stockCountSubmitted
-                : variance == 0
-                    ? l10n.stockCountSubmittedNoVariance
-                    : l10n.stockCountSubmittedWithVariance(variance)),
-          ),
+          SnackBar(content: Text(l10n.stockCountSubmitted)),
         );
         Navigator.of(context).pop();
       }

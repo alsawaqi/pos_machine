@@ -748,15 +748,6 @@ class L10nEn extends L10n {
   String get stockCountSubmitted => 'Count submitted.';
 
   @override
-  String get stockCountSubmittedNoVariance =>
-      'Count submitted — everything matched the books.';
-
-  @override
-  String stockCountSubmittedWithVariance(int count) {
-    return 'Count submitted — $count line(s) had a variance.';
-  }
-
-  @override
   String get stockCountSubmitFailed =>
       'Could not submit the count. Check your connection.';
 

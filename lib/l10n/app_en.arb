@@ -502,15 +502,6 @@
   },
   "stockCountEnterAtLeastOne": "Enter at least one counted amount.",
   "stockCountSubmitted": "Count submitted.",
-  "stockCountSubmittedNoVariance": "Count submitted — everything matched the books.",
-  "stockCountSubmittedWithVariance": "Count submitted — {count} line(s) had a variance.",
-  "@stockCountSubmittedWithVariance": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "stockCountSubmitFailed": "Could not submit the count. Check your connection.",
   "stockCountRowCountInPieces": "Count in {pieceLabel}s",
   "@stockCountRowCountInPieces": {

@@ -1297,18 +1297,6 @@ abstract class L10n {
   /// **'Count submitted.'**
   String get stockCountSubmitted;
 
-  /// No description provided for @stockCountSubmittedNoVariance.
-  ///
-  /// In en, this message translates to:
-  /// **'Count submitted — everything matched the books.'**
-  String get stockCountSubmittedNoVariance;
-
-  /// No description provided for @stockCountSubmittedWithVariance.
-  ///
-  /// In en, this message translates to:
-  /// **'Count submitted — {count} line(s) had a variance.'**
-  String stockCountSubmittedWithVariance(int count);
-
   /// No description provided for @stockCountSubmitFailed.
   ///
   /// In en, this message translates to:

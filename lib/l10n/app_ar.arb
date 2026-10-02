@@ -395,8 +395,6 @@
   "stockCountWholeUnitsOnly": "{name} يُعدّ بوحدات كاملة من {unitLabel}.",
   "stockCountEnterAtLeastOne": "أدخل كمية معدودة واحدة على الأقل.",
   "stockCountSubmitted": "تم إرسال الجرد.",
-  "stockCountSubmittedNoVariance": "تم إرسال الجرد — كل شيء مطابق للسجلات.",
-  "stockCountSubmittedWithVariance": "تم إرسال الجرد — {count} من البنود فيها فرق.",
   "stockCountSubmitFailed": "تعذر إرسال الجرد. تحقق من الاتصال.",
   "stockCountRowCountInPieces": "العدّ بوحدة {pieceLabel}",
   "stockCountRowCountInUnit": "العدّ بوحدة {unit}",

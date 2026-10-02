@@ -17,8 +17,10 @@ import 'package:pos_machine/services/pos_api_service.dart';
 import 'package:pos_machine/services/session_service.dart';
 
 /// LAUNCH-P2 P2-6 blind counts on the till: the day-end count screen never
-/// shows the system / on-book quantity before submit, and it still sends the
-/// exact launch-p1 `stock.count` event (old and new servers both accept it).
+/// shows the system / on-book quantity before submit, only a neutral
+/// confirmation after it (never the server's variance), and it still sends
+/// the exact launch-p1 `stock.count` event (old and new servers both accept
+/// it).
 
 /// Records every pushed sync event and answers with one settled result.
 class _SyncApi implements PosApiService {
@@ -214,23 +216,40 @@ void main() {
       ],
       'staff_id': 7,
     });
-    // Variance only AFTER submit, as the server reports it.
-    expect(
-      find.text('Count submitted — 1 line(s) had a variance.'),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('a result without a variance figure is confirmed neutrally', (
-    tester,
-  ) async {
-    await _pumpCount(tester, result: const {'stock_count_id': 82, 'lines': 1});
-    await tester.enterText(find.byType(TextField).at(1), '12');
-    await tester.pump();
-    await tester.tap(find.text('Submit count (1)'));
-    await tester.pumpAndSettle();
-
+    // After submit only a neutral confirmation — the server's variance (one
+    // line here) never reaches the till.
     expect(find.text('Count submitted.'), findsOneWidget);
-    expect(find.textContaining('matched the books'), findsNothing);
+    expect(find.textContaining('variance'), findsNothing);
   });
+
+  // Whatever the server returns — a variance, none, or no variance figure at
+  // all — staff see the same neutral confirmation; the variance is for the
+  // portal only.
+  for (final locale in ['en', 'ar']) {
+    for (final result in const <Map<String, dynamic>>[
+      {'stock_count_id': 82, 'lines': 1, 'lines_with_variance': 1},
+      {'stock_count_id': 83, 'lines': 1, 'lines_with_variance': 0},
+      {'stock_count_id': 84, 'lines': 1},
+    ]) {
+      final label = result.containsKey('lines_with_variance')
+          ? 'variance ${result['lines_with_variance']}'
+          : 'no variance figure';
+      testWidgets('after submit only the neutral confirmation shows '
+          '($locale, $label)', (tester) async {
+        await _pumpCount(tester, locale: locale, result: result);
+        await tester.enterText(find.byType(TextField).at(1), '12');
+        await tester.pump();
+        await tester.tap(find.byType(FilledButton));
+        await tester.pumpAndSettle();
+
+        final snack = find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.byType(Text),
+        );
+        expect(tester.widgetList<Text>(snack).map((t) => t.data), [
+          locale == 'en' ? 'Count submitted.' : 'تم إرسال الجرد.',
+        ]);
+      });
+    }
+  }
 }

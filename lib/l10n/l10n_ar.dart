@@ -747,15 +747,6 @@ class L10nAr extends L10n {
   String get stockCountSubmitted => 'تم إرسال الجرد.';
 
   @override
-  String get stockCountSubmittedNoVariance =>
-      'تم إرسال الجرد — كل شيء مطابق للسجلات.';
-
-  @override
-  String stockCountSubmittedWithVariance(int count) {
-    return 'تم إرسال الجرد — $count من البنود فيها فرق.';
-  }
-
-  @override
   String get stockCountSubmitFailed => 'تعذر إرسال الجرد. تحقق من الاتصال.';
 
   @override
