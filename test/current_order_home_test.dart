@@ -139,10 +139,9 @@ void main() {
             (w) => w.runtimeType.toString() == '_ProductTile',
           );
           final dynamic tile = tester.widget(tileFinder.first);
-          expect(
-            tile.outOfStock,
-            false,
-          ); // Staff cart's shelf cap is not this server bill.
+          // LAUNCH-P2: no shelf cap at all — the staff cart holding the whole
+          // shelf never greys this server bill's tile.
+          expect(find.text(arabic ? 'نفدت الكمية' : 'SOLD OUT'), findsNothing);
           tile.onAdd();
           await tester.pumpAndSettle();
           await tester.tap(find.byKey(const ValueKey('quick-option-add')));

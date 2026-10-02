@@ -1495,7 +1495,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           addonGroups: catalog.addonGroups,
           deliveryProviders: catalog.deliveryProviders,
           expenseCategories: catalog.expenseCategories,
-          ingredientBalances: catalog.ingredientBalances,
           discounts: catalog.discounts,
           // P-G6 sweep fix — offers were never bridged here, so every
           // catalog emission WIPED controller.availableOffers (the
@@ -8179,8 +8178,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   label: option.label,
                   labelAr: option.labelAr ?? '',
                   price: option.priceDelta,
-                  // P-G3 — grey the option when its linked product is
-                  // sold out at this branch.
+                  // P-G3 — grey the option when its linked product is not
+                  // sold at this branch (never because of stock).
                   soldOut: controller.isAddonOptionUnavailable(option),
                 ),
               )
@@ -12069,10 +12068,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                               onAdd: () {
                                 _catalogueProduct(product);
                               },
-                              outOfStock:
-                                  controller.isOutOfStock(product) ||
-                                  (_workspace == null &&
-                                      controller.isAtShelfCap(product)),
                               outsideHours: controller.isOutsideHours(product),
                               highlighted: pulseNonce > 0,
                               pulseNonce: pulseNonce,
@@ -12101,10 +12096,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                             onAdd: () {
                               _catalogueProduct(product);
                             },
-                            outOfStock:
-                                controller.isOutOfStock(product) ||
-                                (_workspace == null &&
-                                    controller.isAtShelfCap(product)),
                             outsideHours: controller.isOutsideHours(product),
                             compact: compact,
                             highlighted: pulseNonce > 0,
@@ -13090,8 +13081,9 @@ class _ModifierOptionDefinition {
   // Phase C4 — the merchant's Arabic option label, display-only (empty = none).
   final String labelAr;
   final double price;
-  // P-G3 — the product behind this option is sold out at the branch (or
-  // missing from the catalog): the tile greys out and refuses selection.
+  // P-G3 — the product behind this option is missing from the branch
+  // catalog (not sold here): the tile greys out and refuses selection.
+  // Stock never sets this (LAUNCH-P2 "sell, but warn").
   final bool soldOut;
 
   const _ModifierOptionDefinition({
@@ -14327,8 +14319,8 @@ class _ProductListTile extends StatelessWidget {
   final VoidCallback onAdd;
   final bool highlighted;
   final int pulseNonce;
-  final bool outOfStock;
-  // Gap sweep G1 — outside the product's daily window (distinct from sold out).
+  // Gap sweep G1 — outside the product's daily window. LAUNCH-P2: cached
+  // stock never greys a tile ("sell, but warn").
   final bool outsideHours;
 
   const _ProductListTile({
@@ -14336,7 +14328,6 @@ class _ProductListTile extends StatelessWidget {
     required this.onAdd,
     this.highlighted = false,
     this.pulseNonce = 0,
-    this.outOfStock = false,
     this.outsideHours = false,
   });
 
@@ -14356,7 +14347,7 @@ class _ProductListTile extends StatelessWidget {
         return Transform.scale(scale: 1 + (effectPulse * 0.018), child: child);
       },
       child: InkWell(
-        onTap: (outOfStock || outsideHours) ? null : onAdd,
+        onTap: outsideHours ? null : onAdd,
         borderRadius: BorderRadius.circular(24),
         child: Container(
           padding: const EdgeInsets.all(10),
@@ -14390,26 +14381,7 @@ class _ProductListTile extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (outOfStock)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFE1E1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              l10n.posProductSoldOutBadge,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFFB42318),
-                              ),
-                            ),
-                          )
-                        else if (outsideHours)
+                        if (outsideHours)
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8,
@@ -14493,8 +14465,8 @@ class _ProductTile extends StatelessWidget {
   final bool compact;
   final bool highlighted;
   final int pulseNonce;
-  final bool outOfStock;
-  // Gap sweep G1 — outside the product's daily window (distinct from sold out).
+  // Gap sweep G1 — outside the product's daily window. LAUNCH-P2: cached
+  // stock never greys a tile ("sell, but warn").
   final bool outsideHours;
 
   const _ProductTile({
@@ -14503,7 +14475,6 @@ class _ProductTile extends StatelessWidget {
     this.compact = false,
     this.highlighted = false,
     this.pulseNonce = 0,
-    this.outOfStock = false,
     this.outsideHours = false,
   });
 
@@ -14531,7 +14502,7 @@ class _ProductTile extends StatelessWidget {
         return Transform.scale(
           scale: 1 + (effectPulse * 0.026),
           child: InkWell(
-            onTap: (outOfStock || outsideHours) ? null : onAdd,
+            onTap: outsideHours ? null : onAdd,
             borderRadius: BorderRadius.circular(24),
             child: Container(
               padding: EdgeInsets.all(outerPadding),
@@ -14586,26 +14557,7 @@ class _ProductTile extends StatelessWidget {
                 width: double.infinity,
                 height: artworkHeight,
               ),
-              if (outOfStock)
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      l10n.posProductSoldOutBadge,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 12,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                  ),
-                )
-              else if (outsideHours)
+              if (outsideHours)
                 Positioned.fill(
                   child: Container(
                     decoration: BoxDecoration(

@@ -71,7 +71,7 @@ void main() {
       expect(result.single.groups.last.max, 3);
     },
   );
-  test('missing modifier group or sold-out stock disables selection', () {
+  test('missing modifier group disables selection; stock never does', () {
     final result = machineQuickCatalogue(
       catalogue([
         const Product(
@@ -83,7 +83,7 @@ void main() {
         ),
         const Product(
           id: '8',
-          name: 'Sold out',
+          name: 'Empty shelf',
           category: '',
           price: 1,
           stockMode: 'unit',
@@ -99,12 +99,9 @@ void main() {
         const Product(id: '10', name: 'Available', category: '', price: 1),
       ]),
     );
-    expect(result.map((p) => p.available).toList(), [
-      false,
-      false,
-      false,
-      true,
-    ]);
+    // LAUNCH-P2 "sell, but warn": an empty or never-produced shelf stays
+    // selectable.
+    expect(result.map((p) => p.available).toList(), [false, true, true, true]);
   });
   test(
     'new navigation separates local Held Orders; QR host never imports a cart',

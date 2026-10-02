@@ -735,10 +735,6 @@ class PosController extends ChangeNotifier
   /// The provider chosen for the current delivery order (null = none picked).
   int? selectedDeliveryProviderId;
 
-  /// This branch's ingredient balances by ingredient id (from the config), for
-  /// ingredient-based sold-out enforcement (see [isOutOfStock]).
-  Map<int, double> ingredientBalances = const <int, double>{};
-
   /// v2 #14 — staff positions the merchant allows to cancel an order at the POS
   /// (company policy from /device/config). Defaults to managers-only until a
   /// config sync populates it; see [positionCanCancelOrders].
@@ -1056,7 +1052,8 @@ class PosController extends ChangeNotifier
   /// wires this to the Drift cache so the local shelf count survives an app
   /// restart (until the next /device/config sync brings the server's
   /// authoritative balance). Fire-and-forget; the in-memory catalog is already
-  /// decremented before this fires so the live tiles are correct immediately.
+  /// decremented before this fires. The count is informational — it never
+  /// gates a sale (LAUNCH-P2 "sell, but warn").
   void Function(Map<int, double> soldByProductId)? onShelfStockConsumed;
 
   /// Phase G4 — invoked when a PRINT fails on real hardware (paper out,
@@ -1232,7 +1229,6 @@ class PosController extends ChangeNotifier
     List<DeliveryProvider> deliveryProviders = const <DeliveryProvider>[],
     List<({String key, String name})> expenseCategories =
         const <({String key, String name})>[],
-    Map<int, double> ingredientBalances = const <int, double>{},
     List<MerchantDiscount> discounts = const <MerchantDiscount>[],
     List<Offer> offers = const <Offer>[],
     List<LoyaltyRule> loyaltyRules = const <LoyaltyRule>[],
@@ -1258,7 +1254,6 @@ class PosController extends ChangeNotifier
     this.addonGroups = addonGroups;
     this.deliveryProviders = deliveryProviders;
     this.expenseCategories = expenseCategories;
-    this.ingredientBalances = ingredientBalances;
     availableDiscounts = discounts;
     availableOffers = offers;
     _discountBranchId = branchId;
@@ -1403,101 +1398,40 @@ class PosController extends ChangeNotifier
     ];
   }
 
-  /// Whether [product] is sold out at this branch (greyed-out / blocked on the
-  /// POS). Unit products: branch count ≤ 0. Cooked products (P-G1): same
-  /// shelf count, but NO count yet (never produced/allocated here) also means
-  /// sold out — a cooked product starts grey until the kitchen produces.
-  /// Ingredient products: any recipe ingredient's branch balance is below
-  /// what one unit needs. Untracked products are always available.
-  bool isOutOfStock(Product product) {
-    switch (product.stockMode) {
-      case 'unit':
-        final qty = product.branchStockQty;
-        return qty != null && qty <= 0;
-      case 'cooked':
-        return (product.branchStockQty ?? 0) <= 0;
-      case 'ingredient':
-        for (final line in product.recipe) {
-          if ((ingredientBalances[line.ingredientId] ?? 0) < line.quantity) {
-            return true;
-          }
-        }
-        return false;
-      default:
-        return false;
-    }
-  }
-
-  /// P-G3 — whether the add-on [option] can't be sold right now. An option
-  /// backed by a real product (linked_product_id) greys out when that
-  /// product is sold out at this branch — same pool as its standalone tile —
-  /// or when the product is missing from the branch catalog entirely
-  /// (deleted / not assigned here).
+  /// P-G3 — whether the add-on [option] can't be sold right now. Only an
+  /// EXPLICIT absence counts: an option backed by a real product
+  /// (linked_product_id) is unavailable when that product is missing from
+  /// this branch's catalog (deleted, made internal, or switched off for
+  /// this branch — the server leaves it out of the config).
   ///
-  /// PD3b — an option's 'add' stock-usage lines gate too, on what the
-  /// device can see: ingredient lines against the branch balance; product
-  /// lines against the cached product's stock. A product id MISSING from
-  /// the catalog is SKIPPED, not blocked — internal packaging never
-  /// reaches the device config; the server still consumes it and stock
-  /// may go negative by policy. Removal lines never gate.
+  /// LAUNCH-P2 "sell, but warn": stock never gates an option — neither the
+  /// linked product's cached shelf count nor the option's PD3b stock-usage
+  /// lines. The server consumes them at sale time and lets the balance go
+  /// negative; the manager sees the shortfall in the portal.
   bool isAddonOptionUnavailable(AddonOption option) {
     final linkedId = option.linkedProductId;
-    if (linkedId != null) {
-      final key = linkedId.toString();
-      var found = false;
-      for (final p in allProducts) {
-        if (p.id == key) {
-          if (isOutOfStock(p)) return true;
-          found = true;
-          break;
-        }
-      }
-      if (!found) return true;
-    }
-
-    for (final line in option.consumption) {
-      if (line.isRemove) continue;
-      final ingredientId = line.ingredientId;
-      if (ingredientId != null) {
-        if ((ingredientBalances[ingredientId] ?? 0) < line.qty) return true;
-        continue;
-      }
-      final productId = line.productId;
-      if (productId == null) continue;
-      final key = productId.toString();
-      for (final p in allProducts) {
-        if (p.id == key) {
-          // Piece-counted products gate against the line's QTY (a
-          // "double patty" needing 2 with 1 on the shelf is short) —
-          // mirroring the ingredient check above. Recipe/untracked
-          // products fall back to the one-unit isOutOfStock check.
-          final shelf = p.branchStockQty;
-          if ((p.stockMode == 'unit' || p.stockMode == 'cooked') &&
-              shelf != null) {
-            if (shelf < line.qty) return true;
-          } else if (isOutOfStock(p)) {
-            return true;
-          }
-          break;
-        }
-      }
-    }
-
-    return false;
+    if (linkedId == null) return false;
+    final key = linkedId.toString();
+    return !allProducts.any((p) => p.id == key);
   }
 
   /// Gap sweep G1 — whether [product] is outside its daily availability
-  /// window right now (greyed-out / blocked, distinct from sold-out).
+  /// window right now (greyed-out / blocked).
   bool isOutsideHours(Product product) => !product.isAvailableAt(clock());
 
-  /// A product can't be added to the cart when sold out OR outside its
-  /// daily window. The tile gating + add-to-cart guards use this.
-  bool isUnorderable(Product product) =>
-      isOutOfStock(product) || isOutsideHours(product);
+  /// A product can't be added to the cart when it is outside its daily
+  /// window — the explicit availability the device evaluates itself (a
+  /// product switched off for this branch never reaches the catalog). The
+  /// tile gating + add-to-cart guards use this.
+  ///
+  /// LAUNCH-P2 "sell, but warn": cached stock never makes a product
+  /// unorderable — not a low, zero, negative, missing or stale branch
+  /// balance, for unit, cooked and recipe products alike.
+  bool isUnorderable(Product product) => isOutsideHours(product);
 
   /// Total quantity of [productId] already in the current cart, pooled across
   /// line items (a product split into a plain line + a customized line counts
-  /// once against its shelf).
+  /// once).
   double cartQuantityForProduct(String productId) {
     var total = 0.0;
     for (final item in _cart) {
@@ -1506,36 +1440,20 @@ class PosController extends ChangeNotifier
     return total;
   }
 
-  /// #3 — whether [product] has reached its finite shelf cap in the CURRENT
-  /// cart. A unit / cooked product can never be sold beyond the count produced
-  /// or allocated to this branch ("the kitchen made 3, so you can sell 3"):
-  /// the cart for that product may not exceed [Product.branchStockQty].
-  /// Untracked + ingredient products carry no finite shelf count, so they are
-  /// never capped here (ingredient products gate on ingredient balances via
-  /// [isOutOfStock] instead).
-  bool isAtShelfCap(Product product) {
-    if (product.stockMode != 'unit' && product.stockMode != 'cooked') {
-      return false;
-    }
-    final shelf = product.branchStockQty;
-    if (shelf == null) return false; // not unit-tracked at this branch
-    return cartQuantityForProduct(product.id) >= shelf;
-  }
-
   static double _clampStock(double v) => v < 0 ? 0 : v;
 
-  /// #3 — a finalized sale decrements finite shelf stock LOCALLY so the very
-  /// next order sees the true remaining count (no more "unlimited" cooked sales
-  /// between config syncs). Unit + cooked products only — they hold a
-  /// produced/allocated shelf count; ingredient + untracked products are not
-  /// shelf-counted here. The catalog ([_baseProducts] → [allProducts]) is
-  /// decremented in memory so the live tiles flip immediately, and
-  /// [onShelfStockConsumed] fires so the screen persists it to Drift (surviving
-  /// a restart until the next /device/config sync brings the server's
-  /// authoritative balance). Reads the cart, so it must run BEFORE the
-  /// next-order reset clears it. Add-on linked-product / cooked-component
-  /// consumption is left to the server + the next sync (the device only
-  /// decrements the top-level sold product here).
+  /// #3 — a finalized sale decrements the cached shelf count LOCALLY so the
+  /// device's copy tracks the server's between config syncs (the product
+  /// waste screen lists it). It never gates a sale (LAUNCH-P2 "sell, but
+  /// warn"). Unit + cooked products only — they hold a produced/allocated
+  /// shelf count; ingredient + untracked products are not shelf-counted
+  /// here. The catalog ([_baseProducts] → [allProducts]) is decremented in
+  /// memory, and [onShelfStockConsumed] fires so the screen persists it to
+  /// Drift (surviving a restart until the next /device/config sync brings
+  /// the server's authoritative balance). Reads the cart, so it must run
+  /// BEFORE the next-order reset clears it. Add-on linked-product /
+  /// cooked-component consumption is left to the server + the next sync
+  /// (the device only decrements the top-level sold product here).
   void _consumeShelfStockFromCart() {
     final sold = <String, double>{};
     for (final item in _cart) {
@@ -1733,23 +1651,8 @@ class PosController extends ChangeNotifier
     // would silently charge full price. Refuse instead.
     if (selectedOrderType == OrderType.delivery) return;
     if (picks.isEmpty) return;
-
-    // #3 — a bundle is atomic, so it can't push any finite-shelf (unit/cooked)
-    // pick past its produced count. Tally this bundle's picks per product and,
-    // on top of what's already in the cart, refuse the whole bundle if any
-    // would oversell (it can't be fulfilled).
-    final bundleByProduct = <String, ({Product product, double count})>{};
-    for (final p in picks) {
-      final prev = bundleByProduct[p.id];
-      bundleByProduct[p.id] = (product: p, count: (prev?.count ?? 0) + 1);
-    }
-    for (final entry in bundleByProduct.values) {
-      final p = entry.product;
-      if (p.stockMode != 'unit' && p.stockMode != 'cooked') continue;
-      final shelf = p.branchStockQty;
-      if (shelf == null) continue;
-      if (cartQuantityForProduct(p.id) + entry.count > shelf) return;
-    }
+    // LAUNCH-P2 "sell, but warn" — a bundle is never refused on cached
+    // stock, even when it takes a shelf count below zero.
 
     _dropCompForCartMutation();
     _ensureOrderReference();
@@ -2678,15 +2581,12 @@ class PosController extends ChangeNotifier
 
   void addProduct(Product product) {
     BusinessBoundary.assertWritable();
-    if (releaseBuild && !_hasRealCatalog)
+    if (releaseBuild && !_hasRealCatalog) {
       throw StateError('Load this branch configuration before selling.');
-    if (!_cartMutationAllowed()) return;
-    // #3 — a finite-shelf product (unit/cooked) can't be sold past the
-    // produced/allocated count; once the cart holds the whole shelf, stop.
-    if (isAtShelfCap(product)) {
-      _broadcast();
-      return;
     }
+    if (!_cartMutationAllowed()) return;
+    // LAUNCH-P2 "sell, but warn" — the cached shelf count never caps the
+    // cart; the sale may take the branch balance below zero.
     final index = _cart.indexWhere(
       (item) => item.product.id == product.id && !item.hasCustomization,
     );
@@ -2709,11 +2609,6 @@ class PosController extends ChangeNotifier
     final index = _cart.indexOf(item);
     if (index == -1) return;
 
-    // #3 — don't let a "+" push a finite-shelf product past its shelf count.
-    if (isAtShelfCap(_cart[index].product)) {
-      _broadcast();
-      return;
-    }
     _dropCompForCartMutation();
     _cart[index].qty++;
     _markOrderUpdated(_cart[index].product.id);
@@ -4510,8 +4405,8 @@ class PosController extends ChangeNotifier
       if (!ok) _reportPrintFailure('receipt');
     }
 
-    // #3 — decrement finite shelf stock (unit/cooked) locally before the cart
-    // is cleared, so the next order can't oversell the produced count.
+    // #3 — decrement the cached shelf count (unit/cooked) locally before the
+    // cart is cleared (informational; it never gates the next sale).
     _consumeShelfStockFromCart();
 
     _resetForNextOrder(

@@ -6,8 +6,9 @@ import 'package:pos_machine/state/pos_controller.dart';
 import 'support/fake_order_storage.dart';
 
 /// P-G1 — kitchen production: the kitchen_positions policy flow
-/// (config → meta → catalog → controller gate), cooked sold-out
-/// semantics, and the /device/kitchen payload parsing.
+/// (config → meta → catalog → controller gate), cooked selling semantics
+/// (LAUNCH-P2: an unproduced or empty shelf never blocks a sale), and the
+/// /device/kitchen payload parsing.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -45,14 +46,14 @@ void main() {
     });
   });
 
-  group('cooked sold-out semantics', () {
+  group('cooked selling semantics (LAUNCH-P2 sell, but warn)', () {
     PosController controller() {
       final c = PosController(orderStorage: FakeOrderStorage());
       addTearDown(c.dispose);
       return c;
     }
 
-    test('a cooked product with NO shelf count yet is sold out', () {
+    test('a cooked product with NO shelf count yet is still orderable', () {
       const cake = Product(
         id: '1',
         name: 'Cake',
@@ -60,10 +61,10 @@ void main() {
         price: 5.0,
         stockMode: 'cooked',
       );
-      expect(controller().isOutOfStock(cake), isTrue);
+      expect(controller().isUnorderable(cake), isFalse);
     });
 
-    test('a cooked product with shelf stock is available, 0 is sold out', () {
+    test('a cooked product is orderable with shelf stock and at 0', () {
       const onShelf = Product(
         id: '1',
         name: 'Cake',
@@ -81,8 +82,8 @@ void main() {
         branchStockQty: 0,
       );
       final c = controller();
-      expect(c.isOutOfStock(onShelf), isFalse);
-      expect(c.isOutOfStock(soldDown), isTrue);
+      expect(c.isUnorderable(onShelf), isFalse);
+      expect(c.isUnorderable(soldDown), isFalse);
     });
 
     test('unit semantics are unchanged: NO count means untracked-available',
@@ -94,7 +95,7 @@ void main() {
         price: 0.5,
         stockMode: 'unit',
       );
-      expect(controller().isOutOfStock(unitNoCount), isFalse);
+      expect(controller().isUnorderable(unitNoCount), isFalse);
     });
   });
 

@@ -348,7 +348,8 @@ void main() {
       expect(options[1].linkedProductId, isNull);
     });
 
-    test('isAddonOptionUnavailable mirrors the linked product sold-out state', () {
+    test('isAddonOptionUnavailable greys only a link missing from the branch '
+        'catalog — never stock (LAUNCH-P2)', () {
       final controller = PosController(orderStorage: FakeOrderStorage());
       addTearDown(controller.dispose);
 
@@ -374,8 +375,6 @@ void main() {
         products: const [cakeInStock, juice],
         floors: const <DiningFloor>[],
         tables: const <DiningTableDefinition>[],
-        // Orange (1): 0.2 L on the shelf — below the 0.3 L one juice needs.
-        ingredientBalances: const {1: 0.2},
       );
 
       const cakeOption =
@@ -386,15 +385,16 @@ void main() {
       const orphanOption =
           AddonOption(id: 4, label: 'Ghost', priceDelta: 1.0, linkedProductId: 999);
 
-      // Cake has shelf stock -> sellable; juice is ingredient-short -> grey.
+      // Both linked products are on this branch's menu -> sellable (the
+      // juice's ingredient balance is never consulted).
       expect(controller.isAddonOptionUnavailable(cakeOption), isFalse);
-      expect(controller.isAddonOptionUnavailable(juiceOption), isTrue);
+      expect(controller.isAddonOptionUnavailable(juiceOption), isFalse);
       // Classic options never grey; a link to a product missing from the
       // branch catalog greys (can't fulfil it here).
       expect(controller.isAddonOptionUnavailable(classicOption), isFalse);
       expect(controller.isAddonOptionUnavailable(orphanOption), isTrue);
 
-      // The cake sells out (shelf hits zero) -> its option greys too.
+      // The cake's shelf hits zero -> its option still sells.
       controller.applyCatalog(
         categories: const ['Dessert'],
         products: const [
@@ -410,14 +410,14 @@ void main() {
         floors: const <DiningFloor>[],
         tables: const <DiningTableDefinition>[],
       );
-      expect(controller.isAddonOptionUnavailable(cakeOption), isTrue);
+      expect(controller.isAddonOptionUnavailable(cakeOption), isFalse);
     });
   });
 
-  // PD3b — per-option stock-usage lines: parse → Drift → catalog, and the
-  // controller gates 'add' lines on what the device can see (ingredient
-  // balances + cached product stock); removal lines never gate; a product
-  // id missing from the config (internal packaging) is skipped.
+  // PD3b — per-option stock-usage lines: parse → Drift → catalog. LAUNCH-P2
+  // "sell, but warn": no line ever gates the option on the device — not an
+  // 'add' line over the cached balance or shelf, not a removal, not a
+  // product id missing from the config (internal packaging).
   group('PD3b per-option consumption', () {
     test('parse() caches the consumption lines as JSON', () {
       final parsed = ConfigMapper.parse(<String, dynamic>{
@@ -480,7 +480,7 @@ void main() {
       expect(lines.single.qty, closeTo(0.05, 0.0001));
     });
 
-    test('add lines gate on visible stock; removals and unknown ids never do', () {
+    test('add lines never gate on stock; removals and unknown ids never do', () {
       final controller = PosController(orderStorage: FakeOrderStorage());
       addTearDown(controller.dispose);
 
@@ -498,29 +498,27 @@ void main() {
         ],
         floors: const <DiningFloor>[],
         tables: const <DiningTableDefinition>[],
-        // Salad (11): 0.02 kg left.
-        ingredientBalances: const {11: 0.02},
       );
 
-      // An 'add' product line on a sold-out cooked product greys out.
+      // An 'add' product line on an empty cooked shelf still sells.
       const extraPatty = AddonOption(
         id: 1,
         label: 'Extra patty',
         priceDelta: 0.5,
         consumption: [AddonConsumptionLine(productId: 3, qty: 1)],
       );
-      expect(controller.isAddonOptionUnavailable(extraPatty), isTrue);
+      expect(controller.isAddonOptionUnavailable(extraPatty), isFalse);
 
-      // An 'add' ingredient line below the branch balance greys out.
+      // An 'add' ingredient line with no cached balance still sells.
       const extraSalad = AddonOption(
         id: 2,
         label: 'Extra salad',
         priceDelta: 0.1,
         consumption: [AddonConsumptionLine(ingredientId: 11, qty: 0.05)],
       );
-      expect(controller.isAddonOptionUnavailable(extraSalad), isTrue);
+      expect(controller.isAddonOptionUnavailable(extraSalad), isFalse);
 
-      // ...but a smaller add fits the remaining 0.02 kg.
+      // ...and so does a smaller add.
       const lightSalad = AddonOption(
         id: 3,
         label: 'Light salad',
@@ -551,7 +549,7 @@ void main() {
       expect(controller.isAddonOptionUnavailable(largeCup), isFalse);
     });
 
-    test('product add lines gate against the line QTY, not just zero stock', () {
+    test('product add lines never gate, even above the shelf count', () {
       final controller = PosController(orderStorage: FakeOrderStorage());
       addTearDown(controller.dispose);
 
@@ -571,14 +569,14 @@ void main() {
         tables: const <DiningTableDefinition>[],
       );
 
-      // Needs 2 with 1 on the shelf — visible shortfall, greyed.
+      // Needs 2 with 1 on the shelf — still sold (sell, but warn).
       const doublePatty = AddonOption(
         id: 1,
         label: 'Double patty',
         priceDelta: 1.0,
         consumption: [AddonConsumptionLine(productId: 3, qty: 2)],
       );
-      expect(controller.isAddonOptionUnavailable(doublePatty), isTrue);
+      expect(controller.isAddonOptionUnavailable(doublePatty), isFalse);
 
       // Needs 1 with 1 on the shelf — fits.
       const singlePatty = AddonOption(

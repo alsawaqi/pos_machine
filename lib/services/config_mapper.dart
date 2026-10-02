@@ -51,8 +51,8 @@ class CatalogSnapshot {
   // Company expense categories for the expense-log picker (value = key, label =
   // name). Empty = no config categories cached → the screen uses its const list.
   final List<({String key, String name})> expenseCategories;
-  // This branch's ingredient balances by ingredient id; drives ingredient-based
-  // sold-out (a recipe product is out when a needed ingredient runs low).
+  // This branch's cached ingredient balances by ingredient id. Reference only —
+  // LAUNCH-P2: never used to gate a sale.
   final Map<int, double> ingredientBalances;
   // Merchant discount rules; the POS offers the currently-applicable order-scope
   // ones in the discount picker.

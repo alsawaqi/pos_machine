@@ -65,12 +65,11 @@ class Products extends Table {
   // Per-delivery-provider price overrides, JSON object {providerId: priceBaisas}.
   // Resolution on the device: this map[provider] → deliveryPriceBaisas → base.
   TextColumn get deliveryPricesJson => text().withDefault(const Constant('{}'))();
-  // Phase 7 — stock mode: unit | ingredient | untracked. Drives device sold-out
-  // enforcement (null = untracked).
+  // Phase 7 — stock mode: unit | cooked | ingredient | untracked (null =
+  // untracked). LAUNCH-P2: stock never blocks a sale on the device.
   TextColumn get stockMode => text().nullable()();
   // Recipe ingredient lines, JSON array [{"ingredient_id":N,"quantity":Q}].
-  // An ingredient-mode product is sold out when any line's branch ingredient
-  // balance < its quantity (BranchIngredientStock).
+  // Cached for reference only — never used to gate a sale (LAUNCH-P2).
   TextColumn get recipeJson => text().withDefault(const Constant('[]'))();
   // Gap sweep G1 — daily availability window 'HH:MM:SS' (both null = always
   // orderable; from > until wraps midnight). Evaluated on the device clock.
@@ -142,11 +141,12 @@ class Addons extends Table {
   // Phase B — pre-selected when the customize sheet opens.
   BoolColumn get isDefault => boolean().withDefault(const Constant(false))();
   IntColumn get ingredientId => integer().nullable()();
-  // P-G3 — the real product behind this option (greys out when sold out).
+  // P-G3 — the real product behind this option (greys out when that product
+  // is missing from the branch catalog; never because of stock).
   IntColumn get linkedProductId => integer().nullable()();
   // PD3b — the option's stock-usage lines, cached as the raw JSON array
   // from /device/config ([{type, ingredient_id|product_id, direction,
-  // qty, unit}]). Drives per-option availability gating.
+  // qty, unit}]). Never used to gate the option (LAUNCH-P2).
   TextColumn get consumptionJson => text().withDefault(const Constant('[]'))();
   TextColumn get status => text().nullable()();
 
@@ -402,9 +402,8 @@ class CachedCustomers extends Table {
 }
 
 // Per-branch INGREDIENT balances (from the config `branch_stock` slice), keyed
-// by ingredient id. Drives ingredient-based product availability: a recipe
-// product is sold out when a needed ingredient's balance here is below the
-// recipe quantity.
+// by ingredient id. Cached for reference only — LAUNCH-P2: never used to gate
+// a sale.
 @DataClassName('BranchIngredientStockRow')
 class BranchIngredientStock extends Table {
   IntColumn get ingredientId => integer()();

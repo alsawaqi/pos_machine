@@ -6,9 +6,10 @@ import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/state/pos_controller.dart';
 import 'support/fake_order_storage.dart';
 
-/// Phase 7 device sold-out: stock_mode + recipe + per-branch ingredient balances
-/// survive parse → catalog, and isOutOfStock blocks unit products at 0 and
-/// ingredient products whose recipe ingredient ran low.
+/// Phase 7 stock fields: stock_mode + recipe + per-branch ingredient balances
+/// survive parse → catalog. LAUNCH-P2 "sell, but warn": cached stock never
+/// makes a product unorderable — only its daily window does (the full P2-7
+/// coverage lives in launch_p2_sell_but_warn_test.dart).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -58,86 +59,6 @@ void main() {
       expect(cake.branchStockQty, 0);
 
       expect(catalog.ingredientBalances[1], closeTo(0.5, 1e-9));
-    });
-  });
-
-  group('PosController.isOutOfStock', () {
-    PosController make(Map<int, double> balances) {
-      final c = PosController(orderStorage: FakeOrderStorage());
-      c.applyCatalog(
-        categories: const ['X'],
-        products: const [],
-        floors: const <DiningFloor>[],
-        tables: const <DiningTableDefinition>[],
-        ingredientBalances: balances,
-      );
-      return c;
-    }
-
-    test('unit: out when branch count <= 0, available otherwise', () {
-      final c = make(const {});
-      addTearDown(c.dispose);
-      expect(
-        c.isOutOfStock(const Product(
-            id: '1', name: 'A', category: 'X', price: 1, stockMode: 'unit', branchStockQty: 0)),
-        isTrue,
-      );
-      expect(
-        c.isOutOfStock(const Product(
-            id: '1', name: 'A', category: 'X', price: 1, stockMode: 'unit', branchStockQty: 5)),
-        isFalse,
-      );
-      // null branch stock = not unit-tracked here → available.
-      expect(
-        c.isOutOfStock(const Product(
-            id: '1', name: 'A', category: 'X', price: 1, stockMode: 'unit')),
-        isFalse,
-      );
-    });
-
-    test('ingredient: out when any recipe ingredient balance < needed', () {
-      final c = make(const {1: 0.5, 2: 0.0});
-      addTearDown(c.dispose);
-      expect(
-        c.isOutOfStock(const Product(
-            id: '1', name: 'A', category: 'X', price: 1, stockMode: 'ingredient',
-            recipe: [RecipeLine(ingredientId: 1, quantity: 0.25)])),
-        isFalse,
-      );
-      expect(
-        c.isOutOfStock(const Product(
-            id: '2', name: 'B', category: 'X', price: 1, stockMode: 'ingredient',
-            recipe: [RecipeLine(ingredientId: 1, quantity: 0.9)])),
-        isTrue,
-      );
-      // Missing ingredient = balance 0.
-      expect(
-        c.isOutOfStock(const Product(
-            id: '3', name: 'C', category: 'X', price: 1, stockMode: 'ingredient',
-            recipe: [RecipeLine(ingredientId: 9, quantity: 0.1)])),
-        isTrue,
-      );
-      // One line ok, the other depleted.
-      expect(
-        c.isOutOfStock(const Product(
-            id: '4', name: 'D', category: 'X', price: 1, stockMode: 'ingredient',
-            recipe: [RecipeLine(ingredientId: 1, quantity: 0.1), RecipeLine(ingredientId: 2, quantity: 0.1)])),
-        isTrue,
-      );
-    });
-
-    test('untracked / null mode is always available', () {
-      final c = make(const {});
-      addTearDown(c.dispose);
-      expect(
-        c.isOutOfStock(const Product(
-            id: '1', name: 'A', category: 'X', price: 1, stockMode: 'untracked')),
-        isFalse,
-      );
-      expect(
-        c.isOutOfStock(const Product(id: '1', name: 'A', category: 'X', price: 1)),
-        isFalse,
-      );
     });
   });
 
@@ -273,7 +194,7 @@ void main() {
   });
 
   group('PosController.isUnorderable', () {
-    test('composes sold-out OR outside-hours under the injected clock', () {
+    test('only the window blocks, under the injected clock — never stock', () {
       final c = PosController(orderStorage: FakeOrderStorage());
       addTearDown(c.dispose);
       c.applyCatalog(
@@ -291,7 +212,7 @@ void main() {
         availableFrom: '06:00:00',
         availableUntil: '11:00:00',
       );
-      const soldOut = Product(
+      const emptyShelf = Product(
         id: '2',
         name: 'B',
         category: 'X',
@@ -303,7 +224,8 @@ void main() {
       c.clock = () => DateTime(2026, 6, 10, 9); // inside the window
       expect(c.isOutsideHours(windowed), isFalse);
       expect(c.isUnorderable(windowed), isFalse);
-      expect(c.isUnorderable(soldOut), isTrue); // sold out regardless of time
+      // LAUNCH-P2 "sell, but warn": an empty shelf never blocks.
+      expect(c.isUnorderable(emptyShelf), isFalse);
 
       c.clock = () => DateTime(2026, 6, 10, 15); // outside the window
       expect(c.isOutsideHours(windowed), isTrue);
@@ -354,9 +276,10 @@ void main() {
     });
   });
 
-  // #3 — a cooked/unit product's sellable quantity == the produced shelf count:
-  // the cart can't exceed it, and a sale decrements it (no unlimited resale).
-  group('#3 finite shelf cap + sale decrement', () {
+  // #3 — a sale decrements a cooked/unit product's cached shelf count.
+  // LAUNCH-P2 "sell, but warn": that count is informational — the cart may
+  // exceed it and the product stays orderable at zero.
+  group('#3 shelf count (informational) + sale decrement', () {
     PosController withProducts(List<Product> products) {
       final c = PosController(orderStorage: FakeOrderStorage());
       c.applyCatalog(
@@ -377,26 +300,22 @@ void main() {
       stockMode: 'cooked', branchStockQty: 2,
     );
 
-    test('cart cannot exceed the produced shelf count (unit + cooked)', () {
+    test('cart may exceed the produced shelf count (unit + cooked)', () {
       final c = withProducts(const [unit3, cooked2]);
       addTearDown(c.dispose);
 
-      c.addProduct(unit3);
-      c.addProduct(unit3);
-      c.addProduct(unit3);
-      expect(c.cartQuantityForProduct('1'), 3);
-      expect(c.isAtShelfCap(unit3), isTrue);
-      c.addProduct(unit3); // blocked — only 3 were made
-      expect(c.cartQuantityForProduct('1'), 3);
+      for (var i = 0; i < 4; i++) {
+        c.addProduct(unit3); // 4 sold, only 3 made — still allowed
+      }
+      expect(c.cartQuantityForProduct('1'), 4);
 
-      c.addProduct(cooked2);
-      c.addProduct(cooked2);
-      expect(c.cartQuantityForProduct('2'), 2);
-      c.addProduct(cooked2); // blocked
-      expect(c.cartQuantityForProduct('2'), 2);
+      for (var i = 0; i < 3; i++) {
+        c.addProduct(cooked2);
+      }
+      expect(c.cartQuantityForProduct('2'), 3);
     });
 
-    test('untracked / unbounded products are never shelf-capped', () {
+    test('untracked / unbounded products add freely', () {
       const untracked =
           Product(id: '5', name: 'U', category: 'X', price: 1, stockMode: 'untracked');
       // unit mode but no branch count = not shelf-tracked here.
@@ -410,8 +329,6 @@ void main() {
       }
       expect(c.cartQuantityForProduct('5'), 5);
       expect(c.cartQuantityForProduct('6'), 5);
-      expect(c.isAtShelfCap(untracked), isFalse);
-      expect(c.isAtShelfCap(unitNoShelf), isFalse);
     });
 
     test('a sale decrements the shelf count + fires the persist callback', () {
@@ -425,34 +342,30 @@ void main() {
       final p = c.allProducts.firstWhere((x) => x.id == '1');
       expect(p.branchStockQty, 1); // made 3, sold 2 → 1 left
       expect(persisted, {1: 2.0});
-      expect(c.isOutOfStock(p), isFalse);
+      expect(c.isUnorderable(p), isFalse);
     });
 
-    test('selling the whole shelf marks it sold out and clamps at 0', () {
+    test('selling past the shelf clamps the cached count at 0 and the '
+        'product stays orderable', () {
       final c = withProducts(const [unit3]);
       addTearDown(c.dispose);
-      c.applyShelfStockConsumption({'1': 5.0}); // oversold guard → clamp 0
+      c.applyShelfStockConsumption({'1': 5.0}); // oversold → clamp 0
       final p = c.allProducts.firstWhere((x) => x.id == '1');
       expect(p.branchStockQty, 0);
-      expect(c.isOutOfStock(p), isTrue);
+      expect(c.isUnorderable(p), isFalse);
     });
 
-    test('a bundle is refused when it would oversell a finite-shelf pick', () {
+    test('a bundle may take a finite-shelf pick past its count', () {
       const offer = Offer(id: 1, name: 'Combo', type: 'bundle');
       final c = withProducts(const [unit3]);
       addTearDown(c.dispose);
 
-      // 2 of a 3-shelf product is within the cap.
       c.addBundle(offer, const [unit3, unit3]);
       expect(c.cartQuantityForProduct('1'), 2);
 
-      // Another 2 would make 4 > 3 → the whole (atomic) bundle is refused.
+      // 4 > 3 on the shelf — the bundle is still added (sell, but warn).
       c.addBundle(offer, const [unit3, unit3]);
-      expect(c.cartQuantityForProduct('1'), 2);
-
-      // A bundle for exactly the remaining 1 is allowed.
-      c.addBundle(offer, const [unit3]);
-      expect(c.cartQuantityForProduct('1'), 3);
+      expect(c.cartQuantityForProduct('1'), 4);
     });
   });
 }

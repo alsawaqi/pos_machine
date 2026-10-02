@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/screens/staff_pos_screen.dart';
@@ -44,6 +45,23 @@ class _FakeStorage implements OrderStorageService {
   Future<void> clearHeldOrders() async {}
   @override
   Future<void> clearAllData() async {}
+}
+
+/// [_FakeStorage] plus a draft-recovery guard the test can switch on: while
+/// it is blocked, every cart edit is refused (_cartMutationAllowed).
+class _GuardedStorage extends _FakeStorage implements DraftRecoveryGuard {
+  @override
+  final ValueNotifier<bool> recoveryBlocked = ValueNotifier(false);
+  @override
+  Future<void> refreshRecoveryGuard() async {}
+  @override
+  Future<void> assertDraftNotRetired({
+    String? uuid,
+    String? tableId,
+    String? reference,
+    String? occupiedAt,
+    String? seatingKey,
+  }) async {}
 }
 
 PosController _buildController({
@@ -256,28 +274,33 @@ void main() {
     });
 
     test('blocked and no-op mutations retain the comp and emit no notice', () {
-      const capped = Product(
-        id: '3',
-        name: 'Capped',
-        category: 'X',
-        price: 1,
-        stockMode: 'unit',
-        branchStockQty: 1,
+      // LAUNCH-P2: the shelf cap no longer blocks a cart edit, so a pending
+      // draft recovery is the blocker here.
+      final storage = _GuardedStorage();
+      final controller = PosController(orderStorage: storage);
+      controller.applyCatalog(
+        categories: const ['X'],
+        products: const [_latte],
+        floors: const <DiningFloor>[],
+        tables: const <DiningTableDefinition>[],
+        taxes: const <CompanyTax>[],
       );
-      final controller = _buildController(products: const [capped]);
       addTearDown(controller.dispose);
-      controller.addProduct(capped);
+      controller.addProduct(_latte);
       var notices = 0;
       controller.onCompClearedAfterCartEdit = () => notices++;
       controller.applyComp(
         const AppliedComp(reasonId: 7, reasonName: 'Service recovery'),
       );
 
-      controller.addProduct(capped);
+      storage.recoveryBlocked.value = true;
+      controller.addProduct(_latte);
       controller.incrementCartItem(controller.cart.single);
+      storage.recoveryBlocked.value = false;
+      expect(controller.cart.single.qty, 1);
       controller.addBundle(_bundle, const []);
-      controller.removeCartItem(CartItem(product: capped));
-      controller.decreaseCartItem(CartItem(product: capped));
+      controller.removeCartItem(CartItem(product: _latte));
+      controller.decreaseCartItem(CartItem(product: _latte));
 
       expect(controller.appliedComp, isNotNull);
       expect(notices, 0);

@@ -26,15 +26,9 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
     ...p.addonGroupIds,
     ...?catalog.categoryAddonGroupIds[p.categoryId],
   }.toList();
-  bool inStock(Product p) => switch (p.stockMode) {
-    'unit' => p.branchStockQty == null || p.branchStockQty! > 0,
-    'cooked' => (p.branchStockQty ?? 0) > 0,
-    'ingredient' => p.recipe.every(
-      (line) =>
-          (catalog.ingredientBalances[line.ingredientId] ?? 0) >= line.quantity,
-    ),
-    _ => true,
-  };
+  // LAUNCH-P2 "sell, but warn": only explicit rules make a product
+  // unavailable here (its daily window, an unknown add-on group); cached
+  // stock never does.
   return [
     for (final p in catalog.products)
       if (int.tryParse(p.id) != null && int.parse(p.id) > 0)
@@ -45,7 +39,6 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
           priceBaisas: (p.price * 1000).round(),
           available:
               p.isAvailableAt(DateTime.now()) &&
-              inStock(p) &&
               ids(p).every(groups.containsKey),
           groups: [
             for (final id in ids(p))

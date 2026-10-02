@@ -205,10 +205,12 @@ class AddonOption {
   // Phase B — starts selected when the customize sheet opens.
   final bool isDefault;
   // P-G3 — the real product this option sells (cake slice = the Cake
-  // product). The option greys out when that product is sold out at the
-  // branch; null = a classic priced/ingredient option, always sellable.
+  // product). The option greys out when that product is missing from the
+  // branch catalog (never because of stock); null = a classic
+  // priced/ingredient option, always sellable.
   final int? linkedProductId;
-  // PD3b — the option's stock-usage lines (availability gating).
+  // PD3b — the option's stock-usage lines (consumed server-side; never
+  // gate the option on the device — LAUNCH-P2).
   final List<AddonConsumptionLine> consumption;
 }
 
@@ -422,7 +424,8 @@ class ReceiptTemplate {
 }
 
 /// One ingredient line of a product's recipe: how much of an ingredient one unit
-/// of the product needs. Drives ingredient-based sold-out on the device.
+/// of the product needs. The server consumes it at sale time; the device never
+/// gates a sale on it (LAUNCH-P2 "sell, but warn").
 class RecipeLine {
   const RecipeLine({required this.ingredientId, required this.quantity});
   final int ingredientId;
@@ -451,9 +454,10 @@ class Product {
   // provider id. Resolution: override → deliveryPrice → base price.
   final double? deliveryPrice;
   final Map<int, double> deliveryPriceByProvider;
-  // Stock (Phase 7). [stockMode] = unit | ingredient | untracked (null=untracked).
-  // [recipe] = ingredient lines for ingredient-mode availability. [branchStockQty]
-  // = this branch's unit count for unit-mode availability (null = not tracked).
+  // Stock (Phase 7). [stockMode] = unit | cooked | ingredient | untracked
+  // (null=untracked). [recipe] = the product's ingredient lines.
+  // [branchStockQty] = this branch's cached shelf count (null = not tracked).
+  // LAUNCH-P2 "sell, but warn": none of these ever blocks a sale.
   final String? stockMode;
   final List<RecipeLine> recipe;
   final double? branchStockQty;
