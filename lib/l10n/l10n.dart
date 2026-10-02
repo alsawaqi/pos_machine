@@ -5552,7 +5552,7 @@ abstract class L10n {
   /// No description provided for @kitchenInsufficient.
   ///
   /// In en, this message translates to:
-  /// **'Not enough ingredients at this branch for that quantity.'**
+  /// **'Not enough on the books for that quantity. You can still start; the ingredient stock will go below zero.'**
   String get kitchenInsufficient;
 
   /// No description provided for @kitchenExtrasTitle.

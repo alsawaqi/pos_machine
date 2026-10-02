@@ -470,78 +470,77 @@ class _ProductCard extends StatelessWidget {
     final shelf = product.branchStockQty ?? 0;
 
     return InkWell(
-      onTap: enabled && canMakeAny ? onTap : null,
+      onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(14),
-      child: Opacity(
-        opacity: canMakeAny ? 1 : 0.45,
-        child: Container(
-          width: 210,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: _KitchenProductionScreenState._card,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: _KitchenProductionScreenState._cardBorder,
-            ),
+      child: Container(
+        width: 210,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: _KitchenProductionScreenState._card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: _KitchenProductionScreenState._cardBorder,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(Icons.inventory_2_outlined,
+                    color: Colors.white38, size: 15),
+                const SizedBox(width: 5),
+                Text(
+                  l10n.kitchenShelfCount(
+                      _KitchenProductionScreenState._qty(shelf)),
+                  style:
+                      const TextStyle(color: Colors.white60, fontSize: 12.5),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  const Icon(Icons.inventory_2_outlined,
-                      color: Colors.white38, size: 15),
-                  const SizedBox(width: 5),
-                  Text(
-                    l10n.kitchenShelfCount(
-                        _KitchenProductionScreenState._qty(shelf)),
-                    style:
-                        const TextStyle(color: Colors.white60, fontSize: 12.5),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 5),
-              Row(
-                children: [
-                  Icon(
-                    canMakeAny
-                        ? Icons.local_fire_department_outlined
-                        : Icons.block_rounded,
-                    color: canMakeAny
-                        ? _KitchenProductionScreenState._accent
-                        : _KitchenProductionScreenState._danger,
-                    size: 15,
-                  ),
-                  const SizedBox(width: 5),
-                  Expanded(
-                    child: Text(
-                      max == null
-                          ? l10n.kitchenNoRecipe
-                          : l10n.kitchenCanMake(max),
-                      style: TextStyle(
-                        color: canMakeAny
-                            ? _KitchenProductionScreenState._accent
-                            : _KitchenProductionScreenState._danger,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                      ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Row(
+              children: [
+                // LAUNCH-P2: a shortfall on the books is a warning, never a
+                // block — the chef can still start the batch.
+                Icon(
+                  canMakeAny
+                      ? Icons.local_fire_department_outlined
+                      : Icons.warning_amber_rounded,
+                  color: canMakeAny
+                      ? _KitchenProductionScreenState._accent
+                      : _KitchenProductionScreenState._warn,
+                  size: 15,
+                ),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    max == null
+                        ? l10n.kitchenNoRecipe
+                        : l10n.kitchenCanMake(max),
+                    style: TextStyle(
+                      color: canMakeAny
+                          ? _KitchenProductionScreenState._accent
+                          : _KitchenProductionScreenState._warn,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ],
-              ),
-            ],
-          ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -794,7 +793,7 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
                     style: TextStyle(
                       color: _quantity <= max
                           ? const Color(0xFF35C28B)
-                          : const Color(0xFFFF6B6B),
+                          : _KitchenProductionScreenState._warn,
                       fontSize: 12.5,
                     ),
                   ),
@@ -827,7 +826,7 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
                           style: TextStyle(
                             color: line.quantity * _quantity >
                                     line.branchBalance + 1e-9
-                                ? const Color(0xFFFF6B6B)
+                                ? _KitchenProductionScreenState._warn
                                 : Colors.white,
                             fontWeight: FontWeight.w600,
                           ),
@@ -840,13 +839,16 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
                       ],
                     ),
                   ),
+                // LAUNCH-P2: a warning only — the batch can still start and
+                // the ingredient balances may go below zero.
                 if (!_recipeCovered)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(
                       l10n.kitchenInsufficient,
                       style: const TextStyle(
-                          color: Color(0xFFFF6B6B), fontSize: 12.5),
+                          color: _KitchenProductionScreenState._warn,
+                          fontSize: 12.5),
                     ),
                   ),
                 const SizedBox(height: 14),
@@ -959,14 +961,12 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
           style: FilledButton.styleFrom(
             backgroundColor: const Color(0xFF35C28B),
           ),
-          onPressed: _recipeCovered &&
-                  (widget.product.maxProducible == null ||
-                      _quantity <= widget.product.maxProducible!)
-              ? () => Navigator.of(context).pop(_StartBatchRequest(
-                    quantity: _quantity,
-                    extras: _extraPayload,
-                  ))
-              : null,
+          // LAUNCH-P2 (owner decision 2026-10-02): production follows the
+          // selling rule — never blocked by the stock numbers.
+          onPressed: () => Navigator.of(context).pop(_StartBatchRequest(
+                quantity: _quantity,
+                extras: _extraPayload,
+              )),
           child: Text(l10n.kitchenStart),
         ),
       ],

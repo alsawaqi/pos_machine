@@ -3400,7 +3400,7 @@ class L10nAr extends L10n {
 
   @override
   String get kitchenInsufficient =>
-      'لا تكفي المكونات في هذا الفرع لهذه الكمية.';
+      'المخزون المسجل لا يكفي لهذه الكمية. يمكنك البدء، وسيصبح رصيد المكونات أقل من الصفر.';
 
   @override
   String get kitchenExtrasTitle => 'مكونات إضافية (مصرّح بها)';

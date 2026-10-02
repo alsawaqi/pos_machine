@@ -3361,7 +3361,7 @@ class L10nEn extends L10n {
 
   @override
   String get kitchenInsufficient =>
-      'Not enough ingredients at this branch for that quantity.';
+      'Not enough on the books for that quantity. You can still start; the ingredient stock will go below zero.';
 
   @override
   String get kitchenExtrasTitle => 'Extra ingredients (declared)';

@@ -1130,7 +1130,7 @@
   "kitchenStartBatchTitle": "تحضير {name}",
   "kitchenQuantity": "الكمية (قطع)",
   "kitchenRecipeLocked": "الوصفة (مثبتة × الكمية / المتاح)",
-  "kitchenInsufficient": "لا تكفي المكونات في هذا الفرع لهذه الكمية.",
+  "kitchenInsufficient": "المخزون المسجل لا يكفي لهذه الكمية. يمكنك البدء، وسيصبح رصيد المكونات أقل من الصفر.",
   "kitchenExtrasTitle": "مكونات إضافية (مصرّح بها)",
   "kitchenAddExtra": "إضافة مكوّن",
   "kitchenExtraQtyHint": "الكمية {unit}",

@@ -2187,7 +2187,7 @@
   },
   "kitchenQuantity": "Quantity (pieces)",
   "kitchenRecipeLocked": "Recipe (locked × quantity / available)",
-  "kitchenInsufficient": "Not enough ingredients at this branch for that quantity.",
+  "kitchenInsufficient": "Not enough on the books for that quantity. You can still start; the ingredient stock will go below zero.",
   "kitchenExtrasTitle": "Extra ingredients (declared)",
   "kitchenAddExtra": "Add extra",
   "kitchenExtraQtyHint": "Qty {unit}",
