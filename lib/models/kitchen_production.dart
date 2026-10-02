@@ -164,6 +164,7 @@ class ProductionBatch {
     this.durationSeconds,
     this.startedBy,
     this.lines = const <ProductionBatchLine>[],
+    this.shortIngredientNames = const <String>[],
   });
 
   factory ProductionBatch.fromJson(Map<String, dynamic> json) =>
@@ -183,6 +184,11 @@ class ProductionBatch {
             .whereType<Map>()
             .map((m) => ProductionBatchLine.fromJson(m.cast<String, dynamic>()))
             .toList(),
+        shortIngredientNames: [
+          for (final s in (json['ingredient_shortfalls'] as List? ?? const []))
+            if (s is Map && (s['name']?.toString() ?? '').isNotEmpty)
+              s['name'].toString(),
+        ],
       );
 
   final String uuid;
@@ -199,6 +205,11 @@ class ProductionBatch {
   final int? durationSeconds;
   final String? startedBy;
   final List<ProductionBatchLine> lines;
+
+  /// LAUNCH-P3: ingredients the books could not cover when the batch started
+  /// (the start answer's `ingredient_shortfalls`; a warning — the batch
+  /// started and those balances went below zero). Empty otherwise.
+  final List<String> shortIngredientNames;
 }
 
 /// P-G1.5 — one expired-stock line from GET /device/disposition: what the

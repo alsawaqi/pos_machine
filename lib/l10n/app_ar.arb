@@ -1137,6 +1137,7 @@
   "kitchenStart": "بدء الدفعة",
   "kitchenDialogCancel": "إلغاء",
   "kitchenBatchStarted": "بدأت الدفعة — تم خصم المكونات.",
+  "kitchenBatchStartedShort": "بدأت الدفعة. المخزون المسجل لم يكفِ من: {names}. أصبح رصيدها أقل من الصفر.",
   "kitchenBatchFinished": "اكتملت الدفعة — أُضيفت القطع إلى الرف.",
   "kitchenBatchCancelled": "أُلغيت الدفعة — أُعيدت المكونات.",
   "kitchenPinTitle": "موافقة المدير",

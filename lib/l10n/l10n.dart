@@ -5591,6 +5591,12 @@ abstract class L10n {
   /// **'Batch started — ingredients deducted.'**
   String get kitchenBatchStarted;
 
+  /// No description provided for @kitchenBatchStartedShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Batch started. The books were short on: {names}. Those balances are now below zero.'**
+  String kitchenBatchStartedShort(String names);
+
   /// No description provided for @kitchenBatchFinished.
   ///
   /// In en, this message translates to:

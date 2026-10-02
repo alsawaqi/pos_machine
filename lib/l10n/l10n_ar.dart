@@ -3423,6 +3423,11 @@ class L10nAr extends L10n {
   String get kitchenBatchStarted => 'بدأت الدفعة — تم خصم المكونات.';
 
   @override
+  String kitchenBatchStartedShort(String names) {
+    return 'بدأت الدفعة. المخزون المسجل لم يكفِ من: $names. أصبح رصيدها أقل من الصفر.';
+  }
+
+  @override
   String get kitchenBatchFinished => 'اكتملت الدفعة — أُضيفت القطع إلى الرف.';
 
   @override

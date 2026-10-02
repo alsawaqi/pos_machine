@@ -1192,7 +1192,11 @@ class PosApiService {
     );
     final production = (body.dataMap['production'] as Map?)
         ?.cast<String, dynamic>();
-    return ProductionBatch.fromJson(production ?? const {});
+    return ProductionBatch.fromJson({
+      ...?production,
+      // LAUNCH-P3: the start answer reports what the books could not cover.
+      'ingredient_shortfalls': body.dataMap['ingredient_shortfalls'],
+    });
   }
 
   /// POST /device/productions/{uuid}/finish — P-G1: the pieces land in the

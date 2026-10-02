@@ -135,14 +135,23 @@ class _KitchenProductionScreenState
 
     setState(() => _busy = true);
     try {
-      await ref.read(apiServiceProvider).startProduction(
+      final batch = await ref.read(apiServiceProvider).startProduction(
             productId: product.id,
             quantity: request.quantity,
             staffId: widget.staffId,
             extras: request.extras,
           );
       if (!mounted) return;
-      _toast(L10n.of(context).kitchenBatchStarted);
+      // LAUNCH-P3: name what the books could not cover (a warning only).
+      final short = batch.shortIngredientNames;
+      if (short.isEmpty) {
+        _toast(L10n.of(context).kitchenBatchStarted);
+      } else {
+        _toast(
+          L10n.of(context).kitchenBatchStartedShort(short.join(', ')),
+          color: _warn,
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       _toast(_apiErrorText(e), color: _danger);

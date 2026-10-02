@@ -3384,6 +3384,11 @@ class L10nEn extends L10n {
   String get kitchenBatchStarted => 'Batch started — ingredients deducted.';
 
   @override
+  String kitchenBatchStartedShort(String names) {
+    return 'Batch started. The books were short on: $names. Those balances are now below zero.';
+  }
+
+  @override
   String get kitchenBatchFinished =>
       'Batch finished — pieces added to the shelf.';
 
