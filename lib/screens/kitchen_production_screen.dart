@@ -8,6 +8,14 @@ import '../models/kitchen_production.dart';
 import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
 
+/// A kitchen quantity as text: up to 4 decimals (the ledger precision since
+/// LAUNCH-P2), trailing zeros dropped, and never "-0".
+String kitchenQuantityText(double v) {
+  var s = v.toStringAsFixed(4);
+  if (s.contains('.')) s = s.replaceAll(RegExp(r'\.?0+$'), '');
+  return s == '-0' ? '0' : s;
+}
+
 /// P-G1 — the KITCHEN production screen: cooked products made ahead of sale
 /// in two-phase timed batches. ONLINE-ONLY by design: starting a batch
 /// deducts ingredients server-side against fresh locked balances, so the
@@ -235,12 +243,9 @@ class _KitchenProductionScreenState
     return h > 0 ? '$h:$m:$s' : '$m:$s';
   }
 
-  static String _qty(double v) {
-    final s = v.toStringAsFixed(3);
-    return s.contains('.')
-        ? s.replaceAll(RegExp(r'\.?0+$'), '')
-        : s;
-  }
+  /// LAUNCH-P3: quantities keep 4 decimals (since LAUNCH-P2), so a 0.0003 kg
+  /// recipe line is never shown as "0".
+  static String _qty(double v) => kitchenQuantityText(v);
 
   // ------------------------------------------------------------ build
 
@@ -1265,10 +1270,7 @@ class _DayEndDispositionScreenState
     }
   }
 
-  static String _qty(double v) {
-    final s = v.toStringAsFixed(3);
-    return s.contains('.') ? s.replaceAll(RegExp(r'\.?0+$'), '') : s;
-  }
+  static String _qty(double v) => kitchenQuantityText(v);
 
   Widget _stepper({
     required String label,
