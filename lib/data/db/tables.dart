@@ -403,7 +403,7 @@ class CachedCustomers extends Table {
 
 // Per-branch INGREDIENT balances (from the config `branch_stock` slice), keyed
 // by ingredient id. Cached for reference only — LAUNCH-P2: never used to gate
-// a sale.
+// a sale, and never shown on the (blind) stock count.
 @DataClassName('BranchIngredientStockRow')
 class BranchIngredientStock extends Table {
   IntColumn get ingredientId => integer()();

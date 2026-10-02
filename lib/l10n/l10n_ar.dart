@@ -744,6 +744,9 @@ class L10nAr extends L10n {
   String get stockCountEnterAtLeastOne => 'أدخل كمية معدودة واحدة على الأقل.';
 
   @override
+  String get stockCountSubmitted => 'تم إرسال الجرد.';
+
+  @override
   String get stockCountSubmittedNoVariance =>
       'تم إرسال الجرد — كل شيء مطابق للسجلات.';
 
@@ -756,17 +759,13 @@ class L10nAr extends L10n {
   String get stockCountSubmitFailed => 'تعذر إرسال الجرد. تحقق من الاتصال.';
 
   @override
-  String stockCountRowPieceHint(
-    String pieceLabel,
-    String balance,
-    String unit,
-  ) {
-    return 'العدّ بوحدة $pieceLabel · الرصيد الدفتري: $balance $unit';
+  String stockCountRowCountInPieces(String pieceLabel) {
+    return 'العدّ بوحدة $pieceLabel';
   }
 
   @override
-  String stockCountRowOnBook(String balance, String unit) {
-    return 'الرصيد الدفتري: $balance $unit';
+  String stockCountRowCountInUnit(String unit) {
+    return 'العدّ بوحدة $unit';
   }
 
   @override

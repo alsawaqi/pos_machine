@@ -10,13 +10,15 @@ import '../services/expense_restock_service.dart';
 
 /// Phase A (Additions §2.8) — the day-end physical stock count.
 ///
-/// Lists every ingredient in the cached catalogue with its on-book branch
-/// balance; staff type what is PHYSICALLY on the shelf — in pieces for
-/// piece-tracked ingredients ("5 bottles"), in the base unit otherwise. A
-/// blank row is skipped. Submitting pushes one `stock.count` event over the
-/// device sync pipeline (online-required, like restock requests); the server
-/// reconciles: shortfall → waste movement (reason reconciliation_variance),
-/// overage → adjustment. The result snackbar reports how many lines varied.
+/// A BLIND count (LAUNCH-P2): lists every ingredient in the cached catalogue
+/// WITHOUT its on-book branch balance — staff type only what is PHYSICALLY
+/// on the shelf, in pieces for piece-tracked ingredients ("5 bottles"), in
+/// the base unit otherwise. A blank row is skipped. Submitting pushes one
+/// `stock.count` event over the device sync pipeline (online-required, like
+/// restock requests); the server reconciles: shortfall → waste movement
+/// (reason reconciliation_variance), overage → adjustment. Only after submit
+/// does the result snackbar report how many lines varied (when the server
+/// says so).
 class StockCountScreen extends ConsumerStatefulWidget {
   const StockCountScreen({super.key});
 
@@ -88,19 +90,23 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
                 staffId: staffId,
                 note: note.isEmpty ? null : note,
               );
-      // Refresh the cached config so the corrected balances reach the
-      // sold-out logic without waiting for the next scheduled sync.
+      // Refresh the cached config so the device's copy of the corrected
+      // balances is current without waiting for the next scheduled sync.
       // Best-effort: the count itself already settled server-side.
       try {
         await ref.read(configRepositoryProvider).syncConfig();
       } catch (_) {}
       if (mounted) {
-        final variance = (result['lines_with_variance'] as num?)?.toInt() ?? 0;
+        // No variance figure in the result → a neutral confirmation, never
+        // "everything matched".
+        final variance = (result['lines_with_variance'] as num?)?.toInt();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(variance == 0
-                ? l10n.stockCountSubmittedNoVariance
-                : l10n.stockCountSubmittedWithVariance(variance)),
+            content: Text(variance == null
+                ? l10n.stockCountSubmitted
+                : variance == 0
+                    ? l10n.stockCountSubmittedNoVariance
+                    : l10n.stockCountSubmittedWithVariance(variance)),
           ),
         );
         Navigator.of(context).pop();
@@ -121,7 +127,6 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
     final l10n = L10n.of(context);
     final catalog = ref.watch(catalogProvider).asData?.value;
     final ingredients = catalog?.ingredients ?? const <IngredientRef>[];
-    final balances = catalog?.ingredientBalances ?? const <int, double>{};
 
     return Scaffold(
       backgroundColor: const Color(0xFF102028),
@@ -156,8 +161,7 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
                             horizontal: 24, vertical: 12),
                         itemCount: ingredients.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 8),
-                        itemBuilder: (context, i) =>
-                            _row(ingredients[i], balances[ingredients[i].id]),
+                        itemBuilder: (context, i) => _row(ingredients[i]),
                       ),
                     ),
                     _footer(ingredients),
@@ -168,9 +172,15 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
     );
   }
 
-  Widget _row(IngredientRef ing, double? balance) {
+  Widget _row(IngredientRef ing) {
     final l10n = L10n.of(context);
     final pieceLabel = ing.countableLabel;
+    final unit = ing.unit ?? '';
+    // Blind count (LAUNCH-P2): say what to count in, never how much the
+    // books expect.
+    final countIn = pieceLabel != null
+        ? l10n.stockCountRowCountInPieces(pieceLabel)
+        : (unit.isEmpty ? null : l10n.stockCountRowCountInUnit(unit));
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -186,20 +196,18 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
                 Text(ing.name,
                     style: const TextStyle(
                         color: Colors.white, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 2),
-                Text(
-                  pieceLabel != null
-                      ? l10n.stockCountRowPieceHint(
-                          pieceLabel, _fmt(balance), ing.unit ?? '')
-                      : l10n.stockCountRowOnBook(
-                          _fmt(balance), ing.unit ?? ''),
-                  style: TextStyle(
-                    color: pieceLabel != null
-                        ? const Color(0xFFE8B45A)
-                        : Colors.white38,
-                    fontSize: 12,
+                if (countIn != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    countIn,
+                    style: TextStyle(
+                      color: pieceLabel != null
+                          ? const Color(0xFFE8B45A)
+                          : Colors.white38,
+                      fontSize: 12,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -306,10 +314,5 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
         ],
       ),
     );
-  }
-
-  static String _fmt(double? v) {
-    if (v == null) return '0';
-    return v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(3);
   }
 }

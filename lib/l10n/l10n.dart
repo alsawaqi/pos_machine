@@ -1291,6 +1291,12 @@ abstract class L10n {
   /// **'Enter at least one counted amount.'**
   String get stockCountEnterAtLeastOne;
 
+  /// No description provided for @stockCountSubmitted.
+  ///
+  /// In en, this message translates to:
+  /// **'Count submitted.'**
+  String get stockCountSubmitted;
+
   /// No description provided for @stockCountSubmittedNoVariance.
   ///
   /// In en, this message translates to:
@@ -1309,17 +1315,17 @@ abstract class L10n {
   /// **'Could not submit the count. Check your connection.'**
   String get stockCountSubmitFailed;
 
-  /// No description provided for @stockCountRowPieceHint.
+  /// No description provided for @stockCountRowCountInPieces.
   ///
   /// In en, this message translates to:
-  /// **'Count in {pieceLabel}s · on book: {balance} {unit}'**
-  String stockCountRowPieceHint(String pieceLabel, String balance, String unit);
+  /// **'Count in {pieceLabel}s'**
+  String stockCountRowCountInPieces(String pieceLabel);
 
-  /// No description provided for @stockCountRowOnBook.
+  /// No description provided for @stockCountRowCountInUnit.
   ///
   /// In en, this message translates to:
-  /// **'On book: {balance} {unit}'**
-  String stockCountRowOnBook(String balance, String unit);
+  /// **'Count in {unit}'**
+  String stockCountRowCountInUnit(String unit);
 
   /// No description provided for @stockCountQtyHint.
   ///

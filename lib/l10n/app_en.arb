@@ -501,6 +501,7 @@
     }
   },
   "stockCountEnterAtLeastOne": "Enter at least one counted amount.",
+  "stockCountSubmitted": "Count submitted.",
   "stockCountSubmittedNoVariance": "Count submitted — everything matched the books.",
   "stockCountSubmittedWithVariance": "Count submitted — {count} line(s) had a variance.",
   "@stockCountSubmittedWithVariance": {
@@ -511,26 +512,17 @@
     }
   },
   "stockCountSubmitFailed": "Could not submit the count. Check your connection.",
-  "stockCountRowPieceHint": "Count in {pieceLabel}s · on book: {balance} {unit}",
-  "@stockCountRowPieceHint": {
+  "stockCountRowCountInPieces": "Count in {pieceLabel}s",
+  "@stockCountRowCountInPieces": {
     "placeholders": {
       "pieceLabel": {
-        "type": "String"
-      },
-      "balance": {
-        "type": "String"
-      },
-      "unit": {
         "type": "String"
       }
     }
   },
-  "stockCountRowOnBook": "On book: {balance} {unit}",
-  "@stockCountRowOnBook": {
+  "stockCountRowCountInUnit": "Count in {unit}",
+  "@stockCountRowCountInUnit": {
     "placeholders": {
-      "balance": {
-        "type": "String"
-      },
       "unit": {
         "type": "String"
       }

@@ -745,6 +745,9 @@ class L10nEn extends L10n {
   String get stockCountEnterAtLeastOne => 'Enter at least one counted amount.';
 
   @override
+  String get stockCountSubmitted => 'Count submitted.';
+
+  @override
   String get stockCountSubmittedNoVariance =>
       'Count submitted — everything matched the books.';
 
@@ -758,17 +761,13 @@ class L10nEn extends L10n {
       'Could not submit the count. Check your connection.';
 
   @override
-  String stockCountRowPieceHint(
-    String pieceLabel,
-    String balance,
-    String unit,
-  ) {
-    return 'Count in ${pieceLabel}s · on book: $balance $unit';
+  String stockCountRowCountInPieces(String pieceLabel) {
+    return 'Count in ${pieceLabel}s';
   }
 
   @override
-  String stockCountRowOnBook(String balance, String unit) {
-    return 'On book: $balance $unit';
+  String stockCountRowCountInUnit(String unit) {
+    return 'Count in $unit';
   }
 
   @override

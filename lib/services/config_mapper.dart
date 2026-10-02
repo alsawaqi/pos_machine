@@ -52,7 +52,7 @@ class CatalogSnapshot {
   // name). Empty = no config categories cached → the screen uses its const list.
   final List<({String key, String name})> expenseCategories;
   // This branch's cached ingredient balances by ingredient id. Reference only —
-  // LAUNCH-P2: never used to gate a sale.
+  // LAUNCH-P2: never used to gate a sale, never shown on the blind count.
   final Map<int, double> ingredientBalances;
   // Merchant discount rules; the POS offers the currently-applicable order-scope
   // ones in the discount picker.
