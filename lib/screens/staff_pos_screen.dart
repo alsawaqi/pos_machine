@@ -62,6 +62,7 @@ import '../services/qr_round_printing.dart'
     show QrRoundAutoPrintController, QrRoundPrintNoticeKind;
 import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
+import '../services/sold_out_sync.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
 import '../widgets/product_artwork.dart';
@@ -993,6 +994,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       ManagerAuthorizationService();
   Timer? _clockTimer;
   Timer? _configPollTimer;
+  // LAUNCH-P4 C6 — the branch sold-out poll (60 s while online + on resume).
+  SoldOutSync? _soldOutSync;
+  AppLifecycleListener? _soldOutResume;
   Timer? _popupTimer;
 
   /// Device↔device order transfer: the inbox of orders other terminals sent
@@ -1152,6 +1156,83 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     controller.addProduct(product);
+  }
+
+  /// LAUNCH-P4 C6 — the sold-out switch (long-press on a product). Managers
+  /// and supervisors switch directly; anyone else needs the manager-approval
+  /// PIN. The server writes the branch row (every channel) and audits it;
+  /// the till then reflects it at once.
+  Future<void> _openSoldOutSwitch(Product product) async {
+    final productId = int.tryParse(product.id);
+    final staff = ref.read(sessionServiceProvider).staff;
+    if (productId == null || staff == null || !mounted) return;
+    final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final next = !controller.isSoldOut(product);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey('sold-out-switch'),
+        title: Text(product.displayName(isAr)),
+        content: Text(l10n.posSoldOutSwitchHint),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            key: const ValueKey('sold-out-switch-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(next ? l10n.posSoldOutMark : l10n.posSoldOutRestore),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    int? approverId;
+    if (!controller.positionMaySetSoldOut(staff.position)) {
+      final approver = await showDialog<LoyaltyApprover>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => _ManagerPinDialog(
+          api: ref.read(apiServiceProvider),
+          identityRequired: true,
+        ),
+      );
+      if (approver == null || !mounted) return;
+      approverId = approver.id;
+    }
+    try {
+      await ref
+          .read(apiServiceProvider)
+          .setProductSoldOut(
+            productId,
+            soldOut: next,
+            staffId: staff.id,
+            approverStaffId: approverId,
+          );
+    } catch (_) {
+      if (!mounted) return;
+      _showPopupMessage(
+        title: product.displayName(isAr),
+        message: l10n.posSoldOutFailed,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+    controller.markSoldOutLocally(product.id, next);
+    unawaited(
+      ref
+          .read(appDatabaseProvider)
+          .setProductSoldOut(productId, next)
+          .catchError((_) {}),
+    );
+    if (!mounted) return;
+    _showPopupMessage(
+      title: product.displayName(isAr),
+      message: next ? l10n.posSoldOutNowOff : l10n.posSoldOutNowOn,
+      tone: FeedbackTone.success,
+    );
   }
 
   /// LAUNCH-P4 H4 — the options sheet for a NEW line: Apply adds the product
@@ -1473,6 +1554,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       );
       // Phase C3 — subscribe to the branch Reverb channel for live config push.
       ref.read(liveSyncProvider).start();
+      // LAUNCH-P4 C6 — pull the branch's sold-out list every 60 s while
+      // online and on resume; the cached catalog re-emits the menu.
+      if (mounted) {
+        _soldOutSync = SoldOutSync(
+          fetch: () => ref.read(apiServiceProvider).fetchSoldOut(),
+          apply: (ids) => ref.read(appDatabaseProvider).applySoldOut(ids),
+          online: () => ref.read(connectivityProvider).asData?.value == true,
+        )..start();
+        _soldOutResume = AppLifecycleListener(
+          onResume: () => _soldOutSync?.onResume(),
+        );
+      }
       // Phase 1A — start anonymous audience measurement when the gate allows
       // (off by default; camera + on-device face counting only).
       _applyAudienceGate();
@@ -2576,6 +2669,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _tableShadow?.localTables = null;
     _clockTimer?.cancel();
     _configPollTimer?.cancel();
+    _soldOutSync?.stop();
+    _soldOutResume?.dispose();
     _transferPollTimer?.cancel();
     _popupTimer?.cancel();
     _clockNow.dispose();
@@ -12148,6 +12243,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 _catalogueProduct(product);
                               },
                               outsideHours: controller.isOutsideHours(product),
+                              soldOut: controller.isSoldOut(product),
+                              onLongPress: () =>
+                                  unawaited(_openSoldOutSwitch(product)),
                               highlighted: pulseNonce > 0,
                               pulseNonce: pulseNonce,
                             );
@@ -12177,6 +12275,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                             },
                             outsideHours: controller.isOutsideHours(product),
                             compact: compact,
+                            soldOut: controller.isSoldOut(product),
+                            onLongPress: () =>
+                                unawaited(_openSoldOutSwitch(product)),
                             highlighted: pulseNonce > 0,
                             pulseNonce: pulseNonce,
                           );
@@ -14401,6 +14502,9 @@ class _ProductListTile extends StatelessWidget {
   // Gap sweep G1 — outside the product's daily window. LAUNCH-P2: cached
   // stock never greys a tile ("sell, but warn").
   final bool outsideHours;
+  // LAUNCH-P4 C6 — switched off by hand at this branch; long-press switches.
+  final bool soldOut;
+  final VoidCallback? onLongPress;
 
   const _ProductListTile({
     required this.product,
@@ -14408,6 +14512,8 @@ class _ProductListTile extends StatelessWidget {
     this.highlighted = false,
     this.pulseNonce = 0,
     this.outsideHours = false,
+    this.soldOut = false,
+    this.onLongPress,
   });
 
   @override
@@ -14426,7 +14532,8 @@ class _ProductListTile extends StatelessWidget {
         return Transform.scale(scale: 1 + (effectPulse * 0.018), child: child);
       },
       child: InkWell(
-        onTap: outsideHours ? null : onAdd,
+        onTap: outsideHours || soldOut ? null : onAdd,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(24),
         child: Container(
           padding: const EdgeInsets.all(10),
@@ -14438,10 +14545,18 @@ class _ProductListTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              _ProductArtwork(
-                product: product,
+              SizedBox(
                 width: 120,
                 height: 86,
+                child: Stack(
+                  children: [
+                    _ProductArtwork(product: product, width: 120, height: 86),
+                    if (soldOut)
+                      Positioned.fill(
+                        child: _SoldOutOverlay(label: l10n.posSoldOutBadge),
+                      ),
+                  ],
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -14547,6 +14662,10 @@ class _ProductTile extends StatelessWidget {
   // Gap sweep G1 — outside the product's daily window. LAUNCH-P2: cached
   // stock never greys a tile ("sell, but warn").
   final bool outsideHours;
+  // LAUNCH-P4 C6 — switched off by hand at this branch (never stock); a
+  // long-press opens the sold-out switch.
+  final bool soldOut;
+  final VoidCallback? onLongPress;
 
   const _ProductTile({
     required this.product,
@@ -14555,6 +14674,8 @@ class _ProductTile extends StatelessWidget {
     this.highlighted = false,
     this.pulseNonce = 0,
     this.outsideHours = false,
+    this.soldOut = false,
+    this.onLongPress,
   });
 
   @override
@@ -14581,7 +14702,8 @@ class _ProductTile extends StatelessWidget {
         return Transform.scale(
           scale: 1 + (effectPulse * 0.026),
           child: InkWell(
-            onTap: outsideHours ? null : onAdd,
+            onTap: outsideHours || soldOut ? null : onAdd,
+            onLongPress: onLongPress,
             borderRadius: BorderRadius.circular(24),
             child: Container(
               padding: EdgeInsets.all(outerPadding),
@@ -14636,6 +14758,10 @@ class _ProductTile extends StatelessWidget {
                 width: double.infinity,
                 height: artworkHeight,
               ),
+              if (soldOut)
+                Positioned.fill(
+                  child: _SoldOutOverlay(label: l10n.posSoldOutBadge),
+                ),
               if (outsideHours)
                 Positioned.fill(
                   child: Container(
@@ -14780,6 +14906,7 @@ class _ProductArtwork extends StatelessWidget {
   // LAUNCH-P4 H11 — the merchant's cached photo, else initials.
   @override
   Widget build(BuildContext context) => ProductArtwork(
+    key: ValueKey('product-artwork-${product.id}'),
     name: product.displayName(
       Localizations.localeOf(context).languageCode == 'ar',
     ),
@@ -14787,6 +14914,40 @@ class _ProductArtwork extends StatelessWidget {
     imageAsset: product.imageAsset,
     width: width,
     height: height,
+  );
+}
+
+/// LAUNCH-P4 C6 — the "Sold out" badge over a product picture.
+class _SoldOutOverlay extends StatelessWidget {
+  const _SoldOutOverlay({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('product-sold-out-badge'),
+    decoration: BoxDecoration(
+      color: const Color(0xFF5A1F1F).withValues(alpha: 0.62),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    alignment: Alignment.center,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFD64545),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w900,
+          fontSize: 11.5,
+          letterSpacing: 0.4,
+        ),
+      ),
+    ),
   );
 }
 

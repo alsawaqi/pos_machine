@@ -1278,5 +1278,12 @@
   "ctrlMsgCardTerminalBusy": "جهاز الدفع مشغول. انتظر قليلاً ثم حاول مرة أخرى.",
   "posPricesIncludeVat": "الأسعار شاملة الضريبة",
   "ctrlMsgRequiredChoiceMissing": "{product}: اختر {group} قبل الدفع.",
-  "ctrlMsgNotSoldOnChannel": "{product} غير متاح لهذا النوع من الطلبات أو لتطبيق التوصيل هذا. احذفه للمتابعة."
+  "ctrlMsgNotSoldOnChannel": "{product} غير متاح لهذا النوع من الطلبات أو لتطبيق التوصيل هذا. احذفه للمتابعة.",
+  "posSoldOutBadge": "نفدت الكمية",
+  "posSoldOutSwitchHint": "ينطبق على هذا الفرع في كل القنوات (الكاشير والجهاز المحمول وقائمة QR) حتى تتم إعادته.",
+  "posSoldOutMark": "تعيين: نفدت الكمية",
+  "posSoldOutRestore": "إعادة إلى البيع",
+  "posSoldOutFailed": "تعذر تحديث حالة النفاد. تحقق من الاتصال وحاول مرة أخرى.",
+  "posSoldOutNowOff": "تم تعيينه كنافد في هذا الفرع.",
+  "posSoldOutNowOn": "عاد إلى البيع في هذا الفرع."
 }

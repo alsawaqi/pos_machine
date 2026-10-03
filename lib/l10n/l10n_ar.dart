@@ -3882,4 +3882,27 @@ class L10nAr extends L10n {
   String ctrlMsgNotSoldOnChannel(String product) {
     return '$product غير متاح لهذا النوع من الطلبات أو لتطبيق التوصيل هذا. احذفه للمتابعة.';
   }
+
+  @override
+  String get posSoldOutBadge => 'نفدت الكمية';
+
+  @override
+  String get posSoldOutSwitchHint =>
+      'ينطبق على هذا الفرع في كل القنوات (الكاشير والجهاز المحمول وقائمة QR) حتى تتم إعادته.';
+
+  @override
+  String get posSoldOutMark => 'تعيين: نفدت الكمية';
+
+  @override
+  String get posSoldOutRestore => 'إعادة إلى البيع';
+
+  @override
+  String get posSoldOutFailed =>
+      'تعذر تحديث حالة النفاد. تحقق من الاتصال وحاول مرة أخرى.';
+
+  @override
+  String get posSoldOutNowOff => 'تم تعيينه كنافد في هذا الفرع.';
+
+  @override
+  String get posSoldOutNowOn => 'عاد إلى البيع في هذا الفرع.';
 }

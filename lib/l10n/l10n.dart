@@ -6412,6 +6412,48 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'{product} is not sold for this order type or delivery app. Remove it to continue.'**
   String ctrlMsgNotSoldOnChannel(String product);
+
+  /// No description provided for @posSoldOutBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Sold out'**
+  String get posSoldOutBadge;
+
+  /// No description provided for @posSoldOutSwitchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Applies to this branch on every channel (till, handheld, QR menu) until switched back.'**
+  String get posSoldOutSwitchHint;
+
+  /// No description provided for @posSoldOutMark.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark sold out'**
+  String get posSoldOutMark;
+
+  /// No description provided for @posSoldOutRestore.
+  ///
+  /// In en, this message translates to:
+  /// **'Back on sale'**
+  String get posSoldOutRestore;
+
+  /// No description provided for @posSoldOutFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not update sold out. Check the connection and try again.'**
+  String get posSoldOutFailed;
+
+  /// No description provided for @posSoldOutNowOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Marked sold out at this branch.'**
+  String get posSoldOutNowOff;
+
+  /// No description provided for @posSoldOutNowOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Back on sale at this branch.'**
+  String get posSoldOutNowOn;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

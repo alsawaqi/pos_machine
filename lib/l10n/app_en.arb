@@ -2425,5 +2425,12 @@
         "type": "String"
       }
     }
-  }
+  },
+  "posSoldOutBadge": "Sold out",
+  "posSoldOutSwitchHint": "Applies to this branch on every channel (till, handheld, QR menu) until switched back.",
+  "posSoldOutMark": "Mark sold out",
+  "posSoldOutRestore": "Back on sale",
+  "posSoldOutFailed": "Could not update sold out. Check the connection and try again.",
+  "posSoldOutNowOff": "Marked sold out at this branch.",
+  "posSoldOutNowOn": "Back on sale at this branch."
 }

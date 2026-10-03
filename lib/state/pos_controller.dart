@@ -1439,7 +1439,31 @@ class PosController extends ChangeNotifier
   /// unorderable — not a low, zero, negative, missing or stale branch
   /// balance, for unit, cooked and recipe products alike.
   bool isUnorderable(Product product) =>
-      isOutsideHours(product) || !isSoldOnCurrentChannel(product);
+      isOutsideHours(product) ||
+      !isSoldOnCurrentChannel(product) ||
+      isSoldOut(product);
+
+  /// LAUNCH-P4 C6 — this branch switched [product] off by hand ("sold out").
+  /// Never driven by stock (owner decision 4).
+  bool isSoldOut(Product product) => _liveProduct(product).soldOut;
+
+  /// LAUNCH-P4 C6 — positions that may switch sold out without a manager
+  /// approval PIN (the server applies the same rule).
+  static const soldOutPositions = <String>{'manager', 'supervisor'};
+
+  bool positionMaySetSoldOut(String? position) =>
+      soldOutPositions.contains(position?.trim().toLowerCase());
+
+  /// LAUNCH-P4 C6 — reflect a sold-out switch at once (the cached catalog
+  /// re-emits the same flag shortly after).
+  void markSoldOutLocally(String productId, bool soldOut) {
+    _baseProducts = [
+      for (final p in _baseProducts)
+        p.id == productId ? p.copyWith(soldOut: soldOut) : p,
+    ];
+    _applyDeliveryPricing();
+    _notifySafely();
+  }
 
   /// LAUNCH-P4 C5 — whether [product] is offered on the current order's
   /// channel: in-store order types need `sold_in_store`; delivery needs
@@ -2636,8 +2660,9 @@ class PosController extends ChangeNotifier
       throw StateError('Load this branch configuration before selling.');
     }
     if (!_cartMutationAllowed()) return;
-    // LAUNCH-P4 C5 — never add what this order's channel does not sell.
-    if (!isSoldOnCurrentChannel(product)) return;
+    // LAUNCH-P4 C5 / C6 — never add what this order's channel does not sell,
+    // or what this branch switched to sold out.
+    if (!isSoldOnCurrentChannel(product) || isSoldOut(product)) return;
     // LAUNCH-P2 "sell, but warn" — the cached shelf count never caps the
     // cart; the sale may take the branch balance below zero.
     final index = _cart.indexWhere(
@@ -2670,7 +2695,7 @@ class PosController extends ChangeNotifier
       throw StateError('Load this branch configuration before selling.');
     }
     if (!_cartMutationAllowed()) return;
-    if (!isSoldOnCurrentChannel(product)) return;
+    if (!isSoldOnCurrentChannel(product) || isSoldOut(product)) return;
     final line = CartItem(product: product, modifiers: modifiers, notes: notes);
     final index = _cart.indexWhere(
       (item) => item.mergeSignature == line.mergeSignature,

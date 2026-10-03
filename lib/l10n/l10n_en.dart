@@ -3848,4 +3848,27 @@ class L10nEn extends L10n {
   String ctrlMsgNotSoldOnChannel(String product) {
     return '$product is not sold for this order type or delivery app. Remove it to continue.';
   }
+
+  @override
+  String get posSoldOutBadge => 'Sold out';
+
+  @override
+  String get posSoldOutSwitchHint =>
+      'Applies to this branch on every channel (till, handheld, QR menu) until switched back.';
+
+  @override
+  String get posSoldOutMark => 'Mark sold out';
+
+  @override
+  String get posSoldOutRestore => 'Back on sale';
+
+  @override
+  String get posSoldOutFailed =>
+      'Could not update sold out. Check the connection and try again.';
+
+  @override
+  String get posSoldOutNowOff => 'Marked sold out at this branch.';
+
+  @override
+  String get posSoldOutNowOn => 'Back on sale at this branch.';
 }

@@ -898,6 +898,40 @@ class PosApiService {
   /// GET /device/transfers/incoming — orders another device sent to THIS one,
   /// waiting to be claimed. Full order snapshots (items + addons, baisas) plus
   /// transfer metadata (transferred_from_name / transferred_at).
+  /// LAUNCH-P4 C6 — GET /device/sold-out: the product ids marked sold out at
+  /// this device's branch right now (`{product_ids: [...], as_of}`).
+  Future<Set<int>> fetchSoldOut() async {
+    final body = await _send(() => _dio.get('/device/sold-out'));
+    final ids = body.dataMap['product_ids'];
+    if (ids is! List) throw const FormatException('Missing sold-out ids');
+    return {
+      for (final id in ids)
+        if (id is num) id.toInt(),
+    };
+  }
+
+  /// LAUNCH-P4 C6 — POST /device/products/{id}/sold-out: switch a product
+  /// sold out (or back on sale) at this branch. The server applies the
+  /// position rule (manager / supervisor, or [approverStaffId] verified by
+  /// the manager-approval PIN), writes or deletes the row and audits it.
+  Future<void> setProductSoldOut(
+    int productId, {
+    required bool soldOut,
+    required int staffId,
+    int? approverStaffId,
+  }) async {
+    await _send(
+      () => _dio.post(
+        '/device/products/$productId/sold-out',
+        data: {
+          'sold_out': soldOut,
+          'staff_id': staffId,
+          'approver_staff_id': ?approverStaffId,
+        },
+      ),
+    );
+  }
+
   Future<List<Map<String, dynamic>>> fetchIncomingTransfers() async {
     final body = await _send(() => _dio.get('/device/transfers/incoming'));
     final list = body.dataMap['transfers'];
