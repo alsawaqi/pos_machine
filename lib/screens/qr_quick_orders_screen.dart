@@ -31,14 +31,20 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
   // stock never does.
   return [
     for (final p in catalog.products)
-      if (int.tryParse(p.id) != null && int.parse(p.id) > 0)
+      // LAUNCH-P4 C5 — quick QR is an in-store order type.
+      if (int.tryParse(p.id) != null && int.parse(p.id) > 0 && p.soldInStore)
         QuickProduct(
           int.parse(p.id),
           p.name,
           nameAr: p.nameAr,
           priceBaisas: (p.price * 1000).round(),
+          // LAUNCH-P4 C6 — sold out is unavailable; C7 — this server-priced
+          // picker cannot build a combo's choices yet, so combos are sold
+          // through the till cart (and QR web) instead.
           available:
               p.isAvailableAt(DateTime.now()) &&
+              !p.soldOut &&
+              !p.isCombo &&
               ids(p).every(groups.containsKey),
           groups: [
             for (final id in ids(p))

@@ -3905,4 +3905,38 @@ class L10nAr extends L10n {
 
   @override
   String get posSoldOutNowOn => 'عاد إلى البيع في هذا الفرع.';
+
+  @override
+  String ctrlMsgComboIncomplete(String product) {
+    return '$product: أكمل اختيار عناصر الوجبة قبل الدفع.';
+  }
+
+  @override
+  String get posComboBadge => 'وجبة';
+
+  @override
+  String get posComboTitle => 'تكوين الوجبة';
+
+  @override
+  String posComboChooseRange(int min, int max) {
+    return 'اختر من $min إلى $max';
+  }
+
+  @override
+  String posComboChooseExactly(int count) {
+    return 'اختر $count';
+  }
+
+  @override
+  String posComboOptional(int max) {
+    return 'اختياري، حتى $max';
+  }
+
+  @override
+  String get posComboItemOptions => 'الخيارات';
+
+  @override
+  String posComboAdd(String price) {
+    return 'إضافة الوجبة · $price';
+  }
 }

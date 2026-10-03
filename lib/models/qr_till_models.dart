@@ -156,10 +156,14 @@ class QrRoundDisplayLine {
     this.nameAr,
     this.notes,
     this.cancelledQuantity = 0,
+    this.components = const <Map<String, dynamic>>[],
   });
 
   final String name;
   final String? nameAr;
+  // LAUNCH-P4 C7 — a combo line's chosen items as the server froze them
+  // (name / name_ar / qty per ONE combo / addons / notes).
+  final List<Map<String, dynamic>> components;
   final double quantity;
   final double cancelledQuantity;
   double get remainingQuantity =>
@@ -189,6 +193,10 @@ class QrRoundDisplayLine {
                 )
                 .toList(growable: false)
           : const <QrOrderAddon>[],
+      components: [
+        for (final c in (json['components'] as List?) ?? const [])
+          if (c is Map) c.cast<String, dynamic>(),
+      ],
     );
   }
 
@@ -203,6 +211,28 @@ class QrRoundDisplayLine {
           'label': arabic && addon.nameAr != null ? addon.nameAr : addon.name,
         },
     ],
+    // LAUNCH-P4 C7 — combo components print under the combo.
+    if (components.isNotEmpty)
+      'components': [
+        for (final c in components)
+          {
+            'name': arabic && _nullableString(c['product_name_ar'] ?? c['name_ar']) != null
+                ? _nullableString(c['product_name_ar'] ?? c['name_ar'])
+                : (c['product_name'] ?? c['name'])?.toString() ?? '',
+            'qty': (c['qty'] as num?)?.toInt() ?? 1,
+            'notes': ?_nullableString(c['notes']),
+            'modifiers': [
+              for (final a in (c['addons'] as List?) ?? const [])
+                if (a is Map)
+                  {
+                    'group': '',
+                    'label': arabic && _nullableString(a['name_ar']) != null
+                        ? _nullableString(a['name_ar'])
+                        : (a['name'] ?? a['add_on_name'])?.toString() ?? '',
+                  },
+            ],
+          },
+      ],
   };
 }
 

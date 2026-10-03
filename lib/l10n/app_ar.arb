@@ -1285,5 +1285,13 @@
   "posSoldOutRestore": "إعادة إلى البيع",
   "posSoldOutFailed": "تعذر تحديث حالة النفاد. تحقق من الاتصال وحاول مرة أخرى.",
   "posSoldOutNowOff": "تم تعيينه كنافد في هذا الفرع.",
-  "posSoldOutNowOn": "عاد إلى البيع في هذا الفرع."
+  "posSoldOutNowOn": "عاد إلى البيع في هذا الفرع.",
+  "ctrlMsgComboIncomplete": "{product}: أكمل اختيار عناصر الوجبة قبل الدفع.",
+  "posComboBadge": "وجبة",
+  "posComboTitle": "تكوين الوجبة",
+  "posComboChooseRange": "اختر من {min} إلى {max}",
+  "posComboChooseExactly": "اختر {count}",
+  "posComboOptional": "اختياري، حتى {max}",
+  "posComboItemOptions": "الخيارات",
+  "posComboAdd": "إضافة الوجبة · {price}"
 }

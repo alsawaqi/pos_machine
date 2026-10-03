@@ -6454,6 +6454,54 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Back on sale at this branch.'**
   String get posSoldOutNowOn;
+
+  /// No description provided for @ctrlMsgComboIncomplete.
+  ///
+  /// In en, this message translates to:
+  /// **'{product}: finish choosing the combo items before paying.'**
+  String ctrlMsgComboIncomplete(String product);
+
+  /// No description provided for @posComboBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Combo'**
+  String get posComboBadge;
+
+  /// No description provided for @posComboTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Build the combo'**
+  String get posComboTitle;
+
+  /// No description provided for @posComboChooseRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose {min} to {max}'**
+  String posComboChooseRange(int min, int max);
+
+  /// No description provided for @posComboChooseExactly.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose {count}'**
+  String posComboChooseExactly(int count);
+
+  /// No description provided for @posComboOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional, up to {max}'**
+  String posComboOptional(int max);
+
+  /// No description provided for @posComboItemOptions.
+  ///
+  /// In en, this message translates to:
+  /// **'Options'**
+  String get posComboItemOptions;
+
+  /// No description provided for @posComboAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add combo · {price}'**
+  String posComboAdd(String price);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

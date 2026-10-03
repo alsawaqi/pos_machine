@@ -126,6 +126,33 @@ List<KitchenTicketLine> buildKitchenTicketLines(KitchenTicketData t) {
 
     lines.add(KitchenTicketLine('$qty x $name', bold: true, fontSize: 30));
 
+    // LAUNCH-P4 C7 — a combo's chosen items each go to the kitchen, with
+    // their own add-ons and notes (quantity = per combo × combo quantity).
+    final comboQty = qtyNum.toInt();
+    for (final raw in (item['components'] as List?) ?? const []) {
+      if (raw is! Map) continue;
+      final componentName = raw['name']?.toString().trim() ?? '';
+      if (componentName.isEmpty) continue;
+      final perCombo = (raw['qty'] as num?)?.toInt() ?? 1;
+      final total = perCombo * (comboQty < 1 ? 1 : comboQty);
+      lines.add(KitchenTicketLine('  > $total x $componentName', bold: true));
+      for (final m in (raw['modifiers'] as List?) ?? const []) {
+        if (m is! Map) continue;
+        final label = m['label']?.toString().trim() ?? '';
+        if (label.isEmpty) continue;
+        final group = m['group']?.toString().trim() ?? '';
+        lines.add(
+          KitchenTicketLine(
+            group.isEmpty ? '      + $label' : '      + $group: $label',
+          ),
+        );
+      }
+      final componentNotes = raw['notes']?.toString().trim() ?? '';
+      if (componentNotes.isNotEmpty) {
+        lines.add(KitchenTicketLine('      ** $componentNotes', bold: true));
+      }
+    }
+
     for (final raw in (item['modifiers'] as List?) ?? const []) {
       if (raw is! Map) continue;
       final label = raw['label']?.toString().trim() ?? '';

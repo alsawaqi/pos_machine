@@ -2432,5 +2432,51 @@
   "posSoldOutRestore": "Back on sale",
   "posSoldOutFailed": "Could not update sold out. Check the connection and try again.",
   "posSoldOutNowOff": "Marked sold out at this branch.",
-  "posSoldOutNowOn": "Back on sale at this branch."
+  "posSoldOutNowOn": "Back on sale at this branch.",
+  "ctrlMsgComboIncomplete": "{product}: finish choosing the combo items before paying.",
+  "@ctrlMsgComboIncomplete": {
+    "placeholders": {
+      "product": {
+        "type": "String"
+      }
+    }
+  },
+  "posComboBadge": "Combo",
+  "posComboTitle": "Build the combo",
+  "posComboChooseRange": "Choose {min} to {max}",
+  "@posComboChooseRange": {
+    "placeholders": {
+      "min": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "posComboChooseExactly": "Choose {count}",
+  "@posComboChooseExactly": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "posComboOptional": "Optional, up to {max}",
+  "@posComboOptional": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "posComboItemOptions": "Options",
+  "posComboAdd": "Add combo · {price}",
+  "@posComboAdd": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  }
 }

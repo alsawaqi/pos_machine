@@ -853,6 +853,81 @@ class CartItemModifier {
   }
 }
 
+/// LAUNCH-P4 C7 — one chosen item inside a combo line: the slot it fills,
+/// the standard product picked, how many per ONE combo, the extra it costs,
+/// and its own add-ons (at their prices). Its stock and kitchen work are its
+/// own; the revenue stays on the combo line.
+class ComboComponent {
+  const ComboComponent({
+    required this.slotId,
+    required this.productId,
+    required this.name,
+    this.nameAr = '',
+    this.slotName = '',
+    this.slotNameAr = '',
+    this.qty = 1,
+    this.extraPrice = 0,
+    this.modifiers = const <CartItemModifier>[],
+    this.notes = '',
+  });
+
+  final int slotId;
+  final String productId;
+  final String name;
+  final String nameAr;
+  // Display only (the slot's name when the combo was built).
+  final String slotName;
+  final String slotNameAr;
+  final int qty; // per ONE combo
+  final double extraPrice; // OMR, per unit
+  final List<CartItemModifier> modifiers;
+  final String notes;
+
+  String displayName(bool arabic) =>
+      arabic && nameAr.trim().isNotEmpty ? nameAr : name;
+
+  /// Extra + add-ons for ONE unit of this component.
+  double get unitDelta =>
+      extraPrice + modifiers.fold<double>(0, (sum, m) => sum + m.price);
+
+  /// What this component adds to ONE combo: qty × (extra + add-ons).
+  double get comboDelta => qty * unitDelta;
+
+  String get signature =>
+      '$slotId:$productId:$qty:${modifiers.map((m) => m.id).join(',')}'
+      ':${notes.trim().toLowerCase()}';
+
+  factory ComboComponent.fromMap(Map<String, dynamic> map) => ComboComponent(
+    slotId: (map['slotId'] as num?)?.toInt() ?? 0,
+    productId: map['productId']?.toString() ?? '',
+    name: map['name']?.toString() ?? '',
+    nameAr: map['nameAr']?.toString() ?? '',
+    slotName: map['slotName']?.toString() ?? '',
+    slotNameAr: map['slotNameAr']?.toString() ?? '',
+    qty: (map['qty'] as num?)?.toInt() ?? 1,
+    extraPrice: (map['extraPrice'] as num?)?.toDouble() ?? 0,
+    modifiers: [
+      for (final m in (map['modifiers'] as List?) ?? const [])
+        if (m is Map) CartItemModifier.fromMap(Map<String, dynamic>.from(m)),
+    ],
+    notes: map['notes']?.toString() ?? '',
+  );
+
+  Map<String, dynamic> toMap() => {
+    'slotId': slotId,
+    'productId': productId,
+    'name': name,
+    if (nameAr.isNotEmpty) 'nameAr': nameAr,
+    if (slotName.isNotEmpty) 'slotName': slotName,
+    if (slotNameAr.isNotEmpty) 'slotNameAr': slotNameAr,
+    'qty': qty,
+    'extraPrice': extraPrice,
+    if (modifiers.isNotEmpty)
+      'modifiers': [for (final m in modifiers) m.toMap()],
+    if (notes.trim().isNotEmpty) 'notes': notes.trim(),
+  };
+}
+
 class CartItem {
   final Product product;
   int qty;
@@ -866,6 +941,9 @@ class CartItem {
   // application ('<offerId>:<instance>'). Bundle lines never merge with
   // regular lines; the offer engine re-validates the set on every change.
   String bundleKey;
+  // LAUNCH-P4 C7 — a combo line's chosen items (per ONE combo). Empty for a
+  // standard line.
+  List<ComboComponent> components;
 
   CartItem({
     required this.product,
@@ -874,7 +952,9 @@ class CartItem {
     this.notes = '',
     this.gifted = false,
     this.bundleKey = '',
-  }) : modifiers = List<CartItemModifier>.from(modifiers ?? const []);
+    List<ComboComponent>? components,
+  }) : modifiers = List<CartItemModifier>.from(modifiers ?? const []),
+       components = List<ComboComponent>.from(components ?? const []);
 
   factory CartItem.fromMap(Map<String, dynamic> map) {
     return CartItem(
@@ -890,11 +970,16 @@ class CartItem {
       notes: map['notes']?.toString() ?? '',
       gifted: map['gifted'] == true,
       bundleKey: map['bundleKey']?.toString() ?? '',
+      components: [
+        for (final c in (map['components'] as List?) ?? const [])
+          if (c is Map) ComboComponent.fromMap(Map<String, dynamic>.from(c)),
+      ],
     );
   }
 
   /// The same line on a different [product] copy (a re-price): quantity,
-  /// add-ons, notes, the gift flag and the bundle instance all carry over.
+  /// add-ons, notes, the gift flag, the bundle instance and the combo
+  /// components all carry over.
   CartItem withProduct(Product product) => CartItem(
     product: product,
     qty: qty,
@@ -902,16 +987,27 @@ class CartItem {
     notes: notes,
     gifted: gifted,
     bundleKey: bundleKey,
+    components: List<ComboComponent>.from(components),
   );
+
+  bool get isCombo => components.isNotEmpty || product.isCombo;
 
   double get modifierTotal =>
       modifiers.fold(0, (sum, modifier) => sum + modifier.price);
 
-  double get unitPrice => product.price + modifierTotal;
+  /// LAUNCH-P4 C7 — Σ component qty × (extra + add-ons), per ONE combo.
+  double get componentTotal =>
+      components.fold(0, (sum, component) => sum + component.comboDelta);
+
+  /// Base (channel) price + add-ons (+ a combo's components).
+  double get unitPrice => product.price + modifierTotal + componentTotal;
 
   double get lineTotal => unitPrice * qty;
 
-  bool get hasCustomization => modifiers.isNotEmpty || notes.trim().isNotEmpty;
+  bool get hasCustomization =>
+      modifiers.isNotEmpty ||
+      notes.trim().isNotEmpty ||
+      components.isNotEmpty;
 
   String get normalizedNotes => notes.trim();
 
@@ -920,10 +1016,12 @@ class CartItem {
         .map((modifier) => modifier.id)
         .join('|');
     // P-F5 — a gifted line never merges with a paid one (table merges);
-    // P-F9 — bundle lines stay distinct per bundle instance.
+    // P-F9 — bundle lines stay distinct per bundle instance;
+    // LAUNCH-P4 C7 — combos merge only with the same choices.
     return '${product.id}|$modifierSignature|${normalizedNotes.toLowerCase()}'
         '${gifted ? '|gift' : ''}'
-        '${bundleKey.isNotEmpty ? '|b:$bundleKey' : ''}';
+        '${bundleKey.isNotEmpty ? '|b:$bundleKey' : ''}'
+        '${components.isEmpty ? '' : '|c:${components.map((c) => c.signature).join(';')}'}';
   }
 
   List<CartItemModifier> modifiersForGroup(String group) {
@@ -941,8 +1039,26 @@ class CartItem {
   /// Phase C4 — the cart line's modifier/notes summary, with add-on labels in
   /// Arabic when [arabic] (group names + the 'Notes:' prefix stay as authored;
   /// the stored English remains the identity everywhere else).
+  /// LAUNCH-P4 C7 — a combo lists each chosen item (with its extra and its
+  /// add-ons) first.
   List<String> detailLinesFor(bool arabic) {
     final lines = <String>[];
+    for (final component in components) {
+      final qty = component.qty > 1 ? '${component.qty} x ' : '';
+      final extra = component.extraPrice <= 0
+          ? ''
+          : ' (+${component.extraPrice.toStringAsFixed(3)} OMR)';
+      lines.add('• $qty${component.displayName(arabic)}$extra');
+      for (final m in component.modifiers) {
+        final mExtra = m.price <= 0
+            ? ''
+            : ' (+${m.price.toStringAsFixed(3)} OMR)';
+        lines.add('   + ${m.displayLabel(arabic)}$mExtra');
+      }
+      if (component.notes.trim().isNotEmpty) {
+        lines.add('   Notes: ${component.notes.trim()}');
+      }
+    }
     final grouped = <String, List<CartItemModifier>>{};
 
     for (final modifier in modifiers) {
@@ -982,11 +1098,17 @@ class CartItem {
       'unitPrice': unitPrice,
       'lineTotal': lineTotal,
       'imageAsset': product.imageAsset,
+      if (product.imageUrl != null) 'imageUrl': product.imageUrl,
+      if (product.isCombo) 'productType': product.productType,
       'lowStock': product.lowStock,
       'modifiers': modifiers.map((modifier) => modifier.toMap()).toList(),
       'notes': normalizedNotes,
       if (gifted) 'gifted': true,
       if (bundleKey.isNotEmpty) 'bundleKey': bundleKey,
+      if (components.isNotEmpty) ...{
+        'componentTotal': componentTotal,
+        'components': [for (final c in components) c.toMap()],
+      },
       'detailLines': detailLines,
     };
   }

@@ -3871,4 +3871,38 @@ class L10nEn extends L10n {
 
   @override
   String get posSoldOutNowOn => 'Back on sale at this branch.';
+
+  @override
+  String ctrlMsgComboIncomplete(String product) {
+    return '$product: finish choosing the combo items before paying.';
+  }
+
+  @override
+  String get posComboBadge => 'Combo';
+
+  @override
+  String get posComboTitle => 'Build the combo';
+
+  @override
+  String posComboChooseRange(int min, int max) {
+    return 'Choose $min to $max';
+  }
+
+  @override
+  String posComboChooseExactly(int count) {
+    return 'Choose $count';
+  }
+
+  @override
+  String posComboOptional(int max) {
+    return 'Optional, up to $max';
+  }
+
+  @override
+  String get posComboItemOptions => 'Options';
+
+  @override
+  String posComboAdd(String price) {
+    return 'Add combo · $price';
+  }
 }

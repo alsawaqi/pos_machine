@@ -28,8 +28,45 @@ class OrderSyncPayload {
 /// OMR (double, 3 dp) → integer baisas (1 OMR = 1000 baisas).
 int omrToBaisas(double omr) => (omr * 1000).round();
 
+/// LAUNCH-P4 C7 — a combo line's components on the device sync wire, per ONE
+/// combo: `[{slot_id, product_id, qty, extra_price_baisas, notes?,
+/// addons?: [{add_on_id, price_delta_baisas}]}]`. [components] are
+/// [ComboComponent.toMap] maps (snapshot items carry them in that shape).
+/// Demo (non-numeric) products and add-ons are skipped like on lines.
+List<Map<String, dynamic>> comboWireComponents(List<Object?> components) => [
+  for (final raw in components)
+    if (raw is Map)
+      if (int.tryParse('${raw['productId']}') case final int productId)
+        {
+          'slot_id': (raw['slotId'] as num?)?.toInt() ?? 0,
+          'product_id': productId,
+          'qty': (raw['qty'] as num?)?.toInt() ?? 1,
+          'extra_price_baisas': omrToBaisas(
+            (raw['extraPrice'] as num?)?.toDouble() ?? 0,
+          ),
+          if ((raw['notes']?.toString() ?? '').trim().isNotEmpty)
+            'notes': raw['notes'].toString().trim(),
+          if (_comboAddons(raw['modifiers']) case final addons
+              when addons.isNotEmpty)
+            'addons': addons,
+        },
+];
+
+List<Map<String, dynamic>> _comboAddons(Object? modifiers) => [
+  for (final m in (modifiers as List?) ?? const [])
+    if (m is Map)
+      if (int.tryParse('${m['id']}') case final int addOnId)
+        {
+          'add_on_id': addOnId,
+          'price_delta_baisas': omrToBaisas(
+            (m['price'] as num?)?.toDouble() ?? 0,
+          ),
+        },
+];
+
 /// The catalogue identity portion of order.create's line mapping, without
 /// client money. Demo products/add-ons are excluded by the same integer parse.
+/// LAUNCH-P4 C7 — a combo round line also carries its `combo` components.
 List<Map<String, dynamic>> buildTableRoundLines(List<CartItem> items) => [
   for (final item in items)
     if (int.tryParse(item.product.id) case final int productId)
@@ -42,6 +79,10 @@ List<Map<String, dynamic>> buildTableRoundLines(List<CartItem> items) => [
             for (final modifier in item.modifiers)
               if (int.tryParse(modifier.id) case final int id) id,
           ],
+        if (item.components.isNotEmpty)
+          'combo': comboWireComponents([
+            for (final c in item.components) c.toMap(),
+          ]),
       },
 ];
 
@@ -57,6 +98,25 @@ String tableLineFingerprint(Map<String, dynamic> line) {
       .trim()
       .replaceAll(RegExp(r'\s+'), ' ')
       .toLowerCase();
+  // LAUNCH-P4 C7 — combos with different choices are different lines; a
+  // standard line's fingerprint is unchanged.
+  final combo = line['combo'];
+  if (combo is List && combo.isNotEmpty) {
+    final parts = [
+      for (final c in combo.whereType<Map>())
+        [
+          c['slot_id'],
+          c['product_id'],
+          c['qty'],
+          [
+            for (final a in (c['addons'] as List? ?? const []).whereType<Map>())
+              a['add_on_id'],
+          ]..sort((a, b) => '$a'.compareTo('$b')),
+          (c['notes']?.toString() ?? '').trim().toLowerCase(),
+        ],
+    ];
+    return jsonEncode([line['product_id'], ids, notes, parts]);
+  }
   return jsonEncode([line['product_id'], ids, notes]);
 }
 
@@ -309,6 +369,11 @@ OrderSyncPayload buildOrderSyncPayload(
     final notes = (raw['notes'] as String?)?.trim();
     final lineIndex = lines.length;
     wireLineIndexBySnapshotIndex[snapshotIndex] = lineIndex;
+    // LAUNCH-P4 C7 — a combo line: unit price = combo price + Σ component
+    // qty × (extra + add-ons); the components ride along per ONE combo.
+    final combo = comboWireComponents(
+      (raw['components'] as List?) ?? const [],
+    );
     lines.add({
       'product_id': productId,
       'qty': qty,
@@ -316,6 +381,7 @@ OrderSyncPayload buildOrderSyncPayload(
       'line_total_baisas': omrToBaisas(lineTotal),
       if (notes != null && notes.isNotEmpty) 'notes': notes,
       if (addons.isNotEmpty) 'addons': addons,
+      if (combo.isNotEmpty) 'combo': combo,
     });
   }
   for (final result in priced.lineDiscounts) {
@@ -699,6 +765,10 @@ Map<String, dynamic>? buildOrderHoldEvent(
     }
 
     final notes = item.normalizedNotes;
+    // LAUNCH-P4 C7 — held / transferred combos keep their components.
+    final combo = comboWireComponents([
+      for (final c in item.components) c.toMap(),
+    ]);
     lines.add({
       'product_id': productId,
       'qty': item.qty,
@@ -706,6 +776,7 @@ Map<String, dynamic>? buildOrderHoldEvent(
       'line_total_baisas': omrToBaisas(item.lineTotal),
       if (notes.isNotEmpty) 'notes': notes,
       if (addons.isNotEmpty) 'addons': addons,
+      if (combo.isNotEmpty) 'combo': combo,
     });
   }
   if (lines.isEmpty) return null;

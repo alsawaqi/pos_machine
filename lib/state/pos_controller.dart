@@ -2714,6 +2714,109 @@ class PosController extends ChangeNotifier
     _broadcast();
   }
 
+  /// The catalog's product with [id] (null when it is not in this branch's
+  /// catalog).
+  Product? productForId(String id) {
+    for (final p in _baseProducts) {
+      if (p.id == id) return p;
+    }
+    for (final p in allProducts) {
+      if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  /// LAUNCH-P4 C7 — a combo's slots from the live catalog.
+  List<ComboSlot> comboSlotsFor(Product combo) =>
+      _liveProduct(combo).comboSlots;
+
+  /// LAUNCH-P4 C7 — why [components] are not a valid choice for [combo]
+  /// (null = valid): every slot between its min and max picks, every pick an
+  /// option of its slot, priced at that option's extra, and each pick's
+  /// required add-ons chosen. English identity names (the screen localizes).
+  String? comboChoiceError(Product combo, List<ComboComponent> components) {
+    final slots = comboSlotsFor(combo);
+    if (slots.isEmpty) return 'combo has no slots';
+    for (final slot in slots) {
+      final picks = components.where((c) => c.slotId == slot.id).toList();
+      final count = picks.fold<int>(0, (sum, c) => sum + c.qty);
+      if (count < slot.min || count > slot.max) return slot.name;
+      for (final pick in picks) {
+        final option = slot.options
+            .where((o) => o.productId.toString() == pick.productId)
+            .firstOrNull;
+        if (option == null) return slot.name;
+        if (pricing.omrToBaisas(option.extraPrice) !=
+            pricing.omrToBaisas(pick.extraPrice)) {
+          return slot.name;
+        }
+        final product = productForId(pick.productId);
+        if (product != null &&
+            missingRequiredGroup(product, pick.modifiers) != null) {
+          return slot.name;
+        }
+      }
+    }
+    if (components.any((c) => !slots.any((s) => s.id == c.slotId))) {
+      return 'unknown slot';
+    }
+    return null;
+  }
+
+  /// LAUNCH-P4 C7 — add a combo built in the combo sheet. Refused (no line)
+  /// when the channel does not sell the combo (e.g. a delivery app that
+  /// does not list it), it is sold out, or the choices are invalid. The
+  /// same combo with the same choices merges into the existing line.
+  bool addCombo(Product combo, List<ComboComponent> components) {
+    BusinessBoundary.assertWritable();
+    if (releaseBuild && !_hasRealCatalog) {
+      throw StateError('Load this branch configuration before selling.');
+    }
+    if (!_cartMutationAllowed()) return false;
+    final live = _liveProduct(combo);
+    if (!live.isCombo ||
+        !isSoldOnCurrentChannel(live) ||
+        isSoldOut(live) ||
+        comboChoiceError(live, components) != null) {
+      return false;
+    }
+    // The channel price published in allProducts (delivery re-priced).
+    final priced = allProducts.firstWhere(
+      (p) => p.id == live.id,
+      orElse: () => live,
+    );
+    final line = CartItem(product: priced, components: components);
+    final index = _cart.indexWhere(
+      (item) => item.mergeSignature == line.mergeSignature,
+    );
+    _dropCompForCartMutation();
+    _ensureOrderReference();
+    if (index == -1) {
+      _cart.insert(0, line);
+    } else {
+      final existing = _cart.removeAt(index);
+      existing.qty++;
+      _cart.insert(0, existing);
+    }
+    _markOrderUpdated(live.id);
+    maybeAutoApplyOrderDiscount();
+    _broadcast();
+    return true;
+  }
+
+  /// LAUNCH-P4 C7 — edit a combo line's choices (the quantity stays).
+  bool updateComboComponents(CartItem item, List<ComboComponent> components) {
+    if (!_cartMutationAllowed()) return false;
+    final index = _cart.indexOf(item);
+    if (index == -1) return false;
+    if (comboChoiceError(item.product, components) != null) return false;
+    _dropCompForCartMutation();
+    item.components = List<ComboComponent>.from(components);
+    _markOrderUpdated(item.product.id);
+    _broadcast();
+    return true;
+  }
+
   /// LAUNCH-P4 H4 — whether tapping [product] must open the options sheet
   /// first (it has a required add-on group).
   bool needsOptionsBeforeAdd(Product product) =>
@@ -2725,6 +2828,13 @@ class PosController extends ChangeNotifier
     for (final item in _cart) {
       final missing = missingRequiredGroup(item.product, item.modifiers);
       if (missing != null) return (item: item, group: missing);
+      // LAUNCH-P4 C7 — each item inside a combo keeps its required groups.
+      for (final component in item.components) {
+        final product = productForId(component.productId);
+        if (product == null) continue;
+        final group = missingRequiredGroup(product, component.modifiers);
+        if (group != null) return (item: item, group: group);
+      }
     }
     return null;
   }
@@ -2755,6 +2865,12 @@ class PosController extends ChangeNotifier
     for (final item in _cart) {
       if (!isSoldOnCurrentChannel(item.product)) {
         return _l10n.ctrlMsgNotSoldOnChannel(item.product.displayName(arabic));
+      }
+      // LAUNCH-P4 C7 — a combo must carry a valid set of choices (a combo
+      // line restored without its components cannot be paid).
+      if (_liveProduct(item.product).isCombo &&
+          comboChoiceError(item.product, item.components) != null) {
+        return _l10n.ctrlMsgComboIncomplete(item.product.displayName(arabic));
       }
     }
     final missing = firstMissingRequiredChoice();

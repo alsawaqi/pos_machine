@@ -1149,6 +1149,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     if (controller.isUnorderable(product)) return;
+    // LAUNCH-P4 C7 — a combo opens the combo builder.
+    if (product.isCombo) {
+      unawaited(_openComboBuilder(product));
+      return;
+    }
     // LAUNCH-P4 H4 — a product with a required add-on group (e.g. "Size")
     // opens its options sheet; it never lands as a plain line.
     if (controller.needsOptionsBeforeAdd(product)) {
@@ -1233,6 +1238,36 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       message: next ? l10n.posSoldOutNowOff : l10n.posSoldOutNowOn,
       tone: FeedbackTone.success,
     );
+  }
+
+  /// LAUNCH-P4 C7 — build a combo (or edit [editing]'s choices): slots and
+  /// options with defaults, extras, each item's add-ons and a live price.
+  Future<void> _openComboBuilder(Product combo, {CartItem? editing}) async {
+    final slots = controller.comboSlotsFor(combo);
+    if (slots.isEmpty || !mounted) return;
+    final priced = editing?.product ??
+        controller.allProducts.firstWhere(
+          (p) => p.id == combo.id,
+          orElse: () => combo,
+        );
+    final components = await showDialog<List<ComboComponent>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _ComboBuilderDialog(
+        combo: priced,
+        slots: slots,
+        productFor: controller.productForId,
+        groupsFor: _resolveModifierGroups,
+        isSoldOut: controller.isSoldOut,
+        initial: editing?.components ?? const <ComboComponent>[],
+      ),
+    );
+    if (!mounted || components == null) return;
+    if (editing != null) {
+      controller.updateComboComponents(editing, components);
+    } else {
+      controller.addCombo(combo, components);
+    }
   }
 
   /// LAUNCH-P4 H4 — the options sheet for a NEW line: Apply adds the product
@@ -2158,9 +2193,47 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
       final unitPrice =
           ((m['unit_price_baisas'] as num?)?.toInt() ?? 0) / 1000.0;
+      // LAUNCH-P4 C7 — a combo's children never become lines of their own;
+      // its components ride on the combo line (device wire shape, per ONE
+      // combo).
+      if (m['parent_order_item_id'] != null) continue;
+      final components = <ComboComponent>[
+        for (final c
+            in ((m['combo'] ?? m['components']) as List? ?? const [])
+                .whereType<Map>())
+          if ((c['product_id'] as num?)?.toInt() case final int cid)
+            ComboComponent(
+              slotId: (c['slot_id'] as num?)?.toInt() ?? 0,
+              productId: '$cid',
+              name:
+                  controller.productForId('$cid')?.name ??
+                  (c['product_name'] ?? '').toString(),
+              nameAr: controller.productForId('$cid')?.nameAr ?? '',
+              qty: (c['qty'] as num?)?.toInt() ?? 1,
+              extraPrice:
+                  ((c['extra_price_baisas'] as num?)?.toInt() ?? 0) / 1000.0,
+              modifiers: [
+                for (final a in (c['addons'] as List? ?? const [])
+                    .whereType<Map>())
+                  CartItemModifier(
+                    id: '${(a['add_on_id'] as num?)?.toInt() ?? ''}',
+                    group: '',
+                    label: (a['add_on_name'] ?? '').toString(),
+                    price:
+                        ((a['price_delta_baisas'] as num?)?.toInt() ?? 0) /
+                        1000.0,
+                  ),
+              ],
+              notes: (c['notes'] ?? '').toString(),
+            ),
+      ];
       final addonTotal = modifiers.fold(0.0, (sum, mo) => sum + mo.price);
+      final componentTotal = components.fold(
+        0.0,
+        (sum, c) => sum + c.comboDelta,
+      );
       final basePrice = double.parse(
-        (unitPrice - addonTotal).toStringAsFixed(3),
+        (unitPrice - addonTotal - componentTotal).toStringAsFixed(3),
       );
 
       final catalog = productId != null
@@ -2176,11 +2249,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             categoryId: catalog?.categoryId,
             price: basePrice,
             imageAsset: catalog?.imageAsset,
+            imageUrl: catalog?.imageUrl,
             addonGroupIds: catalog?.addonGroupIds ?? const <int>[],
+            productType: catalog?.productType ??
+                (components.isEmpty ? 'standard' : 'combo'),
           ),
           qty: ((m['qty'] as num?) ?? 1).round(),
           modifiers: modifiers,
           notes: (m['notes'] ?? '').toString(),
+          components: components,
         ),
       );
     }
@@ -8332,6 +8409,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openCustomizeDialog(CartItem item) async {
+    // LAUNCH-P4 C7 — a combo line edits its choices in the combo builder.
+    if (item.isCombo && controller.comboSlotsFor(item.product).isNotEmpty) {
+      await _openComboBuilder(item.product, editing: item);
+      return;
+    }
     await showDialog<_CartItemCustomizationResult>(
       context: context,
       barrierDismissible: false,
@@ -20573,3 +20655,423 @@ const _softShadow = <BoxShadow>[
   BoxShadow(color: Color(0x19000000), blurRadius: 22, offset: Offset(0, 12)),
   BoxShadow(color: Color(0x14FFFFFF), blurRadius: 1, offset: Offset(0, 1)),
 ];
+
+/// LAUNCH-P4 C7 — one pick inside the combo sheet.
+class _ComboChoice {
+  _ComboChoice({
+    required this.productId,
+    required this.extraPrice,
+    List<CartItemModifier>? modifiers,
+    this.notes = '',
+  }) : modifiers = List<CartItemModifier>.from(modifiers ?? const []);
+
+  final String productId;
+  final double extraPrice;
+  List<CartItemModifier> modifiers;
+  String notes;
+
+  double get delta =>
+      extraPrice + modifiers.fold<double>(0, (sum, m) => sum + m.price);
+}
+
+/// LAUNCH-P4 C7 — the combo builder: each slot with its options (defaults
+/// picked), the extra each option costs, each chosen item's own add-ons
+/// (required groups pre-filled, editable with "Options"), and a live price.
+/// Pops the chosen [ComboComponent]s (per ONE combo) or null on Cancel.
+class _ComboBuilderDialog extends StatefulWidget {
+  const _ComboBuilderDialog({
+    required this.combo,
+    required this.slots,
+    required this.productFor,
+    required this.groupsFor,
+    required this.isSoldOut,
+    this.initial = const <ComboComponent>[],
+  });
+
+  /// The combo at its current channel price.
+  final Product combo;
+  final List<ComboSlot> slots;
+  final Product? Function(String id) productFor;
+  final List<_ModifierGroupDefinition> Function(Product product) groupsFor;
+  final bool Function(Product product) isSoldOut;
+  final List<ComboComponent> initial;
+
+  @override
+  State<_ComboBuilderDialog> createState() => _ComboBuilderDialogState();
+}
+
+class _ComboBuilderDialogState extends State<_ComboBuilderDialog> {
+  late final Map<int, List<_ComboChoice>> _picked;
+
+  @override
+  void initState() {
+    super.initState();
+    _picked = {for (final slot in widget.slots) slot.id: <_ComboChoice>[]};
+    if (widget.initial.isNotEmpty) {
+      for (final c in widget.initial) {
+        for (var i = 0; i < c.qty; i++) {
+          _picked[c.slotId]?.add(
+            _ComboChoice(
+              productId: c.productId,
+              extraPrice: c.extraPrice,
+              modifiers: c.modifiers,
+              notes: c.notes,
+            ),
+          );
+        }
+      }
+      return;
+    }
+    for (final slot in widget.slots) {
+      for (final option in slot.options) {
+        if (!option.isDefault) continue;
+        if (_picked[slot.id]!.length >= slot.max) break;
+        final product = widget.productFor(option.productId.toString());
+        if (product == null || widget.isSoldOut(product)) continue;
+        _picked[slot.id]!.add(_choiceFor(option, product));
+      }
+    }
+  }
+
+  /// A fresh pick with its add-on defaults (and the first option of any
+  /// required group without a default) already chosen.
+  _ComboChoice _choiceFor(ComboOption option, Product product) {
+    final modifiers = <CartItemModifier>[];
+    for (final group in widget.groupsFor(product)) {
+      final picked = <_ModifierOptionDefinition>[
+        for (final o in group.options)
+          if (group.defaultOptionIds.contains(o.id) && !o.soldOut) o,
+      ];
+      final max = group.maxSelections;
+      if (max != null && picked.length > max) {
+        picked.removeRange(max, picked.length);
+      }
+      if (picked.isEmpty && group.requiredSelection) {
+        final first = group.options.where((o) => !o.soldOut).firstOrNull;
+        if (first != null) picked.add(first);
+      }
+      for (final o in picked) {
+        modifiers.add(
+          CartItemModifier(
+            id: o.id,
+            group: group.title,
+            label: o.label,
+            labelAr: o.labelAr,
+            price: o.price,
+          ),
+        );
+      }
+    }
+    return _ComboChoice(
+      productId: option.productId.toString(),
+      extraPrice: option.extraPrice,
+      modifiers: modifiers,
+    );
+  }
+
+  int _count(ComboSlot slot) => _picked[slot.id]!.length;
+
+  bool get _valid => widget.slots.every(
+    (slot) => _count(slot) >= slot.min && _count(slot) <= slot.max,
+  );
+
+  double get _price =>
+      widget.combo.price +
+      _picked.values
+          .expand((choices) => choices)
+          .fold<double>(0, (sum, c) => sum + c.delta);
+
+  void _toggle(ComboSlot slot, ComboOption option, Product product) {
+    final picks = _picked[slot.id]!;
+    final index = picks.indexWhere(
+      (c) => c.productId == option.productId.toString(),
+    );
+    setState(() {
+      if (index != -1) {
+        picks.removeAt(index);
+        return;
+      }
+      if (widget.isSoldOut(product)) return;
+      if (slot.max == 1) {
+        picks
+          ..clear()
+          ..add(_choiceFor(option, product));
+        return;
+      }
+      if (picks.length >= slot.max) return;
+      picks.add(_choiceFor(option, product));
+    });
+  }
+
+  Future<void> _editOptions(_ComboChoice choice, Product product) async {
+    await showDialog<_CartItemCustomizationResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _CustomizeCartItemDialog(
+        // Inside a combo the item's own price is not charged — only its
+        // add-ons are, so the preview shows those alone.
+        item: CartItem(
+          product: product.copyWith(price: 0),
+          modifiers: choice.modifiers,
+          notes: choice.notes,
+        ),
+        groups: widget.groupsFor(product),
+        apply: (result) async {
+          if (!mounted) return false;
+          setState(() {
+            choice.modifiers = List<CartItemModifier>.from(result.modifiers);
+            choice.notes = result.notes;
+          });
+          return true;
+        },
+      ),
+    );
+  }
+
+  List<ComboComponent> _result(bool arabic) {
+    final components = <ComboComponent>[];
+    for (final slot in widget.slots) {
+      // Identical picks (same item, add-ons and notes) fold into one
+      // component with a quantity.
+      final folded = <String, ComboComponent>{};
+      for (final choice in _picked[slot.id]!) {
+        final product = widget.productFor(choice.productId);
+        final key =
+            '${choice.productId}|${choice.modifiers.map((m) => m.id).join(',')}'
+            '|${choice.notes.trim().toLowerCase()}';
+        final existing = folded[key];
+        folded[key] = ComboComponent(
+          slotId: slot.id,
+          productId: choice.productId,
+          name: product?.name ?? choice.productId,
+          nameAr: product?.nameAr ?? '',
+          slotName: slot.name,
+          slotNameAr: slot.nameAr,
+          qty: (existing?.qty ?? 0) + 1,
+          extraPrice: choice.extraPrice,
+          modifiers: choice.modifiers,
+          notes: choice.notes,
+        );
+      }
+      components.addAll(folded.values);
+    }
+    return components;
+  }
+
+  String _hint(L10n l10n, ComboSlot slot) {
+    if (slot.min == 0) return l10n.posComboOptional(slot.max);
+    if (slot.min == slot.max) return l10n.posComboChooseExactly(slot.min);
+    return l10n.posComboChooseRange(slot.min, slot.max);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    return Dialog(
+      key: const ValueKey('combo-builder'),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 28),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760, maxHeight: 760),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                widget.combo.displayName(isAr),
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF17232B),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                l10n.posComboTitle,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF5B6B73),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final slot in widget.slots) ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              slot.displayName(isAr),
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF17232B),
+                              ),
+                            ),
+                          ),
+                          Text(
+                            _hint(l10n, slot),
+                            key: ValueKey('combo-slot-hint-${slot.id}'),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color:
+                                  _count(slot) >= slot.min &&
+                                      _count(slot) <= slot.max
+                                  ? const Color(0xFF2E7D5B)
+                                  : const Color(0xFFB54708),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          for (final option in slot.options)
+                            if (widget.productFor(option.productId.toString())
+                                case final product?)
+                              _comboOptionChip(slot, option, product, isAr),
+                        ],
+                      ),
+                      for (final choice in _picked[slot.id]!)
+                        if (widget.productFor(choice.productId)
+                            case final product?
+                            when widget.groupsFor(product).isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    [
+                                      product.displayName(isAr),
+                                      ...choice.modifiers.map(
+                                        (m) => m.displayLabel(isAr),
+                                      ),
+                                    ].join(' · '),
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Color(0xFF33454E),
+                                    ),
+                                  ),
+                                ),
+                                TextButton.icon(
+                                  key: ValueKey(
+                                    'combo-options-${slot.id}-${choice.productId}',
+                                  ),
+                                  onPressed: () =>
+                                      _editOptions(choice, product),
+                                  icon: const Icon(Icons.tune_rounded, size: 18),
+                                  label: Text(l10n.posComboItemOptions),
+                                ),
+                              ],
+                            ),
+                          ),
+                      const SizedBox(height: 16),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 64,
+                      child: _OutlineActionButton(
+                        label: l10n.commonCancel,
+                        icon: Icons.close_rounded,
+                        onTap: () => Navigator.of(context).pop(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 64,
+                      child: _FilledActionButton(
+                        buttonKey: const ValueKey('combo-confirm'),
+                        label: l10n.posComboAdd(
+                          SunmiReceiptService.money(_price),
+                        ),
+                        onTap: _valid
+                            ? () => Navigator.of(context).pop(_result(isAr))
+                            : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _comboOptionChip(
+    ComboSlot slot,
+    ComboOption option,
+    Product product,
+    bool isAr,
+  ) {
+    final selected = _picked[slot.id]!.any(
+      (c) => c.productId == option.productId.toString(),
+    );
+    final soldOut = widget.isSoldOut(product);
+    return InkWell(
+      key: ValueKey('combo-option-${slot.id}-${option.productId}'),
+      onTap: soldOut && !selected
+          ? null
+          : () => _toggle(slot, option, product),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFF17232B)
+              : (soldOut ? const Color(0xFFEDEFF1) : Colors.white),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? const Color(0xFF17232B) : const Color(0xFFD5DEE3),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              product.displayName(isAr),
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: selected
+                    ? Colors.white
+                    : (soldOut
+                          ? const Color(0xFF8A969C)
+                          : const Color(0xFF17232B)),
+              ),
+            ),
+            if (option.extraPrice > 0 || soldOut)
+              Text(
+                soldOut
+                    ? L10n.of(context).posSoldOutBadge
+                    : '+${option.extraPrice.toStringAsFixed(3)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? Colors.white70 : const Color(0xFF5B6B73),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
