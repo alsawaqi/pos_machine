@@ -12,6 +12,7 @@ import '../services/display_strings.dart';
 import '../services/sunmi_receipt_service.dart';
 import '../widgets/ad_slider.dart';
 import '../widgets/animated_feedback_widgets.dart';
+import '../widgets/product_artwork.dart';
 
 const bool _customerVisualEffectsEnabled = bool.fromEnvironment(
   'POS_ENABLE_VISUAL_EFFECTS',
@@ -2384,21 +2385,13 @@ class _DisplayItemCard extends StatelessWidget {
       },
       child: Row(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: SizedBox(
-              width: 74,
-              height: 74,
-              child: imageAsset == null
-                  ? _displayPlaceholder()
-                  : Image.asset(
-                      imageAsset,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return _displayPlaceholder();
-                      },
-                    ),
-            ),
+          // LAUNCH-P4 H11 — the merchant's cached photo, else initials.
+          ProductArtwork(
+            name: displayName,
+            imageUrl: item['imageUrl']?.toString(),
+            imageAsset: imageAsset,
+            width: 74,
+            height: 74,
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -2464,23 +2457,6 @@ class _DisplayItemCard extends StatelessWidget {
     );
   }
 
-  Widget _displayPlaceholder() {
-    return const DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFD9EEF4), Color(0xFFEDF8FB)],
-        ),
-      ),
-      child: Center(
-        child: Icon(
-          Icons.local_cafe_outlined,
-          color: _CustomerDisplayScreenState._accentDeep,
-        ),
-      ),
-    );
-  }
 }
 
 class _CustomerEmptyState extends StatelessWidget {

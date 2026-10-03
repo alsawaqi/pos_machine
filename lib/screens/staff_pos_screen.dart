@@ -64,6 +64,7 @@ import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
+import '../widgets/product_artwork.dart';
 import '../qr_quick/qr_quick_copy.dart';
 import '../qr_quick/qr_quick_gateway.dart';
 import '../qr_quick/qr_quick_store.dart';
@@ -12818,7 +12819,7 @@ class _OrderItemCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _ProductArtwork(
-            imageAsset: item.product.imageAsset,
+            product: item.product,
             width: 84,
             height: 84,
           ),
@@ -14438,7 +14439,7 @@ class _ProductListTile extends StatelessWidget {
           child: Row(
             children: [
               _ProductArtwork(
-                imageAsset: product.imageAsset,
+                product: product,
                 width: 120,
                 height: 86,
               ),
@@ -14631,7 +14632,7 @@ class _ProductTile extends StatelessWidget {
           Stack(
             children: [
               _ProductArtwork(
-                imageAsset: product.imageAsset,
+                product: product,
                 width: double.infinity,
                 height: artworkHeight,
               ),
@@ -14766,53 +14767,27 @@ class _ProductTile extends StatelessWidget {
 }
 
 class _ProductArtwork extends StatelessWidget {
-  final String? imageAsset;
+  final Product product;
   final double width;
   final double height;
 
   const _ProductArtwork({
-    required this.imageAsset,
+    required this.product,
     required this.width,
     required this.height,
   });
 
+  // LAUNCH-P4 H11 — the merchant's cached photo, else initials.
   @override
-  Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(18);
-
-    return ClipRRect(
-      borderRadius: radius,
-      child: Container(
-        width: width,
-        height: height,
-        color: const Color(0xFF243640),
-        child: imageAsset == null
-            ? _placeholderArtwork()
-            : Image.asset(
-                imageAsset!,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return _placeholderArtwork();
-                },
-              ),
-      ),
-    );
-  }
-
-  Widget _placeholderArtwork() {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF324C57), Color(0xFF111D24)],
-        ),
-      ),
-      child: const Center(
-        child: Icon(Icons.image_outlined, color: Colors.white70, size: 30),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => ProductArtwork(
+    name: product.displayName(
+      Localizations.localeOf(context).languageCode == 'ar',
+    ),
+    imageUrl: product.imageUrl,
+    imageAsset: product.imageAsset,
+    width: width,
+    height: height,
+  );
 }
 
 class _PaymentTopActionCard extends StatelessWidget {
