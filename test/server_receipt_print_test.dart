@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:pos_machine/services/server_receipt_history.dart';
-import 'package:pos_machine/services/sunmi_receipt_service.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/state/pos_controller.dart';
 import 'support/fake_order_storage.dart';
@@ -16,11 +15,6 @@ void main() {
         final c = PosController(orderStorage: storage);
         addTearDown(c.dispose);
         final calls = <MethodCall>[];
-        // LAUNCH-P4 C2 — the receipt prints as a bitmap; its content is read
-        // from the laid-out lines instead of printText calls.
-        final receiptLines = <String>[];
-        SunmiReceiptService.debugReceiptLines = receiptLines.addAll;
-        addTearDown(() => SunmiReceiptService.debugReceiptLines = null);
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(
               const MethodChannel('sunmi_printer_plus'),
@@ -52,7 +46,10 @@ void main() {
         c.selectPaymentMethod('Cash');
         await c.payAndPrint(cashTenderedAmount: 1);
         expect(calls.where((call) => call.method == 'cutPaper'), hasLength(1));
-        final printed = receiptLines.join('\n');
+        final printed = calls
+            .where((call) => call.method == 'printText')
+            .map((call) => call.arguments.toString())
+            .join('\n');
         expect(printed.contains(pendingReceiptEn), !acknowledged);
         expect(printed.contains(pendingReceiptAr), !acknowledged);
         expect(printed.contains('KLD-0106'), acknowledged);

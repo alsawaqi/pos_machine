@@ -77,9 +77,6 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
         final printed = <String>[];
-        // LAUNCH-P4 C2 — the receipt prints as a bitmap; read its laid-out lines.
-        SunmiReceiptService.debugReceiptLines = printed.addAll;
-        addTearDown(() => SunmiReceiptService.debugReceiptLines = null);
         var startupDisplayQueried = false;
         for (final name in [
           'plugins.it_nomads.com/flutter_secure_storage',
@@ -368,9 +365,6 @@ void main() {
         reopened,
       ).loadOrderHistory()).single.snapshot;
       final printed = <String>[];
-      // LAUNCH-P4 C2 — the receipt prints as a bitmap; read its laid-out lines.
-      SunmiReceiptService.debugReceiptLines = printed.addAll;
-      addTearDown(() => SunmiReceiptService.debugReceiptLines = null);
       const channel = MethodChannel('sunmi_printer_plus');
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
@@ -417,9 +411,6 @@ void main() {
         'items': <Map<String, dynamic>>[],
       });
       final printed = <String>[];
-      // LAUNCH-P4 C2 — the receipt prints as a bitmap; read its laid-out lines.
-      SunmiReceiptService.debugReceiptLines = printed.addAll;
-      addTearDown(() => SunmiReceiptService.debugReceiptLines = null);
       const channel = MethodChannel('sunmi_printer_plus');
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {

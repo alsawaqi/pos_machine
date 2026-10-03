@@ -1,5 +1,6 @@
 import 'package:mithqal_softpos/mithqal_softpos.dart';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'dart:typed_data';
 
@@ -93,11 +94,14 @@ class SunmiReceiptService {
     }
   }
 
-  /// Tests: receives every receipt's lines as plain text (direction isolates
-  /// removed) exactly as they are laid out for printing — the bitmap itself
-  /// cannot be read back.
+  /// The receipt is drawn as a bitmap on the Sunmi device (Android), where
+  /// the printer's text API cannot shape Arabic. Elsewhere (desktop dev
+  /// builds, widget tests) the same lines print as text. Tests that exercise
+  /// the bitmap path set this to true.
   @visibleForTesting
-  static void Function(List<String> lines)? debugReceiptLines;
+  static bool? debugUseBitmap;
+
+  static bool get _useBitmap => debugUseBitmap ?? Platform.isAndroid;
 
   /// Tests (and a future setting) can force the paper width in dots.
   @visibleForTesting
@@ -142,18 +146,17 @@ class SunmiReceiptService {
       ),
       at: at,
     );
-    debugReceiptLines?.call([
-      for (final line in lines) stripIsolates(line.toString()),
-    ]);
-    List<Uint8List> strips;
-    try {
-      strips = await renderReceiptPngStrips(
-        lines,
-        options: ReceiptRenderOptions(width: await _paperWidthDots()),
-      );
-    } catch (error) {
-      debugPrint('Receipt render failed, printing text: $error');
-      strips = const <Uint8List>[];
+    var strips = const <Uint8List>[];
+    if (_useBitmap) {
+      try {
+        strips = await renderReceiptPngStrips(
+          lines,
+          options: ReceiptRenderOptions(width: await _paperWidthDots()),
+        );
+      } catch (error) {
+        debugPrint('Receipt render failed, printing text: $error');
+        strips = const <Uint8List>[];
+      }
     }
     if (strips.isEmpty) {
       // Last resort: the same lines as plain text (Arabic may print unjoined

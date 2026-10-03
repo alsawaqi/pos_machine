@@ -162,7 +162,8 @@ void main() {
       }
       expect(api.fullCalls, 1);
       expect(api.cursors, ['full-1', 'delta-1', 'delta-2', 'delta-3']);
-      expect(db.schemaVersion, 29);
+      // LAUNCH-P4 moved the Drift head to 30.
+      expect(db.schemaVersion, 30);
     },
   );
 

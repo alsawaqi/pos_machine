@@ -613,13 +613,14 @@ void _registerSchemaTests() {
           {for (final column in _v7IdentityColumns) column: null},
         ],
       );
-      expect(outbox.schemaVersion, 29);
+      // LAUNCH-P4 moved the Drift head to 30.
+      expect(outbox.schemaVersion, 30);
       expect(await outboxRows(), beforeOutbox);
       expect((await outbox.pendingOutbox()).single.orderUuid, 'pending');
       expect((await outbox.getOutbox('synced'))!.syncedAt!.toUtc(), at);
       // ignore: avoid_print
       print(
-        'T7_V6_V7_UPGRADE=version:7 upgrades:1 dining_tables:3 held:1 history:1 remote_states:1 remote_meta:1 disagreements:1 rounds:1 cancellations:1 verdicts:1 all_old_columns_byte_identical:true new_nullable_columns:4 drift_version:29 outbox:2 byte_identical:true',
+        'T7_V6_V7_UPGRADE=version:7 upgrades:1 dining_tables:3 held:1 history:1 remote_states:1 remote_meta:1 disagreements:1 rounds:1 cancellations:1 verdicts:1 all_old_columns_byte_identical:true new_nullable_columns:4 drift_version:30 outbox:2 byte_identical:true',
       );
     });
 

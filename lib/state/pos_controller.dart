@@ -1488,15 +1488,13 @@ class PosController extends ChangeNotifier
 
   /// The catalog's current copy of [product] (cart lines restored from
   /// storage carry a reduced copy), falling back to [product] itself.
-  Product _liveProduct(Product product) {
-    for (final p in _baseProducts) {
-      if (p.id == product.id) return p;
-    }
-    for (final p in allProducts) {
-      if (p.id == product.id) return p;
-    }
-    return product;
-  }
+  Product _liveProduct(Product product) =>
+      productForId(product.id) ?? product;
+
+  // An id index over the base catalog, rebuilt whenever the list is replaced
+  // (the grid asks per tile and per frame).
+  List<Product>? _indexedBase;
+  Map<String, Product> _productIndex = const <String, Product>{};
 
   /// Total quantity of [productId] already in the current cart, pooled across
   /// line items (a product split into a plain line + a customized line counts
@@ -2725,11 +2723,17 @@ class PosController extends ChangeNotifier
   /// The catalog's product with [id] (null when it is not in this branch's
   /// catalog).
   Product? productForId(String id) {
-    for (final p in _baseProducts) {
-      if (p.id == id) return p;
+    if (!identical(_indexedBase, _baseProducts)) {
+      _productIndex = {for (final p in _baseProducts) p.id: p};
+      _indexedBase = _baseProducts;
     }
-    for (final p in allProducts) {
-      if (p.id == id) return p;
+    final indexed = _productIndex[id];
+    if (indexed != null) return indexed;
+    // The built-in demo catalogue has no base list.
+    if (_baseProducts.isEmpty) {
+      for (final p in allProducts) {
+        if (p.id == id) return p;
+      }
     }
     return null;
   }

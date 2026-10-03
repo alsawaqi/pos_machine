@@ -199,6 +199,7 @@ void main() {
     setUp(() {
       calls.clear();
       SunmiReceiptService.debugPaperWidth = kReceipt58mmWidth;
+      SunmiReceiptService.debugUseBitmap = true; // the device path
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
             calls.add(call);
@@ -207,6 +208,7 @@ void main() {
     });
     tearDown(() {
       SunmiReceiptService.debugPaperWidth = null;
+      SunmiReceiptService.debugUseBitmap = null;
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
     });
@@ -232,6 +234,27 @@ void main() {
       final png = (calls.firstWhere((c) => c.method == 'printImage').arguments
           as Map)['image'] as Uint8List;
       expect(png.sublist(1, 4), 'PNG'.codeUnits);
+    });
+
+    test('off the Sunmi device the same lines print as text, no QR', () async {
+      SunmiReceiptService.debugUseBitmap = false;
+      final ok = await SunmiReceiptService.printReceipt(
+        order(),
+        template: template,
+        tax: registered,
+        at: at,
+      );
+      expect(ok, isTrue);
+      final methods = calls.map((c) => c.method).toList();
+      expect(methods, isNot(contains('printImage')));
+      expect(methods, isNot(contains('printQrcode')));
+      final printed = calls
+          .where((c) => c.method == 'printText')
+          .map((c) => ((c.arguments as Map)['data'] as Map)['text'].toString())
+          .join('\n');
+      expect(printed, contains('Simplified tax invoice'));
+      expect(printed, contains('TOTAL / الإجمالي'));
+      expect(printed, isNot(contains(String.fromCharCode(0x2067))));
     });
   });
 
