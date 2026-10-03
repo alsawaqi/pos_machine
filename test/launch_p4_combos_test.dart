@@ -137,6 +137,56 @@ void main() {
   });
 
   group('the controller', () {
+    test('a combo never takes its category\'s required add-on group', () {
+      // Device check 2026-10-03: "Size" bound to the coffee CATEGORY made a
+      // combo in that category ask for a size at payment, although its
+      // coffee already had one. A combo carries no add-ons of its own.
+      final c = PosController(orderStorage: FakeOrderStorage());
+      c.applyCatalog(
+        categories: const ['Food', 'Drinks'],
+        products: const [
+          Product(
+            id: '20',
+            name: 'Burger meal',
+            category: 'Drinks',
+            categoryId: 3,
+            price: 3.500,
+            productType: 'combo',
+            comboSlots: [
+              ComboSlot(
+                id: 8,
+                name: 'Drink',
+                options: [ComboOption(productId: 32, isDefault: true)],
+              ),
+            ],
+          ),
+          Product(
+            id: '32',
+            name: 'Cola',
+            category: 'Drinks',
+            categoryId: 3,
+            price: 0.5,
+          ),
+        ],
+        floors: const <DiningFloor>[],
+        tables: const <DiningTableDefinition>[],
+        addonGroups: const [size],
+        categoryAddonGroupIds: const {
+          3: [5],
+        },
+        branchId: 6,
+      );
+      addTearDown(c.dispose);
+      final combo = c.allProducts.firstWhere((p) => p.id == '20');
+
+      expect(c.addonGroupsForProduct(combo), isEmpty);
+      expect(c.needsOptionsBeforeAdd(combo), isFalse);
+      expect(c.addCombo(combo, const [largeCola]), isTrue);
+      // The cola inside keeps its own required size, which is chosen.
+      expect(c.firstMissingRequiredChoice(), isNull);
+      expect(c.menuTenderRefusal(), isNull);
+    });
+
     test('a valid combo is added; quantity and edits work', () {
       final c = build();
       expect(c.addCombo(meal, choices), isTrue);

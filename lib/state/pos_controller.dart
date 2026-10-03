@@ -1394,6 +1394,10 @@ class PosController extends ChangeNotifier
       (p) => p.id == product.id,
       orElse: () => product,
     );
+    // LAUNCH-P4 — a combo carries no add-ons of its own (its items keep
+    // theirs): not even the groups bound to its category, which would
+    // otherwise make a combo in "coffee" ask for a coffee size at payment.
+    if (live.isCombo || product.isCombo) return const <AddonGroup>[];
     final ownIds = live.addonGroupIds.isNotEmpty
         ? live.addonGroupIds
         : product.addonGroupIds;
