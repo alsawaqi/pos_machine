@@ -1,3 +1,5 @@
+import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
+
 enum OrderType { quickOrder, toGo, delivery, dineIn }
 
 enum ProductViewMode { grid, list }
@@ -126,14 +128,18 @@ class CompanyTax {
   final double ratePercent; // 5.0 == 5%
 }
 
-/// A computed tax line for an order: the tax + the OMR amount it adds.
+/// A computed tax line for an order: the tax + its OMR amount (added on top,
+/// or — when the merchant's prices include VAT — contained in the total).
 class TaxLineAmount {
   const TaxLineAmount({
     required this.name,
+    this.nameAr,
     required this.ratePercent,
     required this.amount,
   });
   final String name;
+  // LAUNCH-P4 L3 — the merchant's Arabic tax name (null/blank = none).
+  final String? nameAr;
   final double ratePercent;
   final double amount;
 
@@ -141,6 +147,67 @@ class TaxLineAmount {
   String get rateLabel => ratePercent == ratePercent.roundToDouble()
       ? ratePercent.toStringAsFixed(0)
       : ratePercent.toString();
+
+  /// The name to SHOW for [arabic] UI (falls back to the English name).
+  String displayName(bool arabic) =>
+      arabic && (nameAr ?? '').trim().isNotEmpty ? nameAr!.trim() : name;
+}
+
+/// LAUNCH-P4 — the merchant's VAT setup, from /device/config `company.tax`
+/// (`{vat_registered, prices_include_vat, vat_number}`).
+///
+/// [vatRegistered] null = the server sent no `company.tax` (a pre-P4 server):
+/// the device keeps today's behaviour (the config taxes, added on top).
+class CompanyTaxSettings {
+  const CompanyTaxSettings({
+    this.vatRegistered,
+    this.pricesIncludeVat = false,
+    this.vatNumber,
+  });
+
+  static const CompanyTaxSettings legacy = CompanyTaxSettings();
+
+  final bool? vatRegistered;
+  final bool pricesIncludeVat;
+  final String? vatNumber;
+
+  /// True only when the server says the merchant is VAT-registered.
+  bool get isRegistered => vatRegistered == true;
+
+  /// An unregistered merchant computes and prints no VAT at all.
+  bool get forbidsTax => vatRegistered == false;
+
+  /// Whether menu prices contain the tax (inclusive pricing). Meaningless —
+  /// and therefore false — for a merchant that is not VAT-registered.
+  bool get pricesIncludeTax => !forbidsTax && pricesIncludeVat;
+
+  /// The VAT number to print (null when unregistered or blank).
+  String? get printableVatNumber {
+    final v = vatNumber?.trim() ?? '';
+    return forbidsTax || v.isEmpty ? null : v;
+  }
+
+  /// Parse `company.tax`; null input = [legacy].
+  static CompanyTaxSettings fromJson(Map<String, dynamic>? json) {
+    if (json == null) return legacy;
+    final number = json['vat_number']?.toString().trim() ?? '';
+    return CompanyTaxSettings(
+      vatRegistered: json['vat_registered'] == null
+          ? null
+          : json['vat_registered'] == true,
+      // Owner decision 1 — a registered merchant defaults to inclusive.
+      pricesIncludeVat: json['prices_include_vat'] == null
+          ? json['vat_registered'] == true
+          : json['prices_include_vat'] == true,
+      vatNumber: number.isEmpty ? null : number,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'vat_registered': vatRegistered,
+    'prices_include_vat': pricesIncludeVat,
+    'vat_number': vatNumber,
+  };
 }
 
 /// Company taxes currently in effect, set from the API config at staff login
@@ -148,23 +215,44 @@ class TaxLineAmount {
 /// persisted / printed order totals agree. Empty => no tax (no implicit 5%).
 List<CompanyTax> activeCompanyTaxes = const <CompanyTax>[];
 
-double _roundTax(double v) => double.parse(v.toStringAsFixed(3));
+/// LAUNCH-P4 — the merchant's VAT setup currently in effect (set alongside
+/// [activeCompanyTaxes] by PosController.applyCatalog).
+CompanyTaxSettings activeTaxSettings = CompanyTaxSettings.legacy;
 
-/// Per-tax amounts for [subtotal] — each active company rate applied to the
-/// subtotal (exclusive), rounded to 3 decimals (baisas precision).
-List<TaxLineAmount> taxLinesFor(double subtotal) => activeCompanyTaxes
-    .map(
-      (t) => TaxLineAmount(
-        name: t.name,
-        ratePercent: t.ratePercent,
-        amount: _roundTax(subtotal * t.ratePercent / 100),
+/// LAUNCH-P4 — whether the live prices include the taxes (inclusive VAT).
+bool get activePricesIncludeTax => activeTaxSettings.pricesIncludeTax;
+
+/// Per-tax amounts for [subtotal] — each active company tax through the shared
+/// pricing package: added on top (exclusive) or, when the merchant's prices
+/// include VAT, taken out of [subtotal] (inclusive). Rounded per line.
+List<TaxLineAmount> taxLinesFor(double subtotal) {
+  final base = (subtotal * 1000).round();
+  return [
+    for (final line in pricing.taxLinesBaisasFor(
+      base < 0 ? 0 : base,
+      [
+        for (final t in activeCompanyTaxes)
+          pricing.TaxSpec(
+            name: t.name,
+            nameAr: t.nameAr,
+            ratePercent: t.ratePercent,
+          ),
+      ],
+      pricesIncludeTax: activePricesIncludeTax,
+    ))
+      TaxLineAmount(
+        name: line.name,
+        nameAr: line.nameAr,
+        ratePercent: line.ratePercent,
+        amount: pricing.baisasToOmr(line.amountBaisas),
       ),
-    )
-    .toList(growable: false);
+  ];
+}
 
 /// Summed tax for [subtotal] across all active company taxes.
-double taxTotalFor(double subtotal) =>
-    _roundTax(taxLinesFor(subtotal).fold<double>(0, (s, l) => s + l.amount));
+double taxTotalFor(double subtotal) => _roundStoredMoney(
+  taxLinesFor(subtotal).fold<double>(0, (s, l) => s + l.amount),
+);
 
 /// PD3b — one stock-usage line on an add-on option: picking the option
 /// consumes ([isRemove] false) or hands back ([isRemove] true) [qty] of an
@@ -1697,7 +1785,10 @@ class OrderSessionDraft {
   List<TaxLineAmount> get taxLines =>
       _isTaxExempt ? const <TaxLineAmount>[] : taxLinesFor(subtotal);
 
-  double get total => _roundStoredMoney(subtotal + tax);
+  /// LAUNCH-P4 — with VAT-inclusive prices the tax is already inside the
+  /// subtotal, so the total IS the subtotal.
+  double get total =>
+      activePricesIncludeTax ? subtotal : _roundStoredMoney(subtotal + tax);
 
   Map<String, dynamic> toMap() {
     final map = <String, dynamic>{
@@ -1776,6 +1867,12 @@ class OrderSnapshot {
   final int? compQty;
   final double subtotal;
   final double tax;
+  // LAUNCH-P4 — true when the menu prices included VAT: [total] already
+  // CONTAINS [tax] (stamped on order.create as prices_include_tax).
+  final bool pricesIncludeTax;
+  // LAUNCH-P4 — the priced tax lines frozen at snapshot time, one per tax:
+  // {name, nameAr, ratePercent, amount (OMR)}. Drives the receipt's tax rows.
+  final List<Map<String, dynamic>> taxLines;
   final double total;
   final double activePaymentBaseTotal;
   final int splitCount;
@@ -1824,6 +1921,8 @@ class OrderSnapshot {
     required this.discountLabel,
     required this.subtotal,
     required this.tax,
+    this.pricesIncludeTax = false,
+    this.taxLines = const <Map<String, dynamic>>[],
     required this.total,
     required this.activePaymentBaseTotal,
     required this.splitCount,
@@ -1948,6 +2047,11 @@ class OrderSnapshot {
           .toList(),
       subtotal: (map['subtotal'] as num?)?.toDouble() ?? 0,
       tax: (map['tax'] as num?)?.toDouble() ?? 0,
+      pricesIncludeTax: map['pricesIncludeTax'] == true,
+      taxLines: ((map['taxLines'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList(),
       total: (map['total'] as num?)?.toDouble() ?? 0,
       activePaymentBaseTotal:
           (map['activePaymentBaseTotal'] as num?)?.toDouble() ??
@@ -2029,6 +2133,8 @@ class OrderSnapshot {
       if (offers.isNotEmpty) 'offers': offers,
       'subtotal': subtotal,
       'tax': tax,
+      if (pricesIncludeTax) 'pricesIncludeTax': true,
+      if (taxLines.isNotEmpty) 'taxLines': taxLines,
       'total': total,
       'activePaymentBaseTotal': activePaymentBaseTotal,
       'splitCount': splitCount,
@@ -2090,6 +2196,8 @@ class OrderSnapshot {
     int? compQty,
     double? subtotal,
     double? tax,
+    bool? pricesIncludeTax,
+    List<Map<String, dynamic>>? taxLines,
     double? total,
     double? activePaymentBaseTotal,
     int? splitCount,
@@ -2147,6 +2255,8 @@ class OrderSnapshot {
       compQty: compQty ?? this.compQty,
       subtotal: subtotal ?? this.subtotal,
       tax: tax ?? this.tax,
+      pricesIncludeTax: pricesIncludeTax ?? this.pricesIncludeTax,
+      taxLines: taxLines ?? this.taxLines,
       total: total ?? this.total,
       activePaymentBaseTotal:
           activePaymentBaseTotal ?? this.activePaymentBaseTotal,

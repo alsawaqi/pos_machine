@@ -9,24 +9,24 @@ import 'package:mithqal_pricing/mithqal_pricing.dart' as core;
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/services/pricing_adapter.dart';
 
-const _v020GoldenCorpusSha256 =
-    'edb376603b876f69a1ca00770c2f47409f4a558ba2bc41a7c662ed6aa2dea320';
+const _v030GoldenCorpusSha256 =
+    '37d2741c0e7a801e6ffb9aef0ae6bbaeb9b13ed4f18201898e13c98d3f772d4f';
 
 void main() {
   final packageRoot = _mithqalPackageRoot;
 
   test(
-    'CORE-001 v0.2.0 dependency contains the pinned 33-vector corpus',
+    'mithqal_pricing v0.3.0 dependency contains the pinned 39-vector corpus',
     () async {
       final root = await packageRoot();
       final files = _goldenFiles(root);
 
-      expect(files, hasLength(33));
+      expect(files, hasLength(39));
       expect(
         File(
           '${root.path}${Platform.pathSeparator}pubspec.yaml',
         ).readAsStringSync(),
-        contains(RegExp(r'^version:\s*0\.2\.0\s*$', multiLine: true)),
+        contains(RegExp(r'^version:\s*0\.3\.0\s*$', multiLine: true)),
       );
 
       final manifestFile = File(
@@ -38,8 +38,8 @@ void main() {
           .convert(existing)
           .where((line) => line.isNotEmpty)
           .toList(growable: false);
-      expect(manifestLines, hasLength(34));
-      expect(manifestLines.last, 'TOTAL $_v020GoldenCorpusSha256');
+      expect(manifestLines, hasLength(40));
+      expect(manifestLines.last, 'TOTAL $_v030GoldenCorpusSha256');
 
       final calculatedLines = <String>[];
       for (final file in files) {
@@ -57,7 +57,7 @@ void main() {
   );
 
   test(
-    'all 32 price vectors cross machine models and the production adapter',
+    'all 38 price vectors (6 VAT-inclusive) cross machine models and the production adapter',
     () async {
       final root = await packageRoot();
       final vectors = <({File file, Map<String, dynamic> json})>[];
@@ -65,7 +65,7 @@ void main() {
         final json = _map(jsonDecode(file.readAsStringSync()));
         if (json['kind'] != 'split') vectors.add((file: file, json: json));
       }
-      expect(vectors, hasLength(32));
+      expect(vectors, hasLength(38));
 
       final percentageSelection = pricingOrderDiscountFromMachine(
         discount: const DiscountConfiguration(
@@ -84,6 +84,7 @@ void main() {
       expect(percentageSelection.loyaltyStamps, 4);
 
       final originalTaxes = activeCompanyTaxes;
+      final originalSettings = activeTaxSettings;
       try {
         for (final vector in vectors) {
           final name =
@@ -92,6 +93,12 @@ void main() {
           final expected = _map(vector.json['expected']);
           final state = _GoldenMachineState.fromInput(inputJson);
           activeCompanyTaxes = _machineTaxes(inputJson);
+          // LAUNCH-P4 — the merchant's "menu prices include VAT" switch rides
+          // the machine's tax settings, exactly as /device/config sets it.
+          activeTaxSettings = CompanyTaxSettings(
+            vatRegistered: true,
+            pricesIncludeVat: inputJson['pricesIncludeTax'] == true,
+          );
 
           final now = DateTime.parse(inputJson['now'] as String);
           final adapted = buildPricingInput(state, now);
@@ -102,6 +109,7 @@ void main() {
         }
       } finally {
         activeCompanyTaxes = originalTaxes;
+        activeTaxSettings = originalSettings;
       }
     },
   );
@@ -513,6 +521,11 @@ void _expectAdaptedInput(
     reason: '$vector/delivery',
   );
   expect(
+    actual.pricesIncludeTax,
+    expected['pricesIncludeTax'] == true,
+    reason: '$vector/pricesIncludeTax',
+  );
+  expect(
     actual.now,
     DateTime.parse(expected['now'] as String),
     reason: '$vector/now',
@@ -684,11 +697,13 @@ void _expectPriceResult(
     actual.subtotalBaisas - actual.compTotalBaisas,
     reason: '$vector/taxed-base invariant',
   );
+  // Inclusive (LAUNCH-P4): the tax sits INSIDE the grand total.
+  expect(actual.pricesIncludeTax, input.pricesIncludeTax);
   expect(
     actual.rawSubtotalBaisas -
         actual.discountTotalBaisas -
         actual.compTotalBaisas +
-        actual.taxTotalBaisas,
+        (input.pricesIncludeTax ? 0 : actual.taxTotalBaisas),
     actual.grandTotalBaisas,
     reason: '$vector/additive invariant',
   );

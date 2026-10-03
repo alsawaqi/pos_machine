@@ -202,6 +202,8 @@ pricing.PricingInput buildPricingInput(
   comp: pricingCompFromAppliedComp(state.appliedComp),
   taxes: [for (final tax in activeCompanyTaxes) pricingTaxFromCompanyTax(tax)],
   isDeliveryProvider: state.selectedOrderType == OrderType.delivery,
+  // LAUNCH-P4 — the merchant's "menu prices include VAT" switch.
+  pricesIncludeTax: activePricesIncludeTax,
   now: now,
   branchId: state.pricingBranchId,
 );
@@ -225,6 +227,7 @@ List<AppliedOffer> appliedOffersFromResult(pricing.PriceResult result) => [
 
 TaxLineAmount taxLineFromResult(pricing.TaxLineResult result) => TaxLineAmount(
   name: result.name,
+  nameAr: result.nameAr,
   ratePercent: result.ratePercent,
   amount: pricing.baisasToOmr(result.amountBaisas),
 );
@@ -345,9 +348,20 @@ pricing.PriceResult frozenPriceResultFromSnapshot(OrderSnapshot snapshot) {
     managerCompBaisas: managerComp,
     compTotalBaisas: compTotal,
     taxedBaseBaisas: taxedBase,
-    taxLines: const <pricing.TaxLineResult>[],
+    taxLines: [
+      for (final line in snapshot.taxLines)
+        pricing.TaxLineResult(
+          name: line['name']?.toString() ?? '',
+          nameAr: line['nameAr']?.toString(),
+          ratePercent: (line['ratePercent'] as num?)?.toDouble() ?? 0,
+          amountBaisas: pricing.omrToBaisas(
+            (line['amount'] as num?)?.toDouble() ?? 0,
+          ),
+        ),
+    ],
     taxTotalBaisas: taxTotal,
     grandTotalBaisas: grandTotal,
+    pricesIncludeTax: snapshot.pricesIncludeTax,
   );
 }
 
