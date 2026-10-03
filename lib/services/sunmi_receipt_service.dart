@@ -1,13 +1,15 @@
-import 'server_receipt_history.dart';
-import 'discount_display.dart';
 import 'package:mithqal_softpos/mithqal_softpos.dart';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:sunmi_printer_plus/sunmi_printer_plus.dart';
 import '../models/pos_models.dart';
 import 'kitchen_ticket.dart';
+import 'receipt_layout.dart';
+import 'receipt_renderer.dart';
 import 'shift_summary.dart';
 
 class SunmiReceiptService {
@@ -51,10 +53,12 @@ class SunmiReceiptService {
     }
   }
 
-  /// Print a receipt. When [template] is supplied (the merchant-authored
-  /// per-branch template from /device/config), its business name / CR / VAT /
-  /// header + footer lines drive the printout; otherwise the built-in default
-  /// header ("MITHQAL 2.0") is used.
+  /// Print a customer receipt — LAUNCH-P4 C2: the one bilingual layout
+  /// ([buildReceiptLines]) drawn as a bitmap ([renderReceiptPngStrips]) so
+  /// Arabic prints shaped and joined (the printer's text API cannot). The
+  /// branch logo, when set, prints first. [tax] = the merchant's VAT setup
+  /// (title, VAT number); [at] = the order time to print (now for a new
+  /// sale, the original time for a reprint). No QR code (L10).
   ///
   /// Phase G4 — NEVER throws; returns false on a printer failure so callers
   /// can alert staff (paper out / cover open) without ever blocking the sale.
@@ -62,9 +66,20 @@ class SunmiReceiptService {
   static Future<bool> printReceipt(
     OrderSnapshot order, {
     ReceiptTemplate? template,
+    CompanyTaxSettings? tax,
+    String branchName = '',
+    String branchNameAr = '',
+    DateTime? at,
   }) async {
     try {
-      await _printReceiptBody(order, template: template);
+      await _printReceiptBody(
+        order,
+        template: template,
+        tax: tax ?? activeTaxSettings,
+        branchName: branchName,
+        branchNameAr: branchNameAr,
+        at: at ?? DateTime.now(),
+      );
       lastPrinterStatus = 'ready';
       return true;
     } on MissingPluginException {
@@ -78,208 +93,88 @@ class SunmiReceiptService {
     }
   }
 
+  /// Tests: receives every receipt's lines as plain text (direction isolates
+  /// removed) exactly as they are laid out for printing — the bitmap itself
+  /// cannot be read back.
+  @visibleForTesting
+  static void Function(List<String> lines)? debugReceiptLines;
+
+  /// Tests (and a future setting) can force the paper width in dots.
+  @visibleForTesting
+  static int? debugPaperWidth;
+  static int? _paperWidth;
+
+  /// 576 dots on 80 mm paper, else 384 (58 mm). Asked once from the printer.
+  static Future<int> _paperWidthDots() async {
+    final forced = debugPaperWidth;
+    if (forced != null) return forced;
+    final cached = _paperWidth;
+    if (cached != null) return cached;
+    var width = kReceipt58mmWidth;
+    try {
+      final paper = await SunmiConfig.getPaper();
+      if (paper != null && paper.contains('80')) width = kReceipt80mmWidth;
+    } catch (_) {
+      // Unknown printer: 384 dots fits both paper widths.
+    }
+    return _paperWidth = width;
+  }
+
   static Future<void> _printReceiptBody(
     OrderSnapshot order, {
     ReceiptTemplate? template,
+    required CompanyTaxSettings tax,
+    required String branchName,
+    required String branchNameAr,
+    required DateTime at,
   }) async {
-    final orderType = OrderTypeLabel.fromStorage(order.orderType).label;
     final t = (template != null && !template.isEmpty) ? template : null;
-
-    // Header — optional logo, then business name (large), then the merchant's
-    // custom header block. The logo (when present) stands in for the default
-    // name, so we only fall back to "MITHQAL 2.0" when there's neither.
     if (t?.logoBase64 != null) {
       await _printLogo(t!.logoBase64!);
     }
-
-    final headerName =
-        t?.businessName ?? (t?.logoBase64 == null ? 'MITHQAL 2.0' : null);
-    if (headerName != null) {
-      await SunmiPrinter.printText(
-        headerName,
-        style: SunmiTextStyle(
-          bold: true,
-          fontSize: 36,
-          align: SunmiPrintAlign.CENTER,
-        ),
-      );
-    }
-    if (t != null) {
-      if (t.businessNameAr != null) {
-        await SunmiPrinter.printText(
-          t.businessNameAr!,
-          style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.CENTER),
-        );
-      }
-      for (final line in t.headerLines) {
-        await SunmiPrinter.printText(
-          line,
-          style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
-        );
-      }
-      if (t.address != null) {
-        await SunmiPrinter.printText(
-          t.address!,
-          style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
-        );
-      }
-      if (t.phone != null) {
-        await SunmiPrinter.printText(
-          'Tel: ${t.phone}',
-          style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
-        );
-      }
-      if (t.crNumber != null) {
-        await SunmiPrinter.printText(
-          'CR No.: ${t.crNumber}',
-          style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
-        );
-      }
-      if (t.vatNumber != null) {
-        await SunmiPrinter.printText(
-          'VAT No.: ${t.vatNumber}',
-          style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
-        );
-      }
-    }
-
-    if (order.receiptPending) {
-      await SunmiPrinter.printText(
-        pendingReceiptEn,
-        style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.CENTER),
-      );
-      await SunmiPrinter.printText(
-        pendingReceiptAr,
-        style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.CENTER),
-      );
-    }
-    await SunmiPrinter.printText(
-      '$orderType Receipt',
-      style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.CENTER),
+    final lines = buildReceiptLines(
+      order,
+      header: ReceiptHeader(
+        template: t,
+        tax: tax,
+        branchName: branchName,
+        branchNameAr: branchNameAr,
+      ),
+      at: at,
     );
-    await SunmiPrinter.printText(
-      // P-F8 — the merchant's sequential number when allocated, else '#N'.
-      'Order ${order.displayOrderNumber}',
-      style: SunmiTextStyle(bold: true, align: SunmiPrintAlign.CENTER),
-    );
-    if (order.diningTableName.trim().isNotEmpty) {
-      final floorLabel = order.diningFloorLabel.trim();
-      final tableLabel = floorLabel.isEmpty
-          ? 'Table ${order.diningTableName.trim()}'
-          : 'Table ${order.diningTableName.trim()} | $floorLabel';
-      await SunmiPrinter.printText(
-        tableLabel,
-        style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
+    debugReceiptLines?.call([
+      for (final line in lines) stripIsolates(line.toString()),
+    ]);
+    List<Uint8List> strips;
+    try {
+      strips = await renderReceiptPngStrips(
+        lines,
+        options: ReceiptRenderOptions(width: await _paperWidthDots()),
       );
+    } catch (error) {
+      debugPrint('Receipt render failed, printing text: $error');
+      strips = const <Uint8List>[];
     }
-
-    await SunmiPrinter.lineWrap(1);
-    await SunmiPrinter.printText('--------------------------------');
-
-    for (final item in order.items) {
-      final name = item['name'].toString();
-      final qty = (item['qty'] as num).toInt();
-      final total = (item['lineTotal'] as num).toDouble();
-      await SunmiPrinter.printText(row('$name x$qty', money(total)));
-    }
-
-    await SunmiPrinter.printText('--------------------------------');
-    for (final discount in snapshotDiscountDisplayRows(order)) {
-      await SunmiPrinter.printText(
-        row(discount.label(), '-${money(discount.amountBaisas / 1000)}'),
-      );
-    }
-    // Phase B — the manager comp write-off, printed as its own line so it is
-    // never confused with a discount on the customer's copy.
-    if (order.compAmount > 0) {
-      await SunmiPrinter.printText(
-        row(
-          order.compReasonName.isEmpty
-              ? 'Comp'
-              : 'Comp (${order.compReasonName})',
-          '-${money(order.compAmount)}',
-        ),
-      );
-    }
-    await SunmiPrinter.printText(row('Subtotal', money(order.subtotal)));
-    await SunmiPrinter.printText(row('Tax (5%)', money(order.tax)));
-    await SunmiPrinter.printText(
-      row('TOTAL', money(order.total)),
-      style: SunmiTextStyle(bold: true),
-    );
-    if (order.splitCount > 1) {
-      final splitBaseTotal = order.splitPayments.isEmpty
-          ? order.activePaymentBaseTotal
-          : order.splitPaymentsBaseTotal;
-      await SunmiPrinter.printText(
-        row('Split Bill (${order.splitCount})', money(splitBaseTotal)),
-      );
-    }
-    if (order.splitPayments.isNotEmpty) {
-      await SunmiPrinter.printText('Split Payments');
-      for (final payment in order.splitPayments) {
+    if (strips.isEmpty) {
+      // Last resort: the same lines as plain text (Arabic may print unjoined
+      // here, but a sale always gets its receipt).
+      for (final line in lines) {
+        if (line.kind == ReceiptLineKind.gap) continue;
         await SunmiPrinter.printText(
-          row(
-            '  Guest ${payment.splitIndex} ${payment.paymentMethod}',
-            money(payment.paidAmount),
-          ),
-        );
-        if (payment.charityRoundUpAccepted &&
-            payment.charityRoundUpAmount > 0) {
-          await SunmiPrinter.printText(
-            row('    Charity Round Up', money(payment.charityRoundUpAmount)),
-          );
-        }
-      }
-    } else if (order.charityRoundUpAccepted && order.charityRoundUpAmount > 0) {
-      await SunmiPrinter.printText(
-        row('Charity Round Up', money(order.charityRoundUpAmount)),
-      );
-    }
-    await SunmiPrinter.printText(
-      row('AMOUNT PAID', money(order.payableTotal)),
-      style: SunmiTextStyle(bold: true),
-    );
-
-    await SunmiPrinter.lineWrap(1);
-    await SunmiPrinter.printText(
-      'Status: ${order.paymentStatus}',
-      style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
-    );
-    await SunmiPrinter.printText(
-      'Method: ${order.paymentMethod}',
-      style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
-    );
-    if (order.customerReferenceNumber.trim().isNotEmpty) {
-      await SunmiPrinter.printText(
-        'Customer: ${order.customerReferenceNumber.trim()}',
-        style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
-      );
-    }
-
-    // QR — printed unless the merchant turned it off in the template.
-    if (t == null || t.showQr) {
-      await SunmiPrinter.lineWrap(1);
-      await SunmiPrinter.printQRCode(
-        'MITHQAL|TOTAL=${order.payableTotal.toStringAsFixed(3)}|STATUS=${order.paymentStatus}',
-        style: SunmiQrcodeStyle(
-          qrcodeSize: 4,
-          errorLevel: SunmiQrcodeLevel.LEVEL_H,
-        ),
-      );
-    }
-
-    // Merchant's custom footer lines (thank-you note, policy, etc.).
-    if (t != null && t.footerLines.isNotEmpty) {
-      await SunmiPrinter.lineWrap(1);
-      for (final line in t.footerLines) {
-        await SunmiPrinter.printText(
-          line,
-          style: SunmiTextStyle(align: SunmiPrintAlign.CENTER),
+          line.kind == ReceiptLineKind.divider
+              ? '--------------------------------'
+              : stripIsolates(
+                  line.amount.isEmpty
+                      ? line.text
+                      : row(line.text, line.amount),
+                ),
         );
       }
+    } else {
+      for (final strip in strips) {
+        await SunmiPrinter.printImage(strip, align: SunmiPrintAlign.CENTER);
+      }
     }
-
     await SunmiPrinter.lineWrap(3);
     await SunmiPrinter.cutPaper();
   }

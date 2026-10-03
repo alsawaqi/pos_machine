@@ -1672,6 +1672,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           adSlides: catalog.adSlides,
           branchId: ref.read(sessionControllerProvider).branchId,
           companyTax: catalog.companyTax,
+          branchName: catalog.branchName,
+          branchNameAr: catalog.branchNameAr,
         );
         // P-G6 — pop a notice when a NEW announcement lands for the
         // signed-in staff member (delta sync or live push). The first

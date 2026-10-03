@@ -745,6 +745,10 @@ class PosController extends ChangeNotifier
   /// The provider chosen for the current delivery order (null = none picked).
   int? selectedDeliveryProviderId;
 
+  /// LAUNCH-P4 C2 — the branch name printed on receipts (from the config).
+  String receiptBranchName = '';
+  String receiptBranchNameAr = '';
+
   /// v2 #14 — staff positions the merchant allows to cancel an order at the POS
   /// (company policy from /device/config). Defaults to managers-only until a
   /// config sync populates it; see [positionCanCancelOrders].
@@ -1255,8 +1259,12 @@ class PosController extends ChangeNotifier
     List<SliderSlide> adSlides = const <SliderSlide>[],
     int? branchId,
     CompanyTaxSettings companyTax = CompanyTaxSettings.legacy,
+    String branchName = '',
+    String branchNameAr = '',
   }) {
     _hasRealCatalog = branchId != null;
+    receiptBranchName = branchName;
+    receiptBranchNameAr = branchNameAr;
     this.categories = categories;
     this.categoryNamesAr = categoryNamesAr;
     _baseProducts = products;
@@ -3454,6 +3462,9 @@ class PosController extends ChangeNotifier
     final ok = await SunmiReceiptService.printReceipt(
       snapshot(),
       template: receiptTemplate,
+      tax: activeTaxSettings,
+      branchName: receiptBranchName,
+      branchNameAr: receiptBranchNameAr,
     );
     if (!ok) _reportPrintFailure('receipt');
     return ok;
@@ -3463,6 +3474,11 @@ class PosController extends ChangeNotifier
     final ok = await SunmiReceiptService.printReceipt(
       record.snapshot,
       template: receiptTemplate,
+      tax: activeTaxSettings,
+      branchName: receiptBranchName,
+      branchNameAr: receiptBranchNameAr,
+      // LAUNCH-P4 C2 — a reprint shows the ORIGINAL order date and time.
+      at: record.createdAt,
     );
     if (!ok) _reportPrintFailure('receipt');
     return ok;
@@ -4607,6 +4623,9 @@ class PosController extends ChangeNotifier
       final ok = await SunmiReceiptService.printReceipt(
         completedSnapshot,
         template: receiptTemplate,
+        tax: activeTaxSettings,
+        branchName: receiptBranchName,
+        branchNameAr: receiptBranchNameAr,
       );
       if (!ok) _reportPrintFailure('receipt');
     }
@@ -4684,6 +4703,9 @@ class PosController extends ChangeNotifier
       final ok = await SunmiReceiptService.printReceipt(
         completedSnapshot,
         template: receiptTemplate,
+        tax: activeTaxSettings,
+        branchName: receiptBranchName,
+        branchNameAr: receiptBranchNameAr,
       );
       if (!ok) _reportPrintFailure('receipt');
     }

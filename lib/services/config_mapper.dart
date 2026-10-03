@@ -34,6 +34,8 @@ class CatalogSnapshot {
     this.staffMessages = const <StaffMessage>[],
     this.adSlides = const <SliderSlide>[],
     this.companyTax = CompanyTaxSettings.legacy,
+    this.branchName = '',
+    this.branchNameAr = '',
   });
 
   final List<String> categories;
@@ -93,6 +95,9 @@ class CatalogSnapshot {
   // LAUNCH-P4 — the merchant's VAT setup (`company.tax`); [CompanyTaxSettings
   // .legacy] when the server sent none.
   final CompanyTaxSettings companyTax;
+  // LAUNCH-P4 C2 — the branch name printed on receipts (EN / AR).
+  final String branchName;
+  final String branchNameAr;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -1159,6 +1164,8 @@ class ConfigMapper {
           .toList(),
       adSlides: adSlides,
       companyTax: companyTaxSettings,
+      branchName: branch?.name ?? '',
+      branchNameAr: branch?.nameAr ?? '',
     );
   }
 
