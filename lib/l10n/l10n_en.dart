@@ -822,6 +822,11 @@ class L10nEn extends L10n {
   }
 
   @override
+  String wasteProductSubmittedShort(String names) {
+    return 'Waste recorded. It was more than the shelf count of: $names. Those counts are now below zero.';
+  }
+
+  @override
   String get wasteProductSubmitFailed =>
       'Could not record the waste. Please try again.';
 

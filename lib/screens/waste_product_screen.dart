@@ -8,6 +8,15 @@ import '../providers/providers.dart';
 import '../services/expense_restock_payload.dart';
 import '../services/expense_restock_service.dart';
 
+/// LAUNCH-P3 fix order 1 K3 — the products a recorded waste took past their
+/// branch shelf count (the server's `shelf_shortfalls`; a warning only, the
+/// waste is recorded). Older servers send no list, which reads as none.
+List<String> wasteShelfShortfallNames(Map<String, dynamic> result) => [
+      for (final s in (result['shelf_shortfalls'] as List? ?? const []))
+        if (s is Map && (s['name']?.toString() ?? '').isNotEmpty)
+          s['name'].toString(),
+    ];
+
 /// Record wastage of cooked or ready/bought-in products at this branch.
 ///
 /// Lists every shelf-tracked product (stock_mode unit | cooked, with a branch
@@ -89,11 +98,13 @@ class _WasteProductScreenState extends ConsumerState<WasteProductScreen> {
       _error = null;
     });
     try {
-      await ref.read(expenseRestockServiceProvider).submitProductWaste(
-            lines: lines,
-            staffId: staffId,
-            note: note.isEmpty ? null : note,
-          );
+      final result =
+          await ref.read(expenseRestockServiceProvider).submitProductWaste(
+                lines: lines,
+                staffId: staffId,
+                note: note.isEmpty ? null : note,
+              );
+      final short = wasteShelfShortfallNames(result);
       // Refresh the cached config so the reduced shelf counts reach the
       // sold-out / cap logic without waiting for the next scheduled sync.
       try {
@@ -101,7 +112,15 @@ class _WasteProductScreenState extends ConsumerState<WasteProductScreen> {
       } catch (_) {}
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.wasteProductSubmitted(lines.length))),
+          short.isEmpty
+              ? SnackBar(content: Text(l10n.wasteProductSubmitted(lines.length)))
+              // A warning, not a refusal: the waste was recorded and those
+              // shelf counts are now below zero.
+              : SnackBar(
+                  content:
+                      Text(l10n.wasteProductSubmittedShort(short.join(', '))),
+                  backgroundColor: const Color(0xFFFFB45D),
+                ),
         );
         Navigator.of(context).pop();
       }

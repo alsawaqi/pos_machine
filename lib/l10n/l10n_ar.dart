@@ -818,6 +818,11 @@ class L10nAr extends L10n {
   }
 
   @override
+  String wasteProductSubmittedShort(String names) {
+    return 'تم تسجيل الهدر. كان أكثر من عدد الرف لـ: $names. أصبح عددها أقل من الصفر.';
+  }
+
+  @override
   String get wasteProductSubmitFailed => 'تعذّر تسجيل الهدر. حاول مرة أخرى.';
 
   @override

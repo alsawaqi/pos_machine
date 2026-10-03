@@ -569,6 +569,14 @@
       }
     }
   },
+  "wasteProductSubmittedShort": "Waste recorded. It was more than the shelf count of: {names}. Those counts are now below zero.",
+  "@wasteProductSubmittedShort": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
   "wasteProductSubmitFailed": "Could not record the waste. Please try again.",
   "wasteReasonExpired": "Expired",
   "wasteReasonSpoiled": "Spoiled",

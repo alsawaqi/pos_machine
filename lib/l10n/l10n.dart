@@ -1405,6 +1405,12 @@ abstract class L10n {
   /// **'Recorded waste for {count} product(s).'**
   String wasteProductSubmitted(int count);
 
+  /// No description provided for @wasteProductSubmittedShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Waste recorded. It was more than the shelf count of: {names}. Those counts are now below zero.'**
+  String wasteProductSubmittedShort(String names);
+
   /// No description provided for @wasteProductSubmitFailed.
   ///
   /// In en, this message translates to:

@@ -441,6 +441,7 @@
       }
     }
   },
+  "wasteProductSubmittedShort": "تم تسجيل الهدر. كان أكثر من عدد الرف لـ: {names}. أصبح عددها أقل من الصفر.",
   "wasteProductSubmitFailed": "تعذّر تسجيل الهدر. حاول مرة أخرى.",
   "wasteReasonExpired": "منتهي الصلاحية",
   "wasteReasonSpoiled": "تالف",
