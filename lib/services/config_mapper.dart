@@ -957,7 +957,9 @@ class ConfigMapper {
               id: g.id,
               name: g.name,
               nameAr: g.nameAr,
-              multiSelect: (g.selectionMode ?? 'single') == 'multiple',
+              // LAUNCH-P4 H3 — the portal stores 'multi' (older rows say
+              // 'multiple'): anything that is not 'single' is multi-choice.
+              multiSelect: (g.selectionMode ?? 'single') != 'single',
               minSelections: g.minSelections,
               maxSelections: g.maxSelections,
               options: optionsByGroup[g.id] ?? const <AddonOption>[],

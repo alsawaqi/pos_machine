@@ -6400,6 +6400,12 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Prices include VAT'**
   String get posPricesIncludeVat;
+
+  /// No description provided for @ctrlMsgRequiredChoiceMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'{product}: choose {group} before paying.'**
+  String ctrlMsgRequiredChoiceMissing(String product, String group);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

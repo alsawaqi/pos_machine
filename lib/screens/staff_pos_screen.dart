@@ -1143,7 +1143,36 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       if (picked != null) unawaited(workspace.pick(picked));
       return;
     }
-    if (!controller.isUnorderable(product)) controller.addProduct(product);
+    if (controller.isUnorderable(product)) return;
+    // LAUNCH-P4 H4 — a product with a required add-on group (e.g. "Size")
+    // opens its options sheet; it never lands as a plain line.
+    if (controller.needsOptionsBeforeAdd(product)) {
+      unawaited(_openNewLineOptions(product));
+      return;
+    }
+    controller.addProduct(product);
+  }
+
+  /// LAUNCH-P4 H4 — the options sheet for a NEW line: Apply adds the product
+  /// with the picked add-ons; Cancel adds nothing.
+  Future<void> _openNewLineOptions(Product product) async {
+    await showDialog<_CartItemCustomizationResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _CustomizeCartItemDialog(
+        item: CartItem(product: product),
+        groups: _resolveModifierGroups(product),
+        apply: (result) async {
+          if (!mounted) return false;
+          controller.addCustomizedProduct(
+            product,
+            modifiers: result.modifiers,
+            notes: result.notes,
+          );
+          return true;
+        },
+      ),
+    );
   }
 
   Future<QrQuickLine?> _editQrCartOptions(Map<String, dynamic> line) async {
@@ -5884,6 +5913,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       _showPopupMessage(
         title: 'Order Required',
         message: 'Add at least one item before paying.',
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+
+    // LAUNCH-P4 H4/C5 — a line missing a required choice (or not sold on this
+    // channel) cannot be paid; say which one before the tender page opens.
+    final menuRefusal = controller.menuTenderRefusal();
+    if (menuRefusal != null) {
+      _showPopupMessage(
+        title: _paymentMessageTitle(),
+        message: menuRefusal,
         tone: FeedbackTone.warning,
       );
       return;

@@ -1276,5 +1276,6 @@
   "pay002AuthCode": "رمز التفويض",
   "pay002ManagerCheck": "تحقق من سجل البنك قبل تسجيل هذه الدفعة.",
   "ctrlMsgCardTerminalBusy": "جهاز الدفع مشغول. انتظر قليلاً ثم حاول مرة أخرى.",
-  "posPricesIncludeVat": "الأسعار شاملة الضريبة"
+  "posPricesIncludeVat": "الأسعار شاملة الضريبة",
+  "ctrlMsgRequiredChoiceMissing": "{product}: اختر {group} قبل الدفع."
 }

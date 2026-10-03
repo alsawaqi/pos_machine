@@ -307,6 +307,16 @@ class PosController extends ChangeNotifier
       _displayedPaymentAmounts = _paymentPageAmounts(tendered);
 
   String? customerTenderRefusal({bool gift = false}) {
+    // LAUNCH-P4 H4/C5 — the menu rules (a required add-on choice, a product
+    // not sold on this channel) refuse a tender BEFORE it starts; never once
+    // money has been taken.
+    if (!customerTenderStarted && !hasRecordedSplitPayments) {
+      final menu = menuTenderRefusal();
+      if (menu != null) {
+        _identityNotice(menu);
+        return menu;
+      }
+    }
     final message = gift && _hasLoyaltyRedemption
         ? giftRedemptionMessage
         : customerLookupPending
@@ -2618,6 +2628,85 @@ class PosController extends ChangeNotifier
     _markOrderUpdated(product.id);
     maybeAutoApplyOrderDiscount(); // P-F4 — order-scope auto rules
     _broadcast();
+  }
+
+  /// LAUNCH-P4 H4 — add [product] with the add-ons the cashier picked in the
+  /// options sheet (a tap on a product with a required group opens it). An
+  /// identical existing line (same options and notes) takes the quantity.
+  void addCustomizedProduct(
+    Product product, {
+    required List<CartItemModifier> modifiers,
+    String notes = '',
+  }) {
+    BusinessBoundary.assertWritable();
+    if (releaseBuild && !_hasRealCatalog) {
+      throw StateError('Load this branch configuration before selling.');
+    }
+    if (!_cartMutationAllowed()) return;
+    final line = CartItem(product: product, modifiers: modifiers, notes: notes);
+    final index = _cart.indexWhere(
+      (item) => item.mergeSignature == line.mergeSignature,
+    );
+    _dropCompForCartMutation();
+    _ensureOrderReference();
+    if (index == -1) {
+      _cart.insert(0, line);
+    } else {
+      final existing = _cart.removeAt(index);
+      existing.qty++;
+      _cart.insert(0, existing);
+    }
+    _markOrderUpdated(product.id);
+    maybeAutoApplyOrderDiscount();
+    _broadcast();
+  }
+
+  /// LAUNCH-P4 H4 — whether tapping [product] must open the options sheet
+  /// first (it has a required add-on group).
+  bool needsOptionsBeforeAdd(Product product) =>
+      addonGroupsForProduct(product).any((group) => group.isRequired);
+
+  /// LAUNCH-P4 H4 — the first cart line that misses a required add-on choice
+  /// (fewer picks than the group's minimum), or null.
+  ({CartItem item, AddonGroup group})? firstMissingRequiredChoice() {
+    for (final item in _cart) {
+      final missing = missingRequiredGroup(item.product, item.modifiers);
+      if (missing != null) return (item: item, group: missing);
+    }
+    return null;
+  }
+
+  /// LAUNCH-P4 H4 — the first required group of [product] that [modifiers]
+  /// do not satisfy (counted by option id), or null.
+  AddonGroup? missingRequiredGroup(
+    Product product,
+    List<CartItemModifier> modifiers,
+  ) {
+    final picked = {for (final m in modifiers) m.id};
+    for (final group in addonGroupsForProduct(product)) {
+      if (!group.isRequired) continue;
+      final count = group.options
+          .where((option) => picked.contains(option.id.toString()))
+          .length;
+      if (count < group.effectiveMin) return group;
+    }
+    return null;
+  }
+
+  /// LAUNCH-P4 — why the current cart cannot be paid under the menu rules
+  /// (null = it can): a line missing a required add-on choice (H4).
+  String? menuTenderRefusal() {
+    final missing = firstMissingRequiredChoice();
+    if (missing != null) {
+      final arabic = _l10n.localeName.startsWith('ar');
+      return _l10n.ctrlMsgRequiredChoiceMissing(
+        missing.item.product.displayName(arabic),
+        arabic && (missing.group.nameAr ?? '').trim().isNotEmpty
+            ? missing.group.nameAr!.trim()
+            : missing.group.name,
+      );
+    }
+    return null;
   }
 
   void incrementCartItem(CartItem item) {

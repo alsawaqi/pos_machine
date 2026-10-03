@@ -3872,4 +3872,9 @@ class L10nAr extends L10n {
 
   @override
   String get posPricesIncludeVat => 'الأسعار شاملة الضريبة';
+
+  @override
+  String ctrlMsgRequiredChoiceMissing(String product, String group) {
+    return '$product: اختر $group قبل الدفع.';
+  }
 }
