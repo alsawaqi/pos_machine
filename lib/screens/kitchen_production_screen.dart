@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/l10n.dart';
+import '../models/count_units.dart';
 import '../models/kitchen_production.dart';
 import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
@@ -711,6 +712,10 @@ class _StartBatchDialog extends StatefulWidget {
 
 class _ExtraRow {
   int? ingredientId;
+
+  /// LAUNCH item kind — the unit the extra is typed in for a Weighed /
+  /// Liquid ingredient (kg or g, l or ml); null = its stored unit.
+  String? unit;
   final TextEditingController qty = TextEditingController();
 }
 
@@ -735,13 +740,24 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
     return true;
   }
 
+  String? _storedUnitOf(int? ingredientId) {
+    for (final i in widget.ingredients) {
+      if (i.id == ingredientId) return i.unit;
+    }
+    return null;
+  }
+
+  /// Sent in the ingredient's stored unit, as before (0.5 kg → 500 g).
   List<({int ingredientId, double quantity})> get _extraPayload => [
         for (final row in _extras)
           if (row.ingredientId != null &&
               (double.tryParse(row.qty.text.trim()) ?? 0) > 0)
             (
               ingredientId: row.ingredientId!,
-              quantity: double.parse(row.qty.text.trim()),
+              quantity: row.unit == null
+                  ? double.parse(row.qty.text.trim())
+                  : toStoredUnits(double.parse(row.qty.text.trim()), row.unit!,
+                      _storedUnitOf(row.ingredientId)!),
             ),
       ];
 
@@ -915,8 +931,14 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
                                 ),
                               ),
                           ],
-                          onChanged: (v) =>
-                              setState(() => row.ingredientId = v),
+                          onChanged: (v) => setState(() {
+                            row.ingredientId = v;
+                            // Typed in its stored unit until changed.
+                            final stored = _storedUnitOf(v);
+                            row.unit = countUnitChoices(stored).isEmpty
+                                ? null
+                                : stored!.trim().toLowerCase();
+                          }),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -930,7 +952,8 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
                           decoration: InputDecoration(
                             isDense: true,
                             hintText: l10n.kitchenExtraQtyHint(
-                              row.ingredientId != null
+                              row.unit ??
+                              (row.ingredientId != null
                                   ? widget.ingredients
                                       .firstWhere(
                                         (i) => i.id == row.ingredientId,
@@ -942,7 +965,7 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
                                         ),
                                       )
                                       .unit
-                                  : '',
+                                  : ''),
                             ),
                             hintStyle: const TextStyle(color: Colors.white30),
                             enabledBorder: const UnderlineInputBorder(
@@ -952,6 +975,23 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
                           onChanged: (_) => setState(() {}),
                         ),
                       ),
+                      // LAUNCH item kind — kg or g, l or ml.
+                      if (row.unit != null) ...[
+                        const SizedBox(width: 6),
+                        DropdownButton<String>(
+                          key: ValueKey('extra-unit-$index'),
+                          value: row.unit,
+                          dropdownColor: const Color(0xFF16313B),
+                          style: const TextStyle(color: Colors.white),
+                          underline: const SizedBox.shrink(),
+                          items: [
+                            for (final u in countUnitChoices(
+                                _storedUnitOf(row.ingredientId)))
+                              DropdownMenuItem(value: u, child: Text(u)),
+                          ],
+                          onChanged: (u) => setState(() => row.unit = u),
+                        ),
+                      ],
                       IconButton(
                         onPressed: () => setState(() {
                           _extras.removeAt(index).qty.dispose();

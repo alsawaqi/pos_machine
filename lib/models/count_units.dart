@@ -43,3 +43,20 @@ double toStoredUnits(double value, String typedUnit, String storedUnit) {
   final converted = value * _size(typedUnit) / _size(storedUnit);
   return double.parse(converted.toStringAsFixed(4));
 }
+
+/// An amount kept in [storedUnit], shown in the friendlier unit of its kind:
+/// 1000 g or ml and above reads in kg or l ("12 l", not "12000 ml"). Up to
+/// 4 decimals, trailing zeros trimmed.
+String friendlyQuantity(double value, String? storedUnit) {
+  final u = storedUnit?.trim().toLowerCase() ?? '';
+  var shown = value;
+  var unit = storedUnit?.trim() ?? '';
+  if ((u == 'g' || u == 'ml') && value.abs() >= 1000) {
+    shown = value / 1000;
+    unit = u == 'g' ? 'kg' : 'l';
+  }
+  var text = shown.toStringAsFixed(4);
+  if (text.contains('.')) text = text.replaceAll(RegExp(r'\.?0+$'), '');
+  if (text == '-0') text = '0';
+  return unit.isEmpty ? text : '$text $unit';
+}

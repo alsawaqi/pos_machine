@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/l10n.dart';
+import '../models/count_units.dart';
 import '../models/pos_models.dart';
 import '../providers/providers.dart';
 import '../services/expense_restock_payload.dart';
@@ -23,6 +24,11 @@ class RestockRequestScreen extends ConsumerStatefulWidget {
 class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
   final List<RestockRequestLineInput> _lines = [];
   int? _selectedId;
+
+  /// LAUNCH item kind — the unit the quantity is typed in for a Weighed /
+  /// Liquid ingredient (kg or g, l or ml; the largest until changed); null
+  /// for other ingredients (typed in their stored unit).
+  String? _selectedUnit;
   final _qtyController = TextEditingController();
   final _noteController = TextEditingController();
   bool _busy = false;
@@ -38,17 +44,25 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
   String _ingredientName(List<IngredientRef> all, int id) {
     for (final i in all) {
       if (i.id == id) {
-        return i.unit == null || i.unit!.isEmpty ? i.name : '${i.name} (${i.unit})';
+        // A Weighed / Liquid line shows its amount with the unit ("12 l").
+        return i.unit == null || i.unit!.isEmpty || countUnitChoices(i.unit).isNotEmpty
+            ? i.name
+            : '${i.name} (${i.unit})';
       }
     }
     return L10n.of(context).restockIngredientFallback(id);
   }
 
-  void _addLine() {
+  void _addLine(List<IngredientRef> ingredients) {
     if (_busy) return;
     final l10n = L10n.of(context);
     final id = _selectedId;
-    final qty = double.tryParse(_qtyController.text.trim()) ?? 0;
+    final typed = double.tryParse(_qtyController.text.trim()) ?? 0;
+    final storedUnit = _unitOf(ingredients, id);
+    // Kept (and sent) in the stored unit, as before (12 l → 12000 ml).
+    final qty = _selectedUnit != null && storedUnit != null && typed > 0
+        ? toStoredUnits(typed, _selectedUnit!, storedUnit)
+        : typed;
     if (id == null) {
       setState(() => _error = l10n.restockPickIngredientError);
       return;
@@ -71,8 +85,16 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
       }
       _qtyController.clear();
       _selectedId = null;
+      _selectedUnit = null;
       _error = null;
     });
+  }
+
+  static String? _unitOf(List<IngredientRef> all, int? id) {
+    for (final i in all) {
+      if (i.id == id) return i.unit;
+    }
+    return null;
   }
 
   void _removeLine(int ingredientId) {
@@ -317,8 +339,14 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
                           ),
                         ))
                     .toList(),
-                onChanged:
-                    _busy ? null : (v) => setState(() => _selectedId = v),
+                onChanged: _busy
+                    ? null
+                    : (v) => setState(() {
+                          _selectedId = v;
+                          final choices =
+                              countUnitChoices(_unitOf(ingredients, v));
+                          _selectedUnit = choices.isEmpty ? null : choices.first;
+                        }),
               ),
             ),
           ),
@@ -348,11 +376,40 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
             ),
           ),
         ),
+        // LAUNCH item kind — kg or g, l or ml for a Weighed / Liquid item.
+        if (_selectedUnit != null) ...[
+          const SizedBox(width: 8),
+          Container(
+            height: 52,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF16313B),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                key: const ValueKey('restock-unit'),
+                value: _selectedUnit,
+                dropdownColor: const Color(0xFF16313B),
+                style: const TextStyle(color: Colors.white),
+                iconEnabledColor: Colors.white54,
+                items: [
+                  for (final u
+                      in countUnitChoices(_unitOf(ingredients, _selectedId)))
+                    DropdownMenuItem(value: u, child: Text(u)),
+                ],
+                onChanged: _busy
+                    ? null
+                    : (u) => setState(() => _selectedUnit = u),
+              ),
+            ),
+          ),
+        ],
         const SizedBox(width: 10),
         SizedBox(
           height: 52,
           child: FilledButton(
-            onPressed: _busy ? null : _addLine,
+            onPressed: _busy ? null : () => _addLine(ingredients),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF1B3540),
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -383,7 +440,14 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    _qtyLabel(l.quantity),
+                    // LAUNCH item kind — "12 l", not "12000" of a ml item.
+                    countUnitChoices(_unitOf(ingredients, l.ingredientId))
+                            .isEmpty
+                        ? _qtyLabel(l.quantity)
+                        : friendlyQuantity(
+                            l.quantity,
+                            _unitOf(ingredients, l.ingredientId),
+                          ),
                     style: const TextStyle(
                       color: Color(0xFF35C28B),
                       fontWeight: FontWeight.w700,
