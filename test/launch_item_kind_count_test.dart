@@ -129,10 +129,10 @@ Map<int, Object?> _countedUnits(_SyncApi api) => {
 void main() {
   group('countUnitChoices', () {
     test('weighed and liquid items offer both units, largest first', () {
-      expect(countUnitChoices('g'), ['kg', 'g']);
-      expect(countUnitChoices('kg'), ['kg', 'g']);
-      expect(countUnitChoices('ml'), ['l', 'ml']);
-      expect(countUnitChoices('L'), ['l', 'ml']);
+      expect(countUnitChoices('g'), ['kg', 'g', 'lb', 'oz']);
+      expect(countUnitChoices('kg'), ['kg', 'g', 'lb', 'oz']);
+      expect(countUnitChoices('ml'), ['l', 'ml', 'gal', 'fl oz']);
+      expect(countUnitChoices('L'), ['l', 'ml', 'gal', 'fl oz']);
     });
 
     test('counted items and custom units offer none', () {

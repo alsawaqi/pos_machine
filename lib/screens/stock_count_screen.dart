@@ -195,7 +195,7 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
     // books expect.
     final countIn = pieceLabel != null
         ? l10n.stockCountRowCountInPieces(pieceLabel)
-        : (unit.isEmpty ? null : l10n.stockCountRowCountInUnit(unit));
+        : (unit.isEmpty ? null : l10n.stockCountRowCountInUnit(countUnitLabel(unit)));
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -233,7 +233,7 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
                       for (final u in countUnitChoices(ing.unit))
                         ChoiceChip(
                           key: ValueKey('count-unit-${ing.id}-$u'),
-                          label: Text(u),
+                          label: Text(countUnitLabel(u)),
                           selected: u == typedUnit,
                           onSelected: _busy
                               ? null

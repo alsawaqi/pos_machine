@@ -5,12 +5,29 @@
 /// so the `stock.count` event is unchanged.
 library;
 
-/// Metric units by kind, largest first, with their size in the kind's
-/// smallest unit.
+/// Units by kind, with their size in the kind's smallest metric unit: the
+/// metric pair (largest first), then the built-in non-metric pair (owner
+/// decision 2026-10-03: US gallon and fl oz for liquids, lb and oz for
+/// weighed items; exact factors).
 const Map<String, List<(String, double)>> _kinds = {
-  'mass': [('kg', 1000), ('g', 1)],
-  'volume': [('l', 1000), ('ml', 1)],
+  'mass': [('kg', 1000), ('g', 1), ('lb', 453.59237), ('oz', 28.349523125)],
+  'volume': [
+    ('l', 1000),
+    ('ml', 1),
+    ('gal', 3785.411784),
+    ('fl oz', 29.5735295625),
+  ],
 };
+
+/// How a unit reads on screen: the non-metric ones say their size, so there
+/// is no doubt which gallon or ounce is meant.
+String countUnitLabel(String unit) => switch (unit) {
+      'gal' => 'gal (3.785 l)',
+      'fl oz' => 'fl oz (29.57 ml)',
+      'lb' => 'lb (453.6 g)',
+      'oz' => 'oz (28.35 g)',
+      _ => unit,
+    };
 
 String? _kindOf(String? unit) => switch (unit?.trim().toLowerCase()) {
       'kg' || 'g' => 'mass',
@@ -29,8 +46,8 @@ double _size(String unit) {
 }
 
 /// The units a count of an ingredient stored in [storedUnit] can be typed
-/// in, largest first (`[kg, g]` or `[l, ml]`); empty for counted items and
-/// custom units.
+/// in: `[kg, g, lb, oz]` or `[l, ml, gal, fl oz]`; empty for counted items
+/// and custom units.
 List<String> countUnitChoices(String? storedUnit) {
   final kind = _kindOf(storedUnit);
   if (kind == null) return const <String>[];

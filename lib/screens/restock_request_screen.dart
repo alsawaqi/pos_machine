@@ -396,7 +396,7 @@ class _RestockRequestScreenState extends ConsumerState<RestockRequestScreen> {
                 items: [
                   for (final u
                       in countUnitChoices(_unitOf(ingredients, _selectedId)))
-                    DropdownMenuItem(value: u, child: Text(u)),
+                    DropdownMenuItem(value: u, child: Text(countUnitLabel(u))),
                 ],
                 onChanged: _busy
                     ? null

@@ -987,7 +987,7 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
                           items: [
                             for (final u in countUnitChoices(
                                 _storedUnitOf(row.ingredientId)))
-                              DropdownMenuItem(value: u, child: Text(u)),
+                              DropdownMenuItem(value: u, child: Text(countUnitLabel(u))),
                           ],
                           onChanged: (u) => setState(() => row.unit = u),
                         ),
