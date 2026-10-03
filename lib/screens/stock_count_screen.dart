@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/l10n.dart';
+import '../models/count_units.dart';
 import '../models/pos_models.dart';
 import '../providers/providers.dart';
 import '../services/expense_restock_payload.dart';
@@ -13,7 +14,8 @@ import '../services/expense_restock_service.dart';
 /// A BLIND count (LAUNCH-P2): lists every ingredient in the cached catalogue
 /// WITHOUT its on-book branch balance — staff type only what is PHYSICALLY
 /// on the shelf, in pieces for piece-tracked ingredients ("5 bottles"), in
-/// the base unit otherwise. A blank row is skipped. Submitting pushes one
+/// kg or g / l or ml (staff pick; sent in the stored unit) for Weighed and
+/// Liquid ones, in the stored unit otherwise. A blank row is skipped. Submitting pushes one
 /// `stock.count` event over the device sync pipeline (online-required, like
 /// restock requests); the server reconciles: shortfall → waste movement
 /// (reason reconciliation_variance), overage → adjustment. The device then
@@ -28,6 +30,10 @@ class StockCountScreen extends ConsumerStatefulWidget {
 
 class _StockCountScreenState extends ConsumerState<StockCountScreen> {
   final Map<int, TextEditingController> _counted = {};
+
+  /// LAUNCH item kind — the unit each Weighed / Liquid line is counted in
+  /// (kg or g, l or ml); the largest unit until staff switch it.
+  final Map<int, String> _countUnit = {};
   final _noteController = TextEditingController();
   bool _busy = false;
   String? _error;
@@ -47,6 +53,15 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
   int get _filledCount => _counted.values
       .where((c) => c.text.trim().isNotEmpty)
       .length;
+
+  /// The unit [ing] is being counted in when it can be counted in more than
+  /// one (Weighed / Liquid, not counted in pieces); null otherwise.
+  String? _typedUnitFor(IngredientRef ing) {
+    if (ing.isPieceCounted) return null;
+    final choices = countUnitChoices(ing.unit);
+    if (choices.isEmpty) return null;
+    return _countUnit[ing.id] ?? choices.first;
+  }
 
   Future<void> _submit(List<IngredientRef> ingredients) async {
     // Captured before any await so localized strings are safe to use after
@@ -68,9 +83,16 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
             ing.name, ing.countableLabel ?? ''));
         return;
       }
+      final typedUnit = _typedUnitFor(ing);
       lines.add(ing.isPieceCounted
           ? StockCountLineInput(ingredientId: ing.id, countedPieces: value)
-          : StockCountLineInput(ingredientId: ing.id, countedUnits: value));
+          : StockCountLineInput(
+              ingredientId: ing.id,
+              // Sent in the stored unit, as before (12 l → 12000 ml).
+              countedUnits: typedUnit == null
+                  ? value
+                  : toStoredUnits(value, typedUnit, ing.unit!),
+            ));
     }
     if (lines.isEmpty) {
       setState(() => _error = l10n.stockCountEnterAtLeastOne);
@@ -167,7 +189,8 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
   Widget _row(IngredientRef ing) {
     final l10n = L10n.of(context);
     final pieceLabel = ing.countableLabel;
-    final unit = ing.unit ?? '';
+    final typedUnit = _typedUnitFor(ing);
+    final unit = typedUnit ?? ing.unit ?? '';
     // Blind count (LAUNCH-P2): say what to count in, never how much the
     // books expect.
     final countIn = pieceLabel != null
@@ -200,6 +223,26 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
                     ),
                   ),
                 ],
+                // LAUNCH item kind — count a Weighed / Liquid line in either
+                // unit of its kind (kg or g, l or ml).
+                if (typedUnit != null) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    children: [
+                      for (final u in countUnitChoices(ing.unit))
+                        ChoiceChip(
+                          key: ValueKey('count-unit-${ing.id}-$u'),
+                          label: Text(u),
+                          selected: u == typedUnit,
+                          onSelected: _busy
+                              ? null
+                              : (_) => setState(() => _countUnit[ing.id] = u),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -218,7 +261,8 @@ class _StockCountScreenState extends ConsumerState<StockCountScreen> {
               textAlign: TextAlign.center,
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
-                hintText: pieceLabel ?? (ing.unit ?? l10n.stockCountQtyHint),
+                hintText: pieceLabel ??
+                    (unit.isEmpty ? l10n.stockCountQtyHint : unit),
                 hintStyle: const TextStyle(color: Colors.white24),
                 filled: true,
                 fillColor: const Color(0xFF0E2129),
