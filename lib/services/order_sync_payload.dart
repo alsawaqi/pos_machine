@@ -434,6 +434,8 @@ OrderSyncPayload buildOrderSyncPayload(
     if (comps.isNotEmpty) 'comp_total_baisas': compBaisas,
     'tax_total_baisas': priced.taxTotalBaisas,
     'grand_total_baisas': priced.grandTotalBaisas,
+    // LAUNCH-P4 — the grand total CONTAINS the tax (absent = false).
+    if (priced.pricesIncludeTax) 'prices_include_tax': true,
     'opened_at': ts,
     'lines': lines,
     if (discounts.isNotEmpty) 'discounts': discounts,
@@ -721,6 +723,9 @@ Map<String, dynamic>? buildOrderHoldEvent(
     'discount_total_baisas': discountBaisas,
     'tax_total_baisas': omrToBaisas(draft.tax),
     'grand_total_baisas': omrToBaisas(draft.total),
+    // LAUNCH-P4 — the draft priced its VAT inside the menu prices.
+    if (activePricesIncludeTax && draft.orderType != OrderType.delivery)
+      'prices_include_tax': true,
     'opened_at': ts,
     'lines': lines,
     if (discountBaisas > 0)

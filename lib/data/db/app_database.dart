@@ -48,7 +48,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 29;
+  int get schemaVersion => 30;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -199,6 +199,41 @@ class AppDatabase extends _$AppDatabase {
       if (from < 29) {
         await m.addColumn(syncMeta, syncMeta.tableSessionsMode);
       }
+      if (from < 30) {
+        // LAUNCH-P4 — products and menu: display order, product kind,
+        // channels, sold out, Arabic description, delivery listing, combo
+        // slots; the category branch list; global add-on groups; the
+        // merchant's VAT setup (company.tax). Each table is extended only
+        // when it exists (every real cache has them; a partial test or
+        // half-created cache must not abort the whole upgrade).
+        Future<void> extend(
+          TableInfo<Table, dynamic> table,
+          List<GeneratedColumn<Object>> columns,
+        ) async {
+          final found = await customSelect(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+            variables: [Variable<String>(table.actualTableName)],
+          ).get();
+          if (found.isEmpty) return;
+          for (final column in columns) {
+            await m.addColumn(table, column);
+          }
+        }
+
+        await extend(products, [
+          products.displayOrder,
+          products.productType,
+          products.soldInStore,
+          products.soldOnDelivery,
+          products.soldOut,
+          products.descriptionAr,
+          products.deliveryUnlistedJson,
+          products.comboJson,
+        ]);
+        await extend(categories, [categories.branchIdsJson]);
+        await extend(addonGroups, [addonGroups.isGlobal]);
+        await extend(syncMeta, [syncMeta.companyTaxJson]);
+      }
     },
   );
 
@@ -340,7 +375,35 @@ class AppDatabase extends _$AppDatabase {
     categories,
   )..orderBy([(c) => OrderingTerm(expression: c.displayOrder)])).watch();
 
-  Stream<List<ProductRow>> watchProducts() => select(products).watch();
+  // LAUNCH-P4 L1 — the merchant's menu display order (then id, stable).
+  Stream<List<ProductRow>> watchProducts() =>
+      (select(products)..orderBy([
+            (p) => OrderingTerm(expression: p.displayOrder),
+            (p) => OrderingTerm(expression: p.id),
+          ]))
+          .watch();
+
+  /// LAUNCH-P4 C6 — the branch's sold-out list from GET /device/sold-out:
+  /// exactly [soldOutIds] are sold out, every other cached product is on
+  /// sale. Writes only rows whose flag changes, so an unchanged poll does
+  /// not re-emit the catalog.
+  Future<void> applySoldOut(Set<int> soldOutIds) => transaction(() async {
+    final rows = await select(products).get();
+    for (final row in rows) {
+      final want = soldOutIds.contains(row.id);
+      if ((row.soldOut ?? false) == want) continue;
+      await (update(products)..where((p) => p.id.equals(row.id))).write(
+        ProductsCompanion(soldOut: Value(want)),
+      );
+    }
+  });
+
+  /// LAUNCH-P4 C6 — one product toggled on this till (after the server
+  /// accepted POST /device/products/{id}/sold-out).
+  Future<void> setProductSoldOut(int productId, bool soldOut) =>
+      (update(products)..where((p) => p.id.equals(productId))).write(
+        ProductsCompanion(soldOut: Value(soldOut)),
+      );
 
   Stream<List<FloorRow>> watchFloors() => (select(
     floors,
@@ -683,6 +746,11 @@ class AppDatabase extends _$AppDatabase {
     required List<int> deletedCustomerIds,
     required List<int> deletedDeliveryProviderIds,
     required List<int> deletedExpenseCategoryIds,
+    // LAUNCH-P4 (H10) — the delta `deleted` map now also names taxes and
+    // void / comp reasons, which used to linger until the next full sync.
+    List<int> deletedTaxIds = const [],
+    List<int> deletedVoidReasonIds = const [],
+    List<int> deletedCompReasonIds = const [],
     required String? cursor,
     required DateTime now,
     String? orderCancelPositions,
@@ -690,6 +758,7 @@ class AppDatabase extends _$AppDatabase {
     String? kitchenPositions,
     String? orderNumberingJson,
     String? tableSessionsMode,
+    String? companyTaxJson,
   }) {
     return transaction(() async {
       BusinessBoundary.assertGeneration(_ownerGeneration);
@@ -792,6 +861,19 @@ class AppDatabase extends _$AppDatabase {
           staffMessages,
         )..where((t) => t.id.isIn(deletedStaffMessageIds))).go();
       }
+      if (deletedTaxIds.isNotEmpty) {
+        await (delete(taxCache)..where((t) => t.id.isIn(deletedTaxIds))).go();
+      }
+      if (deletedVoidReasonIds.isNotEmpty) {
+        await (delete(
+          voidReasons,
+        )..where((t) => t.id.isIn(deletedVoidReasonIds))).go();
+      }
+      if (deletedCompReasonIds.isNotEmpty) {
+        await (delete(
+          compReasons,
+        )..where((t) => t.id.isIn(deletedCompReasonIds))).go();
+      }
 
       // Advance the cursor only — keep company/branch (absent = unchanged).
       // The cancel-policy is refreshed when present (always emitted by pos_api),
@@ -816,6 +898,9 @@ class AppDatabase extends _$AppDatabase {
           tableSessionsMode: tableSessionsMode == null
               ? const Value.absent()
               : Value(tableSessionsMode),
+          companyTaxJson: companyTaxJson == null
+              ? const Value.absent()
+              : Value(companyTaxJson),
         ),
       );
     });

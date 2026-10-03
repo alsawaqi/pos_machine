@@ -520,6 +520,83 @@ class RecipeLine {
   final double quantity;
 }
 
+/// LAUNCH-P4 C7 — one choice inside a combo slot: a standard product, with
+/// the extra it costs on top of the combo price (the same on every channel).
+class ComboOption {
+  const ComboOption({
+    required this.productId,
+    this.extraPrice = 0,
+    this.isDefault = false,
+    this.sortOrder = 0,
+  });
+
+  final int productId;
+  final double extraPrice; // OMR
+  final bool isDefault;
+  final int sortOrder;
+}
+
+/// LAUNCH-P4 C7 — one choice slot of a combo ("Main", "Side", "Drink"):
+/// pick between [min] and [max] of its [options].
+class ComboSlot {
+  const ComboSlot({
+    required this.id,
+    required this.name,
+    this.nameAr = '',
+    this.min = 1,
+    this.max = 1,
+    this.sortOrder = 0,
+    this.options = const <ComboOption>[],
+  });
+
+  final int id;
+  final String name;
+  final String nameAr;
+  final int min;
+  final int max;
+  final int sortOrder;
+  final List<ComboOption> options;
+
+  String displayName(bool arabic) =>
+      arabic && nameAr.trim().isNotEmpty ? nameAr : name;
+
+  /// Parse one `combo.slots[]` entry from /device/config (money in baisas).
+  static ComboSlot fromJson(Map<String, dynamic> json) {
+    int asInt(Object? v, int fallback) => (v as num?)?.toInt() ?? fallback;
+    final options = <ComboOption>[
+      for (final raw in (json['options'] as List?) ?? const [])
+        if (raw is Map && raw['product_id'] is num)
+          ComboOption(
+            productId: (raw['product_id'] as num).toInt(),
+            extraPrice: asInt(raw['extra_price_baisas'], 0) / 1000.0,
+            isDefault: raw['is_default'] == true,
+            sortOrder: asInt(raw['sort_order'], 0),
+          ),
+    ]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final min = asInt(json['min'] ?? json['min_choices'], 1);
+    final max = asInt(json['max'] ?? json['max_choices'], 1);
+    return ComboSlot(
+      id: asInt(json['id'], 0),
+      name: json['name']?.toString() ?? '',
+      nameAr: json['name_ar']?.toString() ?? '',
+      min: min < 0 ? 0 : min,
+      max: max < 1 ? 1 : max,
+      sortOrder: asInt(json['sort_order'], 0),
+      options: options,
+    );
+  }
+
+  /// Parse a `combo` object ({slots: [...]}) — empty on anything malformed.
+  static List<ComboSlot> listFromJson(Object? combo) {
+    if (combo is! Map) return const <ComboSlot>[];
+    final slots = <ComboSlot>[
+      for (final raw in (combo['slots'] as List?) ?? const [])
+        if (raw is Map) ComboSlot.fromJson(raw.cast<String, dynamic>()),
+    ]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    return slots;
+  }
+}
+
 class Product {
   final String id;
   final String name;
@@ -532,6 +609,8 @@ class Product {
   // Null when unknown (e.g. a product reconstructed from an older snapshot).
   final int? categoryId;
   final double price;
+  // A bundled image asset (demo catalogue only). LAUNCH-P4 H11: real catalog
+  // products carry [imageUrl] instead and never a stock coffee picture.
   final String? imageAsset;
   final bool lowStock;
   // Add-on group ids assigned to this product (from the API `addon_group_ids`),
@@ -554,6 +633,24 @@ class Product {
   // (22:00→02:00). Evaluated device-side in [isAvailableAt].
   final String? availableFrom;
   final String? availableUntil;
+  // LAUNCH-P4 H11 — the merchant's photo (cached on the device); null = the
+  // initials placeholder.
+  final String? imageUrl;
+  // LAUNCH-P4 L1 — the merchant's menu order.
+  final int displayOrder;
+  // LAUNCH-P4 C7 — 'standard' | 'combo'.
+  final String productType;
+  // LAUNCH-P4 C5 — channels: offered for in-store order types / on delivery;
+  // [deliveryUnlistedProviderIds] = providers that do not list it.
+  final bool soldInStore;
+  final bool soldOnDelivery;
+  final Set<int> deliveryUnlistedProviderIds;
+  // LAUNCH-P4 C6 — this branch's manual "sold out" switch (never stock).
+  final bool soldOut;
+  // LAUNCH-P4 L5 — the Arabic description (display-only).
+  final String descriptionAr;
+  // LAUNCH-P4 C7 — a combo's choice slots (empty for a standard product).
+  final List<ComboSlot> comboSlots;
 
   const Product({
     required this.id,
@@ -572,12 +669,42 @@ class Product {
     this.branchStockQty,
     this.availableFrom,
     this.availableUntil,
+    this.imageUrl,
+    this.displayOrder = 0,
+    this.productType = 'standard',
+    this.soldInStore = true,
+    this.soldOnDelivery = true,
+    this.deliveryUnlistedProviderIds = const <int>{},
+    this.soldOut = false,
+    this.descriptionAr = '',
+    this.comboSlots = const <ComboSlot>[],
   });
 
   /// The name to SHOW for [arabic] UI — falls back to the English identity
   /// name when the merchant provided no Arabic.
   String displayName(bool arabic) =>
       arabic && nameAr.trim().isNotEmpty ? nameAr : name;
+
+  /// LAUNCH-P4 C7 — a set-price combo with choice slots.
+  bool get isCombo => productType == 'combo';
+
+  /// LAUNCH-P4 C5 — whether delivery provider [providerId] sells it.
+  bool isListedOn(int providerId) =>
+      soldOnDelivery && !deliveryUnlistedProviderIds.contains(providerId);
+
+  /// LAUNCH-P4 H11 — up to two initials for the photo placeholder (Arabic
+  /// name when [arabic] and present), e.g. "Iced Latte" → "IL".
+  String initials(bool arabic) {
+    final words = displayName(arabic)
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .toList();
+    if (words.isEmpty) return '?';
+    String firstOf(String word) => String.fromCharCode(word.runes.first);
+    if (words.length == 1) return firstOf(words.first).toUpperCase();
+    return '${firstOf(words[0])}${firstOf(words[1])}'.toUpperCase();
+  }
 
   /// Normalize 'HH:MM' (a raw API caller may omit seconds) to 'HH:MM:SS'.
   static String? _normTime(String? v) {
@@ -618,24 +745,34 @@ class Product {
   /// `double?` param can't distinguish "leave unchanged" from "set to null",
   /// but the device only ever sets it to a non-null decremented value, so a
   /// nullable override with a sentinel-free fallback is enough here).
-  Product copyWith({double? price, double? setBranchStockQty}) => Product(
-    id: id,
-    name: name,
-    nameAr: nameAr,
-    category: category,
-    categoryId: categoryId,
-    price: price ?? this.price,
-    imageAsset: imageAsset,
-    lowStock: lowStock,
-    addonGroupIds: addonGroupIds,
-    deliveryPrice: deliveryPrice,
-    deliveryPriceByProvider: deliveryPriceByProvider,
-    stockMode: stockMode,
-    recipe: recipe,
-    branchStockQty: setBranchStockQty ?? branchStockQty,
-    availableFrom: availableFrom,
-    availableUntil: availableUntil,
-  );
+  Product copyWith({double? price, double? setBranchStockQty, bool? soldOut}) =>
+      Product(
+        id: id,
+        name: name,
+        nameAr: nameAr,
+        category: category,
+        categoryId: categoryId,
+        price: price ?? this.price,
+        imageAsset: imageAsset,
+        lowStock: lowStock,
+        addonGroupIds: addonGroupIds,
+        deliveryPrice: deliveryPrice,
+        deliveryPriceByProvider: deliveryPriceByProvider,
+        stockMode: stockMode,
+        recipe: recipe,
+        branchStockQty: setBranchStockQty ?? branchStockQty,
+        availableFrom: availableFrom,
+        availableUntil: availableUntil,
+        imageUrl: imageUrl,
+        displayOrder: displayOrder,
+        productType: productType,
+        soldInStore: soldInStore,
+        soldOnDelivery: soldOnDelivery,
+        deliveryUnlistedProviderIds: deliveryUnlistedProviderIds,
+        soldOut: soldOut ?? this.soldOut,
+        descriptionAr: descriptionAr,
+        comboSlots: comboSlots,
+      );
 
   factory Product.fromMap(Map<String, dynamic> map) {
     return Product(
@@ -654,6 +791,8 @@ class Product {
           .map((e) => (e as num?)?.toInt())
           .whereType<int>()
           .toList(),
+      imageUrl: map['imageUrl']?.toString(),
+      productType: map['productType']?.toString() ?? 'standard',
     );
   }
 
@@ -667,6 +806,8 @@ class Product {
       'imageAsset': imageAsset,
       'lowStock': lowStock,
       'addonGroupIds': addonGroupIds,
+      if (imageUrl != null) 'imageUrl': imageUrl,
+      if (isCombo) 'productType': productType,
     };
   }
 }
@@ -2676,4 +2817,9 @@ class HeldOrderRecord {
     required this.heldAt,
     required this.draft,
   });
+
+  /// LAUNCH-P4 L2 — the held card's total, priced like the order itself
+  /// (the merchant's active taxes, exclusive or VAT-inclusive; none on a
+  /// delivery order) — never a fixed 5%.
+  double get displayTotal => draft.total;
 }

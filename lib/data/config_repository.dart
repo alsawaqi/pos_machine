@@ -129,6 +129,10 @@ class ConfigRepository {
         deletedCustomerIds: d.customers,
         deletedDeliveryProviderIds: d.deliveryProviders,
         deletedExpenseCategoryIds: d.expenseCategories,
+        // LAUNCH-P4 (H10) — deleted taxes and void / comp reasons purge too.
+        deletedTaxIds: d.taxes,
+        deletedVoidReasonIds: d.voidReasons,
+        deletedCompReasonIds: d.compReasons,
         cursor: res.generatedAt,
         now: DateTime.now(),
         // The settings block is always emitted (full + delta); refresh.
@@ -137,6 +141,8 @@ class ConfigRepository {
         kitchenPositions: c.meta.kitchenPositions.value,
         orderNumberingJson: c.meta.orderNumberingJson.value,
         tableSessionsMode: c.meta.tableSessionsMode.value,
+        // LAUNCH-P4 — company.tax rides every config response.
+        companyTaxJson: c.meta.companyTaxJson.value,
       );
       BusinessBoundary.assertGeneration(_ownerGeneration);
       await _session.saveTerminalId(res.terminalId);

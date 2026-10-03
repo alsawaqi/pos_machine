@@ -6394,6 +6394,12 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Card terminal is busy. Wait a moment and try again.'**
   String get ctrlMsgCardTerminalBusy;
+
+  /// No description provided for @posPricesIncludeVat.
+  ///
+  /// In en, this message translates to:
+  /// **'Prices include VAT'**
+  String get posPricesIncludeVat;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

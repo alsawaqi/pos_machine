@@ -1275,5 +1275,6 @@
   "pay002Rrn": "الرقم المرجعي للبنك",
   "pay002AuthCode": "رمز التفويض",
   "pay002ManagerCheck": "تحقق من سجل البنك قبل تسجيل هذه الدفعة.",
-  "ctrlMsgCardTerminalBusy": "جهاز الدفع مشغول. انتظر قليلاً ثم حاول مرة أخرى."
+  "ctrlMsgCardTerminalBusy": "جهاز الدفع مشغول. انتظر قليلاً ثم حاول مرة أخرى.",
+  "posPricesIncludeVat": "الأسعار شاملة الضريبة"
 }

@@ -39,6 +39,11 @@ class Categories extends Table {
   // Phase B — add-on groups bound at the CATEGORY level (JSON int array).
   // A product's modifier sheet unions these with its own addonGroupIds.
   TextColumn get addonGroupIdsJson => text().withDefault(const Constant('[]'))();
+  // LAUNCH-P4 M1 — the branches this category is limited to (JSON int
+  // array; empty = every branch).
+  // Nullable (null = []) so older fixtures and rows need no value.
+  TextColumn get branchIdsJson =>
+      text().nullable().withDefault(const Constant('[]'))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -75,6 +80,26 @@ class Products extends Table {
   // orderable; from > until wraps midnight). Evaluated on the device clock.
   TextColumn get availableFrom => text().nullable()();
   TextColumn get availableUntil => text().nullable()();
+  // LAUNCH-P4 — the menu display order (L1), the product kind (standard |
+  // combo), the channel switches, this branch's manual sold-out flag, the
+  // Arabic description, the delivery providers that do NOT list it, and a
+  // combo's slots (raw JSON from /device/config; empty = not a combo).
+  // All nullable with DB defaults (null reads as the default) so rows and
+  // fixtures that predate P4 need no value.
+  IntColumn get displayOrder =>
+      integer().nullable().withDefault(const Constant(0))();
+  TextColumn get productType =>
+      text().nullable().withDefault(const Constant('standard'))();
+  BoolColumn get soldInStore =>
+      boolean().nullable().withDefault(const Constant(true))();
+  BoolColumn get soldOnDelivery =>
+      boolean().nullable().withDefault(const Constant(true))();
+  BoolColumn get soldOut =>
+      boolean().nullable().withDefault(const Constant(false))();
+  TextColumn get descriptionAr => text().nullable()();
+  TextColumn get deliveryUnlistedJson =>
+      text().nullable().withDefault(const Constant('[]'))();
+  TextColumn get comboJson => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -125,6 +150,9 @@ class AddonGroups extends Table {
   IntColumn get minSelections => integer().nullable()();
   IntColumn get maxSelections => integer().nullable()();
   TextColumn get status => text().nullable()();
+  // LAUNCH-P4 M2 — an "apply to every product" group.
+  BoolColumn get isGlobal =>
+      boolean().nullable().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -210,6 +238,9 @@ class SyncMeta extends Table {
   TextColumn get orderNumberingJson => text().nullable()();
   // QR-003 T5: branch-only shadow mode; null/invalid remains off.
   TextColumn get tableSessionsMode => text().nullable()();
+  // LAUNCH-P4 — `company.tax` ({vat_registered, prices_include_vat,
+  // vat_number}) as JSON; null = a pre-P4 server sent none.
+  TextColumn get companyTaxJson => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

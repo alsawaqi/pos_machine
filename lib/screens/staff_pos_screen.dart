@@ -1513,6 +1513,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           staffMessages: catalog.staffMessages,
           adSlides: catalog.adSlides,
           branchId: ref.read(sessionControllerProvider).branchId,
+          companyTax: catalog.companyTax,
         );
         // P-G6 — pop a notice when a NEW announcement lands for the
         // signed-in staff member (delta sync or live push). The first
@@ -9242,10 +9243,29 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   for (final t in controller.taxLines) ...[
                     const SizedBox(height: 10),
                     _paymentTotalRow(
-                      l10n.posPaymentTaxLine(t.name, t.rateLabel),
+                      // LAUNCH-P4 L3 — one line per tax, Arabic name in AR.
+                      l10n.posPaymentTaxLine(
+                        t.displayName(
+                          Localizations.localeOf(context).languageCode == 'ar',
+                        ),
+                        t.rateLabel,
+                      ),
                       t.amount,
                     ),
                   ],
+                if (bill == null &&
+                    activePricesIncludeTax &&
+                    controller.taxLines.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    l10n.posPricesIncludeVat,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF5B6B73),
+                    ),
+                  ),
+                ],
                 if (bill == null && controller.splitCount > 1) ...[
                   const SizedBox(height: 10),
                   _paymentTotalRow(
@@ -11712,8 +11732,25 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 if (bill == null)
                   for (final t in controller.taxLines) ...[
                     const SizedBox(height: 6),
-                    _summaryRow('${t.name} (${t.rateLabel}%)', t.amount),
+                    // LAUNCH-P4 L3 — one line per tax, Arabic name in AR.
+                    _summaryRow(
+                      '${t.displayName(Localizations.localeOf(context).languageCode == 'ar')} (${t.rateLabel}%)',
+                      t.amount,
+                    ),
                   ],
+                if (bill == null &&
+                    activePricesIncludeTax &&
+                    controller.taxLines.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    l10n.posPricesIncludeVat,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF5B6B73),
+                    ),
+                  ),
+                ],
                 if (workspace == null && controller.splitCount > 1) ...[
                   const SizedBox(height: 6),
                   _summaryRow(
@@ -16649,27 +16686,9 @@ class _HeldOrderCard extends StatelessWidget {
     required this.onDiscard,
   });
 
-  double get _rawSubtotal =>
-      record.draft.items.fold<double>(0, (sum, item) => sum + item.lineTotal);
-
-  double get _discountAmount {
-    final discount = record.draft.discount;
-    if (!discount.isActive) return 0;
-    final calculated = switch (discount.kind) {
-      DiscountKind.fixedAmount => discount.value,
-      DiscountKind.percentage => _rawSubtotal * (discount.value / 100),
-      DiscountKind.none => 0,
-    };
-    return calculated.clamp(0.0, _rawSubtotal).toDouble();
-  }
-
-  double get _total {
-    final subtotal = (_rawSubtotal - _discountAmount)
-        .clamp(0.0, double.infinity)
-        .toDouble();
-    final tax = subtotal * 0.05;
-    return double.parse((subtotal + tax).toStringAsFixed(3));
-  }
+  // LAUNCH-P4 L2 — the priced total (the merchant's real taxes, exclusive or
+  // VAT-inclusive, none on delivery), never a fixed 5%.
+  double get _total => record.displayTotal;
 
   @override
   Widget build(BuildContext context) {

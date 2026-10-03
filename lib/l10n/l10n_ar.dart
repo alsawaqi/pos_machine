@@ -3869,4 +3869,7 @@ class L10nAr extends L10n {
   @override
   String get ctrlMsgCardTerminalBusy =>
       'جهاز الدفع مشغول. انتظر قليلاً ثم حاول مرة أخرى.';
+
+  @override
+  String get posPricesIncludeVat => 'الأسعار شاملة الضريبة';
 }

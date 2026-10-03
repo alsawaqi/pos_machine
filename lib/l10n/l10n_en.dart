@@ -3835,4 +3835,7 @@ class L10nEn extends L10n {
   @override
   String get ctrlMsgCardTerminalBusy =>
       'Card terminal is busy. Wait a moment and try again.';
+
+  @override
+  String get posPricesIncludeVat => 'Prices include VAT';
 }

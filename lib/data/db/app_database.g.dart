@@ -643,6 +643,18 @@ class $CategoriesTable extends Categories
         requiredDuringInsert: false,
         defaultValue: const Constant('[]'),
       );
+  static const VerificationMeta _branchIdsJsonMeta = const VerificationMeta(
+    'branchIdsJson',
+  );
+  @override
+  late final GeneratedColumn<String> branchIdsJson = GeneratedColumn<String>(
+    'branch_ids_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -651,6 +663,7 @@ class $CategoriesTable extends Categories
     displayOrder,
     status,
     addonGroupIdsJson,
+    branchIdsJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -703,6 +716,15 @@ class $CategoriesTable extends Categories
         ),
       );
     }
+    if (data.containsKey('branch_ids_json')) {
+      context.handle(
+        _branchIdsJsonMeta,
+        branchIdsJson.isAcceptableOrUnknown(
+          data['branch_ids_json']!,
+          _branchIdsJsonMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -736,6 +758,10 @@ class $CategoriesTable extends Categories
         DriftSqlType.string,
         data['${effectivePrefix}addon_group_ids_json'],
       )!,
+      branchIdsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}branch_ids_json'],
+      ),
     );
   }
 
@@ -752,6 +778,7 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
   final int displayOrder;
   final String? status;
   final String addonGroupIdsJson;
+  final String? branchIdsJson;
   const CategoryRow({
     required this.id,
     required this.name,
@@ -759,6 +786,7 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
     required this.displayOrder,
     this.status,
     required this.addonGroupIdsJson,
+    this.branchIdsJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -773,6 +801,9 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
       map['status'] = Variable<String>(status);
     }
     map['addon_group_ids_json'] = Variable<String>(addonGroupIdsJson);
+    if (!nullToAbsent || branchIdsJson != null) {
+      map['branch_ids_json'] = Variable<String>(branchIdsJson);
+    }
     return map;
   }
 
@@ -788,6 +819,9 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
           ? const Value.absent()
           : Value(status),
       addonGroupIdsJson: Value(addonGroupIdsJson),
+      branchIdsJson: branchIdsJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(branchIdsJson),
     );
   }
 
@@ -803,6 +837,7 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
       displayOrder: serializer.fromJson<int>(json['displayOrder']),
       status: serializer.fromJson<String?>(json['status']),
       addonGroupIdsJson: serializer.fromJson<String>(json['addonGroupIdsJson']),
+      branchIdsJson: serializer.fromJson<String?>(json['branchIdsJson']),
     );
   }
   @override
@@ -815,6 +850,7 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
       'displayOrder': serializer.toJson<int>(displayOrder),
       'status': serializer.toJson<String?>(status),
       'addonGroupIdsJson': serializer.toJson<String>(addonGroupIdsJson),
+      'branchIdsJson': serializer.toJson<String?>(branchIdsJson),
     };
   }
 
@@ -825,6 +861,7 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
     int? displayOrder,
     Value<String?> status = const Value.absent(),
     String? addonGroupIdsJson,
+    Value<String?> branchIdsJson = const Value.absent(),
   }) => CategoryRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -832,6 +869,9 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
     displayOrder: displayOrder ?? this.displayOrder,
     status: status.present ? status.value : this.status,
     addonGroupIdsJson: addonGroupIdsJson ?? this.addonGroupIdsJson,
+    branchIdsJson: branchIdsJson.present
+        ? branchIdsJson.value
+        : this.branchIdsJson,
   );
   CategoryRow copyWithCompanion(CategoriesCompanion data) {
     return CategoryRow(
@@ -845,6 +885,9 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
       addonGroupIdsJson: data.addonGroupIdsJson.present
           ? data.addonGroupIdsJson.value
           : this.addonGroupIdsJson,
+      branchIdsJson: data.branchIdsJson.present
+          ? data.branchIdsJson.value
+          : this.branchIdsJson,
     );
   }
 
@@ -856,14 +899,22 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
           ..write('nameAr: $nameAr, ')
           ..write('displayOrder: $displayOrder, ')
           ..write('status: $status, ')
-          ..write('addonGroupIdsJson: $addonGroupIdsJson')
+          ..write('addonGroupIdsJson: $addonGroupIdsJson, ')
+          ..write('branchIdsJson: $branchIdsJson')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, nameAr, displayOrder, status, addonGroupIdsJson);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    nameAr,
+    displayOrder,
+    status,
+    addonGroupIdsJson,
+    branchIdsJson,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -873,7 +924,8 @@ class CategoryRow extends DataClass implements Insertable<CategoryRow> {
           other.nameAr == this.nameAr &&
           other.displayOrder == this.displayOrder &&
           other.status == this.status &&
-          other.addonGroupIdsJson == this.addonGroupIdsJson);
+          other.addonGroupIdsJson == this.addonGroupIdsJson &&
+          other.branchIdsJson == this.branchIdsJson);
 }
 
 class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
@@ -883,6 +935,7 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
   final Value<int> displayOrder;
   final Value<String?> status;
   final Value<String> addonGroupIdsJson;
+  final Value<String?> branchIdsJson;
   const CategoriesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -890,6 +943,7 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
     this.displayOrder = const Value.absent(),
     this.status = const Value.absent(),
     this.addonGroupIdsJson = const Value.absent(),
+    this.branchIdsJson = const Value.absent(),
   });
   CategoriesCompanion.insert({
     this.id = const Value.absent(),
@@ -898,6 +952,7 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
     this.displayOrder = const Value.absent(),
     this.status = const Value.absent(),
     this.addonGroupIdsJson = const Value.absent(),
+    this.branchIdsJson = const Value.absent(),
   });
   static Insertable<CategoryRow> custom({
     Expression<int>? id,
@@ -906,6 +961,7 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
     Expression<int>? displayOrder,
     Expression<String>? status,
     Expression<String>? addonGroupIdsJson,
+    Expression<String>? branchIdsJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -914,6 +970,7 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
       if (displayOrder != null) 'display_order': displayOrder,
       if (status != null) 'status': status,
       if (addonGroupIdsJson != null) 'addon_group_ids_json': addonGroupIdsJson,
+      if (branchIdsJson != null) 'branch_ids_json': branchIdsJson,
     });
   }
 
@@ -924,6 +981,7 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
     Value<int>? displayOrder,
     Value<String?>? status,
     Value<String>? addonGroupIdsJson,
+    Value<String?>? branchIdsJson,
   }) {
     return CategoriesCompanion(
       id: id ?? this.id,
@@ -932,6 +990,7 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
       displayOrder: displayOrder ?? this.displayOrder,
       status: status ?? this.status,
       addonGroupIdsJson: addonGroupIdsJson ?? this.addonGroupIdsJson,
+      branchIdsJson: branchIdsJson ?? this.branchIdsJson,
     );
   }
 
@@ -956,6 +1015,9 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
     if (addonGroupIdsJson.present) {
       map['addon_group_ids_json'] = Variable<String>(addonGroupIdsJson.value);
     }
+    if (branchIdsJson.present) {
+      map['branch_ids_json'] = Variable<String>(branchIdsJson.value);
+    }
     return map;
   }
 
@@ -967,7 +1029,8 @@ class CategoriesCompanion extends UpdateCompanion<CategoryRow> {
           ..write('nameAr: $nameAr, ')
           ..write('displayOrder: $displayOrder, ')
           ..write('status: $status, ')
-          ..write('addonGroupIdsJson: $addonGroupIdsJson')
+          ..write('addonGroupIdsJson: $addonGroupIdsJson, ')
+          ..write('branchIdsJson: $branchIdsJson')
           ..write(')'))
         .toString();
   }
@@ -1140,6 +1203,109 @@ class $ProductsTable extends Products
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _displayOrderMeta = const VerificationMeta(
+    'displayOrder',
+  );
+  @override
+  late final GeneratedColumn<int> displayOrder = GeneratedColumn<int>(
+    'display_order',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _productTypeMeta = const VerificationMeta(
+    'productType',
+  );
+  @override
+  late final GeneratedColumn<String> productType = GeneratedColumn<String>(
+    'product_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('standard'),
+  );
+  static const VerificationMeta _soldInStoreMeta = const VerificationMeta(
+    'soldInStore',
+  );
+  @override
+  late final GeneratedColumn<bool> soldInStore = GeneratedColumn<bool>(
+    'sold_in_store',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("sold_in_store" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _soldOnDeliveryMeta = const VerificationMeta(
+    'soldOnDelivery',
+  );
+  @override
+  late final GeneratedColumn<bool> soldOnDelivery = GeneratedColumn<bool>(
+    'sold_on_delivery',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("sold_on_delivery" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _soldOutMeta = const VerificationMeta(
+    'soldOut',
+  );
+  @override
+  late final GeneratedColumn<bool> soldOut = GeneratedColumn<bool>(
+    'sold_out',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("sold_out" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _descriptionArMeta = const VerificationMeta(
+    'descriptionAr',
+  );
+  @override
+  late final GeneratedColumn<String> descriptionAr = GeneratedColumn<String>(
+    'description_ar',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deliveryUnlistedJsonMeta =
+      const VerificationMeta('deliveryUnlistedJson');
+  @override
+  late final GeneratedColumn<String> deliveryUnlistedJson =
+      GeneratedColumn<String>(
+        'delivery_unlisted_json',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('[]'),
+      );
+  static const VerificationMeta _comboJsonMeta = const VerificationMeta(
+    'comboJson',
+  );
+  @override
+  late final GeneratedColumn<String> comboJson = GeneratedColumn<String>(
+    'combo_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1157,6 +1323,14 @@ class $ProductsTable extends Products
     recipeJson,
     availableFrom,
     availableUntil,
+    displayOrder,
+    productType,
+    soldInStore,
+    soldOnDelivery,
+    soldOut,
+    descriptionAr,
+    deliveryUnlistedJson,
+    comboJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1278,6 +1452,72 @@ class $ProductsTable extends Products
         ),
       );
     }
+    if (data.containsKey('display_order')) {
+      context.handle(
+        _displayOrderMeta,
+        displayOrder.isAcceptableOrUnknown(
+          data['display_order']!,
+          _displayOrderMeta,
+        ),
+      );
+    }
+    if (data.containsKey('product_type')) {
+      context.handle(
+        _productTypeMeta,
+        productType.isAcceptableOrUnknown(
+          data['product_type']!,
+          _productTypeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sold_in_store')) {
+      context.handle(
+        _soldInStoreMeta,
+        soldInStore.isAcceptableOrUnknown(
+          data['sold_in_store']!,
+          _soldInStoreMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sold_on_delivery')) {
+      context.handle(
+        _soldOnDeliveryMeta,
+        soldOnDelivery.isAcceptableOrUnknown(
+          data['sold_on_delivery']!,
+          _soldOnDeliveryMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sold_out')) {
+      context.handle(
+        _soldOutMeta,
+        soldOut.isAcceptableOrUnknown(data['sold_out']!, _soldOutMeta),
+      );
+    }
+    if (data.containsKey('description_ar')) {
+      context.handle(
+        _descriptionArMeta,
+        descriptionAr.isAcceptableOrUnknown(
+          data['description_ar']!,
+          _descriptionArMeta,
+        ),
+      );
+    }
+    if (data.containsKey('delivery_unlisted_json')) {
+      context.handle(
+        _deliveryUnlistedJsonMeta,
+        deliveryUnlistedJson.isAcceptableOrUnknown(
+          data['delivery_unlisted_json']!,
+          _deliveryUnlistedJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('combo_json')) {
+      context.handle(
+        _comboJsonMeta,
+        comboJson.isAcceptableOrUnknown(data['combo_json']!, _comboJsonMeta),
+      );
+    }
     return context;
   }
 
@@ -1347,6 +1587,38 @@ class $ProductsTable extends Products
         DriftSqlType.string,
         data['${effectivePrefix}available_until'],
       ),
+      displayOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}display_order'],
+      ),
+      productType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}product_type'],
+      ),
+      soldInStore: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}sold_in_store'],
+      ),
+      soldOnDelivery: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}sold_on_delivery'],
+      ),
+      soldOut: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}sold_out'],
+      ),
+      descriptionAr: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description_ar'],
+      ),
+      deliveryUnlistedJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}delivery_unlisted_json'],
+      ),
+      comboJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}combo_json'],
+      ),
     );
   }
 
@@ -1372,6 +1644,14 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
   final String recipeJson;
   final String? availableFrom;
   final String? availableUntil;
+  final int? displayOrder;
+  final String? productType;
+  final bool? soldInStore;
+  final bool? soldOnDelivery;
+  final bool? soldOut;
+  final String? descriptionAr;
+  final String? deliveryUnlistedJson;
+  final String? comboJson;
   const ProductRow({
     required this.id,
     required this.name,
@@ -1388,6 +1668,14 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     required this.recipeJson,
     this.availableFrom,
     this.availableUntil,
+    this.displayOrder,
+    this.productType,
+    this.soldInStore,
+    this.soldOnDelivery,
+    this.soldOut,
+    this.descriptionAr,
+    this.deliveryUnlistedJson,
+    this.comboJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1424,6 +1712,30 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     }
     if (!nullToAbsent || availableUntil != null) {
       map['available_until'] = Variable<String>(availableUntil);
+    }
+    if (!nullToAbsent || displayOrder != null) {
+      map['display_order'] = Variable<int>(displayOrder);
+    }
+    if (!nullToAbsent || productType != null) {
+      map['product_type'] = Variable<String>(productType);
+    }
+    if (!nullToAbsent || soldInStore != null) {
+      map['sold_in_store'] = Variable<bool>(soldInStore);
+    }
+    if (!nullToAbsent || soldOnDelivery != null) {
+      map['sold_on_delivery'] = Variable<bool>(soldOnDelivery);
+    }
+    if (!nullToAbsent || soldOut != null) {
+      map['sold_out'] = Variable<bool>(soldOut);
+    }
+    if (!nullToAbsent || descriptionAr != null) {
+      map['description_ar'] = Variable<String>(descriptionAr);
+    }
+    if (!nullToAbsent || deliveryUnlistedJson != null) {
+      map['delivery_unlisted_json'] = Variable<String>(deliveryUnlistedJson);
+    }
+    if (!nullToAbsent || comboJson != null) {
+      map['combo_json'] = Variable<String>(comboJson);
     }
     return map;
   }
@@ -1463,6 +1775,30 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       availableUntil: availableUntil == null && nullToAbsent
           ? const Value.absent()
           : Value(availableUntil),
+      displayOrder: displayOrder == null && nullToAbsent
+          ? const Value.absent()
+          : Value(displayOrder),
+      productType: productType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(productType),
+      soldInStore: soldInStore == null && nullToAbsent
+          ? const Value.absent()
+          : Value(soldInStore),
+      soldOnDelivery: soldOnDelivery == null && nullToAbsent
+          ? const Value.absent()
+          : Value(soldOnDelivery),
+      soldOut: soldOut == null && nullToAbsent
+          ? const Value.absent()
+          : Value(soldOut),
+      descriptionAr: descriptionAr == null && nullToAbsent
+          ? const Value.absent()
+          : Value(descriptionAr),
+      deliveryUnlistedJson: deliveryUnlistedJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deliveryUnlistedJson),
+      comboJson: comboJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(comboJson),
     );
   }
 
@@ -1491,6 +1827,16 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       recipeJson: serializer.fromJson<String>(json['recipeJson']),
       availableFrom: serializer.fromJson<String?>(json['availableFrom']),
       availableUntil: serializer.fromJson<String?>(json['availableUntil']),
+      displayOrder: serializer.fromJson<int?>(json['displayOrder']),
+      productType: serializer.fromJson<String?>(json['productType']),
+      soldInStore: serializer.fromJson<bool?>(json['soldInStore']),
+      soldOnDelivery: serializer.fromJson<bool?>(json['soldOnDelivery']),
+      soldOut: serializer.fromJson<bool?>(json['soldOut']),
+      descriptionAr: serializer.fromJson<String?>(json['descriptionAr']),
+      deliveryUnlistedJson: serializer.fromJson<String?>(
+        json['deliveryUnlistedJson'],
+      ),
+      comboJson: serializer.fromJson<String?>(json['comboJson']),
     );
   }
   @override
@@ -1512,6 +1858,14 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       'recipeJson': serializer.toJson<String>(recipeJson),
       'availableFrom': serializer.toJson<String?>(availableFrom),
       'availableUntil': serializer.toJson<String?>(availableUntil),
+      'displayOrder': serializer.toJson<int?>(displayOrder),
+      'productType': serializer.toJson<String?>(productType),
+      'soldInStore': serializer.toJson<bool?>(soldInStore),
+      'soldOnDelivery': serializer.toJson<bool?>(soldOnDelivery),
+      'soldOut': serializer.toJson<bool?>(soldOut),
+      'descriptionAr': serializer.toJson<String?>(descriptionAr),
+      'deliveryUnlistedJson': serializer.toJson<String?>(deliveryUnlistedJson),
+      'comboJson': serializer.toJson<String?>(comboJson),
     };
   }
 
@@ -1531,6 +1885,14 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     String? recipeJson,
     Value<String?> availableFrom = const Value.absent(),
     Value<String?> availableUntil = const Value.absent(),
+    Value<int?> displayOrder = const Value.absent(),
+    Value<String?> productType = const Value.absent(),
+    Value<bool?> soldInStore = const Value.absent(),
+    Value<bool?> soldOnDelivery = const Value.absent(),
+    Value<bool?> soldOut = const Value.absent(),
+    Value<String?> descriptionAr = const Value.absent(),
+    Value<String?> deliveryUnlistedJson = const Value.absent(),
+    Value<String?> comboJson = const Value.absent(),
   }) => ProductRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -1555,6 +1917,20 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     availableUntil: availableUntil.present
         ? availableUntil.value
         : this.availableUntil,
+    displayOrder: displayOrder.present ? displayOrder.value : this.displayOrder,
+    productType: productType.present ? productType.value : this.productType,
+    soldInStore: soldInStore.present ? soldInStore.value : this.soldInStore,
+    soldOnDelivery: soldOnDelivery.present
+        ? soldOnDelivery.value
+        : this.soldOnDelivery,
+    soldOut: soldOut.present ? soldOut.value : this.soldOut,
+    descriptionAr: descriptionAr.present
+        ? descriptionAr.value
+        : this.descriptionAr,
+    deliveryUnlistedJson: deliveryUnlistedJson.present
+        ? deliveryUnlistedJson.value
+        : this.deliveryUnlistedJson,
+    comboJson: comboJson.present ? comboJson.value : this.comboJson,
   );
   ProductRow copyWithCompanion(ProductsCompanion data) {
     return ProductRow(
@@ -1591,6 +1967,26 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       availableUntil: data.availableUntil.present
           ? data.availableUntil.value
           : this.availableUntil,
+      displayOrder: data.displayOrder.present
+          ? data.displayOrder.value
+          : this.displayOrder,
+      productType: data.productType.present
+          ? data.productType.value
+          : this.productType,
+      soldInStore: data.soldInStore.present
+          ? data.soldInStore.value
+          : this.soldInStore,
+      soldOnDelivery: data.soldOnDelivery.present
+          ? data.soldOnDelivery.value
+          : this.soldOnDelivery,
+      soldOut: data.soldOut.present ? data.soldOut.value : this.soldOut,
+      descriptionAr: data.descriptionAr.present
+          ? data.descriptionAr.value
+          : this.descriptionAr,
+      deliveryUnlistedJson: data.deliveryUnlistedJson.present
+          ? data.deliveryUnlistedJson.value
+          : this.deliveryUnlistedJson,
+      comboJson: data.comboJson.present ? data.comboJson.value : this.comboJson,
     );
   }
 
@@ -1611,13 +2007,21 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           ..write('stockMode: $stockMode, ')
           ..write('recipeJson: $recipeJson, ')
           ..write('availableFrom: $availableFrom, ')
-          ..write('availableUntil: $availableUntil')
+          ..write('availableUntil: $availableUntil, ')
+          ..write('displayOrder: $displayOrder, ')
+          ..write('productType: $productType, ')
+          ..write('soldInStore: $soldInStore, ')
+          ..write('soldOnDelivery: $soldOnDelivery, ')
+          ..write('soldOut: $soldOut, ')
+          ..write('descriptionAr: $descriptionAr, ')
+          ..write('deliveryUnlistedJson: $deliveryUnlistedJson, ')
+          ..write('comboJson: $comboJson')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     name,
     nameAr,
@@ -1633,7 +2037,15 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     recipeJson,
     availableFrom,
     availableUntil,
-  );
+    displayOrder,
+    productType,
+    soldInStore,
+    soldOnDelivery,
+    soldOut,
+    descriptionAr,
+    deliveryUnlistedJson,
+    comboJson,
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1652,7 +2064,15 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           other.stockMode == this.stockMode &&
           other.recipeJson == this.recipeJson &&
           other.availableFrom == this.availableFrom &&
-          other.availableUntil == this.availableUntil);
+          other.availableUntil == this.availableUntil &&
+          other.displayOrder == this.displayOrder &&
+          other.productType == this.productType &&
+          other.soldInStore == this.soldInStore &&
+          other.soldOnDelivery == this.soldOnDelivery &&
+          other.soldOut == this.soldOut &&
+          other.descriptionAr == this.descriptionAr &&
+          other.deliveryUnlistedJson == this.deliveryUnlistedJson &&
+          other.comboJson == this.comboJson);
 }
 
 class ProductsCompanion extends UpdateCompanion<ProductRow> {
@@ -1671,6 +2091,14 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
   final Value<String> recipeJson;
   final Value<String?> availableFrom;
   final Value<String?> availableUntil;
+  final Value<int?> displayOrder;
+  final Value<String?> productType;
+  final Value<bool?> soldInStore;
+  final Value<bool?> soldOnDelivery;
+  final Value<bool?> soldOut;
+  final Value<String?> descriptionAr;
+  final Value<String?> deliveryUnlistedJson;
+  final Value<String?> comboJson;
   const ProductsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -1687,6 +2115,14 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     this.recipeJson = const Value.absent(),
     this.availableFrom = const Value.absent(),
     this.availableUntil = const Value.absent(),
+    this.displayOrder = const Value.absent(),
+    this.productType = const Value.absent(),
+    this.soldInStore = const Value.absent(),
+    this.soldOnDelivery = const Value.absent(),
+    this.soldOut = const Value.absent(),
+    this.descriptionAr = const Value.absent(),
+    this.deliveryUnlistedJson = const Value.absent(),
+    this.comboJson = const Value.absent(),
   });
   ProductsCompanion.insert({
     this.id = const Value.absent(),
@@ -1704,6 +2140,14 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     this.recipeJson = const Value.absent(),
     this.availableFrom = const Value.absent(),
     this.availableUntil = const Value.absent(),
+    this.displayOrder = const Value.absent(),
+    this.productType = const Value.absent(),
+    this.soldInStore = const Value.absent(),
+    this.soldOnDelivery = const Value.absent(),
+    this.soldOut = const Value.absent(),
+    this.descriptionAr = const Value.absent(),
+    this.deliveryUnlistedJson = const Value.absent(),
+    this.comboJson = const Value.absent(),
   });
   static Insertable<ProductRow> custom({
     Expression<int>? id,
@@ -1721,6 +2165,14 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     Expression<String>? recipeJson,
     Expression<String>? availableFrom,
     Expression<String>? availableUntil,
+    Expression<int>? displayOrder,
+    Expression<String>? productType,
+    Expression<bool>? soldInStore,
+    Expression<bool>? soldOnDelivery,
+    Expression<bool>? soldOut,
+    Expression<String>? descriptionAr,
+    Expression<String>? deliveryUnlistedJson,
+    Expression<String>? comboJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1740,6 +2192,15 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
       if (recipeJson != null) 'recipe_json': recipeJson,
       if (availableFrom != null) 'available_from': availableFrom,
       if (availableUntil != null) 'available_until': availableUntil,
+      if (displayOrder != null) 'display_order': displayOrder,
+      if (productType != null) 'product_type': productType,
+      if (soldInStore != null) 'sold_in_store': soldInStore,
+      if (soldOnDelivery != null) 'sold_on_delivery': soldOnDelivery,
+      if (soldOut != null) 'sold_out': soldOut,
+      if (descriptionAr != null) 'description_ar': descriptionAr,
+      if (deliveryUnlistedJson != null)
+        'delivery_unlisted_json': deliveryUnlistedJson,
+      if (comboJson != null) 'combo_json': comboJson,
     });
   }
 
@@ -1759,6 +2220,14 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     Value<String>? recipeJson,
     Value<String?>? availableFrom,
     Value<String?>? availableUntil,
+    Value<int?>? displayOrder,
+    Value<String?>? productType,
+    Value<bool?>? soldInStore,
+    Value<bool?>? soldOnDelivery,
+    Value<bool?>? soldOut,
+    Value<String?>? descriptionAr,
+    Value<String?>? deliveryUnlistedJson,
+    Value<String?>? comboJson,
   }) {
     return ProductsCompanion(
       id: id ?? this.id,
@@ -1776,6 +2245,14 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
       recipeJson: recipeJson ?? this.recipeJson,
       availableFrom: availableFrom ?? this.availableFrom,
       availableUntil: availableUntil ?? this.availableUntil,
+      displayOrder: displayOrder ?? this.displayOrder,
+      productType: productType ?? this.productType,
+      soldInStore: soldInStore ?? this.soldInStore,
+      soldOnDelivery: soldOnDelivery ?? this.soldOnDelivery,
+      soldOut: soldOut ?? this.soldOut,
+      descriptionAr: descriptionAr ?? this.descriptionAr,
+      deliveryUnlistedJson: deliveryUnlistedJson ?? this.deliveryUnlistedJson,
+      comboJson: comboJson ?? this.comboJson,
     );
   }
 
@@ -1827,6 +2304,32 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
     if (availableUntil.present) {
       map['available_until'] = Variable<String>(availableUntil.value);
     }
+    if (displayOrder.present) {
+      map['display_order'] = Variable<int>(displayOrder.value);
+    }
+    if (productType.present) {
+      map['product_type'] = Variable<String>(productType.value);
+    }
+    if (soldInStore.present) {
+      map['sold_in_store'] = Variable<bool>(soldInStore.value);
+    }
+    if (soldOnDelivery.present) {
+      map['sold_on_delivery'] = Variable<bool>(soldOnDelivery.value);
+    }
+    if (soldOut.present) {
+      map['sold_out'] = Variable<bool>(soldOut.value);
+    }
+    if (descriptionAr.present) {
+      map['description_ar'] = Variable<String>(descriptionAr.value);
+    }
+    if (deliveryUnlistedJson.present) {
+      map['delivery_unlisted_json'] = Variable<String>(
+        deliveryUnlistedJson.value,
+      );
+    }
+    if (comboJson.present) {
+      map['combo_json'] = Variable<String>(comboJson.value);
+    }
     return map;
   }
 
@@ -1847,7 +2350,15 @@ class ProductsCompanion extends UpdateCompanion<ProductRow> {
           ..write('stockMode: $stockMode, ')
           ..write('recipeJson: $recipeJson, ')
           ..write('availableFrom: $availableFrom, ')
-          ..write('availableUntil: $availableUntil')
+          ..write('availableUntil: $availableUntil, ')
+          ..write('displayOrder: $displayOrder, ')
+          ..write('productType: $productType, ')
+          ..write('soldInStore: $soldInStore, ')
+          ..write('soldOnDelivery: $soldOnDelivery, ')
+          ..write('soldOut: $soldOut, ')
+          ..write('descriptionAr: $descriptionAr, ')
+          ..write('deliveryUnlistedJson: $deliveryUnlistedJson, ')
+          ..write('comboJson: $comboJson')
           ..write(')'))
         .toString();
   }
@@ -2909,6 +3420,21 @@ class $AddonGroupsTable extends AddonGroups
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _isGlobalMeta = const VerificationMeta(
+    'isGlobal',
+  );
+  @override
+  late final GeneratedColumn<bool> isGlobal = GeneratedColumn<bool>(
+    'is_global',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_global" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2918,6 +3444,7 @@ class $AddonGroupsTable extends AddonGroups
     minSelections,
     maxSelections,
     status,
+    isGlobal,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2979,6 +3506,12 @@ class $AddonGroupsTable extends AddonGroups
         status.isAcceptableOrUnknown(data['status']!, _statusMeta),
       );
     }
+    if (data.containsKey('is_global')) {
+      context.handle(
+        _isGlobalMeta,
+        isGlobal.isAcceptableOrUnknown(data['is_global']!, _isGlobalMeta),
+      );
+    }
     return context;
   }
 
@@ -3016,6 +3549,10 @@ class $AddonGroupsTable extends AddonGroups
         DriftSqlType.string,
         data['${effectivePrefix}status'],
       ),
+      isGlobal: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_global'],
+      ),
     );
   }
 
@@ -3033,6 +3570,7 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
   final int? minSelections;
   final int? maxSelections;
   final String? status;
+  final bool? isGlobal;
   const AddonGroupRow({
     required this.id,
     required this.name,
@@ -3041,6 +3579,7 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
     this.minSelections,
     this.maxSelections,
     this.status,
+    this.isGlobal,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3061,6 +3600,9 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
     }
     if (!nullToAbsent || status != null) {
       map['status'] = Variable<String>(status);
+    }
+    if (!nullToAbsent || isGlobal != null) {
+      map['is_global'] = Variable<bool>(isGlobal);
     }
     return map;
   }
@@ -3084,6 +3626,9 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
       status: status == null && nullToAbsent
           ? const Value.absent()
           : Value(status),
+      isGlobal: isGlobal == null && nullToAbsent
+          ? const Value.absent()
+          : Value(isGlobal),
     );
   }
 
@@ -3100,6 +3645,7 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
       minSelections: serializer.fromJson<int?>(json['minSelections']),
       maxSelections: serializer.fromJson<int?>(json['maxSelections']),
       status: serializer.fromJson<String?>(json['status']),
+      isGlobal: serializer.fromJson<bool?>(json['isGlobal']),
     );
   }
   @override
@@ -3113,6 +3659,7 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
       'minSelections': serializer.toJson<int?>(minSelections),
       'maxSelections': serializer.toJson<int?>(maxSelections),
       'status': serializer.toJson<String?>(status),
+      'isGlobal': serializer.toJson<bool?>(isGlobal),
     };
   }
 
@@ -3124,6 +3671,7 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
     Value<int?> minSelections = const Value.absent(),
     Value<int?> maxSelections = const Value.absent(),
     Value<String?> status = const Value.absent(),
+    Value<bool?> isGlobal = const Value.absent(),
   }) => AddonGroupRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -3138,6 +3686,7 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
         ? maxSelections.value
         : this.maxSelections,
     status: status.present ? status.value : this.status,
+    isGlobal: isGlobal.present ? isGlobal.value : this.isGlobal,
   );
   AddonGroupRow copyWithCompanion(AddonGroupsCompanion data) {
     return AddonGroupRow(
@@ -3154,6 +3703,7 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
           ? data.maxSelections.value
           : this.maxSelections,
       status: data.status.present ? data.status.value : this.status,
+      isGlobal: data.isGlobal.present ? data.isGlobal.value : this.isGlobal,
     );
   }
 
@@ -3166,7 +3716,8 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
           ..write('selectionMode: $selectionMode, ')
           ..write('minSelections: $minSelections, ')
           ..write('maxSelections: $maxSelections, ')
-          ..write('status: $status')
+          ..write('status: $status, ')
+          ..write('isGlobal: $isGlobal')
           ..write(')'))
         .toString();
   }
@@ -3180,6 +3731,7 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
     minSelections,
     maxSelections,
     status,
+    isGlobal,
   );
   @override
   bool operator ==(Object other) =>
@@ -3191,7 +3743,8 @@ class AddonGroupRow extends DataClass implements Insertable<AddonGroupRow> {
           other.selectionMode == this.selectionMode &&
           other.minSelections == this.minSelections &&
           other.maxSelections == this.maxSelections &&
-          other.status == this.status);
+          other.status == this.status &&
+          other.isGlobal == this.isGlobal);
 }
 
 class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
@@ -3202,6 +3755,7 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
   final Value<int?> minSelections;
   final Value<int?> maxSelections;
   final Value<String?> status;
+  final Value<bool?> isGlobal;
   const AddonGroupsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -3210,6 +3764,7 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
     this.minSelections = const Value.absent(),
     this.maxSelections = const Value.absent(),
     this.status = const Value.absent(),
+    this.isGlobal = const Value.absent(),
   });
   AddonGroupsCompanion.insert({
     this.id = const Value.absent(),
@@ -3219,6 +3774,7 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
     this.minSelections = const Value.absent(),
     this.maxSelections = const Value.absent(),
     this.status = const Value.absent(),
+    this.isGlobal = const Value.absent(),
   });
   static Insertable<AddonGroupRow> custom({
     Expression<int>? id,
@@ -3228,6 +3784,7 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
     Expression<int>? minSelections,
     Expression<int>? maxSelections,
     Expression<String>? status,
+    Expression<bool>? isGlobal,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3237,6 +3794,7 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
       if (minSelections != null) 'min_selections': minSelections,
       if (maxSelections != null) 'max_selections': maxSelections,
       if (status != null) 'status': status,
+      if (isGlobal != null) 'is_global': isGlobal,
     });
   }
 
@@ -3248,6 +3806,7 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
     Value<int?>? minSelections,
     Value<int?>? maxSelections,
     Value<String?>? status,
+    Value<bool?>? isGlobal,
   }) {
     return AddonGroupsCompanion(
       id: id ?? this.id,
@@ -3257,6 +3816,7 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
       minSelections: minSelections ?? this.minSelections,
       maxSelections: maxSelections ?? this.maxSelections,
       status: status ?? this.status,
+      isGlobal: isGlobal ?? this.isGlobal,
     );
   }
 
@@ -3284,6 +3844,9 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
+    if (isGlobal.present) {
+      map['is_global'] = Variable<bool>(isGlobal.value);
+    }
     return map;
   }
 
@@ -3296,7 +3859,8 @@ class AddonGroupsCompanion extends UpdateCompanion<AddonGroupRow> {
           ..write('selectionMode: $selectionMode, ')
           ..write('minSelections: $minSelections, ')
           ..write('maxSelections: $maxSelections, ')
-          ..write('status: $status')
+          ..write('status: $status, ')
+          ..write('isGlobal: $isGlobal')
           ..write(')'))
         .toString();
   }
@@ -4326,6 +4890,17 @@ class $SyncMetaTable extends SyncMeta
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _companyTaxJsonMeta = const VerificationMeta(
+    'companyTaxJson',
+  );
+  @override
+  late final GeneratedColumn<String> companyTaxJson = GeneratedColumn<String>(
+    'company_tax_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -4338,6 +4913,7 @@ class $SyncMetaTable extends SyncMeta
     kitchenPositions,
     orderNumberingJson,
     tableSessionsMode,
+    companyTaxJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4429,6 +5005,15 @@ class $SyncMetaTable extends SyncMeta
         ),
       );
     }
+    if (data.containsKey('company_tax_json')) {
+      context.handle(
+        _companyTaxJsonMeta,
+        companyTaxJson.isAcceptableOrUnknown(
+          data['company_tax_json']!,
+          _companyTaxJsonMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -4478,6 +5063,10 @@ class $SyncMetaTable extends SyncMeta
         DriftSqlType.string,
         data['${effectivePrefix}table_sessions_mode'],
       ),
+      companyTaxJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}company_tax_json'],
+      ),
     );
   }
 
@@ -4498,6 +5087,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
   final String? kitchenPositions;
   final String? orderNumberingJson;
   final String? tableSessionsMode;
+  final String? companyTaxJson;
   const SyncMetaRow({
     required this.id,
     this.companyId,
@@ -4509,6 +5099,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     this.kitchenPositions,
     this.orderNumberingJson,
     this.tableSessionsMode,
+    this.companyTaxJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4540,6 +5131,9 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     }
     if (!nullToAbsent || tableSessionsMode != null) {
       map['table_sessions_mode'] = Variable<String>(tableSessionsMode);
+    }
+    if (!nullToAbsent || companyTaxJson != null) {
+      map['company_tax_json'] = Variable<String>(companyTaxJson);
     }
     return map;
   }
@@ -4574,6 +5168,9 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
       tableSessionsMode: tableSessionsMode == null && nullToAbsent
           ? const Value.absent()
           : Value(tableSessionsMode),
+      companyTaxJson: companyTaxJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(companyTaxJson),
     );
   }
 
@@ -4603,6 +5200,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
       tableSessionsMode: serializer.fromJson<String?>(
         json['tableSessionsMode'],
       ),
+      companyTaxJson: serializer.fromJson<String?>(json['companyTaxJson']),
     );
   }
   @override
@@ -4619,6 +5217,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
       'kitchenPositions': serializer.toJson<String?>(kitchenPositions),
       'orderNumberingJson': serializer.toJson<String?>(orderNumberingJson),
       'tableSessionsMode': serializer.toJson<String?>(tableSessionsMode),
+      'companyTaxJson': serializer.toJson<String?>(companyTaxJson),
     };
   }
 
@@ -4633,6 +5232,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     Value<String?> kitchenPositions = const Value.absent(),
     Value<String?> orderNumberingJson = const Value.absent(),
     Value<String?> tableSessionsMode = const Value.absent(),
+    Value<String?> companyTaxJson = const Value.absent(),
   }) => SyncMetaRow(
     id: id ?? this.id,
     companyId: companyId.present ? companyId.value : this.companyId,
@@ -4658,6 +5258,9 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     tableSessionsMode: tableSessionsMode.present
         ? tableSessionsMode.value
         : this.tableSessionsMode,
+    companyTaxJson: companyTaxJson.present
+        ? companyTaxJson.value
+        : this.companyTaxJson,
   );
   SyncMetaRow copyWithCompanion(SyncMetaCompanion data) {
     return SyncMetaRow(
@@ -4685,6 +5288,9 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
       tableSessionsMode: data.tableSessionsMode.present
           ? data.tableSessionsMode.value
           : this.tableSessionsMode,
+      companyTaxJson: data.companyTaxJson.present
+          ? data.companyTaxJson.value
+          : this.companyTaxJson,
     );
   }
 
@@ -4700,7 +5306,8 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
           ..write('reportsPositions: $reportsPositions, ')
           ..write('kitchenPositions: $kitchenPositions, ')
           ..write('orderNumberingJson: $orderNumberingJson, ')
-          ..write('tableSessionsMode: $tableSessionsMode')
+          ..write('tableSessionsMode: $tableSessionsMode, ')
+          ..write('companyTaxJson: $companyTaxJson')
           ..write(')'))
         .toString();
   }
@@ -4717,6 +5324,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     kitchenPositions,
     orderNumberingJson,
     tableSessionsMode,
+    companyTaxJson,
   );
   @override
   bool operator ==(Object other) =>
@@ -4731,7 +5339,8 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
           other.reportsPositions == this.reportsPositions &&
           other.kitchenPositions == this.kitchenPositions &&
           other.orderNumberingJson == this.orderNumberingJson &&
-          other.tableSessionsMode == this.tableSessionsMode);
+          other.tableSessionsMode == this.tableSessionsMode &&
+          other.companyTaxJson == this.companyTaxJson);
 }
 
 class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
@@ -4745,6 +5354,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
   final Value<String?> kitchenPositions;
   final Value<String?> orderNumberingJson;
   final Value<String?> tableSessionsMode;
+  final Value<String?> companyTaxJson;
   const SyncMetaCompanion({
     this.id = const Value.absent(),
     this.companyId = const Value.absent(),
@@ -4756,6 +5366,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
     this.kitchenPositions = const Value.absent(),
     this.orderNumberingJson = const Value.absent(),
     this.tableSessionsMode = const Value.absent(),
+    this.companyTaxJson = const Value.absent(),
   });
   SyncMetaCompanion.insert({
     this.id = const Value.absent(),
@@ -4768,6 +5379,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
     this.kitchenPositions = const Value.absent(),
     this.orderNumberingJson = const Value.absent(),
     this.tableSessionsMode = const Value.absent(),
+    this.companyTaxJson = const Value.absent(),
   });
   static Insertable<SyncMetaRow> custom({
     Expression<int>? id,
@@ -4780,6 +5392,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
     Expression<String>? kitchenPositions,
     Expression<String>? orderNumberingJson,
     Expression<String>? tableSessionsMode,
+    Expression<String>? companyTaxJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -4795,6 +5408,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
       if (orderNumberingJson != null)
         'order_numbering_json': orderNumberingJson,
       if (tableSessionsMode != null) 'table_sessions_mode': tableSessionsMode,
+      if (companyTaxJson != null) 'company_tax_json': companyTaxJson,
     });
   }
 
@@ -4809,6 +5423,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
     Value<String?>? kitchenPositions,
     Value<String?>? orderNumberingJson,
     Value<String?>? tableSessionsMode,
+    Value<String?>? companyTaxJson,
   }) {
     return SyncMetaCompanion(
       id: id ?? this.id,
@@ -4821,6 +5436,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
       kitchenPositions: kitchenPositions ?? this.kitchenPositions,
       orderNumberingJson: orderNumberingJson ?? this.orderNumberingJson,
       tableSessionsMode: tableSessionsMode ?? this.tableSessionsMode,
+      companyTaxJson: companyTaxJson ?? this.companyTaxJson,
     );
   }
 
@@ -4861,6 +5477,9 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
     if (tableSessionsMode.present) {
       map['table_sessions_mode'] = Variable<String>(tableSessionsMode.value);
     }
+    if (companyTaxJson.present) {
+      map['company_tax_json'] = Variable<String>(companyTaxJson.value);
+    }
     return map;
   }
 
@@ -4876,7 +5495,8 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
           ..write('reportsPositions: $reportsPositions, ')
           ..write('kitchenPositions: $kitchenPositions, ')
           ..write('orderNumberingJson: $orderNumberingJson, ')
-          ..write('tableSessionsMode: $tableSessionsMode')
+          ..write('tableSessionsMode: $tableSessionsMode, ')
+          ..write('companyTaxJson: $companyTaxJson')
           ..write(')'))
         .toString();
   }
@@ -12062,6 +12682,7 @@ typedef $$CategoriesTableCreateCompanionBuilder =
       Value<int> displayOrder,
       Value<String?> status,
       Value<String> addonGroupIdsJson,
+      Value<String?> branchIdsJson,
     });
 typedef $$CategoriesTableUpdateCompanionBuilder =
     CategoriesCompanion Function({
@@ -12071,6 +12692,7 @@ typedef $$CategoriesTableUpdateCompanionBuilder =
       Value<int> displayOrder,
       Value<String?> status,
       Value<String> addonGroupIdsJson,
+      Value<String?> branchIdsJson,
     });
 
 class $$CategoriesTableFilterComposer
@@ -12109,6 +12731,11 @@ class $$CategoriesTableFilterComposer
 
   ColumnFilters<String> get addonGroupIdsJson => $composableBuilder(
     column: $table.addonGroupIdsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get branchIdsJson => $composableBuilder(
+    column: $table.branchIdsJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -12151,6 +12778,11 @@ class $$CategoriesTableOrderingComposer
     column: $table.addonGroupIdsJson,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get branchIdsJson => $composableBuilder(
+    column: $table.branchIdsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CategoriesTableAnnotationComposer
@@ -12181,6 +12813,11 @@ class $$CategoriesTableAnnotationComposer
 
   GeneratedColumn<String> get addonGroupIdsJson => $composableBuilder(
     column: $table.addonGroupIdsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get branchIdsJson => $composableBuilder(
+    column: $table.branchIdsJson,
     builder: (column) => column,
   );
 }
@@ -12222,6 +12859,7 @@ class $$CategoriesTableTableManager
                 Value<int> displayOrder = const Value.absent(),
                 Value<String?> status = const Value.absent(),
                 Value<String> addonGroupIdsJson = const Value.absent(),
+                Value<String?> branchIdsJson = const Value.absent(),
               }) => CategoriesCompanion(
                 id: id,
                 name: name,
@@ -12229,6 +12867,7 @@ class $$CategoriesTableTableManager
                 displayOrder: displayOrder,
                 status: status,
                 addonGroupIdsJson: addonGroupIdsJson,
+                branchIdsJson: branchIdsJson,
               ),
           createCompanionCallback:
               ({
@@ -12238,6 +12877,7 @@ class $$CategoriesTableTableManager
                 Value<int> displayOrder = const Value.absent(),
                 Value<String?> status = const Value.absent(),
                 Value<String> addonGroupIdsJson = const Value.absent(),
+                Value<String?> branchIdsJson = const Value.absent(),
               }) => CategoriesCompanion.insert(
                 id: id,
                 name: name,
@@ -12245,6 +12885,7 @@ class $$CategoriesTableTableManager
                 displayOrder: displayOrder,
                 status: status,
                 addonGroupIdsJson: addonGroupIdsJson,
+                branchIdsJson: branchIdsJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -12288,6 +12929,14 @@ typedef $$ProductsTableCreateCompanionBuilder =
       Value<String> recipeJson,
       Value<String?> availableFrom,
       Value<String?> availableUntil,
+      Value<int?> displayOrder,
+      Value<String?> productType,
+      Value<bool?> soldInStore,
+      Value<bool?> soldOnDelivery,
+      Value<bool?> soldOut,
+      Value<String?> descriptionAr,
+      Value<String?> deliveryUnlistedJson,
+      Value<String?> comboJson,
     });
 typedef $$ProductsTableUpdateCompanionBuilder =
     ProductsCompanion Function({
@@ -12306,6 +12955,14 @@ typedef $$ProductsTableUpdateCompanionBuilder =
       Value<String> recipeJson,
       Value<String?> availableFrom,
       Value<String?> availableUntil,
+      Value<int?> displayOrder,
+      Value<String?> productType,
+      Value<bool?> soldInStore,
+      Value<bool?> soldOnDelivery,
+      Value<bool?> soldOut,
+      Value<String?> descriptionAr,
+      Value<String?> deliveryUnlistedJson,
+      Value<String?> comboJson,
     });
 
 class $$ProductsTableFilterComposer
@@ -12389,6 +13046,46 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<String> get availableUntil => $composableBuilder(
     column: $table.availableUntil,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get displayOrder => $composableBuilder(
+    column: $table.displayOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get productType => $composableBuilder(
+    column: $table.productType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get soldInStore => $composableBuilder(
+    column: $table.soldInStore,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get soldOnDelivery => $composableBuilder(
+    column: $table.soldOnDelivery,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get soldOut => $composableBuilder(
+    column: $table.soldOut,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get descriptionAr => $composableBuilder(
+    column: $table.descriptionAr,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deliveryUnlistedJson => $composableBuilder(
+    column: $table.deliveryUnlistedJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get comboJson => $composableBuilder(
+    column: $table.comboJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -12476,6 +13173,46 @@ class $$ProductsTableOrderingComposer
     column: $table.availableUntil,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get displayOrder => $composableBuilder(
+    column: $table.displayOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get productType => $composableBuilder(
+    column: $table.productType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get soldInStore => $composableBuilder(
+    column: $table.soldInStore,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get soldOnDelivery => $composableBuilder(
+    column: $table.soldOnDelivery,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get soldOut => $composableBuilder(
+    column: $table.soldOut,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get descriptionAr => $composableBuilder(
+    column: $table.descriptionAr,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deliveryUnlistedJson => $composableBuilder(
+    column: $table.deliveryUnlistedJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get comboJson => $composableBuilder(
+    column: $table.comboJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ProductsTableAnnotationComposer
@@ -12549,6 +13286,42 @@ class $$ProductsTableAnnotationComposer
     column: $table.availableUntil,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get displayOrder => $composableBuilder(
+    column: $table.displayOrder,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get productType => $composableBuilder(
+    column: $table.productType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get soldInStore => $composableBuilder(
+    column: $table.soldInStore,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get soldOnDelivery => $composableBuilder(
+    column: $table.soldOnDelivery,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get soldOut =>
+      $composableBuilder(column: $table.soldOut, builder: (column) => column);
+
+  GeneratedColumn<String> get descriptionAr => $composableBuilder(
+    column: $table.descriptionAr,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get deliveryUnlistedJson => $composableBuilder(
+    column: $table.deliveryUnlistedJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get comboJson =>
+      $composableBuilder(column: $table.comboJson, builder: (column) => column);
 }
 
 class $$ProductsTableTableManager
@@ -12597,6 +13370,14 @@ class $$ProductsTableTableManager
                 Value<String> recipeJson = const Value.absent(),
                 Value<String?> availableFrom = const Value.absent(),
                 Value<String?> availableUntil = const Value.absent(),
+                Value<int?> displayOrder = const Value.absent(),
+                Value<String?> productType = const Value.absent(),
+                Value<bool?> soldInStore = const Value.absent(),
+                Value<bool?> soldOnDelivery = const Value.absent(),
+                Value<bool?> soldOut = const Value.absent(),
+                Value<String?> descriptionAr = const Value.absent(),
+                Value<String?> deliveryUnlistedJson = const Value.absent(),
+                Value<String?> comboJson = const Value.absent(),
               }) => ProductsCompanion(
                 id: id,
                 name: name,
@@ -12613,6 +13394,14 @@ class $$ProductsTableTableManager
                 recipeJson: recipeJson,
                 availableFrom: availableFrom,
                 availableUntil: availableUntil,
+                displayOrder: displayOrder,
+                productType: productType,
+                soldInStore: soldInStore,
+                soldOnDelivery: soldOnDelivery,
+                soldOut: soldOut,
+                descriptionAr: descriptionAr,
+                deliveryUnlistedJson: deliveryUnlistedJson,
+                comboJson: comboJson,
               ),
           createCompanionCallback:
               ({
@@ -12631,6 +13420,14 @@ class $$ProductsTableTableManager
                 Value<String> recipeJson = const Value.absent(),
                 Value<String?> availableFrom = const Value.absent(),
                 Value<String?> availableUntil = const Value.absent(),
+                Value<int?> displayOrder = const Value.absent(),
+                Value<String?> productType = const Value.absent(),
+                Value<bool?> soldInStore = const Value.absent(),
+                Value<bool?> soldOnDelivery = const Value.absent(),
+                Value<bool?> soldOut = const Value.absent(),
+                Value<String?> descriptionAr = const Value.absent(),
+                Value<String?> deliveryUnlistedJson = const Value.absent(),
+                Value<String?> comboJson = const Value.absent(),
               }) => ProductsCompanion.insert(
                 id: id,
                 name: name,
@@ -12647,6 +13444,14 @@ class $$ProductsTableTableManager
                 recipeJson: recipeJson,
                 availableFrom: availableFrom,
                 availableUntil: availableUntil,
+                displayOrder: displayOrder,
+                productType: productType,
+                soldInStore: soldInStore,
+                soldOnDelivery: soldOnDelivery,
+                soldOut: soldOut,
+                descriptionAr: descriptionAr,
+                deliveryUnlistedJson: deliveryUnlistedJson,
+                comboJson: comboJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -13173,6 +13978,7 @@ typedef $$AddonGroupsTableCreateCompanionBuilder =
       Value<int?> minSelections,
       Value<int?> maxSelections,
       Value<String?> status,
+      Value<bool?> isGlobal,
     });
 typedef $$AddonGroupsTableUpdateCompanionBuilder =
     AddonGroupsCompanion Function({
@@ -13183,6 +13989,7 @@ typedef $$AddonGroupsTableUpdateCompanionBuilder =
       Value<int?> minSelections,
       Value<int?> maxSelections,
       Value<String?> status,
+      Value<bool?> isGlobal,
     });
 
 class $$AddonGroupsTableFilterComposer
@@ -13226,6 +14033,11 @@ class $$AddonGroupsTableFilterComposer
 
   ColumnFilters<String> get status => $composableBuilder(
     column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isGlobal => $composableBuilder(
+    column: $table.isGlobal,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -13273,6 +14085,11 @@ class $$AddonGroupsTableOrderingComposer
     column: $table.status,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get isGlobal => $composableBuilder(
+    column: $table.isGlobal,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AddonGroupsTableAnnotationComposer
@@ -13310,6 +14127,9 @@ class $$AddonGroupsTableAnnotationComposer
 
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<bool> get isGlobal =>
+      $composableBuilder(column: $table.isGlobal, builder: (column) => column);
 }
 
 class $$AddonGroupsTableTableManager
@@ -13350,6 +14170,7 @@ class $$AddonGroupsTableTableManager
                 Value<int?> minSelections = const Value.absent(),
                 Value<int?> maxSelections = const Value.absent(),
                 Value<String?> status = const Value.absent(),
+                Value<bool?> isGlobal = const Value.absent(),
               }) => AddonGroupsCompanion(
                 id: id,
                 name: name,
@@ -13358,6 +14179,7 @@ class $$AddonGroupsTableTableManager
                 minSelections: minSelections,
                 maxSelections: maxSelections,
                 status: status,
+                isGlobal: isGlobal,
               ),
           createCompanionCallback:
               ({
@@ -13368,6 +14190,7 @@ class $$AddonGroupsTableTableManager
                 Value<int?> minSelections = const Value.absent(),
                 Value<int?> maxSelections = const Value.absent(),
                 Value<String?> status = const Value.absent(),
+                Value<bool?> isGlobal = const Value.absent(),
               }) => AddonGroupsCompanion.insert(
                 id: id,
                 name: name,
@@ -13376,6 +14199,7 @@ class $$AddonGroupsTableTableManager
                 minSelections: minSelections,
                 maxSelections: maxSelections,
                 status: status,
+                isGlobal: isGlobal,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -13878,6 +14702,7 @@ typedef $$SyncMetaTableCreateCompanionBuilder =
       Value<String?> kitchenPositions,
       Value<String?> orderNumberingJson,
       Value<String?> tableSessionsMode,
+      Value<String?> companyTaxJson,
     });
 typedef $$SyncMetaTableUpdateCompanionBuilder =
     SyncMetaCompanion Function({
@@ -13891,6 +14716,7 @@ typedef $$SyncMetaTableUpdateCompanionBuilder =
       Value<String?> kitchenPositions,
       Value<String?> orderNumberingJson,
       Value<String?> tableSessionsMode,
+      Value<String?> companyTaxJson,
     });
 
 class $$SyncMetaTableFilterComposer
@@ -13949,6 +14775,11 @@ class $$SyncMetaTableFilterComposer
 
   ColumnFilters<String> get tableSessionsMode => $composableBuilder(
     column: $table.tableSessionsMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get companyTaxJson => $composableBuilder(
+    column: $table.companyTaxJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -14011,6 +14842,11 @@ class $$SyncMetaTableOrderingComposer
     column: $table.tableSessionsMode,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get companyTaxJson => $composableBuilder(
+    column: $table.companyTaxJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SyncMetaTableAnnotationComposer
@@ -14065,6 +14901,11 @@ class $$SyncMetaTableAnnotationComposer
     column: $table.tableSessionsMode,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get companyTaxJson => $composableBuilder(
+    column: $table.companyTaxJson,
+    builder: (column) => column,
+  );
 }
 
 class $$SyncMetaTableTableManager
@@ -14108,6 +14949,7 @@ class $$SyncMetaTableTableManager
                 Value<String?> kitchenPositions = const Value.absent(),
                 Value<String?> orderNumberingJson = const Value.absent(),
                 Value<String?> tableSessionsMode = const Value.absent(),
+                Value<String?> companyTaxJson = const Value.absent(),
               }) => SyncMetaCompanion(
                 id: id,
                 companyId: companyId,
@@ -14119,6 +14961,7 @@ class $$SyncMetaTableTableManager
                 kitchenPositions: kitchenPositions,
                 orderNumberingJson: orderNumberingJson,
                 tableSessionsMode: tableSessionsMode,
+                companyTaxJson: companyTaxJson,
               ),
           createCompanionCallback:
               ({
@@ -14132,6 +14975,7 @@ class $$SyncMetaTableTableManager
                 Value<String?> kitchenPositions = const Value.absent(),
                 Value<String?> orderNumberingJson = const Value.absent(),
                 Value<String?> tableSessionsMode = const Value.absent(),
+                Value<String?> companyTaxJson = const Value.absent(),
               }) => SyncMetaCompanion.insert(
                 id: id,
                 companyId: companyId,
@@ -14143,6 +14987,7 @@ class $$SyncMetaTableTableManager
                 kitchenPositions: kitchenPositions,
                 orderNumberingJson: orderNumberingJson,
                 tableSessionsMode: tableSessionsMode,
+                companyTaxJson: companyTaxJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

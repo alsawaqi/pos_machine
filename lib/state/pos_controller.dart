@@ -1244,6 +1244,7 @@ class PosController extends ChangeNotifier
     List<StaffMessage> staffMessages = const <StaffMessage>[],
     List<SliderSlide> adSlides = const <SliderSlide>[],
     int? branchId,
+    CompanyTaxSettings companyTax = CompanyTaxSettings.legacy,
   }) {
     _hasRealCatalog = branchId != null;
     this.categories = categories;
@@ -1292,7 +1293,10 @@ class PosController extends ChangeNotifier
     }
     // Company taxes drive the cart tax lines + total. Stored in the shared
     // source so the persisted / printed order agrees with the live cart.
-    activeCompanyTaxes = taxes;
+    // LAUNCH-P4 — with the merchant's VAT setup: an unregistered merchant
+    // charges no tax at all; "prices include VAT" switches to inclusive.
+    activeTaxSettings = companyTax;
+    activeCompanyTaxes = companyTax.forbidsTax ? const <CompanyTax>[] : taxes;
 
     // Drop a selected provider that no longer exists in the refreshed catalog.
     if (selectedDeliveryProviderId != null &&
@@ -2052,6 +2056,18 @@ class PosController extends ChangeNotifier
       compQty: frozen == null ? appliedComp?.qty : frozen.compQty,
       subtotal: pricing.baisasToOmr(priced.subtotalBaisas),
       tax: pricing.baisasToOmr(priced.taxTotalBaisas),
+      // LAUNCH-P4 — freeze the inclusive flag and the priced tax lines (with
+      // their Arabic names) for the receipt and the push.
+      pricesIncludeTax: priced.pricesIncludeTax,
+      taxLines: [
+        for (final line in priced.taxLines)
+          {
+            'name': line.name,
+            if ((line.nameAr ?? '').trim().isNotEmpty) 'nameAr': line.nameAr,
+            'ratePercent': line.ratePercent,
+            'amount': pricing.baisasToOmr(line.amountBaisas),
+          },
+      ],
       total: pricing.baisasToOmr(priced.grandTotalBaisas),
       activePaymentBaseTotal: activePaymentBaseTotal,
       splitCount: splitCount,
@@ -4354,6 +4370,8 @@ class PosController extends ChangeNotifier
         subtotal: sub - discount,
         compAmount: (bill['comp_total_baisas'] as int? ?? 0) / 1000,
         tax: (bill['tax_total_baisas'] as int) / 1000,
+        // LAUNCH-P4 — the server bill says whether its total contains VAT.
+        pricesIncludeTax: bill['prices_include_tax'] == true,
         total: (bill['grand_total_baisas'] as int) / 1000,
         activePaymentBaseTotal: (bill['grand_total_baisas'] as int) / 1000,
         payableTotal: (bill['grand_total_baisas'] as int) / 1000,

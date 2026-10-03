@@ -33,6 +33,7 @@ class CatalogSnapshot {
     this.categoryAddonGroupIds = const <int, List<int>>{},
     this.staffMessages = const <StaffMessage>[],
     this.adSlides = const <SliderSlide>[],
+    this.companyTax = CompanyTaxSettings.legacy,
   });
 
   final List<String> categories;
@@ -89,6 +90,9 @@ class CatalogSnapshot {
   // slide across all sliders targeting this device, in play order. Empty = no
   // ad assigned (the customer screen falls back to its non-ad layout).
   final List<SliderSlide> adSlides;
+  // LAUNCH-P4 — the merchant's VAT setup (`company.tax`); [CompanyTaxSettings
+  // .legacy] when the server sent none.
+  final CompanyTaxSettings companyTax;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -164,6 +168,9 @@ class DeletedIds {
     this.expenseCategories = const [],
     this.offers = const [],
     this.staffMessages = const [],
+    this.taxes = const [],
+    this.voidReasons = const [],
+    this.compReasons = const [],
   });
 
   final List<int> floors;
@@ -182,6 +189,10 @@ class DeletedIds {
   final List<int> offers;
   // P-G6 — retracted staff-message ids.
   final List<int> staffMessages;
+  // LAUNCH-P4 (H10) — deleted / deactivated taxes and void / comp reasons.
+  final List<int> taxes;
+  final List<int> voidReasons;
+  final List<int> compReasons;
 }
 
 /// A parsed config delta: the changed-row companions (built via
@@ -194,21 +205,6 @@ class ConfigDelta {
   final bool hasBranch;
   final DeletedIds deleted;
 }
-
-/// Bundled coffee photography shown for catalog products (the till renders
-/// local assets only, so it works offline). Assigned deterministically by
-/// product id: the same product always shows the same photo, on the staff
-/// grid, the cart and the customer display (pos_handheld parity).
-const List<String> kProductPlaceholderAssets = [
-  'assets/images/latte.png',
-  'assets/images/cappuccino.png',
-  'assets/images/americano.png',
-  'assets/images/espresso_blue.png',
-  'assets/images/espresso_white.png',
-];
-
-String productPlaceholderAsset(int productId) => kProductPlaceholderAssets[
-    productId.abs() % kProductPlaceholderAssets.length];
 
 /// Two-way mapping: API JSON → Drift companions, and Drift rows → existing UI
 /// models. Money stays integer baisas in Drift and becomes `double` OMR only in
@@ -260,6 +256,18 @@ class ConfigMapper {
       if (pid != null && price != null) map['$pid'] = price;
     }
     return jsonEncode(map);
+  }
+
+  /// LAUNCH-P4 C5 — the providers whose `delivery_prices[]` entry says
+  /// `listed: false` (the product is hidden on that provider), as a JSON array.
+  static String _deliveryUnlistedJson(Object? v) {
+    final ids = <int>[];
+    for (final e in (v as List? ?? const [])) {
+      if (e is! Map || e['listed'] != false) continue;
+      final pid = (e['provider_id'] as num?)?.toInt();
+      if (pid != null) ids.add(pid);
+    }
+    return jsonEncode(ids);
   }
 
   /// Decode the stored {providerId: priceBaisas} JSON → {providerId: OMR}.
@@ -367,6 +375,8 @@ class ConfigMapper {
               // product's own ids at modifier-sheet time).
               addonGroupIdsJson:
                   Value(jsonEncode(_intList(c['addon_group_ids']))),
+              // LAUNCH-P4 M1 — null/absent = every branch.
+              branchIdsJson: Value(jsonEncode(_intList(c['branch_ids']))),
             ))
         .toList();
 
@@ -387,6 +397,23 @@ class ConfigMapper {
               recipeJson: Value(_recipeJson(p['recipe'])),
               availableFrom: Value(_strN(p['available_from'])),
               availableUntil: Value(_strN(p['available_until'])),
+              // LAUNCH-P4 — menu order, kind, channels, sold out, Arabic
+              // description, delivery listing and combo slots.
+              displayOrder: Value(_int(p['display_order']) ?? 0),
+              productType: Value(
+                _str(p['product_type']).isEmpty
+                    ? 'standard'
+                    : _str(p['product_type']),
+              ),
+              soldInStore: Value(p['sold_in_store'] != false),
+              soldOnDelivery: Value(p['sold_on_delivery'] != false),
+              soldOut: Value(p['sold_out'] == true),
+              descriptionAr: Value(_strN(p['description_ar'])),
+              deliveryUnlistedJson:
+                  Value(_deliveryUnlistedJson(p['delivery_prices'])),
+              comboJson: Value(
+                p['combo'] is Map ? jsonEncode(p['combo']) : null,
+              ),
             ))
         .toList();
 
@@ -429,6 +456,8 @@ class ConfigMapper {
         minSelections: Value(_int(g['min_selections'])),
         maxSelections: Value(_int(g['max_selections'])),
         status: Value(_strN(g['status'])),
+        // LAUNCH-P4 M2 — "apply to every product".
+        isGlobal: Value(g['is_global'] == true),
       ));
       for (final a in _list(g['addons'])) {
         addons.add(AddonsCompanion(
@@ -661,6 +690,9 @@ class ConfigMapper {
     final kitchenPositions = _strList(settings['kitchen_positions']);
     // P-F8 — the merchant's order-numbering config (null = disabled).
     final orderNumbering = settings['order_numbering'];
+    // LAUNCH-P4 — the merchant's VAT setup ({vat_registered,
+    // prices_include_vat, vat_number}).
+    final companyTax = (data['company'] as Map?)?['tax'];
 
     final metaCompanion = SyncMetaCompanion(
       id: const Value(1),
@@ -678,6 +710,8 @@ class ConfigMapper {
             ? settings['table_sessions_mode'] as String
             : 'off',
       ),
+      // LAUNCH-P4 — company.tax; null when a pre-P4 server sent none.
+      companyTaxJson: Value(companyTax is Map ? jsonEncode(companyTax) : null),
     );
 
     return ParsedConfig(
@@ -731,6 +765,9 @@ class ConfigMapper {
         expenseCategories: _intList(del['expense_categories']),
         offers: _intList(del['offers']),
         staffMessages: _intList(del['staff_messages']),
+        taxes: _intList(del['taxes']),
+        voidReasons: _intList(del['void_reasons']),
+        compReasons: _intList(del['comp_reasons']),
       ),
     );
   }
@@ -760,31 +797,83 @@ class ConfigMapper {
     List<MarketingSliderRow> sliderRows = const [],
     List<MarketingSliderItemRow> sliderItemRows = const [],
   ]) {
-    final sortedCats = [...cats]
-      ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
+    // LAUNCH-P4 H5 + M1 — the device hides inactive categories and those the
+    // merchant limited to other branches (the server also stops sending them;
+    // this stays as the defensive filter). Products of a hidden category go
+    // with it.
+    final branchId = meta?.branchId ?? branch?.id;
+    final hiddenCategoryIds = <int>{
+      for (final c in cats)
+        if (!_isActiveStatus(c.status) ||
+            !_branchAllowed(c.branchIdsJson ?? '[]', branchId))
+          c.id,
+    };
+    final sortedCats = [
+      for (final c in cats)
+        if (!hiddenCategoryIds.contains(c.id)) c,
+    ]..sort((a, b) => a.displayOrder.compareTo(b.displayOrder));
     final idToName = {for (final c in sortedCats) c.id: c.name};
 
-    final products = prods
-        .map((p) => Product(
-              id: p.id.toString(),
-              name: p.name,
-              nameAr: p.nameAr ?? '',
-              category: idToName[p.categoryId] ?? '',
-              categoryId: p.categoryId,
-              price: p.basePriceBaisas / 1000.0,
-              imageAsset: productPlaceholderAsset(p.id),
-              addonGroupIds: _idsFromCsv(p.addonGroupIds),
-              deliveryPrice: p.deliveryPriceBaisas != null
-                  ? p.deliveryPriceBaisas! / 1000.0
-                  : null,
-              deliveryPriceByProvider: _deliveryOverrides(p.deliveryPricesJson),
-              stockMode: p.stockMode,
-              recipe: _recipeFromJson(p.recipeJson),
-              branchStockQty: p.branchStockQty,
-              availableFrom: p.availableFrom,
-              availableUntil: p.availableUntil,
-            ))
-        .toList();
+    // LAUNCH-P4 M2 — "apply to every product" groups join each product's own.
+    final globalGroupIds = [
+      for (final g in addonGroupRows)
+        if ((g.isGlobal ?? false) &&
+            g.status != 'inactive' &&
+            g.status != 'archived')
+          g.id,
+    ];
+
+    // LAUNCH-P4 L1 — the merchant's display order (then id, stable).
+    final sortedProds = [
+      for (final p in prods)
+        if (_isActiveStatus(p.status) &&
+            !(p.categoryId != null && hiddenCategoryIds.contains(p.categoryId)))
+          p,
+    ]..sort((a, b) {
+        final byOrder = (a.displayOrder ?? 0).compareTo(b.displayOrder ?? 0);
+        return byOrder != 0 ? byOrder : a.id.compareTo(b.id);
+      });
+
+    final products = sortedProds.map((p) {
+      final ownGroupIds = _idsFromCsv(p.addonGroupIds);
+      final imageUrl = (p.imageUrl ?? '').trim();
+      return Product(
+        id: p.id.toString(),
+        name: p.name,
+        nameAr: p.nameAr ?? '',
+        category: idToName[p.categoryId] ?? '',
+        categoryId: p.categoryId,
+        price: p.basePriceBaisas / 1000.0,
+        // LAUNCH-P4 H11 — the merchant's photo, else the initials
+        // placeholder (never a stock coffee picture).
+        imageUrl: imageUrl.isEmpty ? null : imageUrl,
+        addonGroupIds: [
+          ...ownGroupIds,
+          for (final id in globalGroupIds)
+            if (!ownGroupIds.contains(id)) id,
+        ],
+        deliveryPrice: p.deliveryPriceBaisas != null
+            ? p.deliveryPriceBaisas! / 1000.0
+            : null,
+        deliveryPriceByProvider: _deliveryOverrides(p.deliveryPricesJson),
+        stockMode: p.stockMode,
+        recipe: _recipeFromJson(p.recipeJson),
+        branchStockQty: p.branchStockQty,
+        availableFrom: p.availableFrom,
+        availableUntil: p.availableUntil,
+        displayOrder: p.displayOrder ?? 0,
+        productType: p.productType ?? 'standard',
+        soldInStore: p.soldInStore ?? true,
+        soldOnDelivery: p.soldOnDelivery ?? true,
+        deliveryUnlistedProviderIds:
+            _intsFromJson(p.deliveryUnlistedJson ?? '[]').toSet(),
+        soldOut: p.soldOut ?? false,
+        descriptionAr: p.descriptionAr ?? '',
+        comboSlots: (p.comboJson ?? '').isEmpty
+            ? const <ComboSlot>[]
+            : ComboSlot.listFromJson(_tryDecode(p.comboJson!)),
+      );
+    }).toList();
 
     final floorDefs = ([...floors]
           ..sort((a, b) => a.displayOrder.compareTo(b.displayOrder)))
@@ -836,9 +925,14 @@ class ConfigMapper {
         })
         .toList();
 
-    final companyTaxes = ([...taxes]..sort((a, b) => a.id.compareTo(b.id)))
-        .map((t) => CompanyTax(name: t.name, nameAr: t.nameAr, ratePercent: t.ratePercent))
-        .toList();
+    // LAUNCH-P4 owner decision 1 — a merchant that is not VAT-registered
+    // computes and prints no tax at all, whatever rows are cached.
+    final companyTaxSettings = _companyTaxFromMeta(meta);
+    final companyTaxes = companyTaxSettings.forbidsTax
+        ? const <CompanyTax>[]
+        : ([...taxes]..sort((a, b) => a.id.compareTo(b.id)))
+            .map((t) => CompanyTax(name: t.name, nameAr: t.nameAr, ratePercent: t.ratePercent))
+            .toList();
 
     // Add-on groups (company set) + their options; baisas → OMR. Options keep
     // their cached/inserted order (API display_order). Inactive/archived rows
@@ -1062,7 +1156,35 @@ class ConfigMapper {
               ))
           .toList(),
       adSlides: adSlides,
+      companyTax: companyTaxSettings,
     );
+  }
+
+  /// LAUNCH-P4 H5 — null (older caches) or 'active' shows; anything else
+  /// (inactive, archived, draft…) is hidden.
+  static bool _isActiveStatus(String? status) =>
+      status == null || status.isEmpty || status == 'active';
+
+  /// LAUNCH-P4 M1 — an empty branch list means every branch.
+  static bool _branchAllowed(String branchIdsJson, int? branchId) {
+    final ids = _intsFromJson(branchIdsJson);
+    return ids.isEmpty || branchId == null || ids.contains(branchId);
+  }
+
+  static Object? _tryDecode(String json) {
+    try {
+      return jsonDecode(json);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// LAUNCH-P4 — decode the cached `company.tax` JSON (legacy when absent).
+  static CompanyTaxSettings _companyTaxFromMeta(SyncMetaRow? meta) {
+    final decoded = _tryDecode(meta?.companyTaxJson ?? '');
+    return decoded is Map
+        ? CompanyTaxSettings.fromJson(decoded.cast<String, dynamic>())
+        : CompanyTaxSettings.legacy;
   }
 
   /// Decode a JSON int array ("[1,2]") → ints; tolerant of junk.
