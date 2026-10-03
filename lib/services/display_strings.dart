@@ -48,3 +48,32 @@ String localizedPaymentMethod(L10n l10n, String value) => switch (value) {
       'Delivery' => l10n.displayMethodDelivery, // P-G7 — no tender taken
       _ => value,
     };
+
+/// LAUNCH-P4 C8 — the customer display's tax rows, one per tax like the
+/// cart: "VAT (5%)" (Arabic name in Arabic) with its amount. A snapshot
+/// without frozen tax lines (a server bill, an older order) keeps a single
+/// row with [fallbackLabel] and the order's tax total.
+List<({String label, double amount})> customerTaxRows(
+  OrderSnapshot order, {
+  required bool arabic,
+  required String fallbackLabel,
+}) {
+  if (order.taxLines.isEmpty) {
+    return [(label: fallbackLabel, amount: order.tax)];
+  }
+  return [
+    for (final line in order.taxLines)
+      () {
+        final tax = TaxLineAmount(
+          name: line['name']?.toString() ?? '',
+          nameAr: line['nameAr']?.toString(),
+          ratePercent: (line['ratePercent'] as num?)?.toDouble() ?? 0,
+          amount: (line['amount'] as num?)?.toDouble() ?? 0,
+        );
+        return (
+          label: '${tax.displayName(arabic)} (${tax.rateLabel}%)',
+          amount: tax.amount,
+        );
+      }(),
+  ];
+}

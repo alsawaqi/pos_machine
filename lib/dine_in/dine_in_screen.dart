@@ -473,14 +473,22 @@ class _DineInScreenState extends State<DineInScreen>
     if (!c.canAdd || childOpen) return;
     if (widget.workspace?.mainCart == true && product != null) {
       if (!product.available) return;
-      await _addDraft(product, const [], null);
-      return;
+      // LAUNCH-P4 C7 — a combo opens its picker; anything else adds plain.
+      if (!product.isCombo) {
+        await _addDraft(product, const [], null);
+        return;
+      }
     }
     final seating = c.detail!.seatingUuid, bill = c.detail!.billUuid;
     childOpen = true;
     _schedule();
     final picked = product != null
-        ? await pickStaffRoundProduct(context, product, arabic: widget.arabic)
+        ? await pickStaffRoundProduct(
+            context,
+            product,
+            arabic: widget.arabic,
+            catalogue: widget.catalogue(),
+          )
         : await pickStaffRoundItem(
             context,
             widget.catalogue(),
@@ -543,13 +551,17 @@ class _DineInScreenState extends State<DineInScreen>
     List<int> addons,
     String? notes, {
     int qty = 1,
+    List<QrQuickComboPick> combo = const [],
   }) async {
     if (!_editDrafts) return;
     final selected = [...addons]..sort();
+    final probe = QrQuickLine(product.id, 1, selected, combo: combo);
     final index = drafts.indexWhere((d) {
       final existing = [...d.$2.addonIds]..sort();
       return d.$2.productId == product.id &&
           existing.join(',') == selected.join(',') &&
+          // LAUNCH-P4 C7 — combos merge only with the same choices.
+          d.$2.comboSignature == probe.comboSignature &&
           (d.$2.notes ?? '') == (notes ?? '');
     });
     final quantity = qty + (index < 0 ? 0 : drafts[index].$2.quantity);
@@ -561,7 +573,13 @@ class _DineInScreenState extends State<DineInScreen>
     setState(() {
       final entry = (
         widget.arabic ? product.nameAr : product.name,
-        QrQuickLine(product.id, quantity, selected, notes: notes),
+        QrQuickLine(
+          product.id,
+          quantity,
+          selected,
+          notes: notes,
+          combo: combo,
+        ),
       );
       if (index < 0) {
         drafts.add(entry);
@@ -576,6 +594,8 @@ class _DineInScreenState extends State<DineInScreen>
   Map<String, dynamic> _draftRow(int index) {
     final line = drafts[index].$2,
         product = _product(drafts[index].$2.productId);
+    // LAUNCH-P4 C7 — a combo draft shows its items and their extras.
+    final combo = quickComboRows(line, product, _product);
     final addons = [
       for (final group in product?.groups ?? <QuickGroup>[])
         for (final choice in group.choices)
@@ -590,7 +610,11 @@ class _DineInScreenState extends State<DineInScreen>
       'qty': line.quantity,
       'line_total_baisas':
           ((product?.priceBaisas ?? 0) +
-              addons.fold<int>(0, (n, a) => n + a.priceBaisas)) *
+              addons.fold<int>(0, (n, a) => n + a.priceBaisas) +
+              combo.fold<int>(
+                0,
+                (n, c) => n + (c['unit_delta_baisas'] as int),
+              )) *
           line.quantity,
       'notes': line.notes,
       'addons': [
@@ -601,6 +625,7 @@ class _DineInScreenState extends State<DineInScreen>
             'add_on_name_ar': a.nameAr,
           },
       ],
+      if (combo.isNotEmpty) 'combo': combo,
     };
   }
 
@@ -612,6 +637,13 @@ class _DineInScreenState extends State<DineInScreen>
               .where((a) => d.$2.addonIds.contains(a.id))
               .length;
           return count >= g.min && count <= g.max;
+        }) &&
+        // LAUNCH-P4 C7 — every combo slot holds between min and max picks.
+        product.comboSlots.every((slot) {
+          final count = d.$2.combo
+              .where((pick) => pick.slotId == slot.id)
+              .fold<int>(0, (n, pick) => n + pick.quantity);
+          return count >= slot.min && count <= slot.max;
         });
   });
 
@@ -632,6 +664,7 @@ class _DineInScreenState extends State<DineInScreen>
               qty,
               old.$2.addonIds,
               notes: old.$2.notes,
+              combo: old.$2.combo,
             ),
           );
         }
@@ -649,6 +682,8 @@ class _DineInScreenState extends State<DineInScreen>
           ],
           row['notes'] as String?,
           qty: qty - (row['qty'] as num).toInt(),
+          // LAUNCH-P4 C7 — more of a combo = the same choices again.
+          combo: serverComboPicks(row),
         );
       }
     } else if (qty < (row['qty'] as num) &&
@@ -693,6 +728,7 @@ class _DineInScreenState extends State<DineInScreen>
               changed.addonIds,
               changed.notes,
               qty: changed.quantity,
+              combo: changed.combo,
             );
           }
         }
@@ -1409,6 +1445,9 @@ class _DineInScreenState extends State<DineInScreen>
     ),
     subtitle: Text(
       [
+        // LAUNCH-P4 C7 — a combo's chosen items (bill `combo` or round
+        // `components`), per one combo.
+        ...serverComboLabels(line, arabic: widget.arabic),
         if (line['notes'] != null && line['notes'] != '') line['notes'],
         for (final raw in (line['addons'] as List? ?? const []))
           tableMap(raw)['name'] ?? tableMap(raw)['add_on_name'],

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/qr_till_models.dart';
+import '../qr_quick/qr_quick_models.dart' show serverComboLabels;
 import '../providers/providers.dart';
 import '../services/pos_api_service.dart';
 import '../services/qr_settlement_coordinator.dart';
@@ -1433,9 +1434,19 @@ class _ReadOnlyItems extends StatelessWidget {
             item.name,
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
-          subtitle: item.addons.isEmpty
+          subtitle: item.addons.isEmpty && item.combo.isEmpty
               ? (item.notes == null ? null : Text(item.notes!))
-              : Text(item.addons.map((addon) => addon.name).join(', ')),
+              : Text(
+                  [
+                    // LAUNCH-P4 C7 — a combo's chosen items.
+                    ...serverComboLabels(
+                      {'combo': item.combo},
+                      arabic:
+                          Localizations.localeOf(context).languageCode == 'ar',
+                    ),
+                    ...item.addons.map((addon) => addon.name),
+                  ].join(', '),
+                ),
           trailing: Text(_money(item.lineTotalBaisas)),
         ),
     ],

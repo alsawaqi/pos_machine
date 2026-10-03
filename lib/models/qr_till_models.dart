@@ -481,6 +481,7 @@ class QrOrderItem {
     required this.status,
     required this.addons,
     this.notes,
+    this.combo = const <Map<String, dynamic>>[],
   });
 
   final int id;
@@ -493,6 +494,9 @@ class QrOrderItem {
   final String status;
   final String? notes;
   final List<QrOrderAddon> addons;
+  // LAUNCH-P4 C7 — a combo line's chosen items as the server nests them
+  // (`combo`, per ONE combo); display-only.
+  final List<Map<String, dynamic>> combo;
 
   factory QrOrderItem.fromJson(Map<String, dynamic> json) {
     final rawAddons = json['addons'];
@@ -514,6 +518,11 @@ class QrOrderItem {
                 )
                 .toList(growable: false)
           : const <QrOrderAddon>[],
+      combo: [
+        for (final c in ((json['combo'] ?? json['components']) as List?) ??
+            const [])
+          if (c is Map) c.cast<String, dynamic>(),
+      ],
     );
   }
 }

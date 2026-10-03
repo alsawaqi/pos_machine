@@ -63,10 +63,12 @@ import '../services/qr_round_printing.dart'
 import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
 import '../services/sold_out_sync.dart';
+import '../services/transfer_claim.dart';
 import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
 import '../widgets/product_artwork.dart';
 import '../qr_quick/qr_quick_copy.dart';
+import '../qr_quick/qr_quick_screen.dart' show pickStaffRoundProduct;
 import '../qr_quick/qr_quick_gateway.dart';
 import '../qr_quick/qr_quick_store.dart';
 import '../qr_quick/qr_quick_models.dart';
@@ -1293,6 +1295,24 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<QrQuickLine?> _editQrCartOptions(Map<String, dynamic> line) async {
+    // LAUNCH-P4 C7 — a server combo line edits its choices in the
+    // server-priced combo picker (identity only; the server prices it).
+    final quick = machineQuickCatalogue(
+      ref.read(catalogProvider).asData?.value,
+    );
+    final quickProduct = quick
+        .where((p) => p.id == (line['product_id'] as num?)?.toInt())
+        .firstOrNull;
+    if (quickProduct != null && quickProduct.isCombo) {
+      final picked = await pickStaffRoundProduct(
+        context,
+        quickProduct,
+        arabic: Localizations.localeOf(context).languageCode == 'ar',
+        catalogue: quick,
+        initial: line,
+      );
+      return picked?.$2;
+    }
     final product = ref
         .read(catalogProvider)
         .asData
@@ -2174,95 +2194,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// (tender running / split legs recorded) and the caller must not report
   /// success.
   bool _hydrateFromTransfer(Map<String, dynamic> order) {
-    final items = <CartItem>[];
-    for (final raw
-        in ((order['items'] as List?) ?? const []).whereType<Map>()) {
-      final m = raw.cast<String, dynamic>();
-      final productId = (m['product_id'] as num?)?.toInt();
-
-      final modifiers = <CartItemModifier>[];
-      for (final a in ((m['addons'] as List?) ?? const []).whereType<Map>()) {
-        final am = a.cast<String, dynamic>();
-        modifiers.add(
-          CartItemModifier(
-            id: '${(am['add_on_id'] as num?)?.toInt() ?? ''}',
-            group: '',
-            label: (am['add_on_name'] ?? '').toString(),
-            price: ((am['price_delta_baisas'] as num?)?.toInt() ?? 0) / 1000.0,
-          ),
-        );
-      }
-
-      final unitPrice =
-          ((m['unit_price_baisas'] as num?)?.toInt() ?? 0) / 1000.0;
-      // LAUNCH-P4 C7 — a combo's children never become lines of their own;
-      // its components ride on the combo line (device wire shape, per ONE
-      // combo).
-      if (m['parent_order_item_id'] != null) continue;
-      final components = <ComboComponent>[
-        for (final c
-            in ((m['combo'] ?? m['components']) as List? ?? const [])
-                .whereType<Map>())
-          if ((c['product_id'] as num?)?.toInt() case final int cid)
-            ComboComponent(
-              slotId: (c['slot_id'] as num?)?.toInt() ?? 0,
-              productId: '$cid',
-              name:
-                  controller.productForId('$cid')?.name ??
-                  (c['product_name'] ?? '').toString(),
-              nameAr: controller.productForId('$cid')?.nameAr ?? '',
-              qty: (c['qty'] as num?)?.toInt() ?? 1,
-              extraPrice:
-                  ((c['extra_price_baisas'] as num?)?.toInt() ?? 0) / 1000.0,
-              modifiers: [
-                for (final a in (c['addons'] as List? ?? const [])
-                    .whereType<Map>())
-                  CartItemModifier(
-                    id: '${(a['add_on_id'] as num?)?.toInt() ?? ''}',
-                    group: '',
-                    label: (a['add_on_name'] ?? '').toString(),
-                    price:
-                        ((a['price_delta_baisas'] as num?)?.toInt() ?? 0) /
-                        1000.0,
-                  ),
-              ],
-              notes: (c['notes'] ?? '').toString(),
-            ),
-      ];
-      final addonTotal = modifiers.fold(0.0, (sum, mo) => sum + mo.price);
-      final componentTotal = components.fold(
-        0.0,
-        (sum, c) => sum + c.comboDelta,
-      );
-      final basePrice = double.parse(
-        (unitPrice - addonTotal - componentTotal).toStringAsFixed(3),
-      );
-
-      final catalog = productId != null
-          ? controller.productById(productId)
-          : null;
-      items.add(
-        CartItem(
-          product: Product(
-            id: '${productId ?? ''}',
-            name: catalog?.name ?? (m['product_name'] ?? '').toString(),
-            nameAr: catalog?.nameAr ?? '',
-            category: catalog?.category ?? '',
-            categoryId: catalog?.categoryId,
-            price: basePrice,
-            imageAsset: catalog?.imageAsset,
-            imageUrl: catalog?.imageUrl,
-            addonGroupIds: catalog?.addonGroupIds ?? const <int>[],
-            productType: catalog?.productType ??
-                (components.isEmpty ? 'standard' : 'combo'),
-          ),
-          qty: ((m['qty'] as num?) ?? 1).round(),
-          modifiers: modifiers,
-          notes: (m['notes'] ?? '').toString(),
-          components: components,
-        ),
-      );
-    }
+    // LAUNCH-P4 C7 — combo lines keep their nested choices (see
+    // transferClaimCartItems).
+    final items = transferClaimCartItems(
+      order,
+      productForId: controller.productForId,
+    );
 
     return controller.receiveTransferredOrder(
       orderUuid: (order['uuid'] ?? '').toString(),

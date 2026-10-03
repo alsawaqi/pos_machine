@@ -38,14 +38,31 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
           p.name,
           nameAr: p.nameAr,
           priceBaisas: (p.price * 1000).round(),
-          // LAUNCH-P4 C6 — sold out is unavailable; C7 — this server-priced
-          // picker cannot build a combo's choices yet, so combos are sold
-          // through the till cart (and QR web) instead.
+          // LAUNCH-P4 C6 — sold out is unavailable. C7 — a combo carries its
+          // slots; the picker sends its choices (identity only).
           available:
               p.isAvailableAt(DateTime.now()) &&
               !p.soldOut &&
-              !p.isCombo &&
+              (!p.isCombo || p.comboSlots.isNotEmpty) &&
               ids(p).every(groups.containsKey),
+          comboSlots: [
+            for (final slot in p.comboSlots)
+              QuickComboSlot(
+                slot.id,
+                slot.name,
+                nameAr: slot.nameAr,
+                min: slot.min,
+                max: slot.max,
+                options: [
+                  for (final option in slot.options)
+                    QuickComboOption(
+                      option.productId,
+                      extraPriceBaisas: (option.extraPrice * 1000).round(),
+                      isDefault: option.isDefault,
+                    ),
+                ],
+              ),
+          ],
           groups: [
             for (final id in ids(p))
               if (groups[id] case final g?)

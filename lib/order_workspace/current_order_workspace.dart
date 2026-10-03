@@ -90,6 +90,8 @@ class WorkspaceBill {
         (line['line_total_baisas'] as int) / qty,
         line['unit_price_baisas'],
         ((line['line_discount_baisas'] as num?) ?? 0) / qty,
+        // LAUNCH-P4 C7 — combos group only with the same choices.
+        [for (final pick in serverComboPicks(line)) pick.signature]..sort(),
       ]);
       final row = rows[key];
       if (row == null) {
@@ -169,6 +171,8 @@ class WorkspaceBill {
           'total_baisas': item['line_total_baisas'],
           'notes': item['notes'],
           'addons': [
+            // LAUNCH-P4 C7 — a combo's chosen items first.
+            ...serverComboLabels(item, arabic: false),
             for (final raw in (item['addons'] as List? ?? const []))
               (qrMap(raw)['add_on_name'] ?? qrMap(raw)['name'] ?? '')
                   .toString(),
@@ -333,7 +337,21 @@ class WorkspaceCartItem extends CartItem {
   WorkspaceCartItem(Map<String, dynamic> line)
     : serverQuantity = line['qty'] as num,
       frozenTotal = (line['line_total_baisas'] as int) / 1000,
+      // LAUNCH-P4 C7 — the server's nested combo items, display-only (the
+      // money stays the server's frozen line total).
+      comboLine = {'combo': serverComboOf(line)},
       super(
+        components: [
+          for (final c in serverComboOf(line))
+            ComboComponent(
+              slotId: (c['slot_id'] as num?)?.toInt() ?? 0,
+              productId: '${c['product_id'] ?? ''}',
+              name: (c['name'] ?? c['product_name'] ?? '').toString(),
+              nameAr: (c['name_ar'] ?? c['product_name_ar'] ?? '').toString(),
+              qty: ((c['qty'] as num?) ?? 1).round(),
+              notes: c['notes']?.toString() ?? '',
+            ),
+        ],
         product: Product(
           id: (line['product_id'] ?? line['order_item_id'] ?? '').toString(),
           name: line['product_name'] as String,
@@ -361,10 +379,15 @@ class WorkspaceCartItem extends CartItem {
       );
   final num serverQuantity;
   final double frozenTotal;
+  final Map<String, dynamic> comboLine;
   @override
   double get lineTotal => frozenTotal;
+  // The server's line price already includes the combo choices.
+  @override
+  double get componentTotal => 0;
   @override
   List<String> detailLinesFor(bool arabic) => [
+    ...serverComboLabels(comboLine, arabic: arabic),
     for (final modifier in modifiers)
       if (modifier.displayLabel(arabic).isNotEmpty)
         modifier.displayLabel(arabic),

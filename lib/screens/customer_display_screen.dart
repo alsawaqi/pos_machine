@@ -893,8 +893,8 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: _MiniMetricTile(
-                                  label: l10n.cdTaxLabel,
-                                  value: SunmiReceiptService.money(order.tax),
+                                  label: _taxTile(l10n).label,
+                                  value: _taxTile(l10n).value,
                                   icon: Icons.percent_rounded,
                                 ),
                               ),
@@ -934,10 +934,8 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: _MetricCard(
-                                        label: l10n.cdTaxLabel,
-                                        value: SunmiReceiptService.money(
-                                          order.tax,
-                                        ),
+                                        label: _taxTile(l10n).label,
+                                        value: _taxTile(l10n).value,
                                         compact: true,
                                       ),
                                     ),
@@ -975,10 +973,8 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: _MetricCard(
-                                      label: l10n.cdTaxLabel,
-                                      value: SunmiReceiptService.money(
-                                        order.tax,
-                                      ),
+                                      label: _taxTile(l10n).label,
+                                      value: _taxTile(l10n).value,
                                       compact: true,
                                     ),
                                   ),
@@ -1017,8 +1013,8 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: _MetricCard(
-                                    label: l10n.cdTaxLabel,
-                                    value: SunmiReceiptService.money(order.tax),
+                                    label: _taxTile(l10n).label,
+                                    value: _taxTile(l10n).value,
                                   ),
                                 ),
                               ],
@@ -1046,6 +1042,29 @@ class _CustomerDisplayScreenState extends State<CustomerDisplayScreen> {
           );
         },
       ),
+    );
+  }
+
+  /// LAUNCH-P4 C8 — the tax tile shows one row per tax ("VAT (5%)"), like
+  /// the cart: a single tax names itself; several list one line each.
+  ({String label, String value}) _taxTile(L10n l10n) {
+    final rows = customerTaxRows(
+      order,
+      arabic: l10n.localeName.startsWith('ar'),
+      fallbackLabel: l10n.cdTaxLabel,
+    );
+    if (rows.length == 1) {
+      return (
+        label: rows.single.label,
+        value: SunmiReceiptService.money(rows.single.amount),
+      );
+    }
+    return (
+      label: l10n.cdTaxLabel,
+      value: [
+        for (final row in rows)
+          '${row.label}  ${SunmiReceiptService.money(row.amount)}',
+      ].join('\n'),
     );
   }
 
@@ -2134,7 +2153,8 @@ class _MetricCard extends StatelessWidget {
                 SizedBox(height: compact ? 4 : 6),
                 Text(
                   value,
-                  maxLines: 1,
+                  // LAUNCH-P4 C8 - one line per tax when there are several.
+                  maxLines: _lineCount(value),
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: compact ? 15 : 18,
@@ -2202,7 +2222,7 @@ class _MiniMetricTile extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             value,
-            maxLines: 1,
+            maxLines: _lineCount(value),
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 11,
@@ -2982,3 +3002,6 @@ Widget _customerGlass({
     ),
   );
 }
+
+/// LAUNCH-P4 C8 — a metric value may hold one line per tax.
+int _lineCount(String value) => value.split(String.fromCharCode(10)).length;
