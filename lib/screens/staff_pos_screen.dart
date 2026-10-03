@@ -9390,11 +9390,33 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     -comp,
                   ),
                 ],
-                if (bill != null && bill.tax != 0) ...[
-                  const SizedBox(height: 10),
-                  _paymentTotalRow(
-                    checkoutText(context, 'tax'),
-                    bill.tax / 1000,
+                // LAUNCH-P4 C8 — a server bill's tax rows read like the
+                // cart's ("Vat (5%)"), with the inclusive note.
+                if (bill != null)
+                  for (final t in bill.taxLines) ...[
+                    const SizedBox(height: 10),
+                    _paymentTotalRow(
+                      t.name.isEmpty
+                          ? checkoutText(context, 'tax')
+                          : l10n.posPaymentTaxLine(
+                              t.displayName(
+                                Localizations.localeOf(context).languageCode ==
+                                    'ar',
+                              ),
+                              t.rateLabel,
+                            ),
+                      t.amount,
+                    ),
+                  ],
+                if (bill != null && bill.pricesIncludeTax && bill.tax != 0) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    l10n.posPricesIncludeVat,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF5B6B73),
+                    ),
                   ),
                 ],
                 if (bill == null)
@@ -11883,9 +11905,29 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     -comp,
                   ),
                 ],
-                if (bill != null && bill.tax != 0) ...[
-                  const SizedBox(height: 6),
-                  _summaryRow(checkoutText(context, 'tax'), bill.tax / 1000),
+                // LAUNCH-P4 C8 — a server bill's tax rows read like the
+                // cart's ("Vat (5%)"), with the inclusive note.
+                if (bill != null)
+                  for (final t in bill.taxLines) ...[
+                    const SizedBox(height: 6),
+                    _summaryRow(
+                      t.name.isEmpty
+                          ? checkoutText(context, 'tax')
+                          : '${t.displayName(Localizations.localeOf(context).languageCode == 'ar')} (${t.rateLabel}%)',
+                      t.amount,
+                    ),
+                  ],
+                if (bill != null && bill.pricesIncludeTax && bill.tax != 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    l10n.posPricesIncludeVat,
+                    key: const ValueKey('bill-prices-include-vat'),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF5B6B73),
+                    ),
+                  ),
                 ],
                 if (bill == null)
                   for (final t in controller.taxLines) ...[
@@ -14657,10 +14699,12 @@ class _ProductListTile extends StatelessWidget {
                           ),
                         ),
                         const Spacer(),
-                        _FilledMiniAction(
-                          label: l10n.posProductAdd,
-                          onTap: onAdd,
-                        ),
+                        // LAUNCH-P4 C6 — a sold-out row offers no Add.
+                        if (!soldOut)
+                          _FilledMiniAction(
+                            label: l10n.posProductAdd,
+                            onTap: onAdd,
+                          ),
                       ],
                     ),
                   ],
@@ -14886,24 +14930,27 @@ class _ProductTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                InkWell(
-                  onTap: onAdd,
-                  borderRadius: BorderRadius.circular(18),
-                  child: Container(
-                    width: addButtonSize,
-                    height: addButtonSize,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF7FBFC),
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: _softShadow,
-                    ),
-                    child: Icon(
-                      Icons.add_rounded,
-                      size: addIconSize,
-                      color: const Color(0xFF1E2C33),
+                // LAUNCH-P4 C6 — a sold-out tile offers no "+".
+                if (!soldOut)
+                  InkWell(
+                    key: ValueKey('product-add-${product.id}'),
+                    onTap: onAdd,
+                    borderRadius: BorderRadius.circular(18),
+                    child: Container(
+                      width: addButtonSize,
+                      height: addButtonSize,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF7FBFC),
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: _softShadow,
+                      ),
+                      child: Icon(
+                        Icons.add_rounded,
+                        size: addIconSize,
+                        color: const Color(0xFF1E2C33),
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),

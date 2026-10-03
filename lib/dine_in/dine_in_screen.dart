@@ -801,11 +801,39 @@ class _DineInScreenState extends State<DineInScreen>
         Text(
           '${label('Complimentary', 'الضيافة')} ${bill.compReason}: −${money(bill.comp)}',
         ),
-      Text('${label('Tax', 'الضريبة')}: ${money(bill.tax)}'),
+      // LAUNCH-P4 C8 — tax rows like the cart's, with the inclusive note.
+      for (final t in bill.taxLines)
+        Text(
+          '${t.name.isEmpty ? label('Tax', 'الضريبة') : '${t.displayName(widget.arabic)} (${t.rateLabel}%)'}: ${money((t.amount * 1000).round())}',
+        ),
+      if (bill.pricesIncludeTax && bill.tax != 0)
+        Text(label('Prices include VAT', 'الأسعار شاملة الضريبة')),
       if (bill.adjustmentStale) Text(text('adjustment_stale')),
       if (bill.customer case final customer?)
         Text('${customer['name'] ?? ''} · ${customer['phone'] ?? ''}'),
     ];
+  }
+
+  /// LAUNCH-P4 C8 — Σ [key] over the rounds awaiting confirmation (null when
+  /// there are none, or a round lacks the field).
+  int? _pendingQuote(DineInDetail? detail, String key) {
+    final rounds = [
+      for (final r in detail?.rounds ?? const <Map<String, dynamic>>[])
+        if (r['status'] == 'pending_confirmation') r,
+    ];
+    // A held line is not shown as a pending row, so its round's quote would
+    // not match the rows: derive from the shown lines instead.
+    if (rounds.isEmpty ||
+        rounds.any(
+          (r) =>
+              r[key] is! int ||
+              (r['priced_lines'] as List? ?? const []).any(
+                (l) => tableLineHeld(tableMap(l)),
+              ),
+        )) {
+      return null;
+    }
+    return rounds.fold<int>(0, (sum, r) => sum + (r[key] as int));
   }
 
   bool get _canAdjust =>
@@ -864,6 +892,10 @@ class _DineInScreenState extends State<DineInScreen>
               .where((r) => r['status'] == 'pending_confirmation')
               .fold<int>(0, (sum, r) => sum + (r['tax_baisas'] as int? ?? 0)) ??
           0,
+      // LAUNCH-P4 C8 — the server's own quote for those rounds (discounts
+      // applied, tax inside or on top as the bill prices it).
+      pendingSubtotal: _pendingQuote(detail, 'subtotal_baisas'),
+      pendingTotal: _pendingQuote(detail, 'total_baisas'),
       notices: [
         if (detail != null)
           for (final round in detail.rounds)

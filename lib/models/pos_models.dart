@@ -249,6 +249,68 @@ List<TaxLineAmount> taxLinesFor(double subtotal) {
   ];
 }
 
+/// LAUNCH-P4 C8 — a SERVER bill's tax rows for display, labelled like the
+/// cart's ("Vat (5%)"). A server bill carries only its tax total and whether
+/// its prices include it, so:
+/// - one active company tax names the whole amount;
+/// - several taxes are split with the package's own rule, shown only when the
+///   split adds up to the server's total exactly;
+/// - otherwise one plain row ([TaxLineAmount.name] empty = "Tax").
+/// No rows when the bill has no tax.
+List<TaxLineAmount> serverBillTaxLines({
+  required int taxBaisas,
+  required int grandBaisas,
+  required bool pricesIncludeTax,
+  List<CompanyTax>? taxes,
+}) {
+  if (taxBaisas == 0) return const <TaxLineAmount>[];
+  final active = taxes ?? activeCompanyTaxes;
+  if (active.length == 1) {
+    final t = active.single;
+    return [
+      TaxLineAmount(
+        name: t.name,
+        nameAr: t.nameAr,
+        ratePercent: t.ratePercent,
+        amount: pricing.baisasToOmr(taxBaisas),
+      ),
+    ];
+  }
+  if (active.length > 1) {
+    final base = pricesIncludeTax ? grandBaisas : grandBaisas - taxBaisas;
+    final lines = pricing.taxLinesBaisasFor(
+      base < 0 ? 0 : base,
+      [
+        for (final t in active)
+          pricing.TaxSpec(
+            name: t.name,
+            nameAr: t.nameAr,
+            ratePercent: t.ratePercent,
+          ),
+      ],
+      pricesIncludeTax: pricesIncludeTax,
+    );
+    if (lines.fold<int>(0, (s, l) => s + l.amountBaisas) == taxBaisas) {
+      return [
+        for (final l in lines)
+          TaxLineAmount(
+            name: l.name,
+            nameAr: l.nameAr,
+            ratePercent: l.ratePercent,
+            amount: pricing.baisasToOmr(l.amountBaisas),
+          ),
+      ];
+    }
+  }
+  return [
+    TaxLineAmount(
+      name: '',
+      ratePercent: 0,
+      amount: pricing.baisasToOmr(taxBaisas),
+    ),
+  ];
+}
+
 /// Summed tax for [subtotal] across all active company taxes.
 double taxTotalFor(double subtotal) => _roundStoredMoney(
   taxLinesFor(subtotal).fold<double>(0, (s, l) => s + l.amount),

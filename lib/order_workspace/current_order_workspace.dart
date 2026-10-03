@@ -39,6 +39,17 @@ class WorkspaceBill {
   int get comp => json['comp_total_baisas'] as int? ?? 0;
   int get tax =>
       json['tax_total_baisas'] as int? ?? total - subtotal + discount + comp;
+
+  /// LAUNCH-P4 C8 — the server stamps whether the bill's prices include its
+  /// tax (then [total] already contains [tax]).
+  bool get pricesIncludeTax => json['prices_include_tax'] == true;
+
+  /// LAUNCH-P4 C8 — the tax rows to show, labelled like the cart's.
+  List<TaxLineAmount> get taxLines => serverBillTaxLines(
+    taxBaisas: tax,
+    grandBaisas: total,
+    pricesIncludeTax: pricesIncludeTax,
+  );
   Map<String, dynamic> get adjustmentState =>
       json['adjustment_state'] is Map ? qrMap(json['adjustment_state']) : {};
   String get discountLabel {
@@ -138,6 +149,18 @@ class WorkspaceBill {
     'compAmount': comp / 1000,
     'subtotal': (subtotal - discount) / 1000,
     'tax': tax / 1000,
+    // LAUNCH-P4 C8 — the customer display labels each tax like the cart.
+    if (pricesIncludeTax) 'pricesIncludeTax': true,
+    'taxLines': [
+      for (final line in taxLines)
+        if (line.name.isNotEmpty)
+          {
+            'name': line.name,
+            if ((line.nameAr ?? '').isNotEmpty) 'nameAr': line.nameAr,
+            'ratePercent': line.ratePercent,
+            'amount': line.amount,
+          },
+    ],
     'total': total / 1000,
     'activePaymentBaseTotal': total / 1000,
     'payableTotal': total / 1000,
@@ -222,23 +245,48 @@ class CurrentOrderWorkspace extends ChangeNotifier {
     final drafts = cartControls?.draftRows ?? const <Map<String, dynamic>>[];
     final pending = cartControls?.pendingRows ?? const <Map<String, dynamic>>[];
     final pendingTax = cartControls?.pendingTax ?? 0;
+    // LAUNCH-P4 C8 — whether these prices include their tax: the saved bill
+    // says so; a table with no bill yet follows this merchant's setting.
+    final inclusive = saved.json['prices_include_tax'] is bool
+        ? saved.pricesIncludeTax
+        : activePricesIncludeTax;
     // Display estimate only. The server still prices the submitted ID-only round.
     final draftSubtotal = drafts.fold<int>(
       0,
       (sum, line) => sum + (line['line_total_baisas'] as int),
     );
     final draftTax = (taxTotalFor(draftSubtotal / 1000) * 1000).round();
-    final preview = [
-      ...drafts,
-      ...pending,
-    ].fold<int>(0, (sum, line) => sum + (line['line_total_baisas'] as int));
+    // Rounds awaiting confirmation carry the server's own quote (subtotal,
+    // tax and total, discounts applied): use it, never re-add the tax.
+    final pendingSubtotal =
+        cartControls?.pendingSubtotal ??
+        pending.fold<int>(
+          0,
+          (sum, line) => sum + (line['line_total_baisas'] as int),
+        );
+    final pendingLineDiscount = pending.fold<int>(
+      0,
+      (sum, line) => sum + ((line['line_discount_baisas'] as num?) ?? 0).toInt(),
+    );
+    final pendingTotal =
+        cartControls?.pendingTotal ??
+        pendingSubtotal - pendingLineDiscount + (inclusive ? 0 : pendingTax);
+    final pendingDiscount =
+        pendingSubtotal + (inclusive ? 0 : pendingTax) - pendingTotal;
     return WorkspaceBill({
       ...saved.json,
       if (dineIn) 'order_type': 'dine_in',
       'preview_pending': drafts.isNotEmpty || pending.isNotEmpty,
+      'prices_include_tax': inclusive,
       'items': [...saved.groupedItems, ...pending, ...drafts],
-      'subtotal_baisas': saved.subtotal + preview,
-      'grand_total_baisas': saved.total + preview + pendingTax + draftTax,
+      'subtotal_baisas': saved.subtotal + pendingSubtotal + draftSubtotal,
+      'discount_total_baisas':
+          saved.discount + (pendingDiscount > 0 ? pendingDiscount : 0),
+      'grand_total_baisas':
+          saved.total +
+          pendingTotal +
+          draftSubtotal +
+          (inclusive ? 0 : draftTax),
       'tax_total_baisas': saved.tax + pendingTax + draftTax,
     });
   }
@@ -404,6 +452,8 @@ class WorkspaceCartControls {
     this.draftRows = const [],
     this.pendingRows = const [],
     this.pendingTax = 0,
+    this.pendingSubtotal,
+    this.pendingTotal,
     this.removeDraft,
     this.refresh,
     this.retry,
@@ -430,6 +480,9 @@ class WorkspaceCartControls {
   final List<String> notices, drafts;
   final List<Map<String, dynamic>> draftRows, pendingRows;
   final int pendingTax;
+  // LAUNCH-P4 C8 — the server's quote for rounds awaiting confirmation
+  // (Σ subtotal_baisas / Σ total_baisas); null = derive from the lines.
+  final int? pendingSubtotal, pendingTotal;
   final void Function(int)? removeDraft;
   final Future<void> Function()? refresh, retry, submit, move, voidBill, clear;
   final Future<void> Function(Map<String, dynamic>, int)? quantity;
