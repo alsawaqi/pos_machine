@@ -3843,4 +3843,9 @@ class L10nEn extends L10n {
   String ctrlMsgRequiredChoiceMissing(String product, String group) {
     return '$product: choose $group before paying.';
   }
+
+  @override
+  String ctrlMsgNotSoldOnChannel(String product) {
+    return '$product is not sold for this order type or delivery app. Remove it to continue.';
+  }
 }

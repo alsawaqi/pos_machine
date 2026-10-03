@@ -3877,4 +3877,9 @@ class L10nAr extends L10n {
   String ctrlMsgRequiredChoiceMissing(String product, String group) {
     return '$product: اختر $group قبل الدفع.';
   }
+
+  @override
+  String ctrlMsgNotSoldOnChannel(String product) {
+    return '$product غير متاح لهذا النوع من الطلبات أو لتطبيق التوصيل هذا. احذفه للمتابعة.';
+  }
 }

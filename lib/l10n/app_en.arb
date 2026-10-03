@@ -2417,5 +2417,13 @@
         "type": "String"
       }
     }
+  },
+  "ctrlMsgNotSoldOnChannel": "{product} is not sold for this order type or delivery app. Remove it to continue.",
+  "@ctrlMsgNotSoldOnChannel": {
+    "placeholders": {
+      "product": {
+        "type": "String"
+      }
+    }
   }
 }

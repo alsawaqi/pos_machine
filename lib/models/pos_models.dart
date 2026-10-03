@@ -893,6 +893,17 @@ class CartItem {
     );
   }
 
+  /// The same line on a different [product] copy (a re-price): quantity,
+  /// add-ons, notes, the gift flag and the bundle instance all carry over.
+  CartItem withProduct(Product product) => CartItem(
+    product: product,
+    qty: qty,
+    modifiers: List<CartItemModifier>.from(modifiers),
+    notes: notes,
+    gifted: gifted,
+    bundleKey: bundleKey,
+  );
+
   double get modifierTotal =>
       modifiers.fold(0, (sum, modifier) => sum + modifier.price);
 

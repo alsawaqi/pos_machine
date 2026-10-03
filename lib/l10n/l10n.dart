@@ -6406,6 +6406,12 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'{product}: choose {group} before paying.'**
   String ctrlMsgRequiredChoiceMissing(String product, String group);
+
+  /// No description provided for @ctrlMsgNotSoldOnChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'{product} is not sold for this order type or delivery app. Remove it to continue.'**
+  String ctrlMsgNotSoldOnChannel(String product);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

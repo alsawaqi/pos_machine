@@ -1369,12 +1369,9 @@ class PosController extends ChangeNotifier
       );
       final newPrice = isDelivery ? src.deliveryPriceFor(pid) : src.price;
       if (newPrice != item.product.price) {
-        _cart[i] = CartItem(
-          product: src.copyWith(price: newPrice),
-          qty: item.qty,
-          modifiers: List<CartItemModifier>.from(item.modifiers),
-          notes: item.notes,
-        );
+        // LAUNCH-P4 C5 — keep EVERYTHING but the price: the gift flag, the
+        // bundle instance and the combo components used to be dropped here.
+        _cart[i] = item.withProduct(src.copyWith(price: newPrice));
       }
     }
   }
@@ -1441,7 +1438,33 @@ class PosController extends ChangeNotifier
   /// LAUNCH-P2 "sell, but warn": cached stock never makes a product
   /// unorderable — not a low, zero, negative, missing or stale branch
   /// balance, for unit, cooked and recipe products alike.
-  bool isUnorderable(Product product) => isOutsideHours(product);
+  bool isUnorderable(Product product) =>
+      isOutsideHours(product) || !isSoldOnCurrentChannel(product);
+
+  /// LAUNCH-P4 C5 — whether [product] is offered on the current order's
+  /// channel: in-store order types need `sold_in_store`; delivery needs
+  /// `sold_on_delivery` and, once a provider is picked, its `listed` flag.
+  bool isSoldOnCurrentChannel(Product product) {
+    final live = _liveProduct(product);
+    if (selectedOrderType == OrderType.delivery) {
+      if (!live.soldOnDelivery) return false;
+      final providerId = selectedDeliveryProviderId;
+      return providerId == null || live.isListedOn(providerId);
+    }
+    return live.soldInStore;
+  }
+
+  /// The catalog's current copy of [product] (cart lines restored from
+  /// storage carry a reduced copy), falling back to [product] itself.
+  Product _liveProduct(Product product) {
+    for (final p in _baseProducts) {
+      if (p.id == product.id) return p;
+    }
+    for (final p in allProducts) {
+      if (p.id == product.id) return p;
+    }
+    return product;
+  }
 
   /// Total quantity of [productId] already in the current cart, pooled across
   /// line items (a product split into a plain line + a customized line counts
@@ -1526,6 +1549,8 @@ class PosController extends ChangeNotifier
     return allProducts.where((product) {
       final matchesCategory = product.category == selectedCategory;
       if (!matchesCategory) return false;
+      // LAUNCH-P4 C5 — only what this order's channel sells.
+      if (!isSoldOnCurrentChannel(product)) return false;
       if (query.isEmpty) return true;
       // Phase C4 — an Arabic cashier can search by the Arabic product name.
       return product.name.toLowerCase().contains(query) ||
@@ -2611,6 +2636,8 @@ class PosController extends ChangeNotifier
       throw StateError('Load this branch configuration before selling.');
     }
     if (!_cartMutationAllowed()) return;
+    // LAUNCH-P4 C5 — never add what this order's channel does not sell.
+    if (!isSoldOnCurrentChannel(product)) return;
     // LAUNCH-P2 "sell, but warn" — the cached shelf count never caps the
     // cart; the sale may take the branch balance below zero.
     final index = _cart.indexWhere(
@@ -2643,6 +2670,7 @@ class PosController extends ChangeNotifier
       throw StateError('Load this branch configuration before selling.');
     }
     if (!_cartMutationAllowed()) return;
+    if (!isSoldOnCurrentChannel(product)) return;
     final line = CartItem(product: product, modifiers: modifiers, notes: notes);
     final index = _cart.indexWhere(
       (item) => item.mergeSignature == line.mergeSignature,
@@ -2694,11 +2722,18 @@ class PosController extends ChangeNotifier
   }
 
   /// LAUNCH-P4 — why the current cart cannot be paid under the menu rules
-  /// (null = it can): a line missing a required add-on choice (H4).
+  /// (null = it can): a line not sold on this order's channel (C5 — e.g. the
+  /// order moved to a delivery app that does not list it), or a line missing
+  /// a required add-on choice (H4).
   String? menuTenderRefusal() {
+    final arabic = _l10n.localeName.startsWith('ar');
+    for (final item in _cart) {
+      if (!isSoldOnCurrentChannel(item.product)) {
+        return _l10n.ctrlMsgNotSoldOnChannel(item.product.displayName(arabic));
+      }
+    }
     final missing = firstMissingRequiredChoice();
     if (missing != null) {
-      final arabic = _l10n.localeName.startsWith('ar');
       return _l10n.ctrlMsgRequiredChoiceMissing(
         missing.item.product.displayName(arabic),
         arabic && (missing.group.nameAr ?? '').trim().isNotEmpty
