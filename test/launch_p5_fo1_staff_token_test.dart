@@ -65,7 +65,7 @@ class _Api implements PosApiService {
 ({PosApiService api, List<Map<String, dynamic>> headers}) _realApi({
   required int status,
   required Object body,
-  void Function()? onStaffUnverified,
+  void Function(String? reason)? onStaffUnverified,
 }) {
   final headers = <Map<String, dynamic>>[];
   final dio = Dio(BaseOptions(validateStatus: (_) => true));
@@ -390,9 +390,41 @@ void main() {
   });
 
   test(
-    '403 staff_unverified fires the callback; other refusals do not',
+    '403 staff_unverified fires the callback (any reason); others do not',
     () async {
       var fired = 0;
+      final reasons = <String?>[];
+      for (final reason in const [
+        'token_missing',
+        'token_invalid',
+        'token_other_device',
+        'token_other_staff',
+        'staff_inactive',
+      ]) {
+        final refused = _realApi(
+          status: 403,
+          body: {
+            'data': {'reason': reason},
+            'errors': [
+              {'code': 'staff_unverified', 'message': 'Log in again.'},
+            ],
+          },
+          onStaffUnverified: reasons.add,
+        );
+        await expectLater(
+          refused.api.fetchActiveStaffIds(),
+          throwsA(
+            isA<ApiException>().having((e) => e.reason, 'reason', reason),
+          ),
+        );
+      }
+      expect(reasons, [
+        'token_missing',
+        'token_invalid',
+        'token_other_device',
+        'token_other_staff',
+        'staff_inactive',
+      ]);
       final refused = _realApi(
         status: 403,
         body: {
@@ -401,7 +433,7 @@ void main() {
             {'code': 'staff_unverified', 'message': 'Log in again.'},
           ],
         },
-        onStaffUnverified: () => fired++,
+        onStaffUnverified: (_) => fired++,
       );
       await expectLater(
         refused.api.fetchActiveStaffIds(),
@@ -422,7 +454,7 @@ void main() {
             {'code': 'approval_required', 'message': 'No.'},
           ],
         },
-        onStaffUnverified: () => fired++,
+        onStaffUnverified: (_) => fired++,
       );
       await expectLater(
         other.api.fetchActiveStaffIds(),
@@ -443,7 +475,9 @@ void main() {
       login: true,
     );
     final c = container(api: _Api());
-    await c.read(sessionControllerProvider.notifier).staffUnverified();
+    await c
+        .read(sessionControllerProvider.notifier)
+        .staffUnverified(reason: 'token_invalid');
     expect(session.staff, isNull);
     expect(session.staffToken, isNull);
     expect(c.read(staffReverifyNoticeProvider), isTrue);
@@ -463,4 +497,31 @@ void main() {
     // Shown once.
     expect(c.read(staffReverifyNoticeProvider), isFalse);
   });
+
+  test(
+    'the shift read runs only after a login, with that person\'s token',
+    () async {
+      final real = _realApi(
+        status: 200,
+        body: {
+          'data': {'shift': null},
+          'errors': <Object>[],
+        },
+      );
+      final c = container(api: real.api);
+      final controller = c.read(sessionControllerProvider.notifier);
+      // Nobody logged in (start-up, PIN screen): no shift read at all.
+      expect(await controller.reconcileShiftForStaff(4), isNull);
+      expect(real.headers, isEmpty);
+      // After the login both lookups (by staff, then by device) name them.
+      await controller.saveStaff(
+        const StaffSessionData(id: 4, name: 'Sara', staffToken: 'tok-4'),
+      );
+      await controller.reconcileShiftForStaff(4);
+      expect(real.headers, hasLength(2));
+      for (final h in real.headers) {
+        expect(h['X-Staff-Token'], 'tok-4');
+      }
+    },
+  );
 }

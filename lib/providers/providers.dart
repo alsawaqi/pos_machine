@@ -203,8 +203,14 @@ class SessionController extends Notifier<SessionState> {
   /// LAUNCH-P5 F1 — the server did not accept the logged-in person's
   /// staff token (403 `staff_unverified`): log out and ask for the PIN
   /// again. The open shift and every queued event stay.
-  Future<void> staffUnverified() async {
+  Future<void> staffUnverified({String? reason}) async {
     if (_svc.staff == null) return;
+    // The reason is a short server code, never the token.
+    sentryBreadcrumb(
+      'auth',
+      'staff token not accepted${reason == null ? '' : ': $reason'}',
+      level: SentryLevel.warning,
+    );
     ref.read(staffReverifyNoticeProvider.notifier).show();
     try {
       if (ref.read(trainingModeProvider)) {
@@ -318,9 +324,11 @@ final apiServiceProvider = Provider<PosApiService>((ref) {
       );
     },
     // LAUNCH-P5 F1 — 403 staff_unverified: log out, ask for the PIN again.
-    onStaffUnverified: () {
+    onStaffUnverified: (reason) {
       Future.microtask(
-        () => ref.read(sessionControllerProvider.notifier).staffUnverified(),
+        () => ref
+            .read(sessionControllerProvider.notifier)
+            .staffUnverified(reason: reason),
       );
     },
   );

@@ -87,6 +87,10 @@ class _TableServer {
   final cancels = <Map<String, dynamic>>[];
   String? refuseWith;
 
+  /// The server's `data.bill.adjustment_basis_baisas` (deliberately not
+  /// the 5.000 OMR subtotal of the T6.5 bill).
+  int basis = 4800;
+
   Dio dio() {
     base.db = db;
     final adjust = base.dio();
@@ -107,6 +111,18 @@ class _TableServer {
                       {'code': refusal, 'message': 'Approve again.'},
                     ],
                   },
+                ),
+              );
+              return;
+            }
+            if (o.path.endsWith('/detail')) {
+              final detail = base.detail();
+              (detail['bill'] as Map)['adjustment_basis_baisas'] = basis;
+              h.resolve(
+                Response(
+                  requestOptions: o,
+                  statusCode: 200,
+                  data: {'data': detail},
                 ),
               );
               return;
@@ -211,7 +227,7 @@ void main() {
     );
 
     test(
-      'a percent discount is signed over the amount the server computes',
+      'a percent discount is signed over the server basis × percent',
       () async {
         final grant = _grant();
         await c.adjust(
@@ -225,15 +241,15 @@ void main() {
         );
         final request = server.base.requests.single;
         final block = request['authorization'] as Map;
-        // The bill's accepted round: 5.000 OMR, no tax → 12.5 % = 625.
-        expect(block['amount_baisas'], 625);
+        // The server's basis 4.800 OMR × 12.5 % = 600 (not the 5.000 subtotal).
+        expect(block['amount_baisas'], 600);
         expect(
           block['proof'],
           _proof(
             action: 'discount.manual',
             block: block,
             subject: request['seating_key'] as String,
-            amount: 625,
+            amount: 600,
             ref: request['client_request_id'] as String,
           ),
         );
@@ -357,8 +373,8 @@ void main() {
     });
   });
 
-  group('the server net of a table discount', () {
-    DineInDetail detail({required bool inclusive}) => DineInDetail({
+  group('the proof amount of a table discount', () {
+    DineInDetail detail({int? basis}) => DineInDetail({
       'table': {'id': 1, 'label': 'T1'},
       'occupied': true,
       'orphaned': false,
@@ -366,8 +382,9 @@ void main() {
       'bill': {
         'uuid': bill,
         'grand_total_baisas': 6300,
+        'subtotal_baisas': 6000,
         'items': <Object>[],
-        'prices_include_tax': inclusive,
+        'adjustment_basis_baisas': ?basis,
       },
       'rounds': [
         {
@@ -376,47 +393,23 @@ void main() {
           'entered_by': 'staff',
           'status': 'accepted',
           'priced_lines': <Object>[],
-          'subtotal_baisas': 4000,
-          'tax_baisas': 200,
-          'total_baisas': 4200,
-        },
-        {
-          'id': 2,
-          'round_no': 2,
-          'entered_by': 'customer',
-          'status': 'accepted',
-          'priced_lines': <Object>[],
-          'subtotal_baisas': 2000,
-          'tax_baisas': 100,
-          'total_baisas': 2100,
-        },
-        {
-          'id': 3,
-          'round_no': 3,
-          'entered_by': 'customer',
-          'status': 'pending_confirmation',
-          'priced_lines': <Object>[],
-          'subtotal_baisas': 9000,
-          'tax_baisas': 450,
-          'total_baisas': 9450,
+          'subtotal_baisas': 6000,
+          'tax_baisas': 300,
+          'total_baisas': 6300,
         },
       ],
     });
 
-    test('accepted rounds only; less tax when prices exclude it', () {
-      expect(tableAdjustNet(detail(inclusive: false)), 6000);
-      expect(tableAdjustNet(detail(inclusive: true)), 6300);
-    });
-
-    test('percent, rule and fixed amounts; nothing for the others', () {
-      final d = detail(inclusive: false);
+    test('percent and percent rule use the server\'s adjustment basis', () {
+      // The basis (not the subtotal, not the rounds) decides.
+      final d = detail(basis: 5900);
       expect(
         tableAdjustProofAmount(d, {
           'kind': 'discount',
           'mode': 'percent',
           'percent_bp': 1250,
         }),
-        750,
+        738, // 737.5 rounds half away from zero, as the server does
       );
       expect(
         tableAdjustProofAmount(
@@ -424,8 +417,12 @@ void main() {
           {'kind': 'discount', 'mode': 'rule', 'discount_id': 3},
           rule: {'type': 'percent', 'value': 15.0},
         ),
-        900,
+        885,
       );
+    });
+
+    test('fixed amounts as sent; nothing for the others', () {
+      final d = detail(basis: 5900);
       expect(
         tableAdjustProofAmount(
           d,
@@ -448,6 +445,17 @@ void main() {
       ]) {
         expect(tableAdjustProofAmount(d, intent), isNull);
       }
+    });
+
+    test('no basis from the server: the till does not compute one', () {
+      expect(
+        tableAdjustProofAmount(detail(), {
+          'kind': 'discount',
+          'mode': 'percent',
+          'percent_bp': 1250,
+        }),
+        isNull,
+      );
     });
   });
 

@@ -78,18 +78,25 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
   /// LAUNCH-P5 C5 — the shift's re-open count, read fresh from the server
   /// right before the close (it is part of the fixed close id). Absent on
   /// an older server = 0.
+  ///
+  /// LAUNCH-P5 fix order 1 — the read carries the closer's staff token, and
+  /// the server refuses a `staff_id` the token does not name: another
+  /// cashier's drawer is looked up by this device only.
   Future<int> _freshReopenCount(OpenShiftData shift) async {
     final api = ref.read(apiServiceProvider);
+    final closer = ref.read(sessionServiceProvider).staff?.id;
     for (final lookup in [
-      () => api.fetchCurrentShift(staffId: shift.staffId, sharedStaffOnly: true),
+      if (closer != null && closer == shift.staffId)
+        () => api.fetchCurrentShift(staffId: closer, sharedStaffOnly: true),
       () => api.fetchCurrentShift(),
     ]) {
       try {
         final current = await lookup();
         if (current?.uuid == shift.uuid) return current!.reopenCount;
       } on ApiException catch (e) {
-        // Offline: closing needs the internet.
-        if (e.isNetwork) rethrow;
+        // Offline: closing needs the internet. A refused staff token has
+        // already signed the person out: stop.
+        if (e.isNetwork || e.isStaffUnverified) rethrow;
       } catch (_) {
         // A malformed reply: try the next lookup, then the cached count.
       }

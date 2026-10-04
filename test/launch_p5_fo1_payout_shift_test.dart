@@ -54,11 +54,14 @@ class _Api implements PosApiService {
     };
   }
 
+  final shiftReads = <int?>[];
+
   @override
   Future<OpenShiftData?> fetchCurrentShift({
     int? staffId,
     bool sharedStaffOnly = false,
   }) async {
+    shiftReads.add(staffId);
     if (offline) {
       throw ApiException(message: 'offline', code: 'network', isNetwork: true);
     }
@@ -339,6 +342,7 @@ void main() {
         {
           'client_event_id': events.single['client_event_id'],
           'status': 'failed',
+          'duplicate': true, // Part A: a repeat of the processed close
           'result': {
             'error': 'The shift was re-opened.',
             'code': 'shift_reopened',
@@ -383,5 +387,53 @@ void main() {
       // Closed: the result step shows.
       expect(find.widgetWithText(FilledButton, 'Close shift'), findsNothing);
     });
+  });
+
+  testWidgets(
+    'closing another cashier\'s drawer never names them in the shift read',
+    (tester) async {
+      // Sara (supervisor: shift.close_other ticked) closes Omar's drawer;
+      // the server refuses a staff_id the closer's token does not name.
+      await session.saveStaff(
+        const StaffSessionData(id: 4, name: 'Sara', position: 'supervisor'),
+      );
+      await session.saveOpenShift(
+        OpenShiftData(
+          uuid: 'shift-1',
+          openingCashBaisas: 2000,
+          openedAt: opened,
+          staffId: 9,
+        ),
+      );
+      tester.view.physicalSize = const Size(1200, 2000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final shifts = _Shifts(api);
+      await tester.pumpWidget(app(const ShiftCloseScreen(), shifts: shifts));
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Close shift'));
+      await settle(tester);
+      expect(shifts.events, hasLength(1));
+      expect(api.shiftReads, isNotEmpty);
+      expect(api.shiftReads, everyElement(isNull));
+    },
+  );
+
+  testWidgets('closing one\'s own drawer reads by the closer first', (
+    tester,
+  ) async {
+    await openShift();
+    tester.view.physicalSize = const Size(1200, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final shifts = _Shifts(api);
+    await tester.pumpWidget(app(const ShiftCloseScreen(), shifts: shifts));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Close shift'));
+    await settle(tester);
+    expect(shifts.events, hasLength(1));
+    expect(api.shiftReads.first, 4);
   });
 }

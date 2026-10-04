@@ -22,8 +22,11 @@ typedef TokenGetter = String? Function();
 typedef UnauthorizedCallback = void Function();
 
 /// LAUNCH-P5 fix order 1 (F1) — a 403 `staff_unverified`: the server did
-/// not accept the logged-in person's staff token.
-typedef StaffUnverifiedCallback = void Function();
+/// not accept the logged-in person's staff token. [reason] is the server's
+/// `data.reason` (`token_missing`, `token_invalid`, `token_other_device`,
+/// `token_other_staff`, `staff_inactive`); every one means: log out and
+/// ask for the PIN again.
+typedef StaffUnverifiedCallback = void Function(String? reason);
 
 /// Thin wrapper over pos_api `/api/v1`. Attaches the device Bearer token,
 /// unwraps the `{ data, meta, errors }` envelope, and maps failures to
@@ -1491,14 +1494,16 @@ class PosApiService {
       // 401 ({ "message": "Unauthenticated." }, no errors[]) means the device
       // token itself was rejected → drop back to device setup.
       if (errors is List && errors.isNotEmpty) {
+        final data = map['data'];
         final error = ApiException.fromErrors(
           errors,
           status,
           retryAfter: _retryAfter(resp),
+          reason: data is Map ? data['reason']?.toString() : null,
         );
         // LAUNCH-P5 F1 — the staff token was not accepted: log out and ask
         // for the PIN again.
-        if (error.isStaffUnverified) onStaffUnverified?.call();
+        if (error.isStaffUnverified) onStaffUnverified?.call(error.reason);
         throw error;
       }
       final topCode = map['code'];
@@ -1669,6 +1674,7 @@ class ApiException implements Exception {
     this.hasStructuredErrorCode = false,
     this.retryAfter,
     this.retryAfterSeconds,
+    this.reason,
   });
 
   final String message;
@@ -1683,6 +1689,10 @@ class ApiException implements Exception {
   /// PHASE-1A D-6 — `errors[0].retry_after_seconds` of a 423 `pin_locked`
   /// or 429 `too_many_attempts`. Devices read this integer, never a message.
   final int? retryAfterSeconds;
+
+  /// LAUNCH-P5 fix order 1 — the refusal's `data.reason` when the server
+  /// sends one (e.g. `token_missing`, `approval_stale`, `ref_mismatch`).
+  final String? reason;
 
   bool get isUnauthorized => statusCode == 401;
 
@@ -1710,6 +1720,7 @@ class ApiException implements Exception {
     List<dynamic> errors,
     int? status, {
     Duration? retryAfter,
+    String? reason,
   }) {
     final first = errors.first;
     if (first is Map) {
@@ -1723,12 +1734,14 @@ class ApiException implements Exception {
         statusCode: status,
         retryAfter: retryAfter,
         retryAfterSeconds: seconds is num ? seconds.toInt() : null,
+        reason: reason,
       );
     }
     return ApiException(
       message: first.toString(),
       statusCode: status,
       retryAfter: retryAfter,
+      reason: reason,
     );
   }
 
