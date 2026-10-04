@@ -11,6 +11,8 @@ import 'package:pos_machine/services/api_models.dart';
 import 'package:pos_machine/services/pos_api_service.dart';
 import 'package:pos_machine/services/session_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pos_machine/services/local_order_storage_service.dart';
+import 'support/fake_order_storage.dart';
 
 /// LAUNCH-P5 C4 (PHASE-1A D-9 / D-7) — the login lock: a server 423 locks
 /// the pad under a countdown, nothing retries by itself, the lock survives a
@@ -50,6 +52,11 @@ class _Api implements PosApiService {
 }
 
 void main() {
+  // LAUNCH-P5 fix order 2c — never the shared on-disk orders database
+  // (.dart_tool/sqflite_common_ffi/databases/mithqal_orders.db): test
+  // files running in parallel would lock each other out of it.
+  setUp(() => debugOrderStorageOverride = FakeOrderStorage());
+  tearDown(() => debugOrderStorageOverride = null);
   late SharedPreferences prefs;
   late _Api api;
   late AppDatabase db;

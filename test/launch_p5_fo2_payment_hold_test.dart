@@ -16,6 +16,8 @@ import 'package:pos_machine/services/pos_api_service.dart';
 import 'package:pos_machine/services/session_service.dart';
 import 'package:pos_machine/tenancy/business_identity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pos_machine/services/local_order_storage_service.dart';
+import 'support/fake_order_storage.dart';
 
 /// LAUNCH-P5 fix order 2 — T13: a forced sign-out (staff-status says the
 /// person is no longer active, or the server refuses their staff token)
@@ -36,6 +38,11 @@ class _Api implements PosApiService {
 }
 
 void main() {
+  // LAUNCH-P5 fix order 2c — never the shared on-disk orders database
+  // (.dart_tool/sqflite_common_ffi/databases/mithqal_orders.db): test
+  // files running in parallel would lock each other out of it.
+  setUp(() => debugOrderStorageOverride = FakeOrderStorage());
+  tearDown(() => debugOrderStorageOverride = null);
   late SharedPreferences prefs;
   late SessionService session;
   late _Api api;

@@ -17,6 +17,7 @@ import 'package:pos_machine/state/pos_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fake_order_storage.dart';
+import 'package:pos_machine/services/local_order_storage_service.dart';
 
 /// LAUNCH-P5 C7 — training mode: a separate store, nothing in the outbox,
 /// no server calls, receipts marked, and exit discards.
@@ -45,6 +46,11 @@ class _Adapter implements HttpClientAdapter {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // LAUNCH-P5 fix order 2c — never the shared on-disk orders database
+  // (.dart_tool/sqflite_common_ffi/databases/mithqal_orders.db): test
+  // files running in parallel would lock each other out of it.
+  setUp(() => debugOrderStorageOverride = FakeOrderStorage());
+  tearDown(() => debugOrderStorageOverride = null);
   tearDown(() {
     TrainingMode.active = false;
     TrainingOrderStore.clear();

@@ -24,6 +24,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'f27_saved_gps_recovery_test.dart' show oldPending;
 import 'qr_checkout_fakes.dart' show checkoutTime;
+import 'package:pos_machine/services/local_order_storage_service.dart';
+import 'support/fake_order_storage.dart';
 
 /// LAUNCH-P5 fix order 2 — T4 (QR and table-workspace payments of this
 /// till hold the shift close and go into `order_uuids`; a pending one is
@@ -142,6 +144,11 @@ CheckoutAttempt _attempt(String id, String order, String state) =>
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // LAUNCH-P5 fix order 2c — never the shared on-disk orders database
+  // (.dart_tool/sqflite_common_ffi/databases/mithqal_orders.db): test
+  // files running in parallel would lock each other out of it.
+  setUp(() => debugOrderStorageOverride = FakeOrderStorage());
+  tearDown(() => debugOrderStorageOverride = null);
   sqfliteFfiInit();
   final opened = checkoutTime.subtract(const Duration(hours: 1));
 

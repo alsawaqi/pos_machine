@@ -319,7 +319,9 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
       var summary = ShiftSalesSummary.fromServerResult(result.summaryJson);
       if (summary == null) {
         final localHistory =
-            await LocalOrderStorageService.instance.loadOrderHistory();
+            await (debugOrderStorageOverride ??
+                    LocalOrderStorageService.instance)
+                .loadOrderHistory();
         summary = buildLocalShiftSummary(
           localHistory,
           openedAt: shift.openedAt,

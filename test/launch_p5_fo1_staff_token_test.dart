@@ -20,6 +20,8 @@ import 'package:pos_machine/services/pos_api_service.dart';
 import 'package:pos_machine/services/session_service.dart';
 import 'package:pos_machine/services/shift_payload.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pos_machine/services/local_order_storage_service.dart';
+import 'support/fake_order_storage.dart';
 
 /// LAUNCH-P5 fix order 1, F1 [WIRE] — the signed staff token: kept in
 /// secure storage with the staff session and cleared at logout; stamped
@@ -89,6 +91,11 @@ class _Api implements PosApiService {
 }
 
 void main() {
+  // LAUNCH-P5 fix order 2c — never the shared on-disk orders database
+  // (.dart_tool/sqflite_common_ffi/databases/mithqal_orders.db): test
+  // files running in parallel would lock each other out of it.
+  setUp(() => debugOrderStorageOverride = FakeOrderStorage());
+  tearDown(() => debugOrderStorageOverride = null);
   late SharedPreferences prefs;
   late SessionService session;
   late AppDatabase db;

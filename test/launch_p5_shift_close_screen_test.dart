@@ -16,6 +16,8 @@ import 'package:pos_machine/services/session_service.dart';
 import 'package:pos_machine/services/shift_payload.dart';
 import 'package:pos_machine/services/shift_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pos_machine/services/local_order_storage_service.dart';
+import 'support/fake_order_storage.dart';
 
 /// LAUNCH-P5 C5 — the shift close screen: flush first, block while a paid
 /// sale is unsent, "needs the internet" offline, the fixed close event with
@@ -101,6 +103,11 @@ class _Shifts extends ShiftService {
 }
 
 void main() {
+  // LAUNCH-P5 fix order 2c — never the shared on-disk orders database
+  // (.dart_tool/sqflite_common_ffi/databases/mithqal_orders.db): test
+  // files running in parallel would lock each other out of it.
+  setUp(() => debugOrderStorageOverride = FakeOrderStorage());
+  tearDown(() => debugOrderStorageOverride = null);
   late SharedPreferences prefs;
   late SessionService session;
   late _Api api;
