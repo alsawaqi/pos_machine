@@ -384,9 +384,6 @@ class SessionService {
     if (changed) _staffSettingsRevision.value++;
   }
 
-  /// Persist the staff session. A [login] also stores (or, from an older
-  /// server, clears) the person's staff token; any other save (attendance)
-  /// keeps the token of the session it updates.
   /// Keep (or, with null, remove) the staff token in secure storage. A
   /// storage failure never blocks a login or a logout: the in-memory token
   /// still names the person, and a session restored without its token logs
@@ -449,6 +446,9 @@ class SessionService {
     await _prefs.setString(_kProductUuids, jsonEncode(map));
   }
 
+  /// Persist the staff session. A [login] also stores (or, from an older
+  /// server, clears) the person's staff token; any other save (attendance)
+  /// keeps the token of the session it updates.
   Future<void> saveStaff(StaffSessionData staff, {bool login = false}) async {
     await _prefs.setString(_kStaff, jsonEncode(staff.toJson()));
     if (!login && staff.staffToken == null) return;
