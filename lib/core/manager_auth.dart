@@ -135,6 +135,14 @@ class ApprovalEngine {
   /// Tests replace this with a synchronous matcher.
   static ApproverMatcher matcher = matchApproverInIsolate;
 
+  Future<void> _reportNoMatch({required bool online}) async {
+    try {
+      await store.reportNoMatch(online: online);
+    } catch (_) {
+      // A breadcrumb never blocks an approval.
+    }
+  }
+
   Future<ApprovalAttempt> verify(String pin) async {
     final locked = lockout.lockedUntil;
     if (locked != null) return ApprovalLocked(locked);
@@ -168,6 +176,9 @@ class ApprovalEngine {
         );
       }
       if (e.isNetwork) {
+        // LAUNCH-P5 fix order 2b (T14) — the offline check found no match
+        // and the server cannot be asked: say why in the breadcrumb.
+        await _reportNoMatch(online: false);
         return ApprovalWrongPin(
           offline: true,
           lockedUntil: await lockout.recordFailure(),
@@ -181,6 +192,9 @@ class ApprovalEngine {
       return ApprovalWrongPin(lockedUntil: await lockout.recordFailure());
     }
 
+    // LAUNCH-P5 fix order 2b (T14) — a real approver this till could not
+    // check offline: why (it is learned below for next time).
+    await _reportNoMatch(online: true);
     Uint8List? key;
     if (online.hasVerifier) {
       final learned = StoredApprover(
@@ -197,8 +211,18 @@ class ApprovalEngine {
         // Next time this approver can approve offline.
         try {
           await store.remember(learned);
-        } catch (_) {}
+        } catch (error) {
+          ApproverStore.note('learned approver verifier not stored', {
+            'error': error.runtimeType.toString(),
+          });
+        }
+      } else {
+        ApproverStore.note('online approver verifier did not match', {
+          'iterations': online.iterations,
+        });
       }
+    } else {
+      ApproverStore.note('online approval without a verifier', {});
     }
     await lockout.clear();
     return ApprovalApproved(
