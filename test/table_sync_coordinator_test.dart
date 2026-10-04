@@ -1,3 +1,10 @@
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pos_machine/services/session_service.dart';
+import 'package:pos_machine/providers/providers.dart';
+import 'package:pos_machine/core/authorization.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -947,4 +954,127 @@ void main() {
       expect(h.table.status, DiningTableStatus.occupied);
     },
   );
+
+  // LAUNCH-P5 fix order 2 (T8) — a clear approval belongs to one table
+  // session, is never reused for another, and its key is wiped once used,
+  // replaced or dropped (and at sign-out).
+  group('fix order 2 (T8) — the clear approval', () {
+    ActionAuthorization voidGate() => ActionAuthorization.approval(
+      action: 'order.void_unpaid',
+      actorStaffId: 7,
+      actorName: 'Cashier',
+      deviceUuid: '3f1b2c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
+      grant: ApprovalGrant(
+        approverStaffId: 9,
+        name: 'Mona',
+        approvedAt: DateTime.utc(2026, 10, 4, 9),
+        method: 'offline',
+        key: Uint8List(32),
+      ),
+    );
+
+    test('used for its own table session, then its key is wiped', () async {
+      final h = _Harness();
+      await h.open();
+      await h.coordinator.sendRound(h.table);
+      final gate = voidGate();
+      h.coordinator.clearApproval = TableVoidApproval(
+        authorizedBy: 'Mona',
+        authorization: gate,
+        seatingKey: h.table.seatingKey,
+      );
+      h.coordinator.onTablesCleared({'5'}, h.table);
+      await h.coordinator.settled;
+      final voided = h.events.last;
+      expect(voided['event_type'], 'order.void');
+      final block = (voided['payload'] as Map)['authorization'] as Map;
+      expect(block['action'], 'order.void_unpaid');
+      expect(block['approver_staff_id'], 9);
+      expect(block['proof'], isNotNull);
+      expect(gate.grant!.canSign, isFalse);
+    });
+
+    test(
+      'an approval for another table session never clears this one',
+      () async {
+        final h = _Harness();
+        await h.open();
+        await h.coordinator.sendRound(h.table);
+        final gate = voidGate();
+        h.coordinator.clearApproval = TableVoidApproval(
+          authorizedBy: 'Mona',
+          authorization: gate,
+          seatingKey: 'another-table-session',
+        );
+        h.coordinator.onTablesCleared({'5'}, h.table);
+        await h.coordinator.settled;
+        expect(h.events.where((e) => e['event_type'] == 'order.void'), isEmpty);
+        expect(gate.grant!.canSign, isFalse);
+      },
+    );
+
+    test('replacing or dropping it wipes the key', () {
+      final h = _Harness();
+      final first = voidGate(), second = voidGate();
+      h.coordinator.clearApproval = TableVoidApproval(
+        authorizedBy: 'Mona',
+        authorization: first,
+      );
+      h.coordinator.clearApproval = TableVoidApproval(
+        authorizedBy: 'Mona',
+        authorization: second,
+      );
+      expect(first.grant!.canSign, isFalse);
+      expect(second.grant!.canSign, isTrue);
+      h.coordinator.clearApproval = null;
+      expect(second.grant!.canSign, isFalse);
+    });
+
+    test('a sign-out drops it', () async {
+      final h = _Harness();
+      SharedPreferences.setMockInitialValues({});
+      FlutterSecureStorage.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          sessionServiceProvider.overrideWithValue(
+            SessionService(const FlutterSecureStorage(), prefs),
+          ),
+          tableSyncCoordinatorProvider.overrideWithValue(h.coordinator),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(tableSyncCoordinatorProvider);
+      final gate = voidGate();
+      h.coordinator.clearApproval = TableVoidApproval(
+        authorizedBy: 'Mona',
+        authorization: gate,
+      );
+      await container.read(sessionControllerProvider.notifier).logoutStaff();
+      expect(h.coordinator.clearApproval, isNull);
+      expect(gate.grant!.canSign, isFalse);
+    });
+
+    test(
+      'the till asks for order.void_unpaid when a cancel empties the table',
+      () {
+        final screen = File(
+          'lib/screens/staff_pos_screen.dart',
+        ).readAsStringSync();
+        expect(screen, isNot(contains('_voidUnpaidFrom')));
+        expect(
+          RegExp(
+            r"if \(remaining <= 0\) \{\s*voidGate = await _authorizeAction\(\s*'order\.void_unpaid',",
+          ).hasMatch(screen),
+          isTrue,
+        );
+        expect(screen, contains('seatingKey: session.seatingKey,'));
+        expect(
+          screen,
+          contains('_tableKitchen?.coordinator.clearApproval = null;'),
+        );
+      },
+    );
+  });
 }

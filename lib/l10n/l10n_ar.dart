@@ -4050,4 +4050,47 @@ class L10nAr extends L10n {
   @override
   String get shiftCloseReopenedRetry =>
       'أُعيد فتح الوردية من البوابة أثناء الإغلاق. اضغط إغلاق الوردية مرة أخرى.';
+
+  @override
+  String get trainingCounterOrderFirst =>
+      'يبدأ التدريب من طلب على الكاونتر أو سفري. اخرج من الطاولة أو مخطط الصالة أولاً.';
+
+  @override
+  String ctrlMsgGiftDroppedOnChange(String name) {
+    return 'أُلغيت هدية $name لأن الكمية أو السعر تغيّر. أهدِه مجدداً لطلب الموافقة.';
+  }
+
+  @override
+  String get giftNotInSplit =>
+      'الهدية تغطي الفاتورة كاملة ولا يمكن أن تكون جزءاً من دفع مقسّم.';
+
+  @override
+  String shiftCloseSendingQrSale(String reference) {
+    return 'دفعة QR $reference';
+  }
+
+  @override
+  String shiftCloseParkedSale(String reference) {
+    return 'المبيعة $reference';
+  }
+
+  @override
+  String shiftCloseSalesParked(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count مبيعة متوقفة بعد أخطاء في الخادم',
+      few: '$count مبيعات متوقفة بعد أخطاء في الخادم',
+      two: 'مبيعتان متوقفتان بعد أخطاء في الخادم',
+      one: 'مبيعة واحدة متوقفة بعد أخطاء في الخادم',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get shiftCloseParkedHint =>
+      'توقفت إعادة إرسال هذه المبيعات بعد أخطاء في الخادم. اضغط إعادة المحاولة لإرسالها مجدداً.';
+
+  @override
+  String get shiftCloseRetryParked => 'إعادة المحاولة';
 }

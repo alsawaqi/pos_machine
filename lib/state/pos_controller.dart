@@ -16,7 +16,8 @@ import '../services/local_order_storage_service.dart';
 import '../services/mosambee_payment_service.dart';
 import '../core/authorization.dart';
 import '../core/permissions.dart';
-import '../core/training_flag.dart' show TrainingOrderStore;
+import '../core/training_flag.dart'
+    show TrainingMode, TrainingOrderStore, trainingReceiptNumber;
 import '../services/order_sync_payload.dart'
     show orderAuthorizationTargets, uuidV4;
 import '../services/pricing_adapter.dart' as machine_pricing;
@@ -813,6 +814,11 @@ class PosController extends ChangeNotifier
   final Map<CartItem, ActionAuthorization> _giftAuthorizations =
       Map.identity();
 
+  /// LAUNCH-P5 fix order 2 (T2) — the gift amount (baisas) each approver
+  /// saw when they approved the line. A gift block is never signed over a
+  /// larger amount.
+  final Map<CartItem, int> _giftApprovedBaisas = Map.identity();
+
   /// Slots: `discount`, `comp`, `loyalty`, `gift_tender`. Replaces any
   /// earlier approval of the slot; null clears it.
   void recordOrderAuthorization(String slot, ActionAuthorization? value) {
@@ -830,6 +836,25 @@ class PosController extends ChangeNotifier
   void recordGiftAuthorization(CartItem item, ActionAuthorization value) {
     _giftAuthorizations.remove(item)?.grant?.forget();
     _giftAuthorizations[item] = value;
+    _giftApprovedBaisas[item] = pricing.omrToBaisas(giftAmountFor(item));
+  }
+
+  /// LAUNCH-P5 fix order 2 (T2) — a gifted line whose quantity or price
+  /// changes loses its gift and its approval (the approver saw the old
+  /// amount); the cashier is told and can gift it again.
+  void _dropGiftForChange(CartItem item) {
+    if (!item.gifted) return;
+    item.gifted = false;
+    _forgetGiftApproval(item);
+    final arabic = _l10n.localeName.startsWith('ar');
+    _identityNotice(
+      _l10n.ctrlMsgGiftDroppedOnChange(item.product.displayName(arabic)),
+    );
+  }
+
+  void _forgetGiftApproval(CartItem item) {
+    _giftAuthorizations.remove(item)?.grant?.forget();
+    _giftApprovedBaisas.remove(item);
   }
 
   void _forgetOrderAuthorizations() {
@@ -841,6 +866,29 @@ class PosController extends ChangeNotifier
     }
     _orderAuthorizations.clear();
     _giftAuthorizations.clear();
+    _giftApprovedBaisas.clear();
+  }
+
+  /// LAUNCH-P5 fix order 2 (T6) — the order's manual discount as a % of the
+  /// subtotal on the final amounts, when it is above what [permissions]
+  /// allow and no approver has allowed it (e.g. items were removed after a
+  /// fixed discount was applied within the limit). Null when it is fine.
+  double? manualDiscountAboveMax(StaffPermissions permissions) {
+    if (!discount.isActive ||
+        discount.discountId != null ||
+        isLoyaltyOwnedDiscount(discount)) {
+      return null;
+    }
+    if (_orderAuthorizations['discount']?.isApproval == true) return null;
+    final amount = _price.orderDiscountRowBaisas;
+    if (amount <= 0) return null;
+    final percent = discountPercentOf(
+      discountAmount: amount / 1000,
+      subtotal: rawSubtotal,
+    );
+    return permissions.can('discount.manual', amountPercent: percent)
+        ? null
+        : percent;
   }
 
   /// The tick list of the person ringing this sale, for the discount check
@@ -906,7 +954,12 @@ class PosController extends ChangeNotifier
           ? _cart[line]
           : null;
       final gift = item == null ? null : _giftAuthorizations[item];
-      if (gift != null) {
+      final approved = item == null ? null : _giftApprovedBaisas[item];
+      // LAUNCH-P5 fix order 2 (T2) — signed only over what the approver
+      // saw (or less); a larger gift goes without the approval.
+      if (gift != null &&
+          (!gift.isApproval ||
+              (approved != null && row.amountBaisas <= approved))) {
         blocks.add(
           gift.block(
             subjectUuid: uuid,
@@ -1998,7 +2051,7 @@ class PosController extends ChangeNotifier
       return false;
     }
     item.gifted = !item.gifted;
-    if (!item.gifted) _giftAuthorizations.remove(item)?.grant?.forget();
+    if (!item.gifted) _forgetGiftApproval(item);
     _resetCharityRoundUp();
     _markOrderUpdated(item.product.id);
     _broadcast();
@@ -2800,6 +2853,9 @@ class PosController extends ChangeNotifier
     return true;
   }
 
+  /// LAUNCH-P5 fix order 2 (T12) — a split is set up or under way.
+  bool get splitActive => splitCount > 1 || hasRecordedSplitPayments;
+
   void clearSplit() {
     if (!_cartMutationAllowed()) return;
     if (hasRecordedSplitPayments) return;
@@ -2821,8 +2877,12 @@ class PosController extends ChangeNotifier
     if (!isSoldOnCurrentChannel(product) || isSoldOut(product)) return;
     // LAUNCH-P2 "sell, but warn" — the cached shelf count never caps the
     // cart; the sale may take the branch balance below zero.
+    // LAUNCH-P5 fix order 2 (T2) — a tap never merges into a gifted line.
     final index = _cart.indexWhere(
-      (item) => item.product.id == product.id && !item.hasCustomization,
+      (item) =>
+          item.product.id == product.id &&
+          !item.hasCustomization &&
+          !item.gifted,
     );
     _dropCompForCartMutation();
     _ensureOrderReference();
@@ -3053,6 +3113,7 @@ class PosController extends ChangeNotifier
     if (index == -1) return;
 
     _dropCompForCartMutation();
+    _dropGiftForChange(_cart[index]);
     _cart[index].qty++;
     _markOrderUpdated(_cart[index].product.id);
     _broadcast();
@@ -3062,6 +3123,7 @@ class PosController extends ChangeNotifier
     if (!_cartMutationAllowed()) return;
     final removed = _cart.remove(item);
     if (!removed) return;
+    _forgetGiftApproval(item);
     _dropCompForCartMutation();
     _broadcast();
   }
@@ -3073,8 +3135,9 @@ class PosController extends ChangeNotifier
 
     _dropCompForCartMutation();
     if (_cart[index].qty <= 1) {
-      _cart.removeAt(index);
+      _forgetGiftApproval(_cart.removeAt(index));
     } else {
+      _dropGiftForChange(_cart[index]);
       _cart[index].qty--;
     }
     _broadcast();
@@ -3090,8 +3153,13 @@ class PosController extends ChangeNotifier
     if (index == -1) return;
 
     _dropCompForCartMutation();
+    final before = [for (final m in _cart[index].modifiers) m.id].join('|');
     _cart[index].modifiers = List<CartItemModifier>.from(modifiers);
     _cart[index].notes = notes.trim();
+    // A changed choice can change the price: the gift goes (T2).
+    if ([for (final m in _cart[index].modifiers) m.id].join('|') != before) {
+      _dropGiftForChange(_cart[index]);
+    }
     _broadcast();
   }
 
@@ -3118,6 +3186,12 @@ class PosController extends ChangeNotifier
       _findDiningTableDefinitionById(id);
 
   Future<void> openDiningTable(String tableId) async {
+    // LAUNCH-P5 fix order 2 (T1) — a training cart never opens a real
+    // table (its draft would load into, and be saved from, training).
+    if (_inTraining) {
+      _trainingRefusal();
+      return;
+    }
     if (tableTransitionInProgress) {
       _identityNotice(tableTransitionMessage);
       return;
@@ -3809,6 +3883,9 @@ class PosController extends ChangeNotifier
   }
 
   Future<String?> resumeHeldOrder(HeldOrderRecord record) async {
+    // LAUNCH-P5 fix order 2 (T1) — a real held order is never resumed (and
+    // so deleted) into training.
+    if (_inTraining) return _trainingRefusal();
     if (isProcessingPayment) return null;
     if (!await _combineMutationAllowed() || isProcessingPayment) {
       return lastPaymentMessage;
@@ -3872,6 +3949,8 @@ class PosController extends ChangeNotifier
     HeldOrderRecord record, {
     ActionAuthorization? authorization,
   }) async {
+    // LAUNCH-P5 fix order 2 (T1) — training never discards a real order.
+    if (_inTraining) return _trainingRefusal();
     if (!await _combineMutationAllowed()) return lastPaymentMessage;
     if (!await _draftAllowed(
           uuid: record.draft.serverOrderUuid,
@@ -3929,6 +4008,8 @@ class PosController extends ChangeNotifier
     // LAUNCH-P5 C1 — the order.void_paid gate (own tick or an approver).
     ActionAuthorization? authorization,
   }) async {
+    // LAUNCH-P5 fix order 2 (T1) — training never cancels a real order.
+    if (_inTraining) return _trainingRefusal();
     final snapshot = record.snapshot;
     final authorizedBy = authorization?.authorizedByName ?? 'Manager';
     if (snapshot.isFullyCanceled || record.isServerTerminal) {
@@ -4167,6 +4248,14 @@ class PosController extends ChangeNotifier
         () => _payAndPrintAdmitted(cashTenderedAmount: cashTenderedAmount),
       );
   Future<String?> _payAndPrintAdmitted({double? cashTenderedAmount}) async {
+    // LAUNCH-P5 fix order 2 (T12) — a gift is the whole bill, never one leg
+    // of a split (its approval would be signed for the wrong tender).
+    if (selectedPaymentMethod == 'Gift' && splitActive) {
+      lastPaymentMessage = _l10n.giftNotInSplit;
+      displayNote = lastPaymentMessage;
+      _notifySafely();
+      return lastPaymentMessage;
+    }
     final customerRefusal = customerTenderRefusal(
       gift: selectedPaymentMethod == 'Gift',
     );
@@ -4240,6 +4329,7 @@ class PosController extends ChangeNotifier
     // device-local number (receiptNumber stays '').
     if (!(isDineInPayment && isLiveSharedTable?.call() == true) &&
         orderNumbering.enabled &&
+        !_inTraining &&
         receiptNumber.isEmpty &&
         allocateReceiptNumber != null) {
       try {
@@ -4780,6 +4870,9 @@ class PosController extends ChangeNotifier
   /// server, never sent to the kitchen and never moves stock.
   bool training = false;
 
+  /// Training as set by the screen, or by the app-wide flag.
+  bool get _inTraining => training || TrainingMode.active;
+
   String _trainingRefusal() {
     lastPaymentMessage = _l10n.trainingNotAvailable;
     displayNote = lastPaymentMessage;
@@ -4788,9 +4881,14 @@ class PosController extends ChangeNotifier
   }
 
   Future<String> _finishTrainingOrder({required String successMessage}) async {
+    // LAUNCH-P5 fix order 2 (T9) — a training slip is numbered TRAINING-n;
+    // the real order / receipt number is never used or advanced.
     final completed = snapshot().copyWith(
       serverOrderUuid: uuidV4(),
       training: true,
+      receiptNumber: trainingReceiptNumber(
+        TrainingOrderStore.orders.length + 1,
+      ),
       authorizations: const <Map<String, dynamic>>[],
     );
     _forgetOrderAuthorizations();

@@ -6646,6 +6646,54 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'The shift was re-opened on the portal while closing. Tap Close shift again.'**
   String get shiftCloseReopenedRetry;
+
+  /// No description provided for @trainingCounterOrderFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Training starts from a counter or to-go order. Leave the table or floor plan first.'**
+  String get trainingCounterOrderFirst;
+
+  /// No description provided for @ctrlMsgGiftDroppedOnChange.
+  ///
+  /// In en, this message translates to:
+  /// **'The gift on {name} was removed because its quantity or price changed. Gift it again to ask for approval.'**
+  String ctrlMsgGiftDroppedOnChange(String name);
+
+  /// No description provided for @giftNotInSplit.
+  ///
+  /// In en, this message translates to:
+  /// **'A gift covers the whole bill. It cannot be one part of a split.'**
+  String get giftNotInSplit;
+
+  /// No description provided for @shiftCloseSendingQrSale.
+  ///
+  /// In en, this message translates to:
+  /// **'QR payment {reference}'**
+  String shiftCloseSendingQrSale(String reference);
+
+  /// No description provided for @shiftCloseParkedSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Sale {reference}'**
+  String shiftCloseParkedSale(String reference);
+
+  /// No description provided for @shiftCloseSalesParked.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 sale parked after server errors} other{{count} sales parked after server errors}}'**
+  String shiftCloseSalesParked(int count);
+
+  /// No description provided for @shiftCloseParkedHint.
+  ///
+  /// In en, this message translates to:
+  /// **'These sales stopped retrying after server errors. Tap Retry to send them again.'**
+  String get shiftCloseParkedHint;
+
+  /// No description provided for @shiftCloseRetryParked.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get shiftCloseRetryParked;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

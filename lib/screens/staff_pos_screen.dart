@@ -56,6 +56,7 @@ import '../services/display_strings.dart';
 import '../services/local_order_storage_service.dart';
 import '../core/auth_wire.dart';
 import '../core/manager_auth.dart';
+import '../core/payment_hold.dart';
 import '../core/permissions.dart';
 import '../core/training_mode.dart';
 import '../services/api_models.dart' show StaffAttendance;
@@ -2390,9 +2391,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       if (!replaceExisting) return;
     }
 
-    // LAUNCH-P5 C1 — the `comp` tick, or an approver's PIN.
+    // LAUNCH-P5 C1 — the `comp` tick, or an approver's PIN (always the
+    // PIN when the server refused the tick: fix order 2, T7).
     final authorization = await _authorizeAction(
       'comp',
+      alwaysApproval: serverDetail != null && _forceTableApproval,
       subtitle: l10n.posCompManagerApprovalMessage,
     );
     if (!mounted) return;
@@ -2697,6 +2700,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _liveEditor?.dispose();
     _tableCheckout?.dispose();
     controller.removeListener(_onTableCartChanged);
+    PaymentHold.set(this, false);
+    // LAUNCH-P5 fix order 2 (T8) — no table clear approval outlives this
+    // screen (or the person signed in on it).
+    try {
+      _tableKitchen?.coordinator.clearApproval = null;
+    } catch (_) {
+      // Dispose never throws.
+    }
     if (_workspace case final workspace?) {
       workspace.removeListener(_workspaceChanged);
       workspace.dispose();
@@ -3145,6 +3156,23 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
   }
 
+  /// LAUNCH-P5 fix order 2 (T7) — set while a table adjustment the server
+  /// refused (`approval_required`) is picked again: its gate then always
+  /// opens the approval sheet.
+  bool _forceTableApproval = false;
+
+  Future<Map<String, dynamic>?> _pickTableAdjustmentWithApproval(
+    DineInDetail detail,
+    String kind,
+  ) async {
+    _forceTableApproval = true;
+    try {
+      return await _pickTableAdjustment(detail, kind);
+    } finally {
+      _forceTableApproval = false;
+    }
+  }
+
   Future<Map<String, dynamic>?> _pickTableAdjustment(
     DineInDetail detail,
     String kind,
@@ -3168,7 +3196,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         ],
         customer: ref.read(apiServiceProvider).tableLoyaltyCustomer,
         approve: () async {
-          gate = await _authorizeAction('loyalty.redeem');
+          gate = await _authorizeAction(
+            'loyalty.redeem',
+            alwaysApproval: _forceTableApproval,
+          );
           final allowed = gate;
           if (allowed == null) return null;
           return (
@@ -3270,7 +3301,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         );
         return;
       }
-      await editor.adjust((detail) => _pickTableAdjustment(detail, kind));
+      await editor.adjust(
+        (detail) => _pickTableAdjustment(detail, kind),
+        approvalPick: (detail) =>
+            _pickTableAdjustmentWithApproval(detail, kind),
+      );
       _showTableAdjustmentNotice(editor);
     } catch (_) {
       if (mounted) _showTableActionFailure();
@@ -3653,7 +3688,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
   }
 
+  /// LAUNCH-P5 fix order 2 (T13) — tell a forced sign-out to wait while a
+  /// payment is under way on this screen (a split with legs taken, a QR or
+  /// table checkout open, a tender running).
+  void _syncPaymentHold() {
+    PaymentHold.set(
+      this,
+      _normalQrCheckoutOpen ||
+          controller.isProcessingPayment ||
+          controller.showPaymentLaunchOverlay ||
+          (controller.hasRecordedSplitPayments && controller.cart.isNotEmpty),
+    );
+  }
+
   void _onTableCartChanged() {
+    _syncPaymentHold();
     _syncCustomerFields();
     if (mounted) _applyAudienceGate();
     _updateTableSearch();
@@ -3946,6 +3995,26 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return false;
     }
     final allowed = gate!;
+    // LAUNCH-P5 fix order 2 (T8) — when this cancel empties the table, the
+    // clear that follows voids the bill: that needs order.void_unpaid (the
+    // person's own tick, or an approver for it), never the line approval.
+    final remaining =
+        controller.cart.fold<int>(0, (sum, line) => sum + line.qty) - reduction;
+    ActionAuthorization? voidGate;
+    if (remaining <= 0) {
+      voidGate = await _authorizeAction(
+        'order.void_unpaid',
+        subtitle: L10n.of(context).tableCancelSentApproval,
+      );
+      if (!mounted ||
+          voidGate == null ||
+          controller.activeDiningTableId != session.tableId ||
+          controller.currentOrderReference != session.orderReference) {
+        allowed.grant?.forget();
+        voidGate?.grant?.forget();
+        return false;
+      }
+    }
     await bridge.coordinator.cancelLine(
       session,
       line: wire.single,
@@ -3955,12 +4024,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       reason: approval.reason,
       authorization: allowed,
     );
-    // A later clear of this table voids it under the same approver.
-    bridge.coordinator.clearApproval = TableVoidApproval(
-      authorizedBy: allowed.authorizedByName,
-      reason: approval.reason ?? 'staff_close',
-      authorization: _voidUnpaidFrom(allowed),
-    );
+    // The line cancel is signed: its approver's key goes now.
+    allowed.grant?.forget();
+    if (voidGate != null) {
+      // The clear of THIS table session voids it under the void approval.
+      bridge.coordinator.clearApproval = TableVoidApproval(
+        authorizedBy: voidGate.authorizedByName,
+        reason: approval.reason ?? 'staff_close',
+        authorization: voidGate,
+        seatingKey: session.seatingKey,
+      );
+    }
     return true; // Never undo a local edit in response to a business verdict.
   }
 
@@ -4264,6 +4338,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           authorizedBy: gate.authorizedByName,
           reason: 'staff_close',
           authorization: gate,
+          // LAUNCH-P5 fix order 2 (T8) — this table session only.
+          seatingKey: session?.seatingKey,
         );
       }
     }
@@ -4507,6 +4583,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             machineQuickCatalogue(ref.read(catalogProvider).asData?.value),
         onPay: _launchQrCheckout,
         pickAdjustment: _pickTableAdjustment,
+        pickAdjustmentWithApproval: _pickTableAdjustmentWithApproval,
         onVoid: (uuid) => _cancelTableBill(id, uuid),
         approveAdjustmentDiscard: () => _authorizeManager(
           subtitle: dineInText(_arabicTable, 'discard_adjustment'),
@@ -6128,12 +6205,42 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // P-F4 — re-check order-scope auto discounts at the till (time windows
     // are evaluated against "now"; a no-op when one is applied/suppressed).
     controller.maybeAutoApplyOrderDiscount();
+    // LAUNCH-P5 fix order 2 (T6) — the manual discount on the final amounts.
+    if (!await _recheckManualDiscount() || !mounted) return;
     setState(() {
       _showPaymentPage = true;
       _cashTenderInput = '';
     });
     _customerNumberController.text = controller.customerReferenceNumber;
     _vehiclePlateController.text = controller.vehiclePlateNumber;
+  }
+
+  /// LAUNCH-P5 fix order 2 (T6) — before payment: a manual discount that
+  /// is now above the person's maximum (the cart changed after it was
+  /// applied) needs an approver. False = no approval, do not pay.
+  Future<bool> _recheckManualDiscount() async {
+    final permissions = currentStaffPermissions(ref);
+    if (controller.manualDiscountAboveMax(permissions) == null) return true;
+    final l10n = L10n.of(context);
+    final gate = await _authorizeAction(
+      'discount.manual',
+      alwaysApproval: true,
+      subtitle: l10n.discountAboveMaxApproval(permissions.discountMaxPercent),
+    );
+    if (!mounted) {
+      gate?.grant?.forget();
+      return false;
+    }
+    if (gate == null) {
+      _showPopupMessage(
+        title: l10n.posDiscountApprovalRequiredTitle,
+        message: l10n.approvalNotGiven,
+        tone: FeedbackTone.warning,
+      );
+      return false;
+    }
+    controller.recordOrderAuthorization('discount', gate);
+    return true;
   }
 
   // Re-check at dispatch too: a customer may adopt the bill while its local
@@ -6332,6 +6439,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Future<void> _submitGiftPayment() async {
     if (_showCustomerTenderRefusal(gift: true)) return;
     if (_liveTable) return;
+    // LAUNCH-P5 fix order 2 (T12) — a gift is the whole bill, never a leg.
+    if (controller.splitActive) return;
     if (controller.isProcessingPayment || controller.cart.isEmpty) return;
     final l10n = L10n.of(context);
 
@@ -6481,7 +6590,22 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
+  /// LAUNCH-P5 fix order 2 (T1) — refuse an action that would touch real
+  /// data while training (held orders, order cancels, tables, pay-outs,
+  /// operations). Shows the refusal and returns true when refused.
+  bool _blockedInTraining() {
+    if (!ref.read(trainingModeProvider)) return false;
+    final l10n = L10n.of(context);
+    _showPopupMessage(
+      title: l10n.trainingBanner,
+      message: l10n.trainingNotAvailable,
+      tone: FeedbackTone.warning,
+    );
+    return true;
+  }
+
   Future<void> _openHeldOrdersDialog() async {
+    if (_blockedInTraining()) return;
     final l10n = L10n.of(context);
     await controller.refreshHeldOrders();
     if (!mounted) return;
@@ -6772,6 +6896,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     required BuildContext historyDialogContext,
     required OrderHistoryRecord record,
   }) async {
+    if (_blockedInTraining()) return;
     final l10n = L10n.of(context);
     // LAUNCH-P5 C1 — the order.void_paid tick, or an approver's PIN.
     // (`order_cancel_positions` is not mapped onto the tick list.)
@@ -6866,28 +6991,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       alwaysApproval: alwaysApproval,
       subtitle: subtitle,
       description: description,
-    );
-  }
-
-  /// The order.void_unpaid gate a table clear inherits from a line cancel:
-  /// the same approver (their key stays in memory until the clear is sent),
-  /// or the person's own tick.
-  ActionAuthorization _voidUnpaidFrom(ActionAuthorization gate) {
-    final grant = gate.grant;
-    if (grant != null) {
-      return ActionAuthorization.approval(
-        action: 'order.void_unpaid',
-        actorStaffId: gate.actorStaffId,
-        actorName: gate.actorName,
-        grant: grant,
-        deviceUuid: gate.deviceUuid,
-      );
-    }
-    return ActionAuthorization.position(
-      action: 'order.void_unpaid',
-      actorStaffId: gate.actorStaffId,
-      actorName: gate.actorName,
-      deviceUuid: gate.deviceUuid,
     );
   }
 
@@ -8201,7 +8304,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }) async {
     final l10n = L10n.of(context);
     ActionAuthorization? gate;
-    if (d.requiresManagerApproval) {
+    if (d.requiresManagerApproval || (picked != null && _forceTableApproval)) {
       // M7 — a rule marked "needs manager" always needs an approval,
       // whatever the ticks.
       gate = await _authorizeAction(
@@ -8281,13 +8384,26 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // with no discount.manual tick at all, an approver's PIN.
     ActionAuthorization? gate;
     if (value.isActive) {
-      final subtotal = serverDetail != null
-          ? ((serverDetail.bill?['subtotal_baisas'] as num?) ?? 0) / 1000
-          : controller.rawSubtotal;
+      // LAUNCH-P5 fix order 2 (T7) — a table bill's fixed discount is
+      // checked against its adjustment basis, as the server does.
+      final bill = serverDetail?.bill;
       final percent = value.kind == DiscountKind.percentage
           ? value.value
-          : discountPercentOf(discountAmount: value.value, subtotal: subtotal);
-      if (!_can('discount.manual', amountPercent: percent)) {
+          : bill != null
+          ? tableDiscountPercentOf(
+              amountBaisas: (value.value * 1000).round(),
+              basisBaisas:
+                  ((bill['adjustment_basis_baisas'] ?? bill['subtotal_baisas'])
+                              as num? ??
+                          0)
+                      .toInt(),
+            )
+          : discountPercentOf(
+              discountAmount: value.value,
+              subtotal: controller.rawSubtotal,
+            );
+      if (!_can('discount.manual', amountPercent: percent) ||
+          (serverDetail != null && _forceTableApproval)) {
         gate = await _authorizeAction(
           'discount.manual',
           alwaysApproval: true,
@@ -9178,6 +9294,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     _normalQrCheckoutOpen = true;
+    _syncPaymentHold();
     _applyAudienceGate();
     QrCheckoutController? checkout;
     VoidCallback? displayListener;
@@ -9223,6 +9340,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       if (displayListener != null) checkout?.removeListener(displayListener);
       checkout?.dispose();
       _normalQrCheckoutOpen = false;
+      _syncPaymentHold();
       if (mounted) {
         _applyAudienceGate();
         // onExit may have attempted retirement while this route still owned
@@ -10411,7 +10529,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                 const SizedBox(height: 14),
                                 // Phase D4 — gift the whole order (manager-gated;
                                 // §6.8 "zero charged… inventory still deducts").
-                                if (qr != null || !_liveTable)
+                                // LAUNCH-P5 fix order 2 (T12) — never as one
+                                // leg of a split.
+                                if (qr != null ||
+                                    (!_liveTable && !controller.splitActive))
                                   SizedBox(
                                     height: 64,
                                     child: _PaymentMethodActionButton(
@@ -11090,6 +11211,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       );
       return;
     }
+    // LAUNCH-P5 fix order 2 (T1) — training starts from a counter order:
+    // never on the floor plan, a table or a server bill.
+    if (!trainingOrderTypeAllowed(
+      controller.selectedOrderType,
+      activeTableId: controller.activeDiningTableId,
+      workspaceOpen: _workspace != null,
+    )) {
+      _showPopupMessage(
+        title: l10n.trainingEnter,
+        message: l10n.trainingCounterOrderFirst,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
     final gate = await _authorizeAction('training.use');
     gate?.grant?.forget();
     if (gate == null || !mounted) return;
@@ -11200,12 +11335,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openSettings() async {
+    // LAUNCH-P5 fix order 2 (T1) — in training the operations (close shift,
+    // pay-out, restock, count, waste, recovery) are not offered.
+    final training = ref.read(trainingModeProvider);
     final action = await Navigator.of(context).push<String>(
       MaterialPageRoute(
-        builder: (_) => const SettingsScreen(showOperations: true),
+        builder: (_) => SettingsScreen(showOperations: !training),
       ),
     );
     if (!mounted || action == null) return;
+    if (_blockedInTraining()) return;
     switch (action) {
       case 'checkout_recovery':
         await _openCheckoutRecovery();

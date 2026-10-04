@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/approver_store.dart';
 import '../core/attendance.dart';
 import '../core/manager_auth.dart' show ApprovalEngine;
+import '../core/payment_hold.dart';
 import '../core/permissions.dart';
 import '../core/pin_lockout.dart';
 import '../core/sentry.dart';
@@ -139,6 +140,7 @@ class SessionController extends Notifier<SessionState> {
   SessionService get _svc => ref.read(sessionServiceProvider);
 
   int _staffSessionGeneration = 0;
+  bool _unverifiedDeferred = false;
 
   @override
   SessionState build() => _svc.snapshot();
@@ -204,7 +206,24 @@ class SessionController extends Notifier<SessionState> {
   /// staff token (403 `staff_unverified`): log out and ask for the PIN
   /// again. The open shift and every queued event stay.
   Future<void> staffUnverified({String? reason}) async {
-    if (_svc.staff == null) return;
+    final staff = _svc.staff;
+    if (staff == null) return;
+    // LAUNCH-P5 fix order 2 (T13) — never in the middle of a payment: the
+    // sign-out follows right after it completes or is abandoned (and only
+    // if the same person's session is still the one signed in).
+    if (PaymentHold.active) {
+      if (_unverifiedDeferred) return;
+      final generation = _staffSessionGeneration;
+      _unverifiedDeferred = true;
+      try {
+        await PaymentHold.idle();
+      } finally {
+        _unverifiedDeferred = false;
+      }
+      if (generation != _staffSessionGeneration || _svc.staff?.id != staff.id) {
+        return;
+      }
+    }
     // The reason is a short server code, never the token.
     sentryBreadcrumb(
       'auth',
@@ -212,17 +231,21 @@ class SessionController extends Notifier<SessionState> {
       level: SentryLevel.warning,
     );
     ref.read(staffReverifyNoticeProvider.notifier).show();
-    try {
-      if (ref.read(trainingModeProvider)) {
-        await ref.read(trainingModeProvider.notifier).exit();
-      }
-    } catch (_) {}
     await logoutStaff();
   }
 
   Future<void> logoutStaff() async {
     _staffSessionGeneration++;
     ref.invalidate(shiftReconciliationProvider);
+    // LAUNCH-P5 fix order 2 (T10) — every sign-out leaves training.
+    await _leaveTraining();
+    // LAUNCH-P5 fix order 2 (T8) — a table clear approval (and its key)
+    // never outlives the person who got it.
+    if (ref.exists(tableSyncCoordinatorProvider)) {
+      try {
+        ref.read(tableSyncCoordinatorProvider).clearApproval = null;
+      } catch (_) {}
+    }
     await _svc.clearStaff();
     state = _svc.snapshot();
     await setSentryStaff(id: null);
@@ -279,9 +302,23 @@ class SessionController extends Notifier<SessionState> {
     return null;
   }
 
+  /// Leave training (and discard its sales) without needing the screen.
+  Future<void> _leaveTraining() async {
+    try {
+      if (ref.read(trainingModeProvider) || TrainingMode.active) {
+        await ref.read(trainingModeProvider.notifier).exit();
+      }
+    } catch (_) {
+      TrainingOrderStore.clear();
+      TrainingMode.active = false;
+    }
+  }
+
   Future<void> clearForRePair() async {
     _staffSessionGeneration++;
     ref.invalidate(shiftReconciliationProvider);
+    // LAUNCH-P5 fix order 2 (T10) — a re-paired till is never in training.
+    await _leaveTraining();
     await _svc.clearForRePair();
     // LAUNCH-P5 C2 — an un-paired till keeps no approver verifiers.
     try {

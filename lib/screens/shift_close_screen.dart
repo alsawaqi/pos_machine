@@ -5,6 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/manager_auth.dart';
 import '../data/db/app_database.dart' show OrderOutboxRow;
+import '../data/order_sync_repository.dart';
+import '../qr_checkout/checkout_close_hold.dart';
+import '../qr_checkout/qr_checkout_controller.dart';
+import '../qr_checkout/qr_checkout_gateway.dart';
+import '../qr_checkout/qr_checkout_models.dart';
+import '../qr_checkout/qr_checkout_receipt.dart';
+import '../qr_checkout/qr_checkout_store.dart';
+import '../qr_quick/qr_quick_gateway.dart' show quickDeviceScope;
+import '../services/server_receipt_history.dart';
 import '../l10n/l10n.dart';
 import '../services/api_models.dart';
 import '../services/pos_api_service.dart';
@@ -46,6 +55,11 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
   // LAUNCH-P5 fix order 1 (F7) — this shift's drawer pay-outs still
   // sending (amounts in baisas); they block the close like sales.
   List<int> _payouts = const [];
+  // LAUNCH-P5 fix order 2 (T4) — QR / workspace payments of this shift not
+  // yet acknowledged (from the checkout journal); (T5) sales parked after
+  // server errors, offered a Retry instead of "still sending".
+  List<CheckoutAttempt> _checkoutUnsent = const [];
+  List<OrderOutboxRow> _parked = const [];
   ActionAuthorization? _closeOther;
   // LAUNCH-P5 C6 — clock out with the close (default yes).
   bool _clockOutToo = true;
@@ -104,25 +118,73 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
     return shift.reopenCount;
   }
 
-  /// Flush the outbox, then list this shift's paid sales and drawer
-  /// pay-outs still unsent.
-  Future<
-    ({List<OrderOutboxRow> unsent, List<String> orderUuids, List<int> payouts})
-  >
-  _flushAndCheck(OpenShiftData shift) async {
+  /// Flush the outbox and push this device's pending QR / workspace
+  /// payment, then list this shift's paid sales, checkout payments and
+  /// drawer pay-outs still unsent, and the parked sales.
+  Future<_CloseCheck> _flushAndCheck(OpenShiftData shift) async {
     final outbox = ref.read(orderSyncRepositoryProvider);
     try {
       await outbox.flush();
     } catch (_) {
       // Still unsent rows are listed below.
     }
+    CheckoutCloseHold? checkout;
+    try {
+      checkout = await ref.read(checkoutCloseHoldProvider)();
+      await checkout?.flush();
+    } catch (_) {
+      checkout = null;
+    }
     final sales = await outbox.paidSalesSince(shift.openedAt);
     final payouts = await outbox.unsentPayouts(shift.uuid);
-    return (
+    ({List<CheckoutAttempt> unsent, List<String> orderUuids})? checkouts;
+    try {
+      checkouts = await checkout?.since(shift.openedAt);
+    } catch (_) {
+      checkouts = null;
+    }
+    return _CloseCheck(
       unsent: sales.unsent,
-      orderUuids: sales.orderUuids,
+      parked: sales.parked,
+      checkoutUnsent: checkouts?.unsent ?? const [],
+      orderUuids: [
+        ...sales.orderUuids,
+        for (final uuid in checkouts?.orderUuids ?? const <String>[])
+          if (!sales.orderUuids.contains(uuid)) uuid,
+      ],
       payouts: [for (final p in payouts) p.amountBaisas],
     );
+  }
+
+  /// Show what blocks the close; true when something does.
+  bool _showBlocked(_CloseCheck check) {
+    if (!check.blocks) return false;
+    setState(() {
+      _unsent = check.unsent;
+      _checkoutUnsent = check.checkoutUnsent;
+      _payouts = check.payouts;
+    });
+    return true;
+  }
+
+  /// LAUNCH-P5 fix order 2 (T5) — Retry the parked sales: un-park them,
+  /// send them, then close again.
+  Future<void> _retryParked() async {
+    final uuids = {
+      for (final row in _parked) ...OrderSyncRepository.paidOrderUuids(row),
+    };
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(orderSyncRepositoryProvider).unparkAndPush(uuids);
+    } catch (_) {
+      // The close below lists what is still missing.
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (mounted) await _close();
   }
 
   Future<void> _close() async {
@@ -139,6 +201,8 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
       _unsent = const [];
       _missing = const [];
       _payouts = const [];
+      _checkoutUnsent = const [];
+      _parked = const [];
     });
     try {
       if (widget.forcedHandover && !_forcedPreflightComplete) {
@@ -172,14 +236,7 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
       // Flush first; every paid sale of this shift must have reached the
       // server before the drawer can close (owner decision 3).
       final sales = await _flushAndCheck(shift);
-      if (!mounted) return;
-      if (sales.unsent.isNotEmpty || sales.payouts.isNotEmpty) {
-        setState(() {
-          _unsent = sales.unsent;
-          _payouts = sales.payouts;
-        });
-        return;
-      }
+      if (!mounted || _showBlocked(sales)) return;
       var reopenCount = await _freshReopenCount(shift);
       if (!mounted) return;
       final counted = _closingBaisas;
@@ -215,22 +272,42 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
       ShiftCloseResult result;
       try {
         result = await send(sales.orderUuids);
-      } on ShiftUnsyncedSalesException {
-        // The server is still missing a sale: flush again and retry once
+      } on ShiftUnsyncedSalesException catch (first) {
+        // The server is still missing a sale. LAUNCH-P5 fix order 2 (T5) —
+        // un-park and push the rows it names, flush again and retry once
         // (the same fixed id; the server takes the new payload).
+        final outbox = ref.read(orderSyncRepositoryProvider);
+        try {
+          await outbox.unparkAndPush(first.missing);
+        } catch (_) {}
         final again = await _flushAndCheck(shift);
-        if (!mounted) return;
-        if (again.unsent.isNotEmpty || again.payouts.isNotEmpty) {
-          setState(() {
-            _unsent = again.unsent;
-            _payouts = again.payouts;
-          });
-          return;
-        }
+        if (!mounted || _showBlocked(again)) return;
         try {
           result = await send(again.orderUuids);
         } on ShiftUnsyncedSalesException catch (e) {
-          if (mounted) setState(() => _missing = e.missing);
+          // Still missing: a parked sale is "parked — Retry", never
+          // "still sending".
+          final latest = await outbox.paidSalesSince(shift.openedAt);
+          final parked = [
+            for (final row in latest.parked)
+              if (OrderSyncRepository.paidOrderUuids(
+                row,
+              ).any(e.missing.contains))
+                row,
+          ];
+          final parkedUuids = {
+            for (final row in parked)
+              ...OrderSyncRepository.paidOrderUuids(row),
+          };
+          if (mounted) {
+            setState(() {
+              _parked = parked;
+              _missing = [
+                for (final uuid in e.missing)
+                  if (!parkedUuids.contains(uuid)) uuid,
+              ];
+            });
+          }
           return;
         }
       }
@@ -416,7 +493,9 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
         _amountCard(l10n.shiftCloseCountedDrawerCashLabel, _money(_closingBaisas)),
         if (_unsent.isNotEmpty ||
             _missing.isNotEmpty ||
-            _payouts.isNotEmpty) ...[
+            _payouts.isNotEmpty ||
+            _checkoutUnsent.isNotEmpty ||
+            _parked.isNotEmpty) ...[
           const SizedBox(height: 14),
           _blockedCard(l10n),
         ],
@@ -477,17 +556,32 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
 
   /// "3 sales still sending" (or the server's own list) with a retry.
   Widget _blockedCard(L10n l10n) {
-    final lines = _unsent.isNotEmpty
-        ? [
-            for (final row in _unsent)
-              l10n.shiftCloseSendingSale(
-                (row.orderNumber ?? 0) > 0
-                    ? '#${row.orderNumber}'
-                    : row.orderUuid.split(':').first,
-              ),
-          ]
-        : [for (final uuid in _missing) l10n.shiftCloseSendingSale(uuid)];
-    final count = _unsent.isNotEmpty ? _unsent.length : _missing.length;
+    final lines = [
+      for (final row in _unsent)
+        l10n.shiftCloseSendingSale(
+          (row.orderNumber ?? 0) > 0
+              ? '#${row.orderNumber}'
+              : row.orderUuid.split(':').first,
+        ),
+      // LAUNCH-P5 fix order 2 (T4) — QR / workspace payments.
+      for (final attempt in _checkoutUnsent)
+        l10n.shiftCloseSendingQrSale(
+          (attempt.reference ?? '').isNotEmpty
+              ? attempt.reference!
+              : attempt.orderUuid,
+        ),
+      if (_unsent.isEmpty && _checkoutUnsent.isEmpty)
+        for (final uuid in _missing) l10n.shiftCloseSendingSale(uuid),
+    ];
+    final count = lines.length;
+    final parked = [
+      for (final row in _parked)
+        l10n.shiftCloseParkedSale(
+          (row.orderNumber ?? 0) > 0
+              ? '#${row.orderNumber}'
+              : row.orderUuid.split(':').first,
+        ),
+    ];
     final payouts = [
       for (final amount in _payouts)
         l10n.shiftCloseSendingPayout(_money(amount)),
@@ -517,6 +611,33 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
               Text(line, style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 8),
           ],
+          // LAUNCH-P5 fix order 2 (T5) — parked, with a Retry.
+          if (parked.isNotEmpty) ...[
+            Text(
+              l10n.shiftCloseSalesParked(parked.length),
+              key: const ValueKey('shift-close-parked'),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            for (final line in parked.take(8))
+              Text(line, style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 6),
+            Text(
+              l10n.shiftCloseParkedHint,
+              style: const TextStyle(color: Colors.white60, fontSize: 12.5),
+            ),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              key: const ValueKey('shift-close-retry-parked'),
+              onPressed: _busy ? null : _retryParked,
+              icon: const Icon(Icons.refresh_rounded),
+              label: Text(l10n.shiftCloseRetryParked),
+            ),
+            const SizedBox(height: 8),
+          ],
           if (payouts.isNotEmpty) ...[
             Text(
               l10n.shiftClosePayoutsSending(payouts.length),
@@ -531,12 +652,13 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
               Text(line, style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 8),
           ],
-          Text(
-            count > 0
-                ? l10n.shiftCloseSalesSendingHint
-                : l10n.shiftClosePayoutsSendingHint,
-            style: const TextStyle(color: Colors.white60, fontSize: 12.5),
-          ),
+          if (count > 0 || payouts.isNotEmpty)
+            Text(
+              count > 0
+                  ? l10n.shiftCloseSalesSendingHint
+                  : l10n.shiftClosePayoutsSendingHint,
+              style: const TextStyle(color: Colors.white60, fontSize: 12.5),
+            ),
         ],
       ),
     );
@@ -702,3 +824,74 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
     );
   }
 }
+
+/// LAUNCH-P5 fix order 2 (T4) — what the close checks before it is sent.
+class _CloseCheck {
+  const _CloseCheck({
+    required this.unsent,
+    required this.parked,
+    required this.checkoutUnsent,
+    required this.orderUuids,
+    required this.payouts,
+  });
+  final List<OrderOutboxRow> unsent;
+  final List<OrderOutboxRow> parked;
+  final List<CheckoutAttempt> checkoutUnsent;
+  final List<String> orderUuids;
+  final List<int> payouts;
+
+  /// Sales, checkout payments or pay-outs still sending block the close.
+  /// Parked rows do not: the server says whether it is missing them.
+  bool get blocks =>
+      unsent.isNotEmpty || checkoutUnsent.isNotEmpty || payouts.isNotEmpty;
+}
+
+/// LAUNCH-P5 fix order 2 (T4) — this device's checkout journal for the
+/// close (null when the till has no server identity yet). Tests override.
+final checkoutCloseHoldProvider =
+    Provider<Future<CheckoutCloseHold?> Function()>(
+      (ref) => () async {
+        final api = ref.read(apiServiceProvider);
+        final session = ref.read(sessionServiceProvider);
+        String scope() => quickDeviceScope(
+          api.quickOrderBaseUrl,
+          session.companyId,
+          session.branchId,
+          session.kioskId,
+        );
+        final String current;
+        try {
+          current = scope();
+        } catch (_) {
+          return null;
+        }
+        final store = await SqliteCheckoutStore.open(current);
+        return CheckoutCloseHold(
+          db: store.db,
+          scope: current,
+          resume: () => QrCheckoutController(
+            gateway: ApiCheckoutGateway(
+              api: api,
+              currentScope: scope,
+              // Only used before a new tender, which the close never starts.
+              location: () async => null,
+              legacyGuard: (_) async {},
+            ),
+            store: store,
+            captureCard: refuseCheckoutCapture,
+            captureBank: refuseCheckoutCapture,
+            authorizeGift: () async => false,
+            staffId: () => session.staff?.id,
+            projectReceipt: (snapshot, attempt) =>
+                projectMachineCheckoutReceipt(
+                  ServerReceiptHistory(
+                    debugOrderStorageOverride ??
+                        LocalOrderStorageService.instance,
+                  ),
+                  snapshot,
+                  attempt,
+                ),
+          ),
+        );
+      },
+    );

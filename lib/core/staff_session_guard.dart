@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/l10n.dart';
 import '../providers/providers.dart';
+import 'payment_hold.dart';
 import 'shift_reminder.dart';
 import 'training_mode.dart';
 
@@ -107,6 +108,14 @@ class _StaffSessionGuardState extends ConsumerState<StaffSessionGuard>
       final current = ref.read(sessionServiceProvider).staff;
       if (current == null || current.id != staff.id) return;
       if (active.contains(staff.id)) return;
+      // LAUNCH-P5 fix order 2 (T13) — never in the middle of a payment:
+      // sign out right after it completes or is abandoned.
+      if (PaymentHold.active) {
+        await PaymentHold.idle();
+        if (!mounted) return;
+        final still = ref.read(sessionServiceProvider).staff;
+        if (still == null || still.id != staff.id) return;
+      }
       // Suspended or terminated: out now. The open shift stays open.
       ref.read(signOutNoticeProvider.notifier).show(staff.name);
       if (ref.read(trainingModeProvider)) {

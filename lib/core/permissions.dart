@@ -259,3 +259,14 @@ const Map<String, Map<String, bool>> _defaultActions = {
     'approvals.give': true,
   },
 };
+
+/// LAUNCH-P5 fix order 2 (T7) — a fixed table discount of [amountBaisas] as
+/// a % of the bill's `adjustment_basis_baisas`, the way the server checks
+/// it (with its 1-baisa tolerance).
+double tableDiscountPercentOf({
+  required int amountBaisas,
+  required int basisBaisas,
+}) {
+  final amount = amountBaisas - 1 < 0 ? 0 : amountBaisas - 1;
+  return amount * 100 / (basisBaisas < 1 ? 1 : basisBaisas);
+}

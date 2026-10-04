@@ -258,6 +258,9 @@ class BusinessBoundary {
   static Completer<void>? _paymentsDone;
   static Future<void> get paymentsSettled =>
       _paymentsDone?.future ?? Future.value();
+
+  /// LAUNCH-P5 fix order 2 (T13) — a tracked tender is under way.
+  static bool get paymentInFlight => _payments > 0;
   static Future<T> trackPayment<T>(Future<T> Function() action) async {
     if (_payments++ == 0) _paymentsDone = Completer<void>();
     try {

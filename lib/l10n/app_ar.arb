@@ -1317,5 +1317,13 @@
   "shiftClosePayoutsSending": "{count, plural, =1{مبلغ مصروف واحد ما زال قيد الإرسال} =2{مبلغان مصروفان ما زالا قيد الإرسال} few{{count} مبالغ مصروفة ما زالت قيد الإرسال} other{{count} مبلغًا مصروفًا ما زال قيد الإرسال}}",
   "shiftCloseSendingPayout": "مبلغ مصروف {amount} ر.ع.",
   "shiftClosePayoutsSendingHint": "تُغلق الوردية بعد وصول كل المبالغ المصروفة إلى الخادم. أبقِ الجهاز متصلًا واضغط إغلاق الوردية مرة أخرى.",
-  "shiftCloseReopenedRetry": "أُعيد فتح الوردية من البوابة أثناء الإغلاق. اضغط إغلاق الوردية مرة أخرى."
+  "shiftCloseReopenedRetry": "أُعيد فتح الوردية من البوابة أثناء الإغلاق. اضغط إغلاق الوردية مرة أخرى.",
+  "trainingCounterOrderFirst": "يبدأ التدريب من طلب على الكاونتر أو سفري. اخرج من الطاولة أو مخطط الصالة أولاً.",
+  "ctrlMsgGiftDroppedOnChange": "أُلغيت هدية {name} لأن الكمية أو السعر تغيّر. أهدِه مجدداً لطلب الموافقة.",
+  "giftNotInSplit": "الهدية تغطي الفاتورة كاملة ولا يمكن أن تكون جزءاً من دفع مقسّم.",
+  "shiftCloseSendingQrSale": "دفعة QR {reference}",
+  "shiftCloseParkedSale": "المبيعة {reference}",
+  "shiftCloseSalesParked": "{count, plural, =1{مبيعة واحدة متوقفة بعد أخطاء في الخادم} =2{مبيعتان متوقفتان بعد أخطاء في الخادم} few{{count} مبيعات متوقفة بعد أخطاء في الخادم} other{{count} مبيعة متوقفة بعد أخطاء في الخادم}}",
+  "shiftCloseParkedHint": "توقفت إعادة إرسال هذه المبيعات بعد أخطاء في الخادم. اضغط إعادة المحاولة لإرسالها مجدداً.",
+  "shiftCloseRetryParked": "إعادة المحاولة"
 }

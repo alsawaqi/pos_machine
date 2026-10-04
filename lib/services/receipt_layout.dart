@@ -219,7 +219,8 @@ List<ReceiptLine> buildReceiptLines(
   final vatNumber = tax.vatRegistered == null
       ? (t?.vatNumber?.trim().isNotEmpty ?? false ? t!.vatNumber!.trim() : null)
       : tax.printableVatNumber;
-  if (vatNumber != null) {
+  // LAUNCH-P5 fix order 2 (T9) — a training slip carries no tax identity.
+  if (vatNumber != null && !order.training) {
     lines.add(
       ReceiptLine(
         ReceiptLineKind.centered,
@@ -241,20 +242,23 @@ List<ReceiptLine> buildReceiptLines(
       ..add(const ReceiptLine(ReceiptLineKind.title, text: pendingReceiptEn))
       ..add(const ReceiptLine(ReceiptLineKind.title, text: pendingReceiptAr));
   }
-  // The title in English, then Arabic on its own line.
-  lines
-    ..add(
-      ReceiptLine(
-        ReceiptLineKind.title,
-        text: tax.isRegistered ? 'Simplified tax invoice' : 'Receipt',
-      ),
-    )
-    ..add(
-      ReceiptLine(
-        ReceiptLineKind.title,
-        text: tax.isRegistered ? 'فاتورة ضريبية مبسطة' : 'إيصال',
-      ),
-    );
+  // The title in English, then Arabic on its own line. LAUNCH-P5 fix
+  // order 2 (T9) — a training slip has only its TRAINING title.
+  if (!order.training) {
+    lines
+      ..add(
+        ReceiptLine(
+          ReceiptLineKind.title,
+          text: tax.isRegistered ? 'Simplified tax invoice' : 'Receipt',
+        ),
+      )
+      ..add(
+        ReceiptLine(
+          ReceiptLineKind.title,
+          text: tax.isRegistered ? 'فاتورة ضريبية مبسطة' : 'إيصال',
+        ),
+      );
+  }
   final orderType = OrderTypeLabel.fromStorage(order.orderType).label;
   lines.add(
     ReceiptLine(

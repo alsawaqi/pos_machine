@@ -165,6 +165,17 @@ List<Map<String, dynamic>> tableRoundDelta(
   return lines.values.where((line) => line['qty'] != 0).toList();
 }
 
+/// LAUNCH-P5 fix order 2 (T3) — the order discount of [snapshot] is the
+/// customer's loyalty redemption (points or stamps), not a manual discount.
+bool isLoyaltyDiscountRow(OrderSnapshot snapshot) =>
+    snapshot.discountId == null &&
+    snapshot.loyaltyRedeemRuleId != null &&
+    (snapshot.loyaltyRedeemPoints > 0 || snapshot.loyaltyRedeemStamps > 0) &&
+    const {
+      'Loyalty redemption',
+      'Stamp reward',
+    }.contains(snapshot.discountLabel);
+
 Map<String, dynamic> buildTableSessionEvent(
   String operation, {
   required String seatingKey,
@@ -431,11 +442,16 @@ OrderSyncPayload buildOrderSyncPayload(
     }
   }
   if (priced.orderDiscountRowBaisas > 0) {
+    // LAUNCH-P5 fix order 2 (T3) — a loyalty redemption rides the order
+    // discount slot but is not a manual discount: it says so, so the
+    // server checks it as loyalty.redeem, never against the cashier's max.
+    final loyaltyRow = isLoyaltyDiscountRow(snapshot);
     discounts.add({
       'name': snapshot.discountLabel.isEmpty
           ? 'Discount'
           : snapshot.discountLabel,
       'amount_baisas': priced.orderDiscountRowBaisas,
+      if (loyaltyRow) ...{'source': 'loyalty', 'discount_id': null},
       // A merchant rule carries its id + amount_type so the server snapshots it
       // (by-rule report); a manual discount omits them.
       if (snapshot.discountId != null) 'discount_id': snapshot.discountId,

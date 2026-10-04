@@ -2,6 +2,7 @@ import 'dart:convert';
 import '../../tenancy/business_identity.dart';
 import 'package:drift/drift.dart';
 
+import '../../core/auth_wire.dart' show eventsWithoutStaffTokens;
 import '../../core/training_flag.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
@@ -574,10 +575,22 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
-  Future<void> markOutboxSynced(String orderUuid, DateTime at) =>
-      (update(orderOutbox)..where((o) => o.orderUuid.equals(orderUuid))).write(
-        OrderOutboxCompanion(syncedAt: Value(at)),
-      );
+  /// Acknowledged. LAUNCH-P5 fix order 2 (T11) — the row's staff tokens
+  /// are stripped at the same time (the server has what it needed).
+  Future<void> markOutboxSynced(String orderUuid, DateTime at) async {
+    final row = await getOutbox(orderUuid);
+    final stripped = row == null
+        ? null
+        : eventsWithoutStaffTokens(row.eventsJson);
+    await (update(
+      orderOutbox,
+    )..where((o) => o.orderUuid.equals(orderUuid))).write(
+      OrderOutboxCompanion(
+        syncedAt: Value(at),
+        eventsJson: stripped == null ? const Value.absent() : Value(stripped),
+      ),
+    );
+  }
 
   Future<void> markOutboxAttempt(
     String orderUuid,
@@ -599,6 +612,13 @@ class AppDatabase extends _$AppDatabase {
       lastError: Value(error),
     ),
   );
+
+  /// LAUNCH-P5 fix order 2 (T5) — un-park one unsent row (the server named
+  /// its sale as missing), so the next flush sends it again.
+  Future<int> unparkOutboxRow(String orderUuid) =>
+      (update(orderOutbox)
+            ..where((o) => o.orderUuid.equals(orderUuid) & o.syncedAt.isNull()))
+          .write(const OrderOutboxCompanion(serverRejections: Value(0)));
 
   Future<int> resetStuckOutbox(int rejectionLimit) =>
       (update(orderOutbox)..where(

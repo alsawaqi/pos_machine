@@ -39,6 +39,7 @@ class TableVoidApproval {
     this.reason,
     this.reasonId,
     this.authorization,
+    this.seatingKey,
   });
   final String authorizedBy;
   final String? reason;
@@ -46,6 +47,13 @@ class TableVoidApproval {
 
   /// LAUNCH-P5 C3 — the order.void_unpaid gate of the table clear.
   final ActionAuthorization? authorization;
+
+  /// LAUNCH-P5 fix order 2 (T8) — the one table session this approval may
+  /// clear (null = whichever table is cleared next, the pre-P5 behaviour).
+  final String? seatingKey;
+
+  /// Wipe the approver's key (once used, replaced or dropped).
+  void forget() => authorization?.grant?.forget();
 }
 
 /// Only cashier hooks and this device's own ACKs write local table identity.
@@ -123,7 +131,17 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
   Future<TablePaymentContext> Function(OrderSnapshot)? paymentContext;
   Future<void> Function(Map<String, dynamic>, Map<String, dynamic>)?
   paymentAcknowledged;
-  TableVoidApproval? clearApproval;
+
+  /// LAUNCH-P5 fix order 2 (T8) — the approval for the next clear of one
+  /// table session. Replacing or dropping it wipes the old approver key.
+  TableVoidApproval? get clearApproval => _clearApproval;
+  set clearApproval(TableVoidApproval? value) {
+    final previous = _clearApproval;
+    _clearApproval = value;
+    if (previous != null && !identical(previous, value)) previous.forget();
+  }
+
+  TableVoidApproval? _clearApproval;
 
   final _sessions = <String, DiningTableSession>{};
   final _changes = StreamController<void>.broadcast();
@@ -451,9 +469,24 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
 
   @override
   void onTablesCleared(Set<String> groupIds, DiningTableSession? head) {
-    final approval = clearApproval;
-    clearApproval = null;
+    final given = _clearApproval;
+    _clearApproval = null;
     _hook(() async {
+      try {
+        await _clearTablesWith(given, groupIds, head);
+      } finally {
+        // LAUNCH-P5 fix order 2 (T8) — used or not, the key goes now.
+        given?.forget();
+      }
+    });
+  }
+
+  Future<void> _clearTablesWith(
+    TableVoidApproval? given,
+    Set<String> groupIds,
+    DiningTableSession? head,
+  ) async {
+    {
       final source =
           head ??
           groupIds
@@ -463,6 +496,12 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
       if (source == null) return;
       final session = await _remember(source);
       if (session.seatingKey == null) return;
+      // LAUNCH-P5 fix order 2 (T8) — an approval given for another table
+      // session never clears this one.
+      final approval =
+          given?.seatingKey == null || given!.seatingKey == session.seatingKey
+          ? given
+          : null;
       final rounds = await store.readLocalTableRounds(
         seatingKey: session.seatingKey,
       );
@@ -497,7 +536,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
           }),
         );
       }
-    });
+    }
   }
 
   @override
@@ -1049,7 +1088,8 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
           outcome: result['outcome'] as String,
           detail: {
             ...result,
-            'request': payload,
+            // LAUNCH-P5 fix order 2 (T11) — no staff token at rest.
+            'request': payloadWithoutStaffToken(payload),
             'client_event_id': event['client_event_id'],
           },
         ),
@@ -1334,7 +1374,8 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
               detail: {
                 ...result,
                 'client_event_id': event['client_event_id'],
-                'request': payload,
+                // LAUNCH-P5 fix order 2 (T11) — no staff token at rest.
+                'request': payloadWithoutStaffToken(payload),
               },
             ),
           );

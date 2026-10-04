@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// LAUNCH-P5 C3 — the authorization wire version. Every event a P5 build
 /// creates carries `auth_v: 1` at the top level of its payload; an event
 /// without it comes from an older build and the server keeps its legacy
@@ -87,4 +89,36 @@ Map<String, dynamic> withAuthV(Map<String, dynamic> event) {
       ...authStamp(staffId: staffId is int ? staffId : null),
     },
   };
+}
+
+/// LAUNCH-P5 fix order 2 (T11) — a copy of [payload] without its
+/// `staff_token`, for evidence kept after the server acknowledged it (the
+/// table verdict journal keeps the acknowledged request this way, matching
+/// the outbox row once its token is stripped).
+Map<String, dynamic> payloadWithoutStaffToken(Map<String, dynamic> payload) =>
+    {...payload}..remove('staff_token');
+
+/// LAUNCH-P5 fix order 2 (T11) — [eventsJson] (an outbox row's events)
+/// without any `staff_token` (payload top level, or inside `order`); null
+/// when there is none to strip or the row cannot be read. An acknowledged
+/// row keeps no token at rest.
+String? eventsWithoutStaffTokens(String eventsJson) {
+  if (!eventsJson.contains('staff_token')) return null;
+  Object? decoded;
+  try {
+    decoded = jsonDecode(eventsJson);
+  } catch (_) {
+    return null;
+  }
+  if (decoded is! List) return null;
+  var changed = false;
+  for (final event in decoded) {
+    if (event is! Map) continue;
+    final payload = event['payload'];
+    if (payload is! Map) continue;
+    if (payload.remove('staff_token') != null) changed = true;
+    final order = payload['order'];
+    if (order is Map && order.remove('staff_token') != null) changed = true;
+  }
+  return changed ? jsonEncode(decoded) : null;
 }

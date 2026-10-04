@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/manager_auth.dart';
+import '../core/training_mode.dart';
 import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/expense_restock_payload.dart';
@@ -74,6 +75,12 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
     final l10n = L10n.of(context);
     if (_amountBaisas <= 0) {
       setState(() => _error = l10n.expenseAmountGreaterThanZeroError);
+      return;
+    }
+    // LAUNCH-P5 fix order 2 (T1) — no pay-out from training: it would move
+    // real drawer cash on the books.
+    if (ref.read(trainingModeProvider)) {
+      setState(() => _error = l10n.trainingNotAvailable);
       return;
     }
     final staffId = ref.read(sessionControllerProvider).staff?.id;

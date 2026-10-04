@@ -235,15 +235,23 @@ class OrderSyncRepository {
   /// shift's opening): every outbox row with an `order.pay`. [orderUuids]
   /// lists them all (sent or not) for `shift.close`; [unsent] are the rows
   /// still waiting for the server's acknowledgement, which block the close.
-  /// A row parked after repeated server refusals does not block: the server
-  /// marks the shift for review instead.
-  Future<({List<OrderOutboxRow> unsent, List<String> orderUuids})>
+  /// A row parked after server refusals is listed apart in [parked] (the
+  /// close offers a Retry); a deterministic refusal makes the server mark
+  /// the shift for review instead of naming the sale missing.
+  Future<
+    ({
+      List<OrderOutboxRow> unsent,
+      List<String> orderUuids,
+      List<OrderOutboxRow> parked,
+    })
+  >
   paidSalesSince(DateTime since) async {
     final from = since.subtract(const Duration(minutes: 1));
     final pendingKeys = {
       for (final row in await pendingRows()) row.orderUuid,
     };
     final unsent = <OrderOutboxRow>[];
+    final parked = <OrderOutboxRow>[];
     final uuids = <String>[];
     final rows = await allRows()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
@@ -264,13 +272,53 @@ class OrderSyncRepository {
         final uuid = (pay['payload'] as Map?)?['order_uuid']?.toString() ?? '';
         if (uuid.isNotEmpty && !uuids.contains(uuid)) uuids.add(uuid);
       }
-      if (row.syncedAt == null &&
-          pendingKeys.contains(row.orderUuid) &&
-          !isStuck(row)) {
-        unsent.add(row);
+      if (row.syncedAt == null && pendingKeys.contains(row.orderUuid)) {
+        // LAUNCH-P5 fix order 2 (T5) — a parked row is not "still
+        // sending": the close lists it apart, with a Retry.
+        (isStuck(row) ? parked : unsent).add(row);
       }
     }
-    return (unsent: unsent, orderUuids: uuids);
+    return (unsent: unsent, orderUuids: uuids, parked: parked);
+  }
+
+  /// The order uuids a row pays for (its order.pay events).
+  static Set<String> paidOrderUuids(OrderOutboxRow row) {
+    try {
+      final events = jsonDecode(row.eventsJson);
+      if (events is! List) return const {};
+      return {
+        for (final e in events)
+          if (e is Map && e['event_type'] == 'order.pay')
+            (e['payload'] as Map?)?['order_uuid']?.toString() ?? '',
+      }..remove('');
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// LAUNCH-P5 fix order 2 (T5) — un-park the unsent rows that pay for
+  /// [orderUuids] (the server's `unsynced_sales` list) and push them once.
+  /// Returns how many rows were un-parked.
+  Future<int> unparkAndPush(Iterable<String> orderUuids) async {
+    final wanted = orderUuids.toSet();
+    if (wanted.isEmpty) return 0;
+    var count = 0;
+    await _prepare(() async {
+      for (final row in await pendingRows()) {
+        if (!isStuck(row) || !paidOrderUuids(row).any(wanted.contains)) {
+          continue;
+        }
+        count += await _db.unparkOutboxRow(row.orderUuid);
+      }
+    });
+    if (count > 0) {
+      try {
+        await flush();
+      } catch (_) {
+        // Listed again by the caller.
+      }
+    }
+    return count;
   }
 
   /// LAUNCH-P5 fix order 1 (F7) — the drawer pay-outs of [shiftUuid] still

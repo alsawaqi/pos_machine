@@ -55,7 +55,11 @@ class ExpenseRestockService {
     } on ApiException catch (e) {
       // A structured refusal is final (nothing was recorded); a lost or
       // garbled reply may or may not have been: keep the same event.
-      if (keep == null || (!e.isNetwork && e.hasStructuredErrorCode)) {
+      // LAUNCH-P5 fix order 2 (T1) — a training refusal is final: it is
+      // never queued for the real outbox.
+      if (keep == null ||
+          e.code == 'training_mode' ||
+          (!e.isNetwork && e.hasStructuredErrorCode)) {
         rethrow;
       }
       await keep('payout:${event['client_event_id']}', event);

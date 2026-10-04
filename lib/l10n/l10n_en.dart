@@ -4014,4 +4014,45 @@ class L10nEn extends L10n {
   @override
   String get shiftCloseReopenedRetry =>
       'The shift was re-opened on the portal while closing. Tap Close shift again.';
+
+  @override
+  String get trainingCounterOrderFirst =>
+      'Training starts from a counter or to-go order. Leave the table or floor plan first.';
+
+  @override
+  String ctrlMsgGiftDroppedOnChange(String name) {
+    return 'The gift on $name was removed because its quantity or price changed. Gift it again to ask for approval.';
+  }
+
+  @override
+  String get giftNotInSplit =>
+      'A gift covers the whole bill. It cannot be one part of a split.';
+
+  @override
+  String shiftCloseSendingQrSale(String reference) {
+    return 'QR payment $reference';
+  }
+
+  @override
+  String shiftCloseParkedSale(String reference) {
+    return 'Sale $reference';
+  }
+
+  @override
+  String shiftCloseSalesParked(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count sales parked after server errors',
+      one: '1 sale parked after server errors',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get shiftCloseParkedHint =>
+      'These sales stopped retrying after server errors. Tap Retry to send them again.';
+
+  @override
+  String get shiftCloseRetryParked => 'Retry';
 }

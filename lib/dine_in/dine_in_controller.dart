@@ -315,7 +315,25 @@ class DineInController extends ChangeNotifier {
 
   /// The picker includes the existing manager gate. It runs only after a
   /// fresh read; a second byte-for-byte read fences the entire approval window.
+  ///
+  /// LAUNCH-P5 fix order 2 (T7) — when the server refuses it with
+  /// `approval_required` (the person's tick did not cover it), [approvalPick]
+  /// is run once: the same choice, through the approval sheet, as a new
+  /// request.
   Future<bool> adjust(
+    Future<Map<String, dynamic>?> Function(DineInDetail) pick, {
+    Future<Map<String, dynamic>?> Function(DineInDetail)? approvalPick,
+  }) async {
+    final ok = await _adjustOnce(pick);
+    if (ok ||
+        approvalPick == null ||
+        notice != 'adjust_refused:approval_required') {
+      return ok;
+    }
+    return _adjustOnce(approvalPick);
+  }
+
+  Future<bool> _adjustOnce(
     Future<Map<String, dynamic>?> Function(DineInDetail) pick,
   ) async {
     if (!canAdjust) return false;

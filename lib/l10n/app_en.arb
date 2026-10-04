@@ -2579,5 +2579,41 @@
     }
   },
   "shiftClosePayoutsSendingHint": "The shift closes once every pay-out has reached the server. Keep the till online and tap Close shift again.",
-  "shiftCloseReopenedRetry": "The shift was re-opened on the portal while closing. Tap Close shift again."
+  "shiftCloseReopenedRetry": "The shift was re-opened on the portal while closing. Tap Close shift again.",
+  "trainingCounterOrderFirst": "Training starts from a counter or to-go order. Leave the table or floor plan first.",
+  "ctrlMsgGiftDroppedOnChange": "The gift on {name} was removed because its quantity or price changed. Gift it again to ask for approval.",
+  "@ctrlMsgGiftDroppedOnChange": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "giftNotInSplit": "A gift covers the whole bill. It cannot be one part of a split.",
+  "shiftCloseSendingQrSale": "QR payment {reference}",
+  "@shiftCloseSendingQrSale": {
+    "placeholders": {
+      "reference": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftCloseParkedSale": "Sale {reference}",
+  "@shiftCloseParkedSale": {
+    "placeholders": {
+      "reference": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftCloseSalesParked": "{count, plural, =1{1 sale parked after server errors} other{{count} sales parked after server errors}}",
+  "@shiftCloseSalesParked": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shiftCloseParkedHint": "These sales stopped retrying after server errors. Tap Retry to send them again.",
+  "shiftCloseRetryParked": "Retry"
 }

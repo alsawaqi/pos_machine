@@ -235,12 +235,19 @@ class DineInScreen extends StatefulWidget {
     this.approveCancellation,
     this.approveAdjustmentDiscard,
     this.pickAdjustment,
+    this.pickAdjustmentWithApproval,
     this.onCombine,
     this.onRecover,
     this.localDraftBlockedNow,
   });
   final Future<Map<String, dynamic>?> Function(DineInDetail, String)?
   pickAdjustment;
+
+  /// LAUNCH-P5 fix order 2 (T7) — the same picker, with every gate opening
+  /// the approval sheet: used once when the server refuses an adjustment
+  /// with `approval_required`.
+  final Future<Map<String, dynamic>?> Function(DineInDetail, String)?
+  pickAdjustmentWithApproval;
   final Future<DineInController> Function() createController;
   final List<QuickProduct> Function() catalogue;
   final String label;
@@ -880,7 +887,13 @@ class _DineInScreenState extends State<DineInScreen>
       !(widget.localDraftBlockedNow?.call() ?? widget.localDraftBlocked);
   Future<void> _adjust(String kind) async {
     if (!_canAdjust) return;
-    await controller!.adjust((detail) => widget.pickAdjustment!(detail, kind));
+    final withApproval = widget.pickAdjustmentWithApproval;
+    await controller!.adjust(
+      (detail) => widget.pickAdjustment!(detail, kind),
+      approvalPick: withApproval == null
+          ? null
+          : (detail) => withApproval(detail, kind),
+    );
     if (mounted) _publish();
   }
 
