@@ -1310,5 +1310,12 @@
   "trainingEnteredMessage": "وضع التدريب: لا يُحفظ ولا يُرسل أي شيء تفعله هنا.",
   "trainingClearCartFirst": "أكمل الطلب الحالي أو امسحه أولًا.",
   "shiftEndReminderBanner": "حان وقت انتهاء ورديتك. يُرجى إغلاق الوردية.",
-  "shiftEndReminderDismiss": "حسنًا"
+  "shiftEndReminderDismiss": "حسنًا",
+  "staffReverifyNotice": "يرجى إدخال رمز PIN مرة أخرى.",
+  "payoutNeedsOpenShift": "افتح وردية درج على هذا الجهاز قبل صرف أي نقد.",
+  "payoutSavedPending": "تم حفظ المبلغ المصروف. سيُرسل عند عودة الجهاز إلى الاتصال.",
+  "shiftClosePayoutsSending": "{count, plural, =1{مبلغ مصروف واحد ما زال قيد الإرسال} =2{مبلغان مصروفان ما زالا قيد الإرسال} few{{count} مبالغ مصروفة ما زالت قيد الإرسال} other{{count} مبلغًا مصروفًا ما زال قيد الإرسال}}",
+  "shiftCloseSendingPayout": "مبلغ مصروف {amount} ر.ع.",
+  "shiftClosePayoutsSendingHint": "تُغلق الوردية بعد وصول كل المبالغ المصروفة إلى الخادم. أبقِ الجهاز متصلًا واضغط إغلاق الوردية مرة أخرى.",
+  "shiftCloseReopenedRetry": "أُعيد فتح الوردية من البوابة أثناء الإغلاق. اضغط إغلاق الوردية مرة أخرى."
 }

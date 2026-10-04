@@ -1,4 +1,5 @@
 import 'table_loyalty.dart';
+import '../core/authorization.dart';
 import '../table_cancellation/table_bill_cancellation.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -74,6 +75,11 @@ String dineInText(bool ar, String key) {
     'approval_required': [
       'Manager approval is required.',
       'موافقة المدير مطلوبة.',
+    ],
+    // LAUNCH-P5 F3 — the approval was refused or older than 10 minutes.
+    'approval_invalid': [
+      'The approval was not accepted or has expired. Approve again.',
+      'لم تُقبل الموافقة أو انتهت صلاحيتها. وافق مجدداً.',
     ],
     'customer_not_found': [
       'The customer was not found for this merchant.',
@@ -191,6 +197,7 @@ String dineInText(bool ar, String key) {
       'comp_cap_exceeded',
       'discount_rule_not_applicable',
       'approval_required',
+      'approval_invalid',
       'customer_not_found',
     };
     // Unknown server codes must never resolve to unrelated UI captions.
@@ -688,12 +695,25 @@ class _DineInScreenState extends State<DineInScreen>
       }
     } else if (qty < (row['qty'] as num) &&
         widget.approveCancellation != null) {
-      await controller!.cancelLine(
-        row,
-        (row['qty'] as num).toInt() - qty,
-        approve: widget.approveCancellation!,
-      );
+      Map<String, dynamic>? approval;
+      try {
+        await controller!.cancelLine(
+          row,
+          (row['qty'] as num).toInt() - qty,
+          approve: () async => approval = await widget.approveCancellation!(),
+        );
+      } finally {
+        _forgetApproval(approval);
+      }
     }
+  }
+
+  /// LAUNCH-P5 fix order 1 (F3) — one proof per request: an approval signs
+  /// each request it covers with its key held in memory, and the key is
+  /// wiped once the last of them is signed.
+  static void _forgetApproval(Map<String, dynamic>? approval) {
+    final gate = approval?['gate'];
+    if (gate is ActionAuthorization) gate.grant?.forget();
   }
 
   Future<void> _customize(Map<String, dynamic> row) async {
@@ -714,11 +734,17 @@ class _DineInScreenState extends State<DineInScreen>
         setState(() => drafts[index] = (drafts[index].$1, changed));
         await _persistDrafts();
       } else if (mounted && changed != null && index == null) {
-        final ok = await controller!.cancelLine(
-          row,
-          (row['qty'] as num).toInt(),
-          approve: widget.approveCancellation!,
-        );
+        Map<String, dynamic>? approval;
+        final bool ok;
+        try {
+          ok = await controller!.cancelLine(
+            row,
+            (row['qty'] as num).toInt(),
+            approve: () async => approval = await widget.approveCancellation!(),
+          );
+        } finally {
+          _forgetApproval(approval);
+        }
         if (mounted && ok) {
           childOpen = false;
           final product = _product(changed.productId);
@@ -752,11 +778,14 @@ class _DineInScreenState extends State<DineInScreen>
     if (widget.approveCancellation == null) return;
     childOpen = true;
     _publish();
+    Map<String, dynamic>? approval;
     try {
-      final approval = await widget.approveCancellation!();
+      approval = await widget.approveCancellation!();
       if (!mounted || approval == null) return;
       setState(drafts.clear);
       await _persistDrafts();
+      // One approval, one request (and proof) per line, each signed with
+      // its own client_request_id while the approval is open.
       for (final row in rows) {
         if (!mounted ||
             !await controller!.cancelLine(
@@ -768,6 +797,7 @@ class _DineInScreenState extends State<DineInScreen>
         }
       }
     } finally {
+      _forgetApproval(approval);
       childOpen = false;
       if (mounted) _publish();
     }

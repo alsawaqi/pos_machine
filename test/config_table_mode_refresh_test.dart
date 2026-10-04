@@ -76,6 +76,12 @@ class _Session implements SessionService {
   @override
   Future<void> saveStaffSettings(Map<String, dynamic>? settings) async {}
   @override
+  Future<void> saveProductUuids(
+    Object? products, {
+    bool replace = false,
+    List<int> deleted = const <int>[],
+  }) async {}
+  @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw StateError('Unexpected session call: ${invocation.memberName}');
 }

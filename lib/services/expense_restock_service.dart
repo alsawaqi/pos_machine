@@ -15,31 +15,59 @@ class DeviceActionException implements Exception {
 /// pushed immediately. It is idempotent on client_event_id, so a retry after a
 /// flaky response is safe.
 class ExpenseRestockService {
-  ExpenseRestockService(this._api);
+  ExpenseRestockService(this._api, {this.queue});
 
   final PosApiService _api;
 
+  /// LAUNCH-P5 fix order 1 (F7) — keeps a pay-out whose reply was lost or
+  /// unclear in the durable outbox under its own event id (so the retry is
+  /// the same event and the shift close waits for it). Null = no outbox.
+  final Future<void> Function(String key, Map<String, dynamic> event)? queue;
+
   /// Record a petty-cash expense. Throws [DeviceActionException] if the server
   /// rejects it (e.g. an invalid category).
-  Future<void> logExpense({
+  ///
+  /// Returns true when the server recorded it, false when a pay-out was
+  /// kept in the outbox to send later (LAUNCH-P5 F7: the cash is already
+  /// out of the drawer, so an unclear reply never loses it).
+  Future<bool> logExpense({
     required String category,
     required int amountBaisas,
     int? staffId,
     String? note,
     bool paidFromDrawer = false,
     Map<String, dynamic>? authorization,
+    String? shiftUuid,
   }) async {
-    final data = await _api.pushSync([
-      buildExpenseLogEvent(
-        category: category,
-        amountBaisas: amountBaisas,
-        staffId: staffId,
-        note: note,
-        paidFromDrawer: paidFromDrawer,
-        authorization: authorization,
-      ),
-    ]);
+    final event = buildExpenseLogEvent(
+      category: category,
+      amountBaisas: amountBaisas,
+      staffId: staffId,
+      note: note,
+      paidFromDrawer: paidFromDrawer,
+      authorization: authorization,
+      shiftUuid: shiftUuid,
+    );
+    final keep = paidFromDrawer ? queue : null;
+    final Map<String, dynamic> data;
+    try {
+      data = await _api.pushSync([event]);
+    } on ApiException catch (e) {
+      // A structured refusal is final (nothing was recorded); a lost or
+      // garbled reply may or may not have been: keep the same event.
+      if (keep == null || (!e.isNetwork && e.hasStructuredErrorCode)) {
+        rethrow;
+      }
+      await keep('payout:${event['client_event_id']}', event);
+      return false;
+    }
+    final results = data['results'];
+    if (keep != null && (results is! List || results.isEmpty)) {
+      await keep('payout:${event['client_event_id']}', event);
+      return false;
+    }
     _settledResult(data); // throws on a failed ACK
+    return true;
   }
 
   /// Submit a restock request and return the settled result (restock_request_id,

@@ -5,6 +5,7 @@ import 'package:mithqal_softpos/mithqal_softpos.dart';
 import 'package:dio/dio.dart';
 
 import '../core/api_config.dart';
+import '../core/auth_wire.dart';
 import '../core/training_flag.dart';
 import '../models/branch_report.dart';
 import '../models/kitchen_production.dart';
@@ -20,6 +21,10 @@ import 'table_shadow_service.dart';
 typedef TokenGetter = String? Function();
 typedef UnauthorizedCallback = void Function();
 
+/// LAUNCH-P5 fix order 1 (F1) — a 403 `staff_unverified`: the server did
+/// not accept the logged-in person's staff token.
+typedef StaffUnverifiedCallback = void Function();
+
 /// Thin wrapper over pos_api `/api/v1`. Attaches the device Bearer token,
 /// unwraps the `{ data, meta, errors }` envelope, and maps failures to
 /// [ApiException]. A 401 fires [onUnauthorized] so the gate can drop to pairing.
@@ -27,6 +32,7 @@ class PosApiService {
   PosApiService({
     required this.tokenGetter,
     this.onUnauthorized,
+    this.onStaffUnverified,
     this.baseUrlGetter,
     this.orderMutationGuard,
     Dio? dio,
@@ -71,6 +77,14 @@ class PosApiService {
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+          // LAUNCH-P5 F1 — every call made while someone is logged in
+          // names that person.
+          final staffToken = StaffTokenHolder.token;
+          if (staffToken != null && staffToken.isNotEmpty) {
+            options.headers['X-Staff-Token'] = staffToken;
+          } else {
+            options.headers.remove('X-Staff-Token');
+          }
           handler.next(options);
         },
       ),
@@ -96,6 +110,7 @@ class PosApiService {
   final Dio _dio;
   final TokenGetter tokenGetter;
   final UnauthorizedCallback? onUnauthorized;
+  final StaffUnverifiedCallback? onStaffUnverified;
   final String Function()? baseUrlGetter;
   final Future<void> Function()? orderMutationGuard;
 
@@ -187,6 +202,10 @@ class PosApiService {
       if (!staff.containsKey('branch_ids') &&
           body.dataMap.containsKey('branch_ids'))
         'branch_ids': body.dataMap['branch_ids'],
+      // LAUNCH-P5 F1 — the signed staff token (data level, or in staff).
+      if (!staff.containsKey('staff_token') &&
+          body.dataMap['staff_token'] is String)
+        'staff_token': body.dataMap['staff_token'],
     });
   }
 
@@ -1011,11 +1030,15 @@ class PosApiService {
   /// carries the `sold_out.toggle` [authorization] block (it replaces
   /// `approver_staff_id`); the server refuses with 403 `approval_required`
   /// / `approval_invalid` when it does not hold.
+  ///
+  /// LAUNCH-P5 fix order 1 (F3) — each request has its own
+  /// [clientRequestId]; the block's ref equals it (one proof per request).
   Future<void> setProductSoldOut(
     int productId, {
     required bool soldOut,
     required int staffId,
     Map<String, dynamic>? authorization,
+    String? clientRequestId,
   }) async {
     await _send(
       () => _dio.post(
@@ -1023,6 +1046,7 @@ class PosApiService {
         data: {
           'sold_out': soldOut,
           'staff_id': staffId,
+          'client_request_id': ?clientRequestId,
           'authorization': ?authorization,
           'auth_v': 1,
         },
@@ -1467,11 +1491,15 @@ class PosApiService {
       // 401 ({ "message": "Unauthenticated." }, no errors[]) means the device
       // token itself was rejected → drop back to device setup.
       if (errors is List && errors.isNotEmpty) {
-        throw ApiException.fromErrors(
+        final error = ApiException.fromErrors(
           errors,
           status,
           retryAfter: _retryAfter(resp),
         );
+        // LAUNCH-P5 F1 — the staff token was not accepted: log out and ask
+        // for the PIN again.
+        if (error.isStaffUnverified) onStaffUnverified?.call();
+        throw error;
       }
       final topCode = map['code'];
       if (topLevelErrorCode &&
@@ -1657,6 +1685,11 @@ class ApiException implements Exception {
   final int? retryAfterSeconds;
 
   bool get isUnauthorized => statusCode == 401;
+
+  /// LAUNCH-P5 F1 — 403 `staff_unverified`: the staff token was missing or
+  /// not accepted.
+  bool get isStaffUnverified =>
+      code == 'staff_unverified' && (statusCode == null || statusCode == 403);
 
   /// A PIN lock or throttle the device must count down (D-9).
   bool get isPinLock =>

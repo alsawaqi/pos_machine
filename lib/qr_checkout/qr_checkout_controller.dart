@@ -421,7 +421,7 @@ class QrCheckoutController extends ChangeNotifier {
           // LAUNCH-P5 C3 — who took the payment; a P5 event.
           'staff_id': ?staffId?.call(),
           if (gifts.isNotEmpty) 'authorizations': gifts,
-          'auth_v': authWireVersion,
+          ...authStamp(staffId: staffId?.call()),
         },
       };
       await _save(_attempt!.copy(state: 'pending', event: event));

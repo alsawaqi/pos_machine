@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/auth_wire.dart';
 import '../core/permissions.dart';
 import 'api_models.dart';
 import 'device_location_mode.dart';
@@ -94,6 +95,8 @@ class SessionService {
   final SharedPreferences _prefs;
 
   static const _kDeviceToken = 'device_token'; // secure storage
+  // LAUNCH-P5 F1 — the logged-in person's signed staff token (secure).
+  static const _kStaffToken = 'staff_token';
   static const _kKioskId = 'kiosk_id';
   static const _kTerminalId = 'terminal_id';
   static const _kTerminalPin = 'terminal_pin';
@@ -109,8 +112,21 @@ class SessionService {
   // `settings.shift_end_reminder_at` ("HH:MM", Muscat) from the config.
   static const _kPositionPermissions = 'p5_position_permissions_json';
   static const _kShiftEndReminderAt = 'p5_shift_end_reminder_at';
+  // LAUNCH-P5 fix order 1 (F4) — product id → uuid from /device/config
+  // (the sold-out approval is signed over the product uuid).
+  static const _kProductUuids = 'p5_product_uuids_json';
 
   String? _deviceToken; // in-memory cache for the dio interceptor
+  String? _staffToken; // LAUNCH-P5 F1 — in-memory copy of the staff token
+
+  /// LAUNCH-P5 F1 — the logged-in person's staff token (null = nobody, or
+  /// an older server that sends none).
+  String? get staffToken => _staffToken;
+
+  /// LAUNCH-P5 F1 — [load] found a staff session without a token (an
+  /// upgrade from a build before the staff token) and signed it out.
+  bool get reloginRequired => _reloginRequired;
+  bool _reloginRequired = false;
 
   /// LAUNCH-P1 decision 2a — where this till may sell. Defaults to `branch`
   /// (the geofence applies) until the server says `any`.
@@ -188,6 +204,23 @@ class SessionService {
     }
     await _prefs.remove(_kTerminalPin);
     _locationMode.value = locationMode;
+    // LAUNCH-P5 F1 — a staff session restored without its token (saved by
+    // a build before the staff token) cannot name its maker: log in again.
+    // The open shift and every queued event stay.
+    _staffToken = await _secure.read(key: _kStaffToken);
+    if ((_staffToken ?? '').trim().isEmpty) {
+      _staffToken = null;
+      final stored = _prefs.getString(_kStaff);
+      if (stored != null && stored.isNotEmpty) {
+        await _prefs.remove(_kStaff);
+        _reloginRequired = true;
+      }
+    } else if (staff == null) {
+      // A token without a session (the session was wiped): drop it.
+      _staffToken = null;
+      await _storeStaffToken(null);
+    }
+    StaffTokenHolder.set(staff?.id, _staffToken);
   }
 
   SessionState snapshot() => SessionState(
@@ -351,8 +384,84 @@ class SessionService {
     if (changed) _staffSettingsRevision.value++;
   }
 
-  Future<void> saveStaff(StaffSessionData staff) async {
+  /// Persist the staff session. A [login] also stores (or, from an older
+  /// server, clears) the person's staff token; any other save (attendance)
+  /// keeps the token of the session it updates.
+  /// Keep (or, with null, remove) the staff token in secure storage. A
+  /// storage failure never blocks a login or a logout: the in-memory token
+  /// still names the person, and a session restored without its token logs
+  /// in again.
+  Future<void> _storeStaffToken(String? token) async {
+    try {
+      if (token == null) {
+        await _secure.delete(key: _kStaffToken);
+      } else {
+        await _secure.write(key: _kStaffToken, value: token);
+      }
+    } catch (_) {}
+  }
+
+  /// LAUNCH-P5 F4 — the uuid of product [productId] from the last config
+  /// sync (null = unknown: not synced yet, or an older server).
+  String? productUuid(int productId) {
+    final raw = _prefs.getString(_kProductUuids);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final uuid = (jsonDecode(raw) as Map)['$productId'];
+      return uuid is String && uuid.isNotEmpty ? uuid : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Keep the product uuids of a config [products] list: a full sync
+  /// ([replace]) starts afresh; a delta merges and drops [deleted] ids.
+  Future<void> saveProductUuids(
+    Object? products, {
+    bool replace = false,
+    List<int> deleted = const <int>[],
+  }) async {
+    final map = <String, String>{};
+    if (!replace) {
+      try {
+        final raw = _prefs.getString(_kProductUuids);
+        if (raw != null && raw.isNotEmpty) {
+          map.addAll(
+            (jsonDecode(raw) as Map).map(
+              (k, v) => MapEntry(k.toString(), v.toString()),
+            ),
+          );
+        }
+      } catch (_) {}
+    }
+    for (final id in deleted) {
+      map.remove('$id');
+    }
+    if (products is List) {
+      for (final p in products) {
+        if (p is! Map) continue;
+        final id = p['id'], uuid = p['uuid'];
+        if (id is num && uuid is String && uuid.isNotEmpty) {
+          map['${id.toInt()}'] = uuid;
+        }
+      }
+    }
+    await _prefs.setString(_kProductUuids, jsonEncode(map));
+  }
+
+  Future<void> saveStaff(StaffSessionData staff, {bool login = false}) async {
     await _prefs.setString(_kStaff, jsonEncode(staff.toJson()));
+    if (!login && staff.staffToken == null) return;
+    final token = staff.staffToken?.trim();
+    if (token == null || token.isEmpty) {
+      _staffToken = null;
+      await _storeStaffToken(null);
+    } else {
+      _staffToken = token;
+      await _storeStaffToken(token);
+    }
+    _reloginRequired = false;
+    StaffTokenHolder.set(staff.id, _staffToken);
   }
 
   /// Persist the device's open shift (after the server ACKs shift.open).
@@ -387,6 +496,10 @@ class SessionService {
   /// drawer before selling).
   Future<void> clearStaff() async {
     await _prefs.remove(_kStaff);
+    // LAUNCH-P5 F1 — the token leaves with the person.
+    _staffToken = null;
+    StaffTokenHolder.clear();
+    await _storeStaffToken(null);
   }
 
   /// Full reset back to device setup (only on a 401 / revoked device). Clears
@@ -396,5 +509,8 @@ class SessionService {
     await BusinessBoundary.paymentsSettled;
     _deviceToken = null;
     await _secure.delete(key: _kDeviceToken);
+    _staffToken = null;
+    StaffTokenHolder.clear();
+    await _storeStaffToken(null);
   }
 }

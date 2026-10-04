@@ -340,13 +340,21 @@ class DineInController extends ChangeNotifier {
       // fixed discount, its amount (Part A §6).
       final intent = Map<String, dynamic>.from(picked);
       final gate = intent.remove('gate');
+      final rule = intent.remove('gate_rule_amount');
       final seatingKey = QrQuickRequest.newId();
+      // LAUNCH-P5 fix order 1 (F3/F4) — one proof per request: its ref is
+      // this request's client_request_id, and a discount is signed over
+      // the amount the server computes for it.
+      final requestId = QrQuickRequest.newId();
       final authorization = gate is ActionAuthorization
           ? gate.block(
               subjectUuid: seatingKey,
-              amountBaisas: intent['kind'] == 'discount'
-                  ? intent['amount_baisas'] as int?
-                  : null,
+              amountBaisas: tableAdjustProofAmount(
+                before,
+                intent,
+                rule: rule is Map ? rule : null,
+              ),
+              ref: requestId,
             )
           : null;
       if (gate is ActionAuthorization) gate.grant?.forget();
@@ -374,7 +382,7 @@ class DineInController extends ChangeNotifier {
         payload: {
           'table_id': current.primaryTableId!,
           'seating_key': seatingKey,
-          'client_request_id': QrQuickRequest.newId(),
+          'client_request_id': requestId,
           'queued_offline': false,
           'staff_id': ?staffId,
           'adjustment': intent,
@@ -686,4 +694,47 @@ class DineInController extends ChangeNotifier {
     _disposed = true;
     super.dispose();
   }
+}
+
+/// LAUNCH-P5 fix order 1 (F4) — the amount a table adjustment's approval
+/// is signed over, exactly as the server derives it (Part A §6): a fixed
+/// discount's own amount; a percent or rule discount as the server
+/// computes it from the bill's net; nothing (empty) for every other
+/// adjustment. [rule] is a merchant rule's `{type, value}` (percent, or
+/// OMR for a fixed rule).
+int? tableAdjustProofAmount(
+  DineInDetail detail,
+  Map<String, dynamic> intent, {
+  Map<dynamic, dynamic>? rule,
+}) {
+  if (intent['kind'] != 'discount') return null;
+  switch (intent['mode']) {
+    case 'fixed':
+      final amount = intent['amount_baisas'];
+      return amount is num ? amount.toInt() : null;
+    case 'percent':
+      final bp = intent['percent_bp'];
+      if (bp is! num) return null;
+      return (tableAdjustNet(detail) * bp.toInt() / 10000).round();
+    case 'rule':
+      final value = rule?['value'];
+      if (value is! num) return null;
+      return rule?['type'] == 'percent'
+          ? (tableAdjustNet(detail) * value.toDouble() / 100).round()
+          : (value.toDouble() * 1000).round();
+  }
+  return null;
+}
+
+/// The bill's pre-tax net the server prices a table discount on: the sum of
+/// the accepted rounds' totals, less their tax when prices exclude tax.
+int tableAdjustNet(DineInDetail detail) {
+  var total = 0, tax = 0;
+  for (final round in detail.rounds) {
+    if (round['status'] != 'accepted') continue;
+    final t = round['total_baisas'], x = round['tax_baisas'];
+    total += t is num ? t.toInt() : 0;
+    tax += x is num ? x.toInt() : 0;
+  }
+  return detail.bill?['prices_include_tax'] == true ? total : total - tax;
 }

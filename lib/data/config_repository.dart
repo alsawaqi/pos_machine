@@ -71,6 +71,9 @@ class ConfigRepository {
     // LAUNCH-P5 — the tick list and the shift-end reminder time.
     BusinessBoundary.assertGeneration(_ownerGeneration);
     await _session.saveStaffSettings(_settingsOf(config.data));
+    // LAUNCH-P5 fix order 1 (F4) — product uuids (sold-out approvals).
+    BusinessBoundary.assertGeneration(_ownerGeneration);
+    await _session.saveProductUuids(config.data['products'], replace: true);
   }
 
   static Map<String, dynamic>? _settingsOf(Map<String, dynamic> data) =>
@@ -167,6 +170,11 @@ class ConfigRepository {
       }
       BusinessBoundary.assertGeneration(_ownerGeneration);
       await _session.saveStaffSettings(_settingsOf(res.data));
+      BusinessBoundary.assertGeneration(_ownerGeneration);
+      await _session.saveProductUuids(
+        res.data['products'],
+        deleted: d.products,
+      );
     } catch (_) {
       // Self-heal: drop back to a full sync on any delta failure.
       await fetchAndCache();

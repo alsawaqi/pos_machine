@@ -2558,5 +2558,26 @@
   "trainingEnteredMessage": "Training mode: nothing you do here is saved or sent.",
   "trainingClearCartFirst": "Finish or clear the current order first.",
   "shiftEndReminderBanner": "Your shift should end now. Please close your shift.",
-  "shiftEndReminderDismiss": "OK"
+  "shiftEndReminderDismiss": "OK",
+  "staffReverifyNotice": "Please enter your PIN again.",
+  "payoutNeedsOpenShift": "Open a drawer shift on this till before paying out cash.",
+  "payoutSavedPending": "Pay-out saved. It will be sent when the till is back online.",
+  "shiftClosePayoutsSending": "{count, plural, =1{1 pay-out still sending} other{{count} pay-outs still sending}}",
+  "@shiftClosePayoutsSending": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shiftCloseSendingPayout": "Pay-out {amount} OMR",
+  "@shiftCloseSendingPayout": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftClosePayoutsSendingHint": "The shift closes once every pay-out has reached the server. Keep the till online and tap Close shift again.",
+  "shiftCloseReopenedRetry": "The shift was re-opened on the portal while closing. Tap Close shift again."
 }

@@ -43,6 +43,9 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
   // server's missing list, the close_other gate, and a count already sent.
   List<OrderOutboxRow> _unsent = const [];
   List<String> _missing = const [];
+  // LAUNCH-P5 fix order 1 (F7) — this shift's drawer pay-outs still
+  // sending (amounts in baisas); they block the close like sales.
+  List<int> _payouts = const [];
   ActionAuthorization? _closeOther;
   // LAUNCH-P5 C6 — clock out with the close (default yes).
   bool _clockOutToo = true;
@@ -94,8 +97,11 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
     return shift.reopenCount;
   }
 
-  /// Flush the outbox, then list this shift's paid sales still unsent.
-  Future<({List<OrderOutboxRow> unsent, List<String> orderUuids})>
+  /// Flush the outbox, then list this shift's paid sales and drawer
+  /// pay-outs still unsent.
+  Future<
+    ({List<OrderOutboxRow> unsent, List<String> orderUuids, List<int> payouts})
+  >
   _flushAndCheck(OpenShiftData shift) async {
     final outbox = ref.read(orderSyncRepositoryProvider);
     try {
@@ -103,7 +109,13 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
     } catch (_) {
       // Still unsent rows are listed below.
     }
-    return outbox.paidSalesSince(shift.openedAt);
+    final sales = await outbox.paidSalesSince(shift.openedAt);
+    final payouts = await outbox.unsentPayouts(shift.uuid);
+    return (
+      unsent: sales.unsent,
+      orderUuids: sales.orderUuids,
+      payouts: [for (final p in payouts) p.amountBaisas],
+    );
   }
 
   Future<void> _close() async {
@@ -119,6 +131,7 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
       _error = null;
       _unsent = const [];
       _missing = const [];
+      _payouts = const [];
     });
     try {
       if (widget.forcedHandover && !_forcedPreflightComplete) {
@@ -153,11 +166,14 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
       // server before the drawer can close (owner decision 3).
       final sales = await _flushAndCheck(shift);
       if (!mounted) return;
-      if (sales.unsent.isNotEmpty) {
-        setState(() => _unsent = sales.unsent);
+      if (sales.unsent.isNotEmpty || sales.payouts.isNotEmpty) {
+        setState(() {
+          _unsent = sales.unsent;
+          _payouts = sales.payouts;
+        });
         return;
       }
-      final reopenCount = await _freshReopenCount(shift);
+      var reopenCount = await _freshReopenCount(shift);
       if (!mounted) return;
       final counted = _closingBaisas;
       Map<String, dynamic> event(List<String> orderUuids) =>
@@ -169,27 +185,43 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
             authorization: authorization,
             reopenCount: reopenCount,
           );
-      Future<ShiftCloseResult> send(Map<String, dynamic> close) => ref
+      Future<ShiftCloseResult> push(Map<String, dynamic> close) => ref
           .read(shiftServiceProvider)
           .close(
             shiftUuid: shift.uuid,
             closingCashBaisas: counted,
             event: close,
           );
+      // LAUNCH-P5 fix order 1 (L8) — `shift_reopened`: the portal
+      // re-opened the shift since the count was read. Rebuild the fixed id
+      // with the server's count and send once more.
+      Future<ShiftCloseResult> send(List<String> orderUuids) async {
+        try {
+          return await push(event(orderUuids));
+        } on ShiftReopenedException catch (e) {
+          if (e.reopenCount == reopenCount) rethrow;
+          reopenCount = e.reopenCount;
+          return push(event(orderUuids));
+        }
+      }
+
       ShiftCloseResult result;
       try {
-        result = await send(event(sales.orderUuids));
+        result = await send(sales.orderUuids);
       } on ShiftUnsyncedSalesException {
         // The server is still missing a sale: flush again and retry once
         // (the same fixed id; the server takes the new payload).
         final again = await _flushAndCheck(shift);
         if (!mounted) return;
-        if (again.unsent.isNotEmpty) {
-          setState(() => _unsent = again.unsent);
+        if (again.unsent.isNotEmpty || again.payouts.isNotEmpty) {
+          setState(() {
+            _unsent = again.unsent;
+            _payouts = again.payouts;
+          });
           return;
         }
         try {
-          result = await send(event(again.orderUuids));
+          result = await send(again.orderUuids);
         } on ShiftUnsyncedSalesException catch (e) {
           if (mounted) setState(() => _missing = e.missing);
           return;
@@ -273,6 +305,9 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
         return;
       }
       if (mounted) setState(() => _error = e.message);
+    } on ShiftReopenedException {
+      // Re-opened again while closing: read the count afresh next time.
+      if (mounted) setState(() => _error = l10n.shiftCloseReopenedRetry);
     } on ShiftApprovalRefusedException {
       // The server did not accept the close_other approval: ask again.
       _closeOther?.grant?.forget();
@@ -372,7 +407,9 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
             muted: true),
         const SizedBox(height: 12),
         _amountCard(l10n.shiftCloseCountedDrawerCashLabel, _money(_closingBaisas)),
-        if (_unsent.isNotEmpty || _missing.isNotEmpty) ...[
+        if (_unsent.isNotEmpty ||
+            _missing.isNotEmpty ||
+            _payouts.isNotEmpty) ...[
           const SizedBox(height: 14),
           _blockedCard(l10n),
         ],
@@ -444,6 +481,10 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
           ]
         : [for (final uuid in _missing) l10n.shiftCloseSendingSale(uuid)];
     final count = _unsent.isNotEmpty ? _unsent.length : _missing.length;
+    final payouts = [
+      for (final amount in _payouts)
+        l10n.shiftCloseSendingPayout(_money(amount)),
+    ];
     return Container(
       key: const ValueKey('shift-close-blocked'),
       width: double.infinity,
@@ -456,19 +497,37 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            l10n.shiftCloseSalesSending(count),
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
+          if (count > 0) ...[
+            Text(
+              l10n.shiftCloseSalesSending(count),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          for (final line in lines.take(8))
-            Text(line, style: const TextStyle(color: Colors.white70)),
-          const SizedBox(height: 8),
+            const SizedBox(height: 6),
+            for (final line in lines.take(8))
+              Text(line, style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 8),
+          ],
+          if (payouts.isNotEmpty) ...[
+            Text(
+              l10n.shiftClosePayoutsSending(payouts.length),
+              key: const ValueKey('shift-close-blocked-payouts'),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            for (final line in payouts.take(8))
+              Text(line, style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 8),
+          ],
           Text(
-            l10n.shiftCloseSalesSendingHint,
+            count > 0
+                ? l10n.shiftCloseSalesSendingHint
+                : l10n.shiftClosePayoutsSendingHint,
             style: const TextStyle(color: Colors.white60, fontSize: 12.5),
           ),
         ],

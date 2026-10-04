@@ -63,6 +63,15 @@ class _StaffPinLoginScreenState extends ConsumerState<StaffPinLoginScreen> {
         setState(() => _notice = L10n.of(context).signedOutInactive(signedOut));
         ref.read(signOutNoticeProvider.notifier).clear();
       });
+    } else if (ref.read(staffReverifyNoticeProvider) ||
+        ref.read(sessionServiceProvider).reloginRequired) {
+      // LAUNCH-P5 F1 — the staff token was refused (or an upgraded till
+      // restored a session without one): ask for the PIN again.
+      scheduleMicrotask(() {
+        if (!mounted) return;
+        setState(() => _notice = L10n.of(context).staffReverifyNotice);
+        ref.read(staffReverifyNoticeProvider.notifier).clear();
+      });
     }
   }
 
@@ -256,13 +265,18 @@ class _StaffPinLoginScreenState extends ConsumerState<StaffPinLoginScreen> {
       await _lockout.clear();
       final attendance = ref.read(attendanceServiceProvider);
       final StaffAttendance? state = staff.attendance;
+      // LAUNCH-P5 F1 — the event carries the clocking person's token.
       if (state?.open == true) {
-        await attendance.clockOut(staff.id, attendanceUuid: state?.uuid);
+        await attendance.clockOut(
+          staff.id,
+          attendanceUuid: state?.uuid,
+          staffToken: staff.staffToken,
+        );
         if (mounted) {
           setState(() => _notice = l10n.clockedOutMessage(staff.name));
         }
       } else {
-        await attendance.clockIn(staff.id);
+        await attendance.clockIn(staff.id, staffToken: staff.staffToken);
         if (mounted) {
           setState(() => _notice = l10n.clockedInMessage(staff.name));
         }

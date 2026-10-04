@@ -184,7 +184,7 @@ Map<String, dynamic> buildTableSessionEvent(
     'table_id': int.parse(tableId),
     'queued_offline': queuedOffline,
     'staff_id': ?staffId,
-    'auth_v': authWireVersion,
+    ...authStamp(staffId: staffId),
   },
 };
 
@@ -231,7 +231,7 @@ Map<String, dynamic> buildStandaloneQrPayEvent({
       if (lat != null && lng != null)
         'gps': <String, double>{'lat': lat, 'lng': lng},
       'staff_id': ?staffId,
-      'auth_v': authWireVersion,
+      ...authStamp(staffId: staffId),
     },
   };
 }
@@ -564,14 +564,14 @@ OrderSyncPayload buildOrderSyncPayload(
       'client_event_id': gen(),
       'event_type': 'order.create',
       'client_timestamp': ts,
-      'payload': {'order': order, 'auth_v': authWireVersion},
+      'payload': {'order': order, ...authStamp(staffId: staffId)},
     },
     if (isPendingDelivery)
       {
         'client_event_id': gen(),
         'event_type': 'order.deliver',
         'client_timestamp': ts,
-        'payload': {...deliverEvent, 'auth_v': authWireVersion},
+        'payload': {...deliverEvent, ...authStamp(staffId: staffId)},
       }
     else
       buildOrderPayEvent(
@@ -623,7 +623,7 @@ OrderSyncPayload buildOrderSyncPayload(
         'amount_baisas': leg['baisas'],
         'payment_index': leg['index'],
         'occurred_at': ts,
-        'auth_v': authWireVersion,
+        ...authStamp(staffId: staffId),
       },
     });
   }
@@ -734,7 +734,7 @@ Map<String, dynamic> buildOrderPayEvent(
   // owns redemption. Local dine-in orders use the ordinary debit contract.
   if (suppressDeviceLoyaltyRedeem) payload.remove('loyalty_redeem');
   if (staffId != null) payload['staff_id'] = staffId;
-  payload['auth_v'] = authWireVersion;
+  payload.addAll(authStamp(staffId: staffId));
   return <String, dynamic>{
     'client_event_id': clientEventId ?? gen(),
     'event_type': 'order.pay',
@@ -836,7 +836,7 @@ Map<String, dynamic>? buildOrderHoldEvent(
     'client_event_id': gen(),
     'event_type': 'order.hold',
     'client_timestamp': ts,
-    'payload': {'order': order, 'auth_v': authWireVersion},
+    'payload': {'order': order, ...authStamp(staffId: staffId)},
   };
 }
 
@@ -916,7 +916,7 @@ Map<String, dynamic> buildOrderVoidEvent({
       'staff_id': ?staffId,
       if (cleanBy != null && cleanBy.isNotEmpty) 'authorized_by': cleanBy,
       'authorization': ?authorization,
-      'auth_v': authWireVersion,
+      ...authStamp(staffId: staffId),
     },
   };
 }

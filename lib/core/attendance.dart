@@ -16,6 +16,9 @@ Map<String, dynamic> buildClockEvent({
   required int staffId,
   required DateTime at,
   String Function()? newUuid,
+  // LAUNCH-P5 F1 — the clocking person's token (the PIN-screen clock,
+  // where nobody is logged in); null = the logged-in person's.
+  String? staffToken,
 }) {
   final ts = at.toUtc().toIso8601String();
   return {
@@ -26,7 +29,7 @@ Map<String, dynamic> buildClockEvent({
       'attendance_uuid': attendanceUuid,
       'staff_id': staffId,
       'at': ts,
-      'auth_v': authWireVersion,
+      ...authStamp(staffId: staffId, staffToken: staffToken),
     },
   };
 }
@@ -40,7 +43,10 @@ class AttendanceService {
   final String Function()? newUuid;
 
   /// Clock [staffId] in. Returns the new attendance uuid and time.
-  Future<({String uuid, DateTime at})> clockIn(int staffId) async {
+  Future<({String uuid, DateTime at})> clockIn(
+    int staffId, {
+    String? staffToken,
+  }) async {
     final uuid = (newUuid ?? uuidV4)();
     final at = _clock();
     await _queue(
@@ -51,6 +57,7 @@ class AttendanceService {
         staffId: staffId,
         at: at,
         newUuid: newUuid,
+        staffToken: staffToken,
       ),
       at,
     );
@@ -59,7 +66,11 @@ class AttendanceService {
 
   /// Clock [staffId] out of [attendanceUuid] (null = the open one, unknown
   /// to this device).
-  Future<DateTime> clockOut(int staffId, {String? attendanceUuid}) async {
+  Future<DateTime> clockOut(
+    int staffId, {
+    String? attendanceUuid,
+    String? staffToken,
+  }) async {
     final uuid = attendanceUuid ?? (newUuid ?? uuidV4)();
     final at = _clock();
     await _queue(
@@ -70,6 +81,7 @@ class AttendanceService {
         staffId: staffId,
         at: at,
         newUuid: newUuid,
+        staffToken: staffToken,
       ),
       at,
     );

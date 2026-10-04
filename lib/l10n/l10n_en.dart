@@ -3979,4 +3979,39 @@ class L10nEn extends L10n {
 
   @override
   String get shiftEndReminderDismiss => 'OK';
+
+  @override
+  String get staffReverifyNotice => 'Please enter your PIN again.';
+
+  @override
+  String get payoutNeedsOpenShift =>
+      'Open a drawer shift on this till before paying out cash.';
+
+  @override
+  String get payoutSavedPending =>
+      'Pay-out saved. It will be sent when the till is back online.';
+
+  @override
+  String shiftClosePayoutsSending(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count pay-outs still sending',
+      one: '1 pay-out still sending',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String shiftCloseSendingPayout(String amount) {
+    return 'Pay-out $amount OMR';
+  }
+
+  @override
+  String get shiftClosePayoutsSendingHint =>
+      'The shift closes once every pay-out has reached the server. Keep the till online and tap Close shift again.';
+
+  @override
+  String get shiftCloseReopenedRetry =>
+      'The shift was re-opened on the portal while closing. Tap Close shift again.';
 }

@@ -6604,6 +6604,48 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'OK'**
   String get shiftEndReminderDismiss;
+
+  /// No description provided for @staffReverifyNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'Please enter your PIN again.'**
+  String get staffReverifyNotice;
+
+  /// No description provided for @payoutNeedsOpenShift.
+  ///
+  /// In en, this message translates to:
+  /// **'Open a drawer shift on this till before paying out cash.'**
+  String get payoutNeedsOpenShift;
+
+  /// No description provided for @payoutSavedPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Pay-out saved. It will be sent when the till is back online.'**
+  String get payoutSavedPending;
+
+  /// No description provided for @shiftClosePayoutsSending.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 pay-out still sending} other{{count} pay-outs still sending}}'**
+  String shiftClosePayoutsSending(int count);
+
+  /// No description provided for @shiftCloseSendingPayout.
+  ///
+  /// In en, this message translates to:
+  /// **'Pay-out {amount} OMR'**
+  String shiftCloseSendingPayout(String amount);
+
+  /// No description provided for @shiftClosePayoutsSendingHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The shift closes once every pay-out has reached the server. Keep the till online and tap Close shift again.'**
+  String get shiftClosePayoutsSendingHint;
+
+  /// No description provided for @shiftCloseReopenedRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'The shift was re-opened on the portal while closing. Tap Close shift again.'**
+  String get shiftCloseReopenedRetry;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

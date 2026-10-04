@@ -273,6 +273,39 @@ class OrderSyncRepository {
     return (unsent: unsent, orderUuids: uuids);
   }
 
+  /// LAUNCH-P5 fix order 1 (F7) — the drawer pay-outs of [shiftUuid] still
+  /// waiting in the outbox (unacknowledged, not parked as stuck), with
+  /// their amounts. Like an unsent paid sale, each one blocks the close.
+  Future<List<({OrderOutboxRow row, int amountBaisas})>> unsentPayouts(
+    String shiftUuid,
+  ) async {
+    final out = <({OrderOutboxRow row, int amountBaisas})>[];
+    for (final row in await pendingRows()) {
+      if (row.syncedAt != null || isStuck(row)) continue;
+      List<Map<String, dynamic>> events;
+      try {
+        events = (jsonDecode(row.eventsJson) as List)
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .toList();
+      } catch (_) {
+        continue;
+      }
+      for (final event in events) {
+        final payload = event['payload'];
+        if (event['event_type'] != 'expense.log' ||
+            payload is! Map ||
+            payload['paid_from_drawer'] != true ||
+            payload['shift_uuid'] != shiftUuid) {
+          continue;
+        }
+        final amount = payload['amount_baisas'];
+        out.add((row: row, amountBaisas: amount is num ? amount.toInt() : 0));
+      }
+    }
+    return out;
+  }
+
   Future<List<OrderOutboxRow>> pendingRows() async =>
       _withoutArchivedCopies(await _db.pendingOutbox());
 
@@ -1002,7 +1035,9 @@ class OrderSyncRepository {
           } on ApiException catch (error) {
             if (error.isNetwork ||
                 !error.hasStructuredErrorCode ||
-                !const {404, 409, 422}.contains(error.statusCode) ||
+                !(const {404, 409, 422}.contains(error.statusCode) ||
+                    (error.statusCode == 403 &&
+                        tableApprovalRefusals.contains(error.code))) ||
                 !tableCancelRefusals.contains(error.code)) {
               rethrow;
             }

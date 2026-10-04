@@ -796,7 +796,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
                 'staff_id': staffId(),
                 'wasted_at': at.toIso8601String(),
                 'table_cancellation_request_id': requestId,
-                'auth_v': authWireVersion,
+                ...authStamp(staffId: staffId()),
               },
             },
         },
@@ -912,7 +912,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
           'lines': lines,
           if (gate != null)
             'authorization': gate.block(subjectUuid: seatingKey, ref: id),
-          'auth_v': authWireVersion,
+          ...authStamp(staffId: staffId()),
         },
       };
       gate?.grant?.forget();
@@ -1019,7 +1019,16 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
               'wasted_at': payload['cancelled_at'],
               'note':
                   'cancelled after preparation — table ${payload['table_id']}',
-              'auth_v': authWireVersion,
+              // The cancel_bill maker's token, not whoever is logged in
+              // when the server acknowledges it.
+              ...authStamp(
+                staffId: payload['staff_id'] is int
+                    ? payload['staff_id'] as int
+                    : null,
+                staffToken: payload['staff_token'] is String
+                    ? payload['staff_token'] as String
+                    : null,
+              ),
             },
           },
         );

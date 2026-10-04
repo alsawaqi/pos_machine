@@ -281,6 +281,10 @@ void main() {
       expect(find.byKey(const ValueKey('sold-out-switch')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('sold-out-switch-confirm')));
       await tester.pumpAndSettle();
+      // LAUNCH-P5 fix order 1 — one request id per call, and the block's
+      // ref is that id.
+      final requestId = api.switches.single['client_request_id'];
+      expect(requestId, isA<String>());
       expect(api.switches, [
         {
           'product': 10,
@@ -288,10 +292,11 @@ void main() {
           'staff': 7,
           'authorization': {
             'action': 'sold_out.toggle',
-            'ref': 'product:10',
+            'ref': requestId,
             'mode': 'position',
             'actor_staff_id': 7,
           },
+          'client_request_id': requestId,
         },
       ]);
       expect(controller.isSoldOut(latte), isTrue);
@@ -313,12 +318,14 @@ class _Api implements PosApiService {
     required bool soldOut,
     required int staffId,
     Map<String, dynamic>? authorization,
+    String? clientRequestId,
   }) async {
     switches.add({
       'product': productId,
       'sold_out': soldOut,
       'staff': staffId,
       'authorization': authorization,
+      'client_request_id': clientRequestId,
     });
   }
 

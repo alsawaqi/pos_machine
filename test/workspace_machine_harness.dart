@@ -158,8 +158,11 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
   // LAUNCH-P5 — null keeps the shared default tick list (gates on).
   String? tickList,
   bool allowAllTicks = true,
+  // More preferences to seed (LAUNCH-P5 fix order 1: product uuids).
+  Map<String, Object> extraPrefs = const <String, Object>{},
 }) async {
   SharedPreferences.setMockInitialValues({
+    ...extraPrefs,
     // LAUNCH-P5 — see support/p5_ticks.dart.
     if (tickList != null)
       p5TickListKey: tickList

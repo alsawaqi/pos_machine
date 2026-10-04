@@ -36,12 +36,14 @@ class _Api implements PosApiService {
     required bool soldOut,
     required int staffId,
     Map<String, dynamic>? authorization,
+    String? clientRequestId,
   }) async {
     switches.add({
       'product': productId,
       'sold_out': soldOut,
       'staff': staffId,
       'authorization': authorization,
+      'client_request_id': clientRequestId,
     });
   }
 

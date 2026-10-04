@@ -60,7 +60,11 @@ import '../core/permissions.dart';
 import '../core/training_mode.dart';
 import '../services/api_models.dart' show StaffAttendance;
 import '../services/order_sync_payload.dart'
-    show buildOrderTransferEvent, buildTableRoundLines, tableLineFingerprint;
+    show
+        buildOrderTransferEvent,
+        buildTableRoundLines,
+        tableLineFingerprint,
+        uuidV4;
 import '../services/pos_api_service.dart' show ApiException;
 import '../services/qr_round_printing.dart'
     show QrRoundAutoPrintController, QrRoundPrintNoticeKind;
@@ -1199,8 +1203,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    // Asked right before sending: the server takes an approval for an
+    // online action only within 10 minutes of its own clock.
     final authorization = await _authorizeAction('sold_out.toggle');
     if (authorization == null || !mounted) return;
+    // LAUNCH-P5 fix order 1 (F3/F4) — one proof per request: signed over
+    // the product uuid with this request's client_request_id as its ref.
+    final requestId = uuidV4();
     try {
       await ref
           .read(apiServiceProvider)
@@ -1208,10 +1217,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             productId,
             soldOut: next,
             staffId: staff.id,
-            authorization: authorization.block(ref: 'product:$productId'),
+            clientRequestId: requestId,
+            authorization: authorization.block(
+              subjectUuid: ref
+                  .read(sessionServiceProvider)
+                  .productUuid(productId),
+              ref: requestId,
+            ),
           );
       authorization.grant?.forget();
     } catch (_) {
+      authorization.grant?.forget();
       if (!mounted) return;
       _showPopupMessage(
         title: product.displayName(isAr),
@@ -4441,7 +4457,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     'note': 'cancelled after preparation — table $tableId',
                     'staff_id': request.payload['staff_id'],
                     'wasted_at': cancel['cancelled_at'],
-                    'auth_v': authWireVersion,
+                    ...authStamp(
+                      staffId: request.payload['staff_id'] is int
+                          ? request.payload['staff_id'] as int
+                          : null,
+                    ),
                   },
                 },
                 createdAt: DateTime.parse(cancel['cancelled_at'] as String),
@@ -8209,6 +8229,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         if (gate != null && gate.isApproval)
           'approved_by_staff_id': gate.grant!.approverStaffId,
         'gate': ?gate,
+        // LAUNCH-P5 F4 — what the server prices the rule at (the proof's
+        // amount); removed with the gate before the intent is sent.
+        if (gate != null)
+          'gate_rule_amount': {
+            'type': d.amountType,
+            'value': d.amountType == 'percent' ? d.percent : d.fixedAmount,
+          },
       });
       return;
     }

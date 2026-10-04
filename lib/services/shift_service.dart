@@ -29,6 +29,16 @@ class ShiftApprovalRefusedException implements Exception {
   String toString() => code;
 }
 
+/// LAUNCH-P5 fix order 1 (L8) — the close went under an old fixed id: the
+/// portal re-opened the shift since. Retryable under the id rebuilt with
+/// the server's current [reopenCount].
+class ShiftReopenedException implements Exception {
+  ShiftReopenedException(this.reopenCount);
+  final int reopenCount;
+  @override
+  String toString() => 'shift_reopened: $reopenCount';
+}
+
 /// Opens / closes a cash-drawer shift through the device sync pipeline
 /// (`/device/sync/push`). Online-required: open and close both need the server
 /// (close computes expected cash from the device's sales). The events are
@@ -103,6 +113,25 @@ class ShiftService {
     ];
   }
 
+  /// The `shift_reopened` refusal's current re-open count (at the top of
+  /// the result or under `details`); null when it is another refusal.
+  static int? reopenedCount(Map<String, dynamic> result) {
+    final details = result['details'];
+    final isReopened = [
+      result['code'],
+      result['refusal_code'],
+      result['error'],
+      if (details is Map) details['code'],
+    ].any((v) => v == 'shift_reopened');
+    if (!isReopened) return null;
+    final raw =
+        result['reopen_count'] ??
+        (details is Map ? details['reopen_count'] : null);
+    if (raw is num && raw >= 0) return raw.toInt();
+    if (raw is String) return int.tryParse(raw);
+    return null;
+  }
+
   /// Extract the single event's settled result. A `processed` or `duplicate`
   /// ACK is success (a re-push echoes the original result); a `failed` ACK
   /// raises [ShiftException] carrying the server error.
@@ -121,6 +150,8 @@ class ShiftService {
       if (code == 'approval_required' || code == 'approval_invalid') {
         throw ShiftApprovalRefusedException(code as String);
       }
+      final reopened = reopenedCount(result);
+      if (reopened != null) throw ShiftReopenedException(reopened);
       throw ShiftException(
         (result['error'] ?? 'The server rejected the shift.').toString(),
       );

@@ -4013,4 +4013,41 @@ class L10nAr extends L10n {
 
   @override
   String get shiftEndReminderDismiss => 'حسنًا';
+
+  @override
+  String get staffReverifyNotice => 'يرجى إدخال رمز PIN مرة أخرى.';
+
+  @override
+  String get payoutNeedsOpenShift =>
+      'افتح وردية درج على هذا الجهاز قبل صرف أي نقد.';
+
+  @override
+  String get payoutSavedPending =>
+      'تم حفظ المبلغ المصروف. سيُرسل عند عودة الجهاز إلى الاتصال.';
+
+  @override
+  String shiftClosePayoutsSending(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count مبلغًا مصروفًا ما زال قيد الإرسال',
+      few: '$count مبالغ مصروفة ما زالت قيد الإرسال',
+      two: 'مبلغان مصروفان ما زالا قيد الإرسال',
+      one: 'مبلغ مصروف واحد ما زال قيد الإرسال',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String shiftCloseSendingPayout(String amount) {
+    return 'مبلغ مصروف $amount ر.ع.';
+  }
+
+  @override
+  String get shiftClosePayoutsSendingHint =>
+      'تُغلق الوردية بعد وصول كل المبالغ المصروفة إلى الخادم. أبقِ الجهاز متصلًا واضغط إغلاق الوردية مرة أخرى.';
+
+  @override
+  String get shiftCloseReopenedRetry =>
+      'أُعيد فتح الوردية من البوابة أثناء الإغلاق. اضغط إغلاق الوردية مرة أخرى.';
 }

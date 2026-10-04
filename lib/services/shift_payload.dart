@@ -71,7 +71,7 @@ Map<String, dynamic> buildShiftOpenEvent({
       // GET /device/shift/current?staff_id), close attributed by staff.
       // Builds that predate this flag keep pure per-device semantics.
       'shared_shift': true,
-      'auth_v': authWireVersion,
+      ...authStamp(staffId: staffId),
     },
   };
 }
@@ -118,7 +118,7 @@ Map<String, dynamic> buildShiftCloseEvent({
       'closed_by_staff_id': ?closedByStaffId,
       'order_uuids': orderUuids,
       'authorization': ?authorization,
-      'auth_v': authWireVersion,
+      ...authStamp(staffId: closedByStaffId),
     },
   };
 }

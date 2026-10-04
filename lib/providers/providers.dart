@@ -17,6 +17,7 @@ import '../core/manager_auth.dart' show ApprovalEngine;
 import '../core/permissions.dart';
 import '../core/pin_lockout.dart';
 import '../core/sentry.dart';
+import '../core/training_mode.dart';
 import '../data/config_repository.dart';
 import '../data/table_shadow_repository.dart';
 import '../data/table_sync_coordinator.dart';
@@ -178,7 +179,8 @@ class SessionController extends Notifier<SessionState> {
   Future<void> saveStaff(StaffSessionData staff) async {
     _staffSessionGeneration++;
     ref.invalidate(shiftReconciliationProvider);
-    await _svc.saveStaff(staff);
+    // A login: the person's staff token (LAUNCH-P5 F1) is stored with it.
+    await _svc.saveStaff(staff, login: true);
     state = _svc.snapshot();
     // Phase C5 — crashes attribute to the signed-in cashier (no-op w/o DSN).
     await setSentryStaff(
@@ -196,6 +198,20 @@ class SessionController extends Notifier<SessionState> {
     if (staff == null) return;
     await _svc.saveStaff(staff.withAttendance(attendance));
     state = _svc.snapshot();
+  }
+
+  /// LAUNCH-P5 F1 — the server did not accept the logged-in person's
+  /// staff token (403 `staff_unverified`): log out and ask for the PIN
+  /// again. The open shift and every queued event stay.
+  Future<void> staffUnverified() async {
+    if (_svc.staff == null) return;
+    ref.read(staffReverifyNoticeProvider.notifier).show();
+    try {
+      if (ref.read(trainingModeProvider)) {
+        await ref.read(trainingModeProvider.notifier).exit();
+      }
+    } catch (_) {}
+    await logoutStaff();
   }
 
   Future<void> logoutStaff() async {
@@ -301,6 +317,12 @@ final apiServiceProvider = Provider<PosApiService>((ref) {
         () => ref.read(sessionControllerProvider.notifier).clearForRePair(),
       );
     },
+    // LAUNCH-P5 F1 — 403 staff_unverified: log out, ask for the PIN again.
+    onStaffUnverified: () {
+      Future.microtask(
+        () => ref.read(sessionControllerProvider.notifier).staffUnverified(),
+      );
+    },
   );
 });
 
@@ -396,6 +418,22 @@ class SignOutNotice extends Notifier<String?> {
   void clear() => state = null;
 }
 
+/// LAUNCH-P5 F1 — the till signed the person out because the server did
+/// not accept their staff token, or a restored session had none: the PIN
+/// screen asks for the PIN again (shown once).
+final staffReverifyNoticeProvider = NotifierProvider<StaffReverifyNotice, bool>(
+  StaffReverifyNotice.new,
+);
+
+class StaffReverifyNotice extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void show() => state = true;
+
+  void clear() => state = false;
+}
+
 /// Opens / closes cash-drawer shifts through the device sync pipeline.
 final shiftServiceProvider = Provider<ShiftService>(
   (ref) => ShiftService(ref.read(apiServiceProvider)),
@@ -403,7 +441,12 @@ final shiftServiceProvider = Provider<ShiftService>(
 
 /// Logs expenses / raises restock requests through the device sync pipeline.
 final expenseRestockServiceProvider = Provider<ExpenseRestockService>(
-  (ref) => ExpenseRestockService(ref.read(apiServiceProvider)),
+  (ref) => ExpenseRestockService(
+    ref.read(apiServiceProvider),
+    // LAUNCH-P5 F7 — an unclear pay-out stays in the outbox.
+    queue: (key, event) =>
+        ref.read(orderSyncRepositoryProvider).enqueueEvent(key, event),
+  ),
 );
 
 final configRepositoryProvider = Provider<ConfigRepository>(

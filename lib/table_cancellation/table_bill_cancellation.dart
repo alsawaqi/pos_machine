@@ -7,7 +7,14 @@ const tableCancelRefusals = {
   'nothing_to_cancel',
   'bill_terminal',
   'cancel_request_conflict',
+  // LAUNCH-P5 (fix order 1, F3) — the server did not accept the approval
+  // (none, refused, or older than 10 minutes by the time it arrived). The
+  // request wrote nothing: it is final, and the next try asks again.
+  ...tableApprovalRefusals,
 };
+
+/// LAUNCH-P5 — 403 refusals of an online table action's authorization.
+const tableApprovalRefusals = {'approval_required', 'approval_invalid'};
 String tableCancelText(String code, bool ar) {
   const text = {
     'bill_changed': [
@@ -33,6 +40,14 @@ String tableCancelText(String code, bool ar) {
     'cancel_request_conflict': [
       'This saved cancellation conflicts with the server record. Ask a manager to review it.',
       'يتعارض الإلغاء المحفوظ مع سجل الخادم. اطلب من المدير مراجعته.',
+    ],
+    'approval_required': [
+      'A manager must approve this cancellation. Try again and approve it.',
+      'يجب أن يوافق المدير على هذا الإلغاء. حاول مجدداً ووافق عليه.',
+    ],
+    'approval_invalid': [
+      'The approval was not accepted or has expired. Try again and approve it again.',
+      'لم تُقبل الموافقة أو انتهت صلاحيتها. حاول مجدداً ووافق عليها من جديد.',
     ],
     'cancel_offline': [
       'Connect to the server before cancelling a table bill.',

@@ -335,7 +335,11 @@ class CheckoutAttempt {
             'staff_id',
             'authorizations',
             'auth_v',
+            // LAUNCH-P5 F1 — the maker's signed staff token.
+            'staff_token',
           }).isNotEmpty ||
+          (payload.containsKey('staff_token') &&
+              payload['staff_token'] is! String) ||
           (payload.containsKey('authorizations') &&
               payload['authorizations'] is! List) ||
           (payload.containsKey('staff_id') && payload['staff_id'] is! int) ||

@@ -94,6 +94,12 @@ class _FakeSession implements SessionService {
   // LAUNCH-P5 — the tick list / reminder keys of the settings block.
   @override
   Future<void> saveStaffSettings(Map<String, dynamic>? settings) async {}
+  @override
+  Future<void> saveProductUuids(
+    Object? products, {
+    bool replace = false,
+    List<int> deleted = const <int>[],
+  }) async {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError(

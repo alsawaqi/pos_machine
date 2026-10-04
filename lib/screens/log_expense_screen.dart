@@ -78,6 +78,13 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
     }
     final staffId = ref.read(sessionControllerProvider).staff?.id;
     final note = _noteController.text.trim();
+    // LAUNCH-P5 fix order 1 (F6) — a pay-out comes out of this till's open
+    // drawer shift; with none open there is no drawer to pay from.
+    final shift = ref.read(sessionControllerProvider).openShift;
+    if (shift == null) {
+      setState(() => _error = l10n.payoutNeedsOpenShift);
+      return;
+    }
     // LAUNCH-P5 C5 — a pay-out from the drawer: the payout tick, or an
     // approver's PIN.
     final gate = await authorizeAction(
@@ -98,17 +105,24 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
       _error = null;
     });
     try {
-      await ref.read(expenseRestockServiceProvider).logExpense(
+      final recorded = await ref
+          .read(expenseRestockServiceProvider)
+          .logExpense(
             category: _category,
             amountBaisas: _amountBaisas,
             staffId: staffId,
             note: note.isEmpty ? null : note,
             paidFromDrawer: true,
             authorization: authorization,
+            shiftUuid: shift.uuid,
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.expenseRecordedMessage)),
+          SnackBar(
+            content: Text(
+              recorded ? l10n.expenseRecordedMessage : l10n.payoutSavedPending,
+            ),
+          ),
         );
         Navigator.of(context).pop();
       }

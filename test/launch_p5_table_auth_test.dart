@@ -88,6 +88,8 @@ void main() {
       expect(block['approver_staff_id'], 42);
       expect(block['subject_uuid'], seating);
       expect(block['amount_baisas'], 300);
+      // LAUNCH-P5 fix order 1 (F3) — one proof per request: ref = its id.
+      expect(block['ref'], request['client_request_id']);
       expect(
         block['proof'],
         approvalProof(
@@ -99,6 +101,7 @@ void main() {
             approvedAt: vector['approved_at'] as String,
             subjectUuid: seating,
             amountBaisas: 300,
+            ref: request['client_request_id'] as String,
           ),
         ),
       );

@@ -89,6 +89,7 @@ class StaffSessionData {
     this.branchId,
     this.branchIds = const <int>[],
     this.attendance,
+    this.staffToken,
   });
 
   final int id;
@@ -103,6 +104,11 @@ class StaffSessionData {
   /// LAUNCH-P5 C6 — the attendance state; null from an older server.
   final StaffAttendance? attendance;
 
+  /// LAUNCH-P5 fix order 1 (F1) — the login reply's signed staff token
+  /// (opaque). Only a fresh login carries it; it is kept in secure storage
+  /// by [SessionService] and never written by [toJson].
+  final String? staffToken;
+
   factory StaffSessionData.fromJson(Map<String, dynamic> json) =>
       StaffSessionData(
         id: (json['id'] as num).toInt(),
@@ -115,6 +121,9 @@ class StaffSessionData {
             if (id is num) id.toInt(),
         ],
         attendance: StaffAttendance.fromJson(json['attendance']),
+        staffToken: json['staff_token'] is String
+            ? json['staff_token'] as String
+            : null,
       );
 
   Map<String, dynamic> toJson() => {
@@ -136,10 +145,12 @@ class StaffSessionData {
         branchId: branchId,
         branchIds: branchIds,
         attendance: attendance,
+        staffToken: staffToken,
       );
 
+  /// A stored session never carries the token (prefs are not secret).
   factory StaffSessionData.fromStored(Map<String, dynamic> json) =>
-      StaffSessionData.fromJson(json);
+      StaffSessionData.fromJson({...json}..remove('staff_token'));
 
   /// A manager may perform manager-only POS actions.
   bool get isManager => (position ?? '').toLowerCase().contains('manager');

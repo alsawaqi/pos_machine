@@ -1,3 +1,5 @@
+import '../table_cancellation/table_bill_cancellation.dart'
+    show tableApprovalRefusals;
 import '../services/pos_api_service.dart';
 import '../qr_quick/qr_quick_models.dart';
 import 'dine_in_models.dart';
@@ -41,7 +43,11 @@ class ApiDineInGateway implements DineInGateway, DineInContextGuard {
         refused: adjustment
             ? !e.isNetwork &&
                   e.hasStructuredErrorCode &&
-                  const {404, 409, 422}.contains(e.statusCode)
+                  (const {404, 409, 422}.contains(e.statusCode) ||
+                      // LAUNCH-P5 F3 — a refused (or expired) approval
+                      // wrote nothing: final, and the next try asks again.
+                      (e.statusCode == 403 &&
+                          tableApprovalRefusals.contains(e.code)))
             : !e.isNetwork &&
                   (e.statusCode ?? 0) >= 400 &&
                   (e.statusCode ?? 0) < 500,

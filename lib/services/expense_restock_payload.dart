@@ -47,6 +47,9 @@ Map<String, dynamic> buildExpenseLogEvent({
   // the shift's expected cash) and its `payout` authorization block.
   bool paidFromDrawer = false,
   Map<String, dynamic>? authorization,
+  // LAUNCH-P5 fix order 1 (F6) — the device's open drawer shift the cash
+  // left (a pay-out only).
+  String? shiftUuid,
 }) {
   final gen = newUuid ?? uuidV4;
   final ts = (now ?? DateTime.now()).toUtc().toIso8601String();
@@ -54,6 +57,8 @@ Map<String, dynamic> buildExpenseLogEvent({
     'category': category,
     'amount_baisas': amountBaisas,
     if (paidFromDrawer) 'paid_from_drawer': true,
+    if (paidFromDrawer && shiftUuid != null && shiftUuid.isNotEmpty)
+      'shift_uuid': shiftUuid,
     'authorization': ?authorization,
   };
   if (staffId != null) payload['staff_id'] = staffId;
