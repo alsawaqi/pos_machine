@@ -1390,32 +1390,6 @@ class L10nAr extends L10n {
       'تم إرسال إجمالي الطلب إلى جهاز الدفع. يرجى اتباع تعليمات الجهاز بينما ننتظر الرد النهائي.';
 
   @override
-  String get managerAuthRegisterTitle => 'تسجيل بصمة المدير';
-
-  @override
-  String get managerAuthRegisterSubtitle => 'إعداد تفويض المدير';
-
-  @override
-  String get managerAuthRegisterDescription =>
-      'ضع بصمة المدير على مستشعر الجهاز.';
-
-  @override
-  String get managerAuthApprovalRequiredTitle => 'موافقة المدير مطلوبة';
-
-  @override
-  String get managerAuthCancelOrderSubtitle => 'إلغاء طلب مكتمل';
-
-  @override
-  String get managerAuthCancelOrderDescription =>
-      'ضع بصمتك للسماح بإلغاء الطلب.';
-
-  @override
-  String get managerAuthDefaultSubtitle => 'موافقة المدير';
-
-  @override
-  String get managerAuthDefaultDescription => 'ضع بصمة المدير للموافقة.';
-
-  @override
   String get posCompNothingTitle => 'لا توجد أصناف للضيافة';
 
   @override
@@ -1483,32 +1457,7 @@ class L10nAr extends L10n {
   }
 
   @override
-  String get posManagerRegisterFingerprintTitle => 'تسجيل بصمة المدير';
-
-  @override
   String get posManagerApprovalRequiredTitle => 'موافقة المدير مطلوبة';
-
-  @override
-  String get posManagerFingerprintNotApprovedMessage =>
-      'لم تتم الموافقة ببصمة المدير.';
-
-  @override
-  String get posManagerRegisterSensorMessage =>
-      'ضع إصبع المدير على المستشعر لتفعيل إلغاء الطلبات.';
-
-  @override
-  String get posManagerRegisteredTitle => 'تم تسجيل المدير';
-
-  @override
-  String get posManagerRegistrationNotCompletedTitle => 'لم يكتمل التسجيل';
-
-  @override
-  String get posManagerRegisteredMessage =>
-      'موافقة بصمة المدير جاهزة لإلغاء الطلبات.';
-
-  @override
-  String get posManagerNotRegisteredMessage =>
-      'لم تُسجَّل بصمة المدير على هذا الجهاز.';
 
   @override
   String get posPayTenderedTooLowTitle => 'المبلغ المستلم غير كافٍ';
@@ -1611,9 +1560,6 @@ class L10nAr extends L10n {
   @override
   String get posCancelReqRegisterManagerMessage =>
       'سجّل بصمة المدير مرة واحدة قبل إلغاء هذا الطلب المكتمل.';
-
-  @override
-  String get posCancelReqManagerRequiredTitle => 'بصمة المدير مطلوبة';
 
   @override
   String get posCancelReqUnlockMessage => 'ضع بصمة المدير لفتح خاصية الإلغاء.';
@@ -2562,19 +2508,6 @@ class L10nAr extends L10n {
       'سيتم أرشفة المدفوعات المكتملة هنا ليتمكن الموظفون من مراجعتها أو إعادة طباعة الإيصالات.';
 
   @override
-  String get posFingerprintBannerTitle => 'موافقة المدير على الإلغاء';
-
-  @override
-  String get posFingerprintBannerMessage =>
-      'سجّل مرة واحدة، ثم استخدم الموافقة بالبصمة قبل فتح إلغاء الطلبات المكتملة.';
-
-  @override
-  String get posFingerprintRegisterManager => 'تسجيل المدير';
-
-  @override
-  String get posFingerprintWaiting => 'في انتظار البصمة';
-
-  @override
   String posStorageHeldRef(String ref) {
     return 'مرجع $ref';
   }
@@ -2670,7 +2603,7 @@ class L10nAr extends L10n {
 
   @override
   String get posManagerPinOffline =>
-      'التحقق من الرمز يتطلب اتصالًا بالخادم — استخدم البصمة بدلًا منه.';
+      'لم يُتعرّف على الرمز على هذا الجهاز. المعتمِد الذي لم يوافق متصلًا منذ التحديث يحتاج إلى اتصال مرة واحدة.';
 
   @override
   String get posManagerPinVerify => 'تحقق';
@@ -3939,4 +3872,145 @@ class L10nAr extends L10n {
   String posComboAdd(String price) {
     return 'إضافة الوجبة · $price';
   }
+
+  @override
+  String approvalLockedCountdown(String time) {
+    return 'محاولات خاطئة كثيرة. حاول مجددًا بعد $time.';
+  }
+
+  @override
+  String get approvalCheckFailed => 'تعذّر التحقق من الموافقة. حاول مجددًا.';
+
+  @override
+  String get approvalNotGiven => 'لم تتم الموافقة.';
+
+  @override
+  String get payoutApprovalSubtitle => 'صرف نقد من الدرج يحتاج إلى موافقة.';
+
+  @override
+  String discountAboveMaxApproval(int max) {
+    return 'هذا الخصم أعلى من حدّك البالغ $max%. يجب أن يوافق عليه معتمِد.';
+  }
+
+  @override
+  String get shiftCloseNeedsInternet =>
+      'إغلاق الوردية يحتاج إلى الإنترنت. اتصل وحاول مجددًا.';
+
+  @override
+  String shiftCloseSalesSending(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count مبيعة ما زالت قيد الإرسال',
+      few: '$count مبيعات ما زالت قيد الإرسال',
+      two: 'مبيعتان ما زالتا قيد الإرسال',
+      one: 'مبيعة واحدة ما زالت قيد الإرسال',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String shiftCloseSendingSale(String reference) {
+    return 'المبيعة $reference';
+  }
+
+  @override
+  String get shiftCloseSalesSendingHint =>
+      'تُغلق الوردية بعد وصول كل المبيعات إلى الخادم. أبقِ الجهاز متصلًا واضغط إغلاق الوردية مرة أخرى.';
+
+  @override
+  String get shiftCloseClockOutToo => 'تسجيل الانصراف أيضًا';
+
+  @override
+  String get shiftCloseOtherApproval => 'إغلاق درج كاشير آخر يحتاج إلى موافقة.';
+
+  @override
+  String get trainingCashOnly => 'وضع التدريب: نقدًا فقط.';
+
+  @override
+  String get trainingNotAvailable => 'غير متاح في وضع التدريب.';
+
+  @override
+  String get pinLoginManagerUnlock => 'فتح القفل بواسطة المدير';
+
+  @override
+  String get pinLoginManagerUnlockHint => 'رمز المدير يزيل قفل هذا الجهاز';
+
+  @override
+  String pinLoginUnlockedBy(String name) {
+    return 'تم فتح القفل بواسطة $name. أدخل رمزك.';
+  }
+
+  @override
+  String get pinLoginUnlockOffline => 'فتح القفل يحتاج إلى اتصال.';
+
+  @override
+  String signedOutInactive(String name) {
+    return 'تم تسجيل خروج $name: هذا الحساب لم يعد نشطًا.';
+  }
+
+  @override
+  String get clockInOutButton => 'تسجيل الحضور / الانصراف';
+
+  @override
+  String get clockInOutTitle => 'تسجيل الحضور / الانصراف';
+
+  @override
+  String get clockInOutHint => 'رمزك';
+
+  @override
+  String get clockInOutConfirm => 'متابعة';
+
+  @override
+  String clockedInMessage(String name) {
+    return 'سجّل $name الحضور.';
+  }
+
+  @override
+  String clockedOutMessage(String name) {
+    return 'سجّل $name الانصراف.';
+  }
+
+  @override
+  String get clockInFailed => 'تعذّر حفظ التسجيل. حاول مجددًا.';
+
+  @override
+  String clockInTitle(String name) {
+    return 'أهلًا $name';
+  }
+
+  @override
+  String get clockInSubtitle => 'سجّل الحضور لتبدأ البيع.';
+
+  @override
+  String get clockInButton => 'تسجيل الحضور';
+
+  @override
+  String get clockOutButton => 'تسجيل الانصراف';
+
+  @override
+  String get trainingBanner => 'تدريب';
+
+  @override
+  String get trainingEnter => 'وضع التدريب';
+
+  @override
+  String get trainingExit => 'الخروج من التدريب';
+
+  @override
+  String get trainingExitConfirm => 'سيتم حذف كل ما تم في وضع التدريب.';
+
+  @override
+  String get trainingEnteredMessage =>
+      'وضع التدريب: لا يُحفظ ولا يُرسل أي شيء تفعله هنا.';
+
+  @override
+  String get trainingClearCartFirst => 'أكمل الطلب الحالي أو امسحه أولًا.';
+
+  @override
+  String get shiftEndReminderBanner =>
+      'حان وقت انتهاء ورديتك. يُرجى إغلاق الوردية.';
+
+  @override
+  String get shiftEndReminderDismiss => 'حسنًا';
 }

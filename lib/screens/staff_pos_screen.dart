@@ -54,10 +54,14 @@ import '../services/table_shadow_service.dart';
 import '../services/audience_service.dart' show AudienceService;
 import '../services/display_strings.dart';
 import '../services/local_order_storage_service.dart';
-import '../services/manager_authorization_service.dart';
+import '../core/auth_wire.dart';
+import '../core/manager_auth.dart';
+import '../core/permissions.dart';
+import '../core/training_mode.dart';
+import '../services/api_models.dart' show StaffAttendance;
 import '../services/order_sync_payload.dart'
     show buildOrderTransferEvent, buildTableRoundLines, tableLineFingerprint;
-import '../services/pos_api_service.dart' show ApiException, PosApiService;
+import '../services/pos_api_service.dart' show ApiException;
 import '../services/qr_round_printing.dart'
     show QrRoundAutoPrintController, QrRoundPrintNoticeKind;
 import '../services/shift_summary.dart';
@@ -992,8 +996,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   late final ValueNotifier<DateTime> _clockNow;
   late final ScrollController _currentOrderScrollController;
   late final QrRoundAutoPrintController _qrRoundAutoPrintController;
-  final ManagerAuthorizationService _managerAuthorization =
-      ManagerAuthorizationService();
   Timer? _clockTimer;
   Timer? _configPollTimer;
   // LAUNCH-P4 C6 — the branch sold-out poll (60 s while online + on resume).
@@ -1165,10 +1167,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     controller.addProduct(product);
   }
 
-  /// LAUNCH-P4 C6 — the sold-out switch (long-press on a product). Managers
-  /// and supervisors switch directly; anyone else needs the manager-approval
-  /// PIN. The server writes the branch row (every channel) and audits it;
-  /// the till then reflects it at once.
+  /// LAUNCH-P4 C6 — the sold-out switch (long-press on a product).
+  /// LAUNCH-P5 C1 — a position with the `sold_out.toggle` tick switches
+  /// directly; anyone else needs an approver's PIN. The request carries the
+  /// authorization block. The server writes the branch row (every channel)
+  /// and audits it; the till then reflects it at once.
   Future<void> _openSoldOutSwitch(Product product) async {
     final productId = int.tryParse(product.id);
     final staff = ref.read(sessionServiceProvider).staff;
@@ -1196,19 +1199,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    int? approverId;
-    if (!controller.positionMaySetSoldOut(staff.position)) {
-      final approver = await showDialog<LoyaltyApprover>(
-        context: context,
-        barrierDismissible: true,
-        builder: (_) => _ManagerPinDialog(
-          api: ref.read(apiServiceProvider),
-          identityRequired: true,
-        ),
-      );
-      if (approver == null || !mounted) return;
-      approverId = approver.id;
-    }
+    final authorization = await _authorizeAction('sold_out.toggle');
+    if (authorization == null || !mounted) return;
     try {
       await ref
           .read(apiServiceProvider)
@@ -1216,8 +1208,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             productId,
             soldOut: next,
             staffId: staff.id,
-            approverStaffId: approverId,
+            authorization: authorization.block(ref: 'product:$productId'),
           );
+      authorization.grant?.forget();
     } catch (_) {
       if (!mounted) return;
       _showPopupMessage(
@@ -1510,6 +1503,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         unawaited(ref.read(appDatabaseProvider).consumeProductShelfStock(sold));
     controller.onOrderHeld = _handleOrderHeld;
     controller.onOrderVoided = _handleOrderVoided;
+    // LAUNCH-P5 C3 — who rings the sale, and their tick list, for the
+    // authorization blocks signed at completion.
+    controller.staffPermissions = () => currentStaffPermissions(ref);
+    controller.currentActor = () {
+      final staff = ref.read(sessionServiceProvider).staff;
+      return (id: staff?.id, name: staff?.name ?? '');
+    };
     controller.onCompClearedAfterCartEdit = _handleCompClearedAfterCartEdit;
     controller.onDraftRedemptionCleared = (message) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1531,7 +1531,6 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // messages keep the language they were authored in until the next action.
     _controllerL10n = ref.read(l10nProvider);
     controller.localize = () => _controllerL10n = ref.read(l10nProvider);
-    _managerAuthorization.localize = () => ref.read(l10nProvider);
     // Keep the printing toggles in sync with Settings.
     final settings = ref.read(settingsControllerProvider);
     controller.printReceipts = settings.printReceipts;
@@ -1966,7 +1965,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
-    final event = buildOrderTransferEvent(
+    final built = buildOrderTransferEvent(
       draft,
       orderUuid: draft.serverOrderUuid,
       targetDeviceId: ((device['id'] as num?) ?? 0).toInt(),
@@ -1974,6 +1973,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       tableId: int.tryParse(draft.diningTableId),
       joinedTableIds: controller.joinedTableIdsFor(draft.diningTableId),
     );
+    final event = built == null ? null : withAuthV(built);
     if (event == null) {
       // Demo-only cart (no server products) — nothing referable to send.
       _showPopupMessage(
@@ -2243,6 +2243,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     int? orderNumber,
     String? reason,
     int? voidReasonId,
+    ActionAuthorization? authorization,
   }) {
     final staffId = ref.read(sessionServiceProvider).staff?.id;
     unawaited(
@@ -2250,8 +2251,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         () => ref
             .read(orderSyncRepositoryProvider)
             .resolveTableBillUuid(orderUuid)
-            .then(
-              (billUuid) => ref
+            .then((billUuid) {
+              // LAUNCH-P5 C3 — the voider, the real approver's name (never
+              // the fixed word "Manager") and the signed block.
+              final block = authorization?.block(subjectUuid: billUuid);
+              authorization?.grant?.forget();
+              return ref
                   .read(orderSyncRepositoryProvider)
                   .enqueueVoid(
                     billUuid,
@@ -2259,9 +2264,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     reason: reason,
                     voidReasonId: voidReasonId,
                     staffId: staffId,
-                    authorizedBy: 'Manager',
-                  ),
-            )
+                    authorizedBy: authorization?.authorizedByName,
+                    authorization: block,
+                  );
+            })
             .catchError((_) {}),
       ),
     );
@@ -2368,15 +2374,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       if (!replaceExisting) return;
     }
 
-    // P-F1 — fingerprint with manager-PIN fallback.
-    final authorized = await _authorizeManager(
+    // LAUNCH-P5 C1 — the `comp` tick, or an approver's PIN.
+    final authorization = await _authorizeAction(
+      'comp',
       subtitle: l10n.posCompManagerApprovalMessage,
     );
     if (!mounted) return;
-    if (!authorized) {
+    if (authorization == null) {
       _showPopupMessage(
         title: l10n.posCompLockedTitle,
-        message: l10n.posManagerFingerprintNotApprovedMessage,
+        message: l10n.approvalNotGiven,
         tone: FeedbackTone.warning,
       );
       return;
@@ -2538,14 +2545,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         },
       ),
     );
-    if (!mounted || applied != true || reason == null) return;
+    if (!mounted || applied != true || reason == null) {
+      authorization.grant?.forget();
+      return;
+    }
 
     if (serverBill != null) {
       picked?.call({
         'kind': 'comp',
         'mode': 'apply',
         'comp_reason_id': reason!.id,
-        'authorized_by': 'Manager',
+        'authorized_by': authorization.authorizedByName,
+        if (authorization.isApproval)
+          'approved_by_staff_id': authorization.grant!.approverStaffId,
+        // Signed by the dine-in controller over the request's seating_key.
+        'gate': authorization,
         'target': selection.lineIndex == null
             ? 'bill'
             : {
@@ -2565,6 +2579,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         qty: selection.normalizedQty(controller.cart),
       ),
     );
+    // Signed into order.create when the sale completes.
+    controller.recordOrderAuthorization('comp', authorization);
     _showPopupMessage(
       title: l10n.posCompAppliedTitle,
       message: l10n.posCompAppliedMessage(
@@ -2704,6 +2720,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // LAUNCH-P5 C7 — the controller follows training mode.
+    controller.training = ref.watch(trainingModeProvider);
     final qrRoundPrintPollingUnavailable = ref.watch(
       qrRoundPrintPollingUnavailableProvider,
     );
@@ -3117,7 +3135,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   ) async {
     Map<String, dynamic>? picked;
     if (kind == 'loyalty') {
-      return pickTableLoyalty(
+      // LAUNCH-P5 C1 — the loyalty.redeem tick, or an approver's PIN.
+      ActionAuthorization? gate;
+      final intent = await pickTableLoyalty(
         context,
         bill: detail.bill!,
         rules: [
@@ -3131,16 +3151,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             },
         ],
         customer: ref.read(apiServiceProvider).tableLoyaltyCustomer,
-        // The registered fingerprint stores only a boolean, never a staff id.
-        // Always fall through to the existing PIN control for this flow.
-        approve: () => showDialog<LoyaltyApprover>(
-          context: context,
-          builder: (_) => _ManagerPinDialog(
-            api: ref.read(apiServiceProvider),
-            identityRequired: true,
-          ),
-        ),
+        approve: () async {
+          gate = await _authorizeAction('loyalty.redeem');
+          final allowed = gate;
+          if (allowed == null) return null;
+          return (
+            id: allowed.authorizerStaffId ?? 0,
+            name: allowed.authorizedByName,
+          );
+        },
       );
+      if (intent == null || gate == null || intent['mode'] != 'redeem') {
+        gate?.grant?.forget();
+        return intent;
+      }
+      return {...intent, 'gate': gate};
     }
     if (kind == 'discount') {
       await _openDiscountDialog(
@@ -3884,28 +3909,41 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final sentReduction = math.max(0, reduction - math.max(0, unsent)).toInt();
     if (sentReduction == 0) return true;
     if (!mounted) return false;
+    // LAUNCH-P5 C1 — the table.cancel_line tick, or an approver's PIN.
+    ActionAuthorization? gate;
     final approval = await requestSentLineCancellation(
       context,
-      authorizeManager: () =>
-          _authorizeManager(subtitle: L10n.of(context).tableCancelSentApproval),
+      authorizeManager: () async {
+        gate = await _authorizeAction(
+          'table.cancel_line',
+          subtitle: L10n.of(context).tableCancelSentApproval,
+        );
+        return gate != null;
+      },
     );
     if (!mounted ||
         approval == null ||
+        gate == null ||
         controller.activeDiningTableId != session.tableId ||
         controller.currentOrderReference != session.orderReference) {
+      gate?.grant?.forget();
       return false;
     }
+    final allowed = gate!;
     await bridge.coordinator.cancelLine(
       session,
       line: wire.single,
       qty: sentReduction,
       prepared: approval.prepared,
-      authorizedBy: 'Manager',
+      authorizedBy: allowed.authorizedByName,
       reason: approval.reason,
+      authorization: allowed,
     );
+    // A later clear of this table voids it under the same approver.
     bridge.coordinator.clearApproval = TableVoidApproval(
-      authorizedBy: 'Manager',
+      authorizedBy: allowed.authorizedByName,
       reason: approval.reason ?? 'staff_close',
+      authorization: _voidUnpaidFrom(allowed),
     );
     return true; // Never undo a local edit in response to a business verdict.
   }
@@ -4197,16 +4235,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         }
       }
       if (rounds.isNotEmpty && source?.status != DiningTableStatus.paid) {
-        if (!mounted ||
-            !await _authorizeManager(
-              subtitle: L10n.of(context).tableCancelSentApproval,
-            )) {
-          return false;
-        }
+        // LAUNCH-P5 C1 — clearing sent rounds voids the unpaid bill.
+        final gate = !mounted
+            ? null
+            : await _authorizeAction(
+                'order.void_unpaid',
+                subtitle: L10n.of(context).tableCancelSentApproval,
+              );
+        if (!mounted || gate == null) return false;
         budget = TableActionDeadline('clearActiveDiningTable');
-        coordinator.clearApproval = const TableVoidApproval(
-          authorizedBy: 'Manager',
+        coordinator.clearApproval = TableVoidApproval(
+          authorizedBy: gate.authorizedByName,
           reason: 'staff_close',
+          authorization: gate,
         );
       }
     }
@@ -4400,6 +4441,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     'note': 'cancelled after preparation — table $tableId',
                     'staff_id': request.payload['staff_id'],
                     'wasted_at': cancel['cancelled_at'],
+                    'auth_v': authWireVersion,
                   },
                 },
                 createdAt: DateTime.parse(cancel['cancelled_at'] as String),
@@ -4450,14 +4492,28 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           subtitle: dineInText(_arabicTable, 'discard_adjustment'),
         ),
         approveCancellation: () async {
+          // LAUNCH-P5 C1 — the table.cancel_line tick, or an approver.
+          ActionAuthorization? gate;
           final approval = await requestSentLineCancellation(
             context,
-            authorizeManager: () => _authorizeManager(
-              subtitle: L10n.of(context).tableCancelSentApproval,
-            ),
+            authorizeManager: () async {
+              gate = await _authorizeAction(
+                'table.cancel_line',
+                subtitle: L10n.of(context).tableCancelSentApproval,
+              );
+              return gate != null;
+            },
           );
-          if (!mounted || approval == null) return null;
-          return {'prepared': approval.prepared, 'reason': approval.reason};
+          if (!mounted || approval == null || gate == null) {
+            gate?.grant?.forget();
+            return null;
+          }
+          return {
+            'prepared': approval.prepared,
+            'reason': approval.reason,
+            'authorized_by': gate!.authorizedByName,
+            'gate': gate,
+          };
         },
         onCombine: () => _openBillCombine(id),
         onRecover: () => _openDraftRecovery(id),
@@ -4481,6 +4537,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       session.kioskId,
     );
     final captured = scope(), token = api.tokenGetter();
+    ActionAuthorization? billGate;
     final workspace = _workspace;
     if (workspace != null) {
       _cancellingWorkspaces[uuid] = (
@@ -4521,11 +4578,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               d.bill!['grand_total_baisas'] as int,
               arabic: _arabicTable,
             ),
-            approve: () => _authorizeManager(
-              subtitle: _arabicTable
-                  ? 'إلغاء فاتورة الطاولة'
-                  : 'Cancel table bill',
-            ),
+            // LAUNCH-P5 C1 — the table.cancel_bill tick, or an approver.
+            approve: () async {
+              billGate = await _authorizeAction(
+                'table.cancel_bill',
+                subtitle: _arabicTable
+                    ? 'إلغاء فاتورة الطاولة'
+                    : 'Cancel table bill',
+              );
+              return billGate != null;
+            },
+            authorization: () => billGate,
             guard: () async {
               check();
               if (_tableDraftBlocks('$tableId') || _tableSendBusy) {
@@ -6103,12 +6166,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Future<void> _handleGiftItemToggle(CartItem item) async {
     if (_liveTable) return;
     final l10n = L10n.of(context);
+    ActionAuthorization? gate;
     if (!item.gifted) {
-      final authorized = await _authorizeManager(
+      // LAUNCH-P5 C1 — the gift tick, or an approver's PIN.
+      gate = await _authorizeAction(
+        'gift',
         subtitle: l10n.posGiftItemApprovalMessage,
       );
       if (!mounted) return;
-      if (!authorized) {
+      if (gate == null) {
         _showPopupMessage(
           title: l10n.posManagerApprovalRequiredTitle,
           message: l10n.posPayGiftDeniedMessage,
@@ -6120,6 +6186,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final wasGifted = item.gifted;
     final changed = controller.toggleGiftItem(item);
     if (!mounted) return;
+    if (changed && gate != null) {
+      // Signed into order.create when the sale completes.
+      controller.recordGiftAuthorization(item, gate);
+    } else {
+      gate?.grant?.forget();
+    }
     if (!changed) {
       _showPopupMessage(
         title: l10n.posGiftItemBlockedTitle,
@@ -6243,12 +6315,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (controller.isProcessingPayment || controller.cart.isEmpty) return;
     final l10n = L10n.of(context);
 
-    // P-F1 — fingerprint with manager-PIN fallback.
-    final authorized = await _authorizeManager(
+    // LAUNCH-P5 C1 — the gift tick, or an approver's PIN.
+    final gate = await _authorizeAction(
+      'gift',
       subtitle: l10n.posPayGiftManagerApprovalMessage,
     );
     if (!mounted) return;
-    if (!authorized) {
+    if (gate == null) {
       _showPopupMessage(
         title: l10n.posManagerApprovalRequiredTitle,
         message: l10n.posPayGiftDeniedMessage,
@@ -6256,6 +6329,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       );
       return;
     }
+    // Signed into order.create when the gift sale completes.
+    controller.recordOrderAuthorization('gift_tender', gate);
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -6437,7 +6512,22 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 ),
               );
               if (confirmed != true || !context.mounted) return;
-              final message = await controller.discardHeldOrder(record);
+              // LAUNCH-P5 C1 — the order.void_unpaid tick, or an approver.
+              final gate = await _authorizeAction('order.void_unpaid');
+              if (gate == null || !context.mounted) {
+                if (mounted && gate == null) {
+                  _showPopupMessage(
+                    title: l10n.posHeldDiscardConfirmTitle,
+                    message: l10n.approvalNotGiven,
+                    tone: FeedbackTone.warning,
+                  );
+                }
+                return;
+              }
+              final message = await controller.discardHeldOrder(
+                record,
+                authorization: gate,
+              );
               if (!context.mounted) return;
               Navigator.of(context).pop(false);
               if (mounted) {
@@ -6540,8 +6630,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               controller.applyServerOrderHistory(refreshed);
               if (mounted) setState(() {});
             },
-            onRegisterManager: _registerManagerFingerprint,
             onPrint: (record) async {
+              // LAUNCH-P5 C1 — the receipt.reprint tick, or an approver.
+              final gate = await _authorizeAction('receipt.reprint');
+              gate?.grant?.forget();
+              if (gate == null || !mounted) return;
               final printed = await controller.printHistoricalReceipt(record);
               if (!mounted) return;
               // Phase G4 — no false-success popup; the failure alert comes
@@ -6593,12 +6686,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// receipt reprint stays free).
   Future<void> _handleKitchenTicketReprint(OrderHistoryRecord record) async {
     final l10n = L10n.of(context);
-    final ok = await _authorizeManager(
+    // LAUNCH-P5 C1 — the kitchen.reprint tick, or an approver's PIN.
+    final gate = await _authorizeAction(
+      'kitchen.reprint',
       subtitle: l10n.posKitchenReprintSubtitle,
       description: l10n.posKitchenReprintDescription(record.orderNumber),
     );
+    gate?.grant?.forget();
     if (!mounted) return;
-    if (!ok) {
+    if (gate == null) {
       _showPopupMessage(
         title: l10n.posKitchenApprovalRequiredTitle,
         message: l10n.posKitchenApprovalDeniedMessage,
@@ -6652,59 +6748,26 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _showPopupMessage(title: title, message: message, tone: tone);
   }
 
-  Future<void> _registerManagerFingerprint() async {
-    final l10n = L10n.of(context);
-    final registered = await _showFingerprintAuthorizationOverlay(
-      title: l10n.posManagerRegisterFingerprintTitle,
-      message: l10n.posManagerRegisterSensorMessage,
-      action: _managerAuthorization.registerManagerFingerprint,
-    );
-    if (!mounted) return;
-
-    _showPopupMessage(
-      title: registered
-          ? l10n.posManagerRegisteredTitle
-          : l10n.posManagerRegistrationNotCompletedTitle,
-      message: registered
-          ? l10n.posManagerRegisteredMessage
-          : l10n.posManagerNotRegisteredMessage,
-      tone: registered ? FeedbackTone.success : FeedbackTone.warning,
-    );
-  }
-
   Future<void> _handleOrderCancellationRequest({
     required BuildContext historyDialogContext,
     required OrderHistoryRecord record,
   }) async {
     final l10n = L10n.of(context);
-    // v2 #14 — company policy gate: only allowed staff positions may cancel an
-    // order at the POS (on top of the manager-fingerprint step below).
-    final position = ref.read(sessionServiceProvider).staff?.position;
-    if (!controller.positionCanCancelOrders(position)) {
-      if (historyDialogContext.mounted) {
-        Navigator.of(historyDialogContext).pop();
-      }
-      _showPopupMessage(
-        title: l10n.posCancelReqNotAllowedTitle,
-        message: l10n.posCancelReqNotAllowedMessage,
-        tone: FeedbackTone.warning,
-      );
-      return;
-    }
-
-    // P-F1 — fingerprint with manager-PIN fallback.
-    final authorized = await _authorizeManager(
+    // LAUNCH-P5 C1 — the order.void_paid tick, or an approver's PIN.
+    // (`order_cancel_positions` is not mapped onto the tick list.)
+    final authorization = await _authorizeAction(
+      'order.void_paid',
       subtitle: l10n.posCancelReqUnlockMessage,
     );
     if (!mounted) return;
 
-    if (!authorized) {
+    if (authorization == null) {
       if (historyDialogContext.mounted) {
         Navigator.of(historyDialogContext).pop();
       }
       _showPopupMessage(
         title: l10n.posCancelReqLockedTitle,
-        message: l10n.posManagerFingerprintNotApprovedMessage,
+        message: l10n.approvalNotGiven,
         tone: FeedbackTone.warning,
       );
       return;
@@ -6714,7 +6777,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       Navigator.of(historyDialogContext).pop();
     }
 
-    final message = await _openOrderCancellationDialog(record);
+    final message = await _openOrderCancellationDialog(record, authorization);
     if (!mounted || message == null || message.isEmpty) return;
 
     _showPopupMessage(
@@ -6726,108 +6789,95 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  /// P-F1 — THE manager-authorization gate, used by every sensitive flow
-  /// (comp, gift, cancel, reprints, approval-required discounts, reports):
-  /// fingerprint first when one is registered (works offline), then a
-  /// manager-PIN fallback verified by pos_api against the merchant's
-  /// manager_approval_positions policy (online-only). A device with no
-  /// registered fingerprint goes straight to the PIN dialog.
+  /// LAUNCH-P5 C2 — the manager gate for actions outside the tick list
+  /// (local recovery steps: archive a saved copy, discard a pending table
+  /// adjustment, take over a QR checkout…). It always opens the approval
+  /// sheet (lib/core/manager_auth.dart); the fingerprint path is gone.
   Future<bool> _authorizeManager({
     String? subtitle,
     String? description,
   }) async {
-    if (await _managerAuthorization.isManagerRegistered()) {
-      if (!mounted) return false;
-      final ok = await _managerAuthorization.authenticateManagerApproval(
-        subtitle: subtitle,
-        description: description,
-      );
-      if (ok) return true;
-      if (!mounted) return false;
-    }
     if (!mounted) return false;
-    return _openManagerPinDialog();
+    final grant = await requestManagerApproval(
+      context,
+      ref,
+      subtitle: subtitle,
+      description: description,
+    );
+    grant?.forget();
+    return grant != null;
   }
 
-  /// The existing manager approval, also returning who approved for the audit
-  /// record. The registered device fingerprint stores no staff id, so it is
-  /// recorded as that method only; the PIN path records the verified staff.
+  /// The approval with who approved, for the local audit record.
   Future<Map<String, dynamic>?> _authorizeManagerRecord({
     String? subtitle,
     String? description,
   }) async {
-    if (await _managerAuthorization.isManagerRegistered()) {
-      if (!mounted) return null;
-      final ok = await _managerAuthorization.authenticateManagerApproval(
-        subtitle: subtitle,
-        description: description,
-      );
-      if (ok) return {'method': 'device_manager_fingerprint'};
-      if (!mounted) return null;
-    }
     if (!mounted) return null;
-    final approver = await showDialog<LoyaltyApprover>(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => _ManagerPinDialog(
-        api: ref.read(apiServiceProvider),
-        identityRequired: true,
-      ),
+    final grant = await requestManagerApproval(
+      context,
+      ref,
+      subtitle: subtitle,
+      description: description,
     );
-    if (approver == null) return null;
+    if (grant == null) return null;
+    grant.forget();
     return {
       'method': 'manager_pin',
-      'staff_id': approver.id,
-      'name': approver.name,
+      'staff_id': grant.approverStaffId,
+      'name': grant.name,
     };
   }
 
-  Future<bool> _openManagerPinDialog() async {
-    final approved = await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => _ManagerPinDialog(api: ref.read(apiServiceProvider)),
+  /// C1 — a gate on the tick list: the person's own tick, or an approver.
+  Future<ActionAuthorization?> _authorizeAction(
+    String action, {
+    double? amountPercent,
+    bool alwaysApproval = false,
+    String? subtitle,
+    String? description,
+  }) async {
+    if (!mounted) return null;
+    return authorizeAction(
+      context,
+      ref,
+      action: action,
+      amountPercent: amountPercent,
+      alwaysApproval: alwaysApproval,
+      subtitle: subtitle,
+      description: description,
     );
-    return approved ?? false;
   }
 
-  Future<bool> _showFingerprintAuthorizationOverlay({
-    required String title,
-    required String message,
-    required Future<bool> Function() action,
-  }) async {
-    return await showGeneralDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          barrierLabel: title,
-          barrierColor: Colors.black.withValues(alpha: 0.38),
-          pageBuilder: (context, animation, secondaryAnimation) {
-            return _FingerprintAuthorizationDialog(
-              title: title,
-              message: message,
-              action: action,
-            );
-          },
-          transitionBuilder: (context, animation, secondaryAnimation, child) {
-            return FadeTransition(
-              opacity: CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOutCubic,
-              ),
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.94, end: 1).animate(
-                  CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
-                ),
-                child: child,
-              ),
-            );
-          },
-        ) ??
-        false;
+  /// The order.void_unpaid gate a table clear inherits from a line cancel:
+  /// the same approver (their key stays in memory until the clear is sent),
+  /// or the person's own tick.
+  ActionAuthorization _voidUnpaidFrom(ActionAuthorization gate) {
+    final grant = gate.grant;
+    if (grant != null) {
+      return ActionAuthorization.approval(
+        action: 'order.void_unpaid',
+        actorStaffId: gate.actorStaffId,
+        actorName: gate.actorName,
+        grant: grant,
+        deviceUuid: gate.deviceUuid,
+      );
+    }
+    return ActionAuthorization.position(
+      action: 'order.void_unpaid',
+      actorStaffId: gate.actorStaffId,
+      actorName: gate.actorName,
+      deviceUuid: gate.deviceUuid,
+    );
   }
+
+  /// C1 — `can(action)` for the logged-in person.
+  bool _can(String action, {double? amountPercent}) =>
+      currentStaffPermissions(ref).can(action, amountPercent: amountPercent);
 
   Future<String?> _openOrderCancellationDialog(
     OrderHistoryRecord record,
+    ActionAuthorization authorization,
   ) async {
     return showGeneralDialog<String>(
       context: context,
@@ -6837,21 +6887,44 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       pageBuilder: (context, animation, secondaryAnimation) {
         return _OrderCancellationPage(
           record: record,
-          // P-F1 — server-history records void whole-order only (the wire has
-          // no cross-device partial cancel).
-          fullOrderOnly: record.fromServer,
+          // LAUNCH-P5 C9 — whole-order cancel only: a partial item cancel
+          // of a paid order never reached the server (H5), so it stays
+          // hidden until Phase 6 builds item refunds.
+          fullOrderOnly: true,
           voidReasons: controller.voidReasons,
           onSubmit:
               ({
                 required bool cancelFullOrder,
                 required Set<int> itemIndexes,
                 VoidReasonRef? voidReason,
-              }) {
+              }) async {
+                var gate = authorization;
+                // M7 — a reason marked "needs manager" always needs an
+                // approval, whatever the ticks.
+                if (voidReason?.requiresManager == true && !gate.isApproval) {
+                  final approved = await _authorizeAction(
+                    'order.void_paid',
+                    alwaysApproval: true,
+                    subtitle: L10n.of(this.context).posCancelReqUnlockMessage,
+                  );
+                  if (approved == null) {
+                    if (mounted) {
+                      _showPopupMessage(
+                        title: L10n.of(this.context).posCancelReqLockedTitle,
+                        message: L10n.of(this.context).approvalNotGiven,
+                        tone: FeedbackTone.warning,
+                      );
+                    }
+                    return '';
+                  }
+                  gate = approved;
+                }
                 return controller.cancelCompletedOrder(
                   record,
                   cancelFullOrder: cancelFullOrder,
                   itemIndexes: itemIndexes,
                   voidReason: voidReason,
+                  authorization: gate,
                 );
               },
         );
@@ -7975,6 +8048,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
     if (!mounted || ok != true) return;
 
+    // LAUNCH-P5 C1 — the loyalty.redeem tick, or an approver's PIN.
+    final gate = await _authorizeAction('loyalty.redeem');
+    if (!mounted) return;
+    if (gate == null) {
+      _showPopupMessage(
+        title: l10n.posManagerApprovalRequiredTitle,
+        message: l10n.approvalNotGiven,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
     if (!controller.applyLoyaltyRedemption(
       customerId: redeem.customer.id,
       ruleId: redeem.rule.id,
@@ -7982,8 +8066,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       valueOmr: redeem.valueOmr,
       label: 'Stamp reward',
     )) {
+      gate.grant?.forget();
       return;
     }
+    controller.recordOrderAuthorization('loyalty', gate);
     _showPopupMessage(
       title: l10n.posLoyaltyRewardRedeemedTitle,
       message: l10n.posLoyaltyStampRedeemedMessage(
@@ -8050,6 +8136,17 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
     if (!mounted || blocks == null || blocks < 1) return;
 
+    // LAUNCH-P5 C1 — the loyalty.redeem tick, or an approver's PIN.
+    final gate = await _authorizeAction('loyalty.redeem');
+    if (!mounted) return;
+    if (gate == null) {
+      _showPopupMessage(
+        title: l10n.posManagerApprovalRequiredTitle,
+        message: l10n.approvalNotGiven,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
     if (!controller.applyLoyaltyRedemption(
       customerId: redeem.customer.id,
       ruleId: rule.id,
@@ -8057,8 +8154,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       valueOmr: blocks * rule.redemptionValue,
       label: 'Loyalty redemption',
     )) {
+      gate.grant?.forget();
       return;
     }
+    controller.recordOrderAuthorization('loyalty', gate);
     _showPopupMessage(
       title: l10n.posLoyaltyPointsRedeemedTitle,
       message: l10n.posLoyaltyPointsRedeemedMessage(
@@ -8081,13 +8180,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     void Function(Map<String, dynamic>)? picked,
   }) async {
     final l10n = L10n.of(context);
+    ActionAuthorization? gate;
     if (d.requiresManagerApproval) {
-      final ok = await _authorizeManager(
+      // M7 — a rule marked "needs manager" always needs an approval,
+      // whatever the ticks.
+      gate = await _authorizeAction(
+        'discount.manual',
+        alwaysApproval: true,
         subtitle: l10n.posDiscountApproveSubtitle,
         description: l10n.posDiscountApproveDescription(d.name),
       );
       if (!mounted) return;
-      if (!ok) {
+      if (gate == null) {
         _showPopupMessage(
           title: l10n.posDiscountApprovalRequiredTitle,
           message: l10n.posDiscountApprovalDeniedMessage(d.name),
@@ -8101,11 +8205,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         'kind': 'discount',
         'mode': 'rule',
         'discount_id': d.id,
-        if (d.requiresManagerApproval) 'authorized_by': 'Manager',
+        if (gate != null) 'authorized_by': gate.authorizedByName,
+        if (gate != null && gate.isApproval)
+          'approved_by_staff_id': gate.grant!.approverStaffId,
+        'gate': ?gate,
       });
       return;
     }
-    if (!controller.applyDiscount(d.toConfiguration())) return;
+    if (!controller.applyDiscount(d.toConfiguration())) {
+      gate?.grant?.forget();
+      return;
+    }
+    // Signed into order.create when the sale completes.
+    controller.recordOrderAuthorization('discount', gate);
     _showPopupMessage(
       title: l10n.posDiscountAppliedTitle,
       message: l10n.posDiscountAppliedMessage(d.name),
@@ -8137,6 +8249,36 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
 
     if (value == null || (loyaltyOwned && !value.isActive)) return;
+    // LAUNCH-P5 C1 — a manual discount within the person's maximum % needs
+    // no approval; above it (an amount counts as a % of the subtotal), or
+    // with no discount.manual tick at all, an approver's PIN.
+    ActionAuthorization? gate;
+    if (value.isActive) {
+      final subtotal = serverDetail != null
+          ? ((serverDetail.bill?['subtotal_baisas'] as num?) ?? 0) / 1000
+          : controller.rawSubtotal;
+      final percent = value.kind == DiscountKind.percentage
+          ? value.value
+          : discountPercentOf(discountAmount: value.value, subtotal: subtotal);
+      if (!_can('discount.manual', amountPercent: percent)) {
+        gate = await _authorizeAction(
+          'discount.manual',
+          alwaysApproval: true,
+          subtitle: l10n.discountAboveMaxApproval(
+            ref.read(staffPermissionsProvider).discountMaxPercent,
+          ),
+        );
+        if (!mounted) return;
+        if (gate == null) {
+          _showPopupMessage(
+            title: l10n.posDiscountApprovalRequiredTitle,
+            message: l10n.approvalNotGiven,
+            tone: FeedbackTone.warning,
+          );
+          return;
+        }
+      }
+    }
     if (serverDetail != null) {
       picked?.call(
         !value.isActive
@@ -8154,12 +8296,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     ? l10n.posDiscountDefaultLabel
                     : value.label,
                 if (value.reason.isNotEmpty) 'reason': value.reason,
+                'gate': ?gate,
               },
       );
       return;
     }
     if (value.isActive) {
-      if (!controller.applyDiscount(value)) return;
+      if (!controller.applyDiscount(value)) {
+        gate?.grant?.forget();
+        return;
+      }
+      // Signed into order.create when the sale completes.
+      controller.recordOrderAuthorization('discount', gate);
       _showPopupMessage(
         title: l10n.posDiscountAppliedTitle,
         message: l10n.posDiscountAppliedMessage(
@@ -8905,6 +9053,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       },
     );
     final store = await SqliteCheckoutStore.open(gateway.scope);
+    ActionAuthorization? qrGiftGate;
     late QrCheckoutController checkout;
     checkout = QrCheckoutController(
       gateway: gateway,
@@ -8916,13 +9065,29 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         snapshot,
         attempt,
       ),
+      staffId: () => ref.read(sessionServiceProvider).staff?.id,
+      giftAuthorization: (orderUuid, index, amount) {
+        final gate = qrGiftGate;
+        if (gate == null) return null;
+        final block = gate.block(
+          subjectUuid: orderUuid,
+          amountBaisas: amount,
+          ref: 'tender:$index',
+        );
+        gate.grant?.forget();
+        qrGiftGate = null;
+        return block;
+      },
       authorizeGift: () async {
-        if (!mounted ||
-            !await _authorizeManager(
-              subtitle: L10n.of(context).posPayGiftManagerApprovalMessage,
-            )) {
-          return false;
-        }
+        // LAUNCH-P5 C1 — the gift tick, or an approver's PIN.
+        qrGiftGate?.grant?.forget();
+        qrGiftGate = !mounted
+            ? null
+            : await _authorizeAction(
+                'gift',
+                subtitle: L10n.of(context).posPayGiftManagerApprovalMessage,
+              );
+        if (!mounted || qrGiftGate == null) return false;
         if (!mounted) return false;
         return await showDialog<bool>(
               context: context,
@@ -10778,7 +10943,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// but the next cashier cannot inherit it: they must resume as its owner,
   /// settle it, or open their own float after settlement.
   Future<void> _openStaffMenu() async {
-    final hasOpenShift = ref.read(sessionControllerProvider).openShift != null;
+    final training = ref.read(trainingModeProvider);
+    final hasOpenShift =
+        !training && ref.read(sessionControllerProvider).openShift != null;
+    final clockedIn =
+        ref.read(sessionServiceProvider).staff?.attendance?.open == true;
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) {
@@ -10787,6 +10956,25 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // LAUNCH-P5 C6 / C7.
+              if (clockedIn && !training)
+                ListTile(
+                  key: const ValueKey('staff-menu-clock-out'),
+                  leading: const Icon(Icons.timer_off_outlined),
+                  title: Text(l10n.clockOutButton),
+                  onTap: () => Navigator.pop(ctx, 'clock_out'),
+                ),
+              ListTile(
+                key: const ValueKey('staff-menu-training'),
+                leading: const Icon(Icons.school_outlined),
+                title: Text(
+                  training ? l10n.trainingExit : l10n.trainingEnter,
+                ),
+                onTap: () => Navigator.pop(
+                  ctx,
+                  training ? 'training_exit' : 'training_enter',
+                ),
+              ),
               if (hasOpenShift) ...[
                 ListTile(
                   leading: const Icon(Icons.point_of_sale_rounded),
@@ -10819,10 +11007,102 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
     if (!mounted) return;
     if (action == 'logout') {
+      if (ref.read(trainingModeProvider)) await _leaveTraining(ask: false);
+      if (!mounted) return;
       await _confirmLogout();
     } else if (action == 'close_shift_logout') {
       await _closeShiftThenLogout();
+    } else if (action == 'clock_out') {
+      await _clockOut();
+    } else if (action == 'training_enter') {
+      await _enterTraining();
+    } else if (action == 'training_exit') {
+      await _leaveTraining();
     }
+  }
+
+  /// LAUNCH-P5 C6 — clock out from the staff menu (queued through the
+  /// outbox; works offline).
+  Future<void> _clockOut() async {
+    final staff = ref.read(sessionServiceProvider).staff;
+    if (staff == null) return;
+    final l10n = L10n.of(context);
+    try {
+      await ref
+          .read(attendanceServiceProvider)
+          .clockOut(staff.id, attendanceUuid: staff.attendance?.uuid);
+      await ref
+          .read(sessionControllerProvider.notifier)
+          .updateAttendance(const StaffAttendance(open: false));
+      if (!mounted) return;
+      _showPopupMessage(
+        title: l10n.clockOutButton,
+        message: l10n.clockedOutMessage(staff.name),
+        tone: FeedbackTone.success,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      _showPopupMessage(
+        title: l10n.clockOutButton,
+        message: l10n.clockInFailed,
+        tone: FeedbackTone.warning,
+      );
+    }
+  }
+
+  /// LAUNCH-P5 C7 — enter training mode (the training.use tick, or an
+  /// approver). Only from an empty till: a real cart never becomes a
+  /// training one.
+  Future<void> _enterTraining() async {
+    final l10n = L10n.of(context);
+    if (controller.cart.isNotEmpty || controller.hasRecordedSplitPayments) {
+      _showPopupMessage(
+        title: l10n.trainingEnter,
+        message: l10n.trainingClearCartFirst,
+        tone: FeedbackTone.warning,
+      );
+      return;
+    }
+    final gate = await _authorizeAction('training.use');
+    gate?.grant?.forget();
+    if (gate == null || !mounted) return;
+    await ref.read(trainingModeProvider.notifier).enter();
+    controller.training = true;
+    if (!mounted) return;
+    _showPopupMessage(
+      title: l10n.trainingBanner,
+      message: l10n.trainingEnteredMessage,
+      tone: FeedbackTone.info,
+    );
+  }
+
+  /// LAUNCH-P5 C7 — leaving training discards everything done in it.
+  Future<void> _leaveTraining({bool ask = true}) async {
+    final l10n = L10n.of(context);
+    if (ask) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (dialog) => AlertDialog(
+          title: Text(l10n.trainingExit),
+          content: Text(l10n.trainingExitConfirm),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialog, false),
+              child: Text(l10n.commonCancel),
+            ),
+            FilledButton(
+              key: const ValueKey('training-exit-confirm'),
+              onPressed: () => Navigator.pop(dialog, true),
+              child: Text(l10n.trainingExit),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
+    controller.clearForNextOrder();
+    await ref.read(trainingModeProvider.notifier).exit();
+    controller.training = false;
   }
 
   /// Close the shift (count → Z-report print → server settle), then sign the
@@ -10915,10 +11195,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           context,
         ).push(MaterialPageRoute(builder: (_) => const RestockRequestScreen()));
       case 'stock_count':
+        // LAUNCH-P5 C1 — the stock.count tick, or an approver's PIN.
+        final gate = await _authorizeAction('stock.count');
+        gate?.grant?.forget();
+        if (gate == null || !mounted) return;
         await Navigator.of(
           context,
         ).push(MaterialPageRoute(builder: (_) => const StockCountScreen()));
       case 'waste_product':
+        // LAUNCH-P5 C1 — the stock.waste tick, or an approver's PIN.
+        final gate = await _authorizeAction('stock.waste');
+        gate?.grant?.forget();
+        if (gate == null || !mounted) return;
         await Navigator.of(
           context,
         ).push(MaterialPageRoute(builder: (_) => const WasteProductScreen()));
@@ -11339,8 +11627,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// staff positions the merchant configured (settings.reports_positions).
   Future<void> _openBranchReports() async {
     final l10n = L10n.of(context);
-    final position = ref.read(sessionServiceProvider).staff?.position;
-    if (!controller.positionCanViewReports(position)) {
+    // LAUNCH-P5 C1 — the reports.view tick, or an approver's PIN.
+    final gate = await _authorizeAction('reports.view');
+    gate?.grant?.forget();
+    if (!mounted) return;
+    if (gate == null) {
       _showPopupMessage(
         title: l10n.reportsNotAllowedTitle,
         message: l10n.reportsNotAllowedBody,
@@ -11373,7 +11664,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     int? kitchenStaffId = staff?.id;
     String? kitchenStaffName;
 
-    if (!controller.positionCanUseKitchen(staff?.position)) {
+    // LAUNCH-P5 C1 — the kitchen.screen tick; otherwise the walk-up kitchen
+    // PIN stays.
+    if (!_can('kitchen.screen')) {
       final pin = await showDialog<String>(
         context: context,
         builder: (_) => PinPromptDialog(
@@ -11443,12 +11736,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
-    final ok = await _authorizeManager(
+    // LAUNCH-P5 C1 — the reports.view tick, or an approver's PIN.
+    final gate = await _authorizeAction(
+      'reports.view',
       subtitle: l10n.posMidShiftAuthSubtitle,
       description: l10n.posMidShiftAuthDesc,
     );
+    gate?.grant?.forget();
     if (!mounted) return;
-    if (!ok) {
+    if (gate == null) {
       _showPopupMessage(
         title: l10n.posManagerApprovalRequiredTitle,
         message: l10n.posMidShiftAuthDeniedBody,
@@ -11506,12 +11802,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
 
-    final ok = await _authorizeManager(
+    // LAUNCH-P5 C1 — the reports.view tick, or an approver's PIN.
+    final gate = await _authorizeAction(
+      'reports.view',
       subtitle: l10n.posMenuShiftSummaryShort,
       description: l10n.posMenuShiftSummaryAuthDesc,
     );
+    gate?.grant?.forget();
     if (!mounted) return;
-    if (!ok) {
+    if (gate == null) {
       _showPopupMessage(
         title: l10n.posMenuApprovalRequiredTitle,
         message: l10n.posMenuApprovalNotGrantedBody,
@@ -16739,7 +17038,6 @@ class _HeldOrdersPanel extends StatelessWidget {
 
 class _OrderHistoryPanel extends StatelessWidget {
   final List<OrderHistoryRecord> records;
-  final Future<void> Function() onRegisterManager;
   final Future<void> Function(OrderHistoryRecord record) onPrint;
   final Future<void> Function(OrderHistoryRecord record) onPrintKitchen;
   final Future<void> Function(OrderHistoryRecord record) onCancel;
@@ -16748,7 +17046,6 @@ class _OrderHistoryPanel extends StatelessWidget {
   const _OrderHistoryPanel({
     required this.records,
     required this.onReversal,
-    required this.onRegisterManager,
     required this.onPrint,
     required this.onPrintKitchen,
     required this.onCancel,
@@ -16759,8 +17056,6 @@ class _OrderHistoryPanel extends StatelessWidget {
     final l10n = L10n.of(context);
     return Column(
       children: [
-        _ManagerAuthorizationBanner(onRegister: onRegisterManager),
-        const SizedBox(height: 14),
         Expanded(
           child: records.isEmpty
               ? _StorageEmptyState(
@@ -16786,80 +17081,6 @@ class _OrderHistoryPanel extends StatelessWidget {
                 ),
         ),
       ],
-    );
-  }
-}
-
-class _ManagerAuthorizationBanner extends StatelessWidget {
-  final Future<void> Function() onRegister;
-
-  const _ManagerAuthorizationBanner({required this.onRegister});
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = L10n.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF3F8FA),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.86)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE5F3EA),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons.fingerprint_rounded,
-              color: Color(0xFF1E7B47),
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l10n.posFingerprintBannerTitle,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF18262E),
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  l10n.posFingerprintBannerMessage,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    height: 1.35,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF5D6E78),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          SizedBox(
-            width: 212,
-            height: 52,
-            child: _OutlineActionButton(
-              label: l10n.posFingerprintRegisterManager,
-              icon: Icons.fingerprint_rounded,
-              onTap: () => unawaited(onRegister()),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -17641,387 +17862,6 @@ class _CustomerDetailsDialog extends StatelessWidget {
           label: Text(L10n.of(context).posCustomerDetailsRedeem),
         ),
       ],
-    );
-  }
-}
-
-/// P-F1 — the manager-PIN fallback dialog: masked PIN entry on an on-screen
-/// keypad, verified server-side (pos_api checks the PIN against active staff
-/// whose position is in the merchant's manager_approval_positions policy).
-/// Pops true on approval; null/false = declined. Online-only — offline the
-/// fingerprint remains the approval path.
-class _ManagerPinDialog extends StatefulWidget {
-  final PosApiService api;
-
-  const _ManagerPinDialog({required this.api, this.identityRequired = false});
-  final bool identityRequired;
-
-  @override
-  State<_ManagerPinDialog> createState() => _ManagerPinDialogState();
-}
-
-class _ManagerPinDialogState extends State<_ManagerPinDialog> {
-  String _pin = '';
-  bool _busy = false;
-  String? _error;
-
-  void _append(String digit) {
-    if (_busy || _pin.length >= 8) return;
-    setState(() {
-      _pin = '$_pin$digit';
-      _error = null;
-    });
-  }
-
-  void _backspace() {
-    if (_busy || _pin.isEmpty) return;
-    setState(() => _pin = _pin.substring(0, _pin.length - 1));
-  }
-
-  Future<void> _verify() async {
-    if (_busy || _pin.length < 4) return;
-    final l10n = L10n.of(context);
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final Object? approver = widget.identityRequired
-          ? await widget.api.verifyLoyaltyApprover(_pin)
-          : await widget.api.verifyManagerPin(_pin);
-      if (!mounted) return;
-      if (approver == null) {
-        setState(() {
-          _busy = false;
-          _pin = '';
-          _error = l10n.posManagerPinInvalid;
-        });
-        return;
-      }
-      Navigator.of(context).pop(widget.identityRequired ? approver : true);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _error = e.isNetwork ? l10n.posManagerPinOffline : e.message;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = L10n.of(context);
-    final dots = List<Widget>.generate(
-      _pin.length,
-      (_) => Container(
-        width: 14,
-        height: 14,
-        margin: const EdgeInsets.symmetric(horizontal: 5),
-        decoration: const BoxDecoration(
-          color: Color(0xFF1E8D54),
-          shape: BoxShape.circle,
-        ),
-      ),
-    );
-
-    Widget key(String label, {VoidCallback? onTap, IconData? icon}) => Expanded(
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Material(
-          color: const Color(0xFFF2F7FA),
-          borderRadius: BorderRadius.circular(14),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: _busy ? null : (onTap ?? () => _append(label)),
-            child: SizedBox(
-              height: 52,
-              child: Center(
-                child: icon != null
-                    ? Icon(icon, size: 20, color: const Color(0xFF39505B))
-                    : Text(
-                        label,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF20323C),
-                        ),
-                      ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    return AlertDialog(
-      title: Text(l10n.posManagerPinTitle),
-      content: SizedBox(
-        width: 340,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              l10n.posManagerPinSubtitle,
-              style: const TextStyle(fontSize: 13.5, height: 1.35),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF2F7FA),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: _pin.isEmpty
-                  ? const Icon(
-                      Icons.lock_outline_rounded,
-                      size: 18,
-                      color: Color(0xFF8B9DA8),
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: dots,
-                    ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                _error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFFB84524),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12.5,
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            // Keypad stays LTR in Arabic (digit order never mirrors).
-            Directionality(
-              textDirection: TextDirection.ltr,
-              child: Column(
-                children: [
-                  Row(children: [key('1'), key('2'), key('3')]),
-                  Row(children: [key('4'), key('5'), key('6')]),
-                  Row(children: [key('7'), key('8'), key('9')]),
-                  Row(
-                    children: [
-                      key(
-                        '',
-                        icon: Icons.backspace_outlined,
-                        onTap: _backspace,
-                      ),
-                      key('0'),
-                      key('', icon: Icons.check_rounded, onTap: _verify),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _busy
-              ? null
-              : () => Navigator.of(
-                  context,
-                ).pop(widget.identityRequired ? null : false),
-          child: Text(l10n.commonCancel),
-        ),
-        FilledButton(
-          onPressed: _busy || _pin.length < 4 ? null : _verify,
-          child: _busy
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Text(l10n.posManagerPinVerify),
-        ),
-      ],
-    );
-  }
-}
-
-class _FingerprintAuthorizationDialog extends StatefulWidget {
-  final String title;
-  final String message;
-  final Future<bool> Function() action;
-
-  const _FingerprintAuthorizationDialog({
-    required this.title,
-    required this.message,
-    required this.action,
-  });
-
-  @override
-  State<_FingerprintAuthorizationDialog> createState() =>
-      _FingerprintAuthorizationDialogState();
-}
-
-class _FingerprintAuthorizationDialogState
-    extends State<_FingerprintAuthorizationDialog>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
-    unawaited(_runAuthorization());
-  }
-
-  Future<void> _runAuthorization() async {
-    await Future<void>.delayed(const Duration(milliseconds: 350));
-    final approved = await widget.action();
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    if (!mounted) return;
-    Navigator.of(context).pop(approved);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = L10n.of(context);
-    return Material(
-      type: MaterialType.transparency,
-      child: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 430),
-            child: _glassPanel(
-              padding: const EdgeInsets.all(30),
-              tint: const Color(0xF4F8FBFD),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedBuilder(
-                    animation: _controller,
-                    builder: (context, child) {
-                      final pulse = 0.72 + (_controller.value * 0.28);
-                      return Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Transform.scale(
-                            scale: 1.45 * pulse,
-                            child: Container(
-                              width: 118,
-                              height: 118,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: const Color(
-                                    0xFF1E8D54,
-                                  ).withValues(alpha: 0.16),
-                                  width: 2,
-                                ),
-                              ),
-                            ),
-                          ),
-                          Transform.scale(
-                            scale: 1.12 * pulse,
-                            child: Container(
-                              width: 104,
-                              height: 104,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: const Color(
-                                  0xFFDDF5EA,
-                                ).withValues(alpha: 0.72),
-                              ),
-                            ),
-                          ),
-                          Container(
-                            width: 86,
-                            height: 86,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [Color(0xFF25A85B), Color(0xFF176D3A)],
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.fingerprint_rounded,
-                              size: 50,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    widget.title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 25,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF18262E),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    widget.message,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      height: 1.45,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF5B6D77),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEAF2F6),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Color(0xFF1E8D54),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          l10n.posFingerprintWaiting,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF344A54),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/manager_auth.dart';
+import '../core/training_mode.dart';
 import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/order_sync_payload.dart' show uuidV4;
@@ -227,6 +229,28 @@ class _ShiftOpenScreenState extends ConsumerState<ShiftOpenScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
+                // LAUNCH-P5 C7 — training needs no shift.
+                TextButton(
+                  key: const ValueKey('shift-open-training'),
+                  onPressed: _busy
+                      ? null
+                      : () async {
+                          final gate = await authorizeAction(
+                            context,
+                            ref,
+                            action: 'training.use',
+                          );
+                          gate?.grant?.forget();
+                          if (gate == null) return;
+                          await ref
+                              .read(trainingModeProvider.notifier)
+                              .enter();
+                        },
+                  child: Text(
+                    l10n.trainingEnter,
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                ),
                 TextButton(
                   onPressed: _busy
                       ? null

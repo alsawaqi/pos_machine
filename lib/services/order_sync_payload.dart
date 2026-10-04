@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 
+import '../core/auth_wire.dart';
 import '../models/pos_models.dart';
 import '../models/table_sync_models.dart';
 import 'pricing_adapter.dart';
@@ -183,6 +184,7 @@ Map<String, dynamic> buildTableSessionEvent(
     'table_id': int.parse(tableId),
     'queued_offline': queuedOffline,
     'staff_id': ?staffId,
+    'auth_v': authWireVersion,
   },
 };
 
@@ -200,6 +202,8 @@ Map<String, dynamic> buildStandaloneQrPayEvent({
   double? lng,
   DateTime? paidAt,
   String Function()? newUuid,
+  // LAUNCH-P5 C3 — who took the payment.
+  int? staffId,
 }) {
   if (method != 'cash' && method != 'card') {
     throw ArgumentError.value(method, 'method', 'must be cash or card');
@@ -226,6 +230,8 @@ Map<String, dynamic> buildStandaloneQrPayEvent({
       'payments': <Map<String, dynamic>>[tender],
       if (lat != null && lng != null)
         'gps': <String, double>{'lat': lat, 'lng': lng},
+      'staff_id': ?staffId,
+      'auth_v': authWireVersion,
     },
   };
 }
@@ -513,6 +519,9 @@ OrderSyncPayload buildOrderSyncPayload(
     'customer_id': ?customerId,
     'plate_number': ?plate,
     'note': ?note,
+    // LAUNCH-P5 C3 — one block per gated action of this sale.
+    if (snapshot.authorizations.isNotEmpty)
+      'authorizations': snapshot.authorizations,
   };
 
   final payEvent = _orderPayPayload(
@@ -555,14 +564,14 @@ OrderSyncPayload buildOrderSyncPayload(
       'client_event_id': gen(),
       'event_type': 'order.create',
       'client_timestamp': ts,
-      'payload': {'order': order},
+      'payload': {'order': order, 'auth_v': authWireVersion},
     },
     if (isPendingDelivery)
       {
         'client_event_id': gen(),
         'event_type': 'order.deliver',
         'client_timestamp': ts,
-        'payload': deliverEvent,
+        'payload': {...deliverEvent, 'auth_v': authWireVersion},
       }
     else
       buildOrderPayEvent(
@@ -574,6 +583,7 @@ OrderSyncPayload buildOrderSyncPayload(
         now: DateTime.parse(ts),
         orderUuid: orderUuid,
         clientEventId: gen(),
+        staffId: staffId,
       ),
   ];
 
@@ -613,6 +623,7 @@ OrderSyncPayload buildOrderSyncPayload(
         'amount_baisas': leg['baisas'],
         'payment_index': leg['index'],
         'occurred_at': ts,
+        'auth_v': authWireVersion,
       },
     });
   }
@@ -702,6 +713,8 @@ Map<String, dynamic> buildOrderPayEvent(
   String? orderUuid,
   String? clientEventId,
   bool suppressDeviceLoyaltyRedeem = false,
+  // LAUNCH-P5 C3 — who took the payment.
+  int? staffId,
 }) {
   final gen = newUuid ?? uuidV4;
   final billUuid =
@@ -720,6 +733,8 @@ Map<String, dynamic> buildOrderPayEvent(
   // Only the live coordinator opts out: that bill's canonical adjustment row
   // owns redemption. Local dine-in orders use the ordinary debit contract.
   if (suppressDeviceLoyaltyRedeem) payload.remove('loyalty_redeem');
+  if (staffId != null) payload['staff_id'] = staffId;
+  payload['auth_v'] = authWireVersion;
   return <String, dynamic>{
     'client_event_id': clientEventId ?? gen(),
     'event_type': 'order.pay',
@@ -821,7 +836,7 @@ Map<String, dynamic>? buildOrderHoldEvent(
     'client_event_id': gen(),
     'event_type': 'order.hold',
     'client_timestamp': ts,
-    'payload': {'order': order},
+    'payload': {'order': order, 'auth_v': authWireVersion},
   };
 }
 
@@ -881,6 +896,8 @@ Map<String, dynamic> buildOrderVoidEvent({
   String? authorizedBy,
   DateTime? voidedAt,
   String Function()? newUuid,
+  // LAUNCH-P5 C3 — the order.void_unpaid / order.void_paid block.
+  Map<String, dynamic>? authorization,
 }) {
   final gen = newUuid ?? uuidV4;
   final ts = (voidedAt ?? DateTime.now()).toUtc().toIso8601String();
@@ -898,6 +915,45 @@ Map<String, dynamic> buildOrderVoidEvent({
       'void_reason_id': ?voidReasonId,
       'staff_id': ?staffId,
       if (cleanBy != null && cleanBy.isNotEmpty) 'authorized_by': cleanBy,
+      'authorization': ?authorization,
+      'auth_v': authWireVersion,
     },
   };
+}
+
+/// LAUNCH-P5 C3 — the rows of order.create a signed authorization can point
+/// at, in wire order: the order-level discount row is `discount:0`; in
+/// `comps` (the reasoned comp first, then the gift rows) a comp is
+/// `comp:<index>` and a gift line `gift:<index>` (index = position in
+/// `comps`). Each carries its amount and the snapshot line it belongs to.
+/// Mirrors the emission order of [buildOrderSyncPayload]; pure.
+({int orderDiscountBaisas, List<({String ref, int amountBaisas, bool gift, int? lineIndex})> comps})
+orderAuthorizationTargets(OrderSnapshot snapshot) {
+  final priced = frozenPriceResultFromSnapshot(snapshot);
+  final comps = <({String ref, int amountBaisas, bool gift, int? lineIndex})>[];
+  if (priced.compTotalBaisas > 0) {
+    final rows = pricing.compWireRowsFor(
+      giftAmountsBaisas: priced.giftAmountsBaisas,
+      compTotalBaisas: priced.compTotalBaisas,
+      comp: frozenCompSelectionFromSnapshot(snapshot),
+    );
+    for (final row in rows.where((row) => !row.isGift)) {
+      if (row.reasonId == null) continue;
+      comps.add((
+        ref: 'comp:${comps.length}',
+        amountBaisas: row.amountBaisas,
+        gift: false,
+        lineIndex: row.lineIndex,
+      ));
+    }
+    for (final row in rows.where((row) => row.isGift)) {
+      comps.add((
+        ref: 'gift:${comps.length}',
+        amountBaisas: row.amountBaisas,
+        gift: true,
+        lineIndex: row.lineIndex,
+      ));
+    }
+  }
+  return (orderDiscountBaisas: priced.orderDiscountRowBaisas, comps: comps);
 }

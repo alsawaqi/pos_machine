@@ -138,6 +138,8 @@ class DineInRequest {
               'queued_offline',
               'staff_id',
               'adjustment',
+              'authorization',
+              'auth_v',
             }.contains(key),
           )) {
         throw const FormatException('Invalid adjustment identity');
@@ -162,6 +164,8 @@ class DineInRequest {
               'queued_offline',
               'staff_id',
               'cancellation',
+              'authorization',
+              'auth_v',
             }.contains(k),
           ) ||
           cancel.keys.any(
@@ -178,7 +182,11 @@ class DineInRequest {
             }.contains(k),
           ) ||
           cancel['prepared'] is! bool ||
-          cancel['authorized_by'] != 'Manager' ||
+          // LAUNCH-P5 C3 — the approver's real name (an older journal
+          // still says "Manager").
+          cancel['authorized_by'] is! String ||
+          (cancel['authorized_by'] as String).trim().isEmpty ||
+          (cancel['authorized_by'] as String).length > 100 ||
           cancel['cancelled_at'] is! String ||
           cancel['waste_event_id'] is! String) {
         throw const FormatException('Invalid cancellation intent');

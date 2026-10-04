@@ -215,6 +215,8 @@ void main() {
         {'ingredient_id': 2, 'counted_units': 30.5},
       ],
       'staff_id': 7,
+      // LAUNCH-P5 C3 — the P5 wire marker.
+      'auth_v': 1,
     });
     // After submit only a neutral confirmation — the server's variance (one
     // line here) never reaches the till.

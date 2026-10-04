@@ -1,3 +1,4 @@
+import '../core/auth_wire.dart';
 import 'order_sync_payload.dart' show uuidV4;
 
 /// Builds the pos_api `/device/sync/push` events for a device-logged expense and
@@ -42,22 +43,28 @@ Map<String, dynamic> buildExpenseLogEvent({
   DateTime? loggedAt,
   DateTime? now,
   String Function()? newUuid,
+  // LAUNCH-P5 C5 — a device pay-out: cash taken from this drawer (lowers
+  // the shift's expected cash) and its `payout` authorization block.
+  bool paidFromDrawer = false,
+  Map<String, dynamic>? authorization,
 }) {
   final gen = newUuid ?? uuidV4;
   final ts = (now ?? DateTime.now()).toUtc().toIso8601String();
   final payload = <String, dynamic>{
     'category': category,
     'amount_baisas': amountBaisas,
+    if (paidFromDrawer) 'paid_from_drawer': true,
+    'authorization': ?authorization,
   };
   if (staffId != null) payload['staff_id'] = staffId;
   if (note != null && note.isNotEmpty) payload['note'] = note;
   if (loggedAt != null) payload['logged_at'] = loggedAt.toUtc().toIso8601String();
-  return <String, dynamic>{
+  return withAuthV(<String, dynamic>{
     'client_event_id': gen(),
     'event_type': 'expense.log',
     'client_timestamp': ts,
     'payload': payload,
-  };
+  });
 }
 
 /// One day-end count line as entered in the UI. Exactly one of [countedPieces]
@@ -113,12 +120,12 @@ Map<String, dynamic> buildStockCountEvent({
   if (countedAt != null) {
     payload['counted_at'] = countedAt.toUtc().toIso8601String();
   }
-  return <String, dynamic>{
+  return withAuthV(<String, dynamic>{
     'client_event_id': gen(),
     'event_type': 'stock.count',
     'client_timestamp': ts,
     'payload': payload,
-  };
+  });
 }
 
 /// The waste reasons offered on the device — mirror of pos_merchant's
@@ -173,12 +180,12 @@ Map<String, dynamic> buildProductWasteEvent({
   if (note != null && note.isNotEmpty) payload['note'] = note;
   if (staffId != null) payload['staff_id'] = staffId;
   if (wastedAt != null) payload['wasted_at'] = wastedAt.toUtc().toIso8601String();
-  return <String, dynamic>{
+  return withAuthV(<String, dynamic>{
     'client_event_id': gen(),
     'event_type': 'product.waste',
     'client_timestamp': ts,
     'payload': payload,
-  };
+  });
 }
 
 /// Build the `restock.request` event. Duplicate ingredient lines are MERGED
@@ -209,10 +216,10 @@ Map<String, dynamic> buildRestockRequestEvent({
   if (requestedAt != null) {
     payload['requested_at'] = requestedAt.toUtc().toIso8601String();
   }
-  return <String, dynamic>{
+  return withAuthV(<String, dynamic>{
     'client_event_id': gen(),
     'event_type': 'restock.request',
     'client_timestamp': ts,
     'payload': payload,
-  };
+  });
 }

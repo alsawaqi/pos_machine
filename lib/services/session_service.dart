@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/permissions.dart';
 import 'api_models.dart';
 import 'device_location_mode.dart';
 
@@ -18,12 +19,17 @@ class OpenShiftData {
     required this.openingCashBaisas,
     required this.openedAt,
     required this.staffId,
+    this.reopenCount = 0,
   });
 
   final String uuid;
   final int openingCashBaisas;
   final DateTime openedAt;
   final int staffId;
+
+  /// LAUNCH-P5 C5 — how many times the portal re-opened this shift (part
+  /// of the fixed close event id; 0 from an older server).
+  final int reopenCount;
 
   factory OpenShiftData.fromJson(Map<String, dynamic> json) => OpenShiftData(
     uuid: json['uuid'].toString(),
@@ -32,6 +38,7 @@ class OpenShiftData {
         DateTime.tryParse(json['opened_at']?.toString() ?? '') ??
         DateTime.fromMillisecondsSinceEpoch(0),
     staffId: (json['staff_id'] as num?)?.toInt() ?? 0,
+    reopenCount: (json['reopen_count'] as num?)?.toInt() ?? 0,
   );
 
   Map<String, dynamic> toJson() => {
@@ -39,6 +46,7 @@ class OpenShiftData {
     'opening_cash_baisas': openingCashBaisas,
     'opened_at': openedAt.toIso8601String(),
     'staff_id': staffId,
+    if (reopenCount != 0) 'reopen_count': reopenCount,
   };
 }
 
@@ -97,6 +105,10 @@ class SessionService {
   static const _kLastShiftSummary = 'last_shift_summary_json';
   static const _kAudienceServer = 'audience_measurement_server';
   static const _kLocationMode = 'location_mode';
+  // LAUNCH-P5 — `settings.position_permissions` (JSON) and
+  // `settings.shift_end_reminder_at` ("HH:MM", Muscat) from the config.
+  static const _kPositionPermissions = 'p5_position_permissions_json';
+  static const _kShiftEndReminderAt = 'p5_shift_end_reminder_at';
 
   String? _deviceToken; // in-memory cache for the dio interceptor
 
@@ -294,6 +306,49 @@ class SessionService {
     } else {
       await _prefs.setBool(_kAudienceServer, enabled);
     }
+  }
+
+  /// LAUNCH-P5 C1 — the merchant's tick list, resolved over the shared
+  /// defaults (nothing cached yet = the defaults).
+  PositionPermissions get positionPermissions =>
+      PositionPermissions.resolve(_prefs.getString(_kPositionPermissions));
+
+  /// LAUNCH-P5 C8 — the branch's shift-end reminder time ("HH:MM", Muscat),
+  /// or null when the branch has none.
+  String? get shiftEndReminderAt {
+    final raw = _prefs.getString(_kShiftEndReminderAt)?.trim() ?? '';
+    return raw.isEmpty ? null : raw;
+  }
+
+  /// Fires after [saveStaffSettings] changes either value, so open screens
+  /// re-read the tick list without a restart.
+  ValueListenable<int> get staffSettingsRevision => _staffSettingsRevision;
+  final _staffSettingsRevision = ValueNotifier<int>(0);
+
+  /// Persist the P5 keys of the config `settings` block. A key the server
+  /// did not send keeps the stored value; an explicit null clears it.
+  Future<void> saveStaffSettings(Map<String, dynamic>? settings) async {
+    if (settings == null) return;
+    var changed = false;
+    if (settings.containsKey('position_permissions')) {
+      final value = settings['position_permissions'];
+      if (value is Map) {
+        await _prefs.setString(_kPositionPermissions, jsonEncode(value));
+      } else {
+        await _prefs.remove(_kPositionPermissions);
+      }
+      changed = true;
+    }
+    if (settings.containsKey('shift_end_reminder_at')) {
+      final value = settings['shift_end_reminder_at'];
+      if (value is String && value.trim().isNotEmpty) {
+        await _prefs.setString(_kShiftEndReminderAt, value.trim());
+      } else {
+        await _prefs.remove(_kShiftEndReminderAt);
+      }
+      changed = true;
+    }
+    if (changed) _staffSettingsRevision.value++;
   }
 
   Future<void> saveStaff(StaffSessionData staff) async {

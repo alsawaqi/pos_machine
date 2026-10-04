@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/manager_auth.dart';
 import '../l10n/l10n.dart';
 import '../providers/providers.dart';
 import '../services/expense_restock_payload.dart';
@@ -77,6 +78,21 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
     }
     final staffId = ref.read(sessionControllerProvider).staff?.id;
     final note = _noteController.text.trim();
+    // LAUNCH-P5 C5 — a pay-out from the drawer: the payout tick, or an
+    // approver's PIN.
+    final gate = await authorizeAction(
+      context,
+      ref,
+      action: 'payout',
+      subtitle: l10n.payoutApprovalSubtitle,
+    );
+    if (!mounted) return;
+    if (gate == null) {
+      setState(() => _error = l10n.approvalNotGiven);
+      return;
+    }
+    final authorization = gate.block(amountBaisas: _amountBaisas);
+    gate.grant?.forget();
     setState(() {
       _busy = true;
       _error = null;
@@ -87,6 +103,8 @@ class _LogExpenseScreenState extends ConsumerState<LogExpenseScreen> {
             amountBaisas: _amountBaisas,
             staffId: staffId,
             note: note.isEmpty ? null : note,
+            paidFromDrawer: true,
+            authorization: authorization,
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

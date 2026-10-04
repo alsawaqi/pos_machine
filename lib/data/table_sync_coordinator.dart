@@ -8,6 +8,8 @@ import '../dine_in/dine_in_models.dart';
 import '../table_cancellation/table_bill_cancellation.dart';
 import '../table_cancellation/table_bill_cancel_dialog.dart';
 
+import '../core/auth_wire.dart';
+import '../core/authorization.dart';
 import '../models/pos_models.dart';
 import '../models/table_sync_models.dart';
 import '../services/order_sync_payload.dart';
@@ -36,10 +38,14 @@ class TableVoidApproval {
     required this.authorizedBy,
     this.reason,
     this.reasonId,
+    this.authorization,
   });
   final String authorizedBy;
   final String? reason;
   final int? reasonId;
+
+  /// LAUNCH-P5 C3 — the order.void_unpaid gate of the table clear.
+  final ActionAuthorization? authorization;
 }
 
 /// Only cashier hooks and this device's own ACKs write local table identity.
@@ -477,6 +483,9 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
             authorizedBy: approval?.authorizedBy,
             voidedAt: clock(),
             newUuid: newUuid,
+            authorization: approval?.authorization?.block(
+              subjectUuid: session.serverOrderUuid,
+            ),
           ),
         );
       } else {
@@ -517,6 +526,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
           cardCharge: payment.cardCharge,
           now: clock(),
           newUuid: payment.eventId == null ? newUuid : () => payment.eventId!,
+          staffId: staffId(),
         );
         // The original local UUID remains the key after an ACK rebind, so a
         // manager's later history-based void can resolve the canonical bill.
@@ -714,6 +724,8 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
     required bool prepared,
     required String authorizedBy,
     String? reason,
+    // LAUNCH-P5 C3 — the table.cancel_line gate.
+    ActionAuthorization? authorization,
   }) async {
     if (!live) return;
     if (authorizedBy.trim().isEmpty || qty <= 0) {
@@ -752,6 +764,11 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
           'reason': reason,
           'authorized_by': authorizedBy,
           'cancelled_at': at.toIso8601String(),
+          if (authorization != null)
+            'authorization': authorization.block(
+              subjectUuid: session.seatingKey,
+              ref: requestId,
+            ),
         },
         eventId: requestId,
         at: at,
@@ -779,6 +796,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
                 'staff_id': staffId(),
                 'wasted_at': at.toIso8601String(),
                 'table_cancellation_request_id': requestId,
+                'auth_v': authWireVersion,
               },
             },
         },
@@ -800,6 +818,8 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
     required Future<BillCancelChoice?> Function(DineInDetail) pick,
     required Future<bool> Function() approve,
     required Future<void> Function() guard,
+    // LAUNCH-P5 C3 — the table.cancel_bill gate, read after [approve].
+    ActionAuthorization? Function()? authorization,
   }) => _serial(() async {
     if (!live || degraded()) throw StateError('cancel_offline');
     final history = await store.readTableSyncVerdicts(limit: 1000000);
@@ -869,27 +889,33 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
         };
       }
       final id = newUuid(), at = clock().toUtc().toIso8601String();
+      final gate = authorization?.call();
       final local = (await loadSessions())
           .where(
             (s) => s.tableId == '$tableId' && s.serverOrderUuid == billUuid,
           )
           .firstOrNull;
+      final seatingKey = local?.seatingKey ?? newUuid();
       event = {
         'client_event_id': id,
         'event_type': 'table.session.cancel_bill',
         'client_timestamp': at,
         'payload': {
           'client_request_id': id,
-          'seating_key': local?.seatingKey ?? newUuid(),
+          'seating_key': seatingKey,
           'table_id': after.primaryTableId!,
           'queued_offline': false,
           'staff_id': ?staffId(),
           'reason': choice.reason.trim(),
-          'authorized_by': 'Manager',
+          'authorized_by': gate?.authorizedByName ?? 'Manager',
           'cancelled_at': at,
           'lines': lines,
+          if (gate != null)
+            'authorization': gate.block(subjectUuid: seatingKey, ref: id),
+          'auth_v': authWireVersion,
         },
       };
+      gate?.grant?.forget();
       await store.addTableSyncVerdict(
         TableSyncVerdict(
           observedAt: clock().toUtc(),
@@ -993,6 +1019,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
               'wasted_at': payload['cancelled_at'],
               'note':
                   'cancelled after preparation — table ${payload['table_id']}',
+              'auth_v': authWireVersion,
             },
           },
         );

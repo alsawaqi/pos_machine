@@ -1386,33 +1386,6 @@ class L10nEn extends L10n {
       'The order total has been sent to Payment Terminal. Please follow the terminal instructions while we wait for the final response.';
 
   @override
-  String get managerAuthRegisterTitle => 'Register Manager Fingerprint';
-
-  @override
-  String get managerAuthRegisterSubtitle => 'Manager authorization setup';
-
-  @override
-  String get managerAuthRegisterDescription =>
-      'Place the manager fingerprint on the device sensor.';
-
-  @override
-  String get managerAuthApprovalRequiredTitle => 'Manager Approval Required';
-
-  @override
-  String get managerAuthCancelOrderSubtitle => 'Cancel completed order';
-
-  @override
-  String get managerAuthCancelOrderDescription =>
-      'Place your fingerprint to unlock order cancellation.';
-
-  @override
-  String get managerAuthDefaultSubtitle => 'Manager approval';
-
-  @override
-  String get managerAuthDefaultDescription =>
-      'Place the manager fingerprint to approve.';
-
-  @override
   String get posCompNothingTitle => 'Nothing to Comp';
 
   @override
@@ -1480,34 +1453,7 @@ class L10nEn extends L10n {
   }
 
   @override
-  String get posManagerRegisterFingerprintTitle =>
-      'Register Manager Fingerprint';
-
-  @override
   String get posManagerApprovalRequiredTitle => 'Manager Approval Required';
-
-  @override
-  String get posManagerFingerprintNotApprovedMessage =>
-      'Manager fingerprint was not approved.';
-
-  @override
-  String get posManagerRegisterSensorMessage =>
-      'Place the manager finger on the sensor to enable cancellation.';
-
-  @override
-  String get posManagerRegisteredTitle => 'Manager Registered';
-
-  @override
-  String get posManagerRegistrationNotCompletedTitle =>
-      'Registration Not Completed';
-
-  @override
-  String get posManagerRegisteredMessage =>
-      'Manager fingerprint approval is ready for order cancellation.';
-
-  @override
-  String get posManagerNotRegisteredMessage =>
-      'The manager fingerprint was not registered on this terminal.';
 
   @override
   String get posPayTenderedTooLowTitle => 'Tendered Amount Too Low';
@@ -1610,9 +1556,6 @@ class L10nEn extends L10n {
   @override
   String get posCancelReqRegisterManagerMessage =>
       'Register the manager fingerprint once before cancelling this completed order.';
-
-  @override
-  String get posCancelReqManagerRequiredTitle => 'Manager Fingerprint Required';
 
   @override
   String get posCancelReqUnlockMessage =>
@@ -2541,19 +2484,6 @@ class L10nEn extends L10n {
       'Completed payments will be archived here so the staff can review them or print receipts again.';
 
   @override
-  String get posFingerprintBannerTitle => 'Manager cancellation approval';
-
-  @override
-  String get posFingerprintBannerMessage =>
-      'Register once, then use fingerprint approval before opening completed order cancellation.';
-
-  @override
-  String get posFingerprintRegisterManager => 'Register Manager';
-
-  @override
-  String get posFingerprintWaiting => 'Waiting for fingerprint';
-
-  @override
   String posStorageHeldRef(String ref) {
     return 'Ref $ref';
   }
@@ -2644,7 +2574,7 @@ class L10nEn extends L10n {
 
   @override
   String get posManagerPinOffline =>
-      'PIN approval needs a connection — use the fingerprint instead.';
+      'PIN not recognised on this till. An approver who has not approved online since the update needs a connection once.';
 
   @override
   String get posManagerPinVerify => 'Verify';
@@ -3905,4 +3835,148 @@ class L10nEn extends L10n {
   String posComboAdd(String price) {
     return 'Add combo · $price';
   }
+
+  @override
+  String approvalLockedCountdown(String time) {
+    return 'Too many wrong PINs. Try again in $time.';
+  }
+
+  @override
+  String get approvalCheckFailed =>
+      'The approval could not be checked. Try again.';
+
+  @override
+  String get approvalNotGiven => 'Approval was not given.';
+
+  @override
+  String get payoutApprovalSubtitle =>
+      'Paying out cash from the drawer needs approval.';
+
+  @override
+  String discountAboveMaxApproval(int max) {
+    return 'This discount is above your $max% limit. An approver must allow it.';
+  }
+
+  @override
+  String get shiftCloseNeedsInternet =>
+      'Closing needs the internet. Connect and try again.';
+
+  @override
+  String shiftCloseSalesSending(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count sales still sending',
+      one: '1 sale still sending',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String shiftCloseSendingSale(String reference) {
+    return 'Sale $reference';
+  }
+
+  @override
+  String get shiftCloseSalesSendingHint =>
+      'The shift closes once every sale has reached the server. Keep the till online and tap Close shift again.';
+
+  @override
+  String get shiftCloseClockOutToo => 'Clock out too';
+
+  @override
+  String get shiftCloseOtherApproval =>
+      'Closing another cashier\'s drawer needs approval.';
+
+  @override
+  String get trainingCashOnly => 'Training mode: cash only.';
+
+  @override
+  String get trainingNotAvailable => 'Not available in training mode.';
+
+  @override
+  String get pinLoginManagerUnlock => 'Manager unlock';
+
+  @override
+  String get pinLoginManagerUnlockHint =>
+      'A manager\'s PIN clears this till\'s lock';
+
+  @override
+  String pinLoginUnlockedBy(String name) {
+    return 'Unlocked by $name. Enter your PIN.';
+  }
+
+  @override
+  String get pinLoginUnlockOffline => 'Unlocking needs a connection.';
+
+  @override
+  String signedOutInactive(String name) {
+    return '$name was signed out: this account is no longer active.';
+  }
+
+  @override
+  String get clockInOutButton => 'Clock in / out';
+
+  @override
+  String get clockInOutTitle => 'Clock in / out';
+
+  @override
+  String get clockInOutHint => 'Your PIN';
+
+  @override
+  String get clockInOutConfirm => 'Continue';
+
+  @override
+  String clockedInMessage(String name) {
+    return '$name clocked in.';
+  }
+
+  @override
+  String clockedOutMessage(String name) {
+    return '$name clocked out.';
+  }
+
+  @override
+  String get clockInFailed => 'The clock could not be saved. Try again.';
+
+  @override
+  String clockInTitle(String name) {
+    return 'Welcome, $name';
+  }
+
+  @override
+  String get clockInSubtitle => 'Clock in to start selling.';
+
+  @override
+  String get clockInButton => 'Clock in';
+
+  @override
+  String get clockOutButton => 'Clock out';
+
+  @override
+  String get trainingBanner => 'TRAINING';
+
+  @override
+  String get trainingEnter => 'Training mode';
+
+  @override
+  String get trainingExit => 'Leave training';
+
+  @override
+  String get trainingExitConfirm => 'Everything done in training is discarded.';
+
+  @override
+  String get trainingEnteredMessage =>
+      'Training mode: nothing you do here is saved or sent.';
+
+  @override
+  String get trainingClearCartFirst =>
+      'Finish or clear the current order first.';
+
+  @override
+  String get shiftEndReminderBanner =>
+      'Your shift should end now. Please close your shift.';
+
+  @override
+  String get shiftEndReminderDismiss => 'OK';
 }

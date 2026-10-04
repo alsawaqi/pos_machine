@@ -1,4 +1,6 @@
 import 'dart:convert';
+
+import '../core/auth_wire.dart';
 import 'package:flutter/foundation.dart';
 import 'qr_checkout_models.dart';
 import 'qr_checkout_store.dart';
@@ -44,10 +46,25 @@ class QrCheckoutController extends ChangeNotifier {
     required this.captureBank,
     required this.authorizeGift,
     this.projectReceipt,
+    this.staffId,
+    this.giftAuthorization,
     DateTime Function()? now,
     String Function()? newId,
   }) : now = now ?? DateTime.now,
        newId = newId ?? checkoutUuid;
+
+  /// LAUNCH-P5 C3 — who takes the payment (order.pay `staff_id`).
+  final int? Function()? staffId;
+
+  /// LAUNCH-P5 C3 — the `gift` block of a gift tender, signed over the
+  /// order uuid, the tender amount and `tender:<index>` (Part A §6); it
+  /// rides on the order.pay that carries the payments.
+  final Map<String, dynamic>? Function(
+    String orderUuid,
+    int tenderIndex,
+    int amountBaisas,
+  )?
+  giftAuthorization;
   final CheckoutGateway gateway;
   final CheckoutStore store;
   final CheckoutCaptureFn captureCard;
@@ -384,6 +401,15 @@ class QrCheckoutController extends ChangeNotifier {
         await _save(_attempt!.copy(captures: List.from(tenders)));
       }
       final timestamp = now().toUtc().toIso8601String();
+      final gifts = [
+        for (var i = 0; i < tenders.length; i++)
+          if (tenders[i]['method'] == 'gift')
+            ?giftAuthorization?.call(
+              _attempt!.orderUuid,
+              i,
+              checkoutInt(tenders[i]['amount_baisas']),
+            ),
+      ];
       final event = <String, dynamic>{
         'client_event_id': _attempt!.id,
         'event_type': 'order.pay',
@@ -392,6 +418,10 @@ class QrCheckoutController extends ChangeNotifier {
           'order_uuid': _attempt!.orderUuid,
           'paid_at': timestamp,
           'payments': tenders,
+          // LAUNCH-P5 C3 — who took the payment; a P5 event.
+          'staff_id': ?staffId?.call(),
+          if (gifts.isNotEmpty) 'authorizations': gifts,
+          'auth_v': authWireVersion,
         },
       };
       await _save(_attempt!.copy(state: 'pending', event: event));

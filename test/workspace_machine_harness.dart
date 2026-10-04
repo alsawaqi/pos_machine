@@ -1,3 +1,4 @@
+import 'support/p5_ticks.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -154,8 +155,16 @@ Future<WorkspaceMachineHarness> pumpWorkspaceMachine(
   Stream<RemoteTableSnapshot>? boards,
   bool? audienceConsent,
   Widget Function(Widget child)? wrapStaff,
+  // LAUNCH-P5 — null keeps the shared default tick list (gates on).
+  String? tickList,
+  bool allowAllTicks = true,
 }) async {
   SharedPreferences.setMockInitialValues({
+    // LAUNCH-P5 — see support/p5_ticks.dart.
+    if (tickList != null)
+      p5TickListKey: tickList
+    else if (allowAllTicks)
+      p5TickListKey: p5AllowAllTickList(),
     'app_language': arabic ? 'ar' : 'en',
     'terminal_id': 'TERM-T7',
     'kiosk_id': 'KIOSK-T7',

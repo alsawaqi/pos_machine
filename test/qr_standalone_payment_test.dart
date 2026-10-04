@@ -56,7 +56,8 @@ void main() {
       expect(payload['gps'], {'lat': 23.588, 'lng': 58.383});
       expect(
         payload.keys,
-        unorderedEquals(['order_uuid', 'paid_at', 'payments', 'gps']),
+        // LAUNCH-P5 C3 — plus the P5 wire marker.
+        unorderedEquals(['order_uuid', 'paid_at', 'payments', 'gps', 'auth_v']),
       );
       final payments = (payload['payments'] as List).cast<Map>();
       expect(payments, hasLength(1));

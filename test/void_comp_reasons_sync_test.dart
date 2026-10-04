@@ -91,6 +91,9 @@ class _FakeSession implements SessionService {
 
   @override
   Future<void> saveServerAudienceMeasurement(bool? enabled) async {}
+  // LAUNCH-P5 — the tick list / reminder keys of the settings block.
+  @override
+  Future<void> saveStaffSettings(Map<String, dynamic>? settings) async {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError(

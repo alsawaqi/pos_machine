@@ -1,5 +1,10 @@
-// W-M6 / EXIT-08 — Shift closes while sale batches are still queued: the
-// queued revenue survives the close untouched and a later flush drains it.
+// W-M6 / EXIT-08 — Shift closes while sale batches are still queued.
+//
+// LAUNCH-P5 C5 (owner decision 3) CHANGES this contract: the close now
+// flushes the outbox FIRST, is blocked while any paid sale of the shift is
+// unacknowledged, and lists the shift's paid orders (order_uuids) on the
+// shift.close event. The queued revenue therefore reaches the server before
+// the close, exactly once, and is never left behind a closed drawer.
 //
 // Contract (PHASE_0_EXIT_COVERAGE_MATRIX.md Part B, EXIT-08 + authoritative
 // carve-out): assert durability + processed-or-visible only; final Z/EOD
@@ -39,8 +44,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'queued sale batches survive a real shift close untouched and a later '
-    'flush drains them exactly once',
+    'queued sale batches are flushed exactly once before a real shift close, '
+    'which lists them',
     (tester) async {
       // A portrait terminal-sized surface so the count step's keypad and
       // submit button are on-screen (the default 800x600 test viewport cuts
@@ -127,33 +132,32 @@ void main() {
           reason: 'the close must settle and show the result step');
       expect(find.text('Drawer balanced'), findsOneWidget);
 
-      // The close pushed exactly one event — shift.close — and never touched
-      // the queued sale batches.
-      expect(adapter.requests, hasLength(1));
-      final closeEvent = adapter.requests.single.single;
-      expect(closeEvent['event_type'], 'shift.close');
+      // The sales went first, then exactly one shift.close naming them.
+      final closeBatches = [
+        for (final batch in adapter.requests)
+          if (batch.any((e) => e['event_type'] == 'shift.close')) batch,
+      ];
+      expect(closeBatches, hasLength(1));
+      expect(adapter.requests.last, closeBatches.single,
+          reason: 'the close is pushed after the flush');
+      final closeEvent = closeBatches.single.single;
       final closePayload =
           (closeEvent['payload'] as Map).cast<String, dynamic>();
       expect(closePayload['shift_uuid'], 'shift-2026-08-13-001');
       expect(closePayload['closing_cash_baisas'], 10000);
-      expect(adapter.orderEventIds, isEmpty,
-          reason: 'the close path must not flush or mutate sale batches');
+      expect(closePayload['closed_by_staff_id'], 8);
+      expect(closePayload['order_uuids'], ['queued-sale-1', 'queued-sale-2']);
+      expect(await db.pendingOutbox(), isEmpty,
+          reason: 'every queued sale was acknowledged before the close');
 
-      final afterClose = await db.select(db.orderOutbox).get();
-      expect(afterClose, before,
-          reason: 'every queued sale row must survive the close untouched '
-              '(same events, attempts, rejections, still pending)');
-
-      // Finish the close: the shift record is cleared, sales remain queued.
+      // Finish the close: the shift record is cleared.
       await tester.tap(find.text('Done'));
       await _pumpFrames(tester);
       expect(session.openShift, isNull,
           reason: 'the settled close clears the cached shift');
-      expect(await db.pendingOutbox(), hasLength(2));
 
-      // A later flush drains the surviving batches — exactly once each.
-      expect(await _flush(tester, repository), 2);
-      expect(await db.pendingOutbox(), isEmpty);
+      // A later flush has nothing left; each sale event went exactly once.
+      expect(await _flush(tester, repository), 0);
       final sent = adapter.orderEventIds;
       expect(
         {for (final id in sent) id: sent.where((s) => s == id).length},
@@ -163,7 +167,7 @@ void main() {
           'create-queued-sale-2': 1,
           'pay-queued-sale-2': 1,
         },
-        reason: 'each surviving sale event drains exactly once',
+        reason: 'each queued sale event drains exactly once',
       );
 
       // Dispose the provider subscription before the database teardown.
@@ -252,6 +256,26 @@ class _ShiftAwareAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    if (options.method == 'GET') {
+      // LAUNCH-P5 C5 — the close reads the shift's re-open count first.
+      return ResponseBody.fromString(
+        jsonEncode({
+          'data': {
+            'shift': {
+              'uuid': 'shift-2026-08-13-001',
+              'opening_cash_baisas': 10000,
+              'opened_at': '2026-08-13T08:00:00Z',
+              'staff_id': 8,
+              'reopen_count': 0,
+            },
+          },
+        }),
+        200,
+        headers: {
+          Headers.contentTypeHeader: ['application/json'],
+        },
+      );
+    }
     final body = (options.data as Map).cast<String, dynamic>();
     final events = (jsonDecode(jsonEncode(body['events'])) as List)
         .whereType<Map>()

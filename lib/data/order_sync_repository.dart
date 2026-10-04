@@ -7,6 +7,7 @@ import 'package:drift/drift.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show SentryLevel;
 
+import '../core/auth_wire.dart';
 import '../core/sentry.dart';
 import '../models/pos_models.dart';
 import '../services/order_sync_payload.dart';
@@ -71,6 +72,10 @@ class OrderSyncRepository {
   /// Rechecked inside the serialized queue before any outbox mutation or push.
   /// Reads stay available while a durable draft recovery blocks new work.
   final Future<void> Function()? mutationGuard;
+
+  /// LAUNCH-P5 C3 — the logged-in staff member, stamped on a standalone
+  /// QR order.pay (wired by the provider).
+  int? Function()? payStaffId;
   final _ownerIdentity = BusinessBoundary.current;
   final _ownerGeneration = BusinessBoundary.generation.value;
   Future<void> _flushTail = Future<void>.value();
@@ -225,6 +230,48 @@ class OrderSyncRepository {
   }
 
   Future<List<OrderOutboxRow>> allRows() => _db.select(_db.orderOutbox).get();
+
+  /// LAUNCH-P5 C5 — the paid sales this device queued since [since] (a
+  /// shift's opening): every outbox row with an `order.pay`. [orderUuids]
+  /// lists them all (sent or not) for `shift.close`; [unsent] are the rows
+  /// still waiting for the server's acknowledgement, which block the close.
+  /// A row parked after repeated server refusals does not block: the server
+  /// marks the shift for review instead.
+  Future<({List<OrderOutboxRow> unsent, List<String> orderUuids})>
+  paidSalesSince(DateTime since) async {
+    final from = since.subtract(const Duration(minutes: 1));
+    final pendingKeys = {
+      for (final row in await pendingRows()) row.orderUuid,
+    };
+    final unsent = <OrderOutboxRow>[];
+    final uuids = <String>[];
+    final rows = await allRows()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    for (final row in rows) {
+      if (row.createdAt.isBefore(from)) continue;
+      List<Map<String, dynamic>> events;
+      try {
+        events = (jsonDecode(row.eventsJson) as List)
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .toList();
+      } catch (_) {
+        continue;
+      }
+      final pays = events.where((e) => e['event_type'] == 'order.pay');
+      if (pays.isEmpty) continue;
+      for (final pay in pays) {
+        final uuid = (pay['payload'] as Map?)?['order_uuid']?.toString() ?? '';
+        if (uuid.isNotEmpty && !uuids.contains(uuid)) uuids.add(uuid);
+      }
+      if (row.syncedAt == null &&
+          pendingKeys.contains(row.orderUuid) &&
+          !isStuck(row)) {
+        unsent.add(row);
+      }
+    }
+    return (unsent: unsent, orderUuids: uuids);
+  }
 
   Future<List<OrderOutboxRow>> pendingRows() async =>
       _withoutArchivedCopies(await _db.pendingOutbox());
@@ -590,6 +637,8 @@ class OrderSyncRepository {
     int? voidReasonId,
     int? staffId,
     String? authorizedBy,
+    // LAUNCH-P5 C3 — the order.void_unpaid / order.void_paid block.
+    Map<String, dynamic>? authorization,
   }) async {
     final enqueued = await _prepare(() async {
       if (orderUuid.isEmpty) return false;
@@ -600,6 +649,7 @@ class OrderSyncRepository {
         voidReasonId: voidReasonId,
         staffId: staffId,
         authorizedBy: authorizedBy,
+        authorization: authorization,
       );
 
       await _db.enqueueOutbox(
@@ -628,6 +678,7 @@ class OrderSyncRepository {
     double? lng,
     DateTime? paidAt,
     String Function()? newUuid,
+    int? staffId,
   }) async {
     final key = '$orderUuid:pay';
     final event = buildStandaloneQrPayEvent(
@@ -639,6 +690,7 @@ class OrderSyncRepository {
       lng: lng,
       paidAt: paidAt,
       newUuid: newUuid,
+      staffId: staffId ?? payStaffId?.call(),
     );
     if (!BusinessBoundary.owns(_ownerIdentity?.toJson())) {
       await BusinessBoundary.quarantine('qr-paid', key, {
@@ -1119,7 +1171,7 @@ class OrderSyncRepository {
   /// on the event's client_event_id.
   Future<void> pushSliderDisplay(Map<String, dynamic> event) async {
     try {
-      await _api.pushSync([event]);
+      await _api.pushSync([withAuthV(event)]);
     } catch (_) {
       // best-effort telemetry — drop on any network/transport failure.
     }

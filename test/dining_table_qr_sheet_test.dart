@@ -531,8 +531,12 @@ Future<T7SpyController> pumpT7Sheet(
   String mode = 'live',
   ValueNotifier<String>? modeChanges,
 }) async {
-  SharedPreferences.setMockInitialValues(const {
+  SharedPreferences.setMockInitialValues({
     'print_kitchen_tickets': false,
+    // LAUNCH-P5 — the board's void is gated by order.void_unpaid; a
+    // supervisor holds that tick, so this sheet test needs no approver.
+    'staff_session_json':
+        '{"id":7,"name":"Test Supervisor","position":"supervisor"}',
   });
   final preferences = await SharedPreferences.getInstance();
   final spy = controller ?? T7SpyController();
@@ -832,6 +836,7 @@ class T7SheetFlow implements QrSettlementFlow {
     int? voidReasonId,
     int? staffId,
     String? authorizedBy,
+    Map<String, dynamic>? authorization,
   }) async {
     calls.add('void:$orderUuid');
   }

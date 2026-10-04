@@ -3,7 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/manager_auth.dart';
+import '../data/db/app_database.dart' show OrderOutboxRow;
 import '../l10n/l10n.dart';
+import '../services/api_models.dart';
+import '../services/pos_api_service.dart';
+import '../services/session_service.dart' show OpenShiftData;
 import '../providers/providers.dart';
 import '../services/local_order_storage_service.dart';
 import '../services/shift_payload.dart';
@@ -34,6 +39,13 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
   String? _error;
   ShiftCloseResult? _result;
   bool _forcedPreflightComplete = false;
+  // LAUNCH-P5 C5 — paid sales still sending (they block the close), the
+  // server's missing list, the close_other gate, and a count already sent.
+  List<OrderOutboxRow> _unsent = const [];
+  List<String> _missing = const [];
+  ActionAuthorization? _closeOther;
+  // LAUNCH-P5 C6 — clock out with the close (default yes).
+  bool _clockOutToo = true;
 
   static String _money(int baisas) {
     final omr = baisas / 1000;
@@ -60,6 +72,40 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
   // Phase G4 — the auto/manual summary print failed (real hardware only).
   bool _printFailed = false;
 
+  /// LAUNCH-P5 C5 — the shift's re-open count, read fresh from the server
+  /// right before the close (it is part of the fixed close id). Absent on
+  /// an older server = 0.
+  Future<int> _freshReopenCount(OpenShiftData shift) async {
+    final api = ref.read(apiServiceProvider);
+    for (final lookup in [
+      () => api.fetchCurrentShift(staffId: shift.staffId, sharedStaffOnly: true),
+      () => api.fetchCurrentShift(),
+    ]) {
+      try {
+        final current = await lookup();
+        if (current?.uuid == shift.uuid) return current!.reopenCount;
+      } on ApiException catch (e) {
+        // Offline: closing needs the internet.
+        if (e.isNetwork) rethrow;
+      } catch (_) {
+        // A malformed reply: try the next lookup, then the cached count.
+      }
+    }
+    return shift.reopenCount;
+  }
+
+  /// Flush the outbox, then list this shift's paid sales still unsent.
+  Future<({List<OrderOutboxRow> unsent, List<String> orderUuids})>
+  _flushAndCheck(OpenShiftData shift) async {
+    final outbox = ref.read(orderSyncRepositoryProvider);
+    try {
+      await outbox.flush();
+    } catch (_) {
+      // Still unsent rows are listed below.
+    }
+    return outbox.paidSalesSince(shift.openedAt);
+  }
+
   Future<void> _close() async {
     final l10n = L10n.of(context);
     final shift = ref.read(sessionControllerProvider).openShift;
@@ -67,9 +113,12 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
       setState(() => _error = l10n.shiftCloseNoOpenShift);
       return;
     }
+    final staff = ref.read(sessionServiceProvider).staff;
     setState(() {
       _busy = true;
       _error = null;
+      _unsent = const [];
+      _missing = const [];
     });
     try {
       if (widget.forcedHandover && !_forcedPreflightComplete) {
@@ -77,10 +126,77 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
         if (!mounted) return;
         _forcedPreflightComplete = true;
       }
-      final result = await ref.read(shiftServiceProvider).close(
+      // LAUNCH-P5 C5 — closing needs the server.
+      if (ref.read(connectivityProvider).asData?.value == false) {
+        setState(() => _error = l10n.shiftCloseNeedsInternet);
+        return;
+      }
+      Map<String, dynamic>? authorization;
+      // Closing another cashier's drawer: the shift.close_other tick, or an
+      // approver's PIN.
+      if (staff != null && shift.staffId != staff.id) {
+        _closeOther ??= await authorizeAction(
+          context,
+          ref,
+          action: 'shift.close_other',
+          subtitle: l10n.shiftCloseOtherApproval,
+        );
+        if (!mounted) return;
+        final gate = _closeOther;
+        if (gate == null) {
+          setState(() => _error = l10n.approvalNotGiven);
+          return;
+        }
+        authorization = gate.block(subjectUuid: shift.uuid);
+      }
+      // Flush first; every paid sale of this shift must have reached the
+      // server before the drawer can close (owner decision 3).
+      final sales = await _flushAndCheck(shift);
+      if (!mounted) return;
+      if (sales.unsent.isNotEmpty) {
+        setState(() => _unsent = sales.unsent);
+        return;
+      }
+      final reopenCount = await _freshReopenCount(shift);
+      if (!mounted) return;
+      final counted = _closingBaisas;
+      Map<String, dynamic> event(List<String> orderUuids) =>
+          buildShiftCloseEvent(
             shiftUuid: shift.uuid,
-            closingCashBaisas: _closingBaisas,
+            closingCashBaisas: counted,
+            closedByStaffId: staff?.id,
+            orderUuids: orderUuids,
+            authorization: authorization,
+            reopenCount: reopenCount,
           );
+      Future<ShiftCloseResult> send(Map<String, dynamic> close) => ref
+          .read(shiftServiceProvider)
+          .close(
+            shiftUuid: shift.uuid,
+            closingCashBaisas: counted,
+            event: close,
+          );
+      ShiftCloseResult result;
+      try {
+        result = await send(event(sales.orderUuids));
+      } on ShiftUnsyncedSalesException {
+        // The server is still missing a sale: flush again and retry once
+        // (the same fixed id; the server takes the new payload).
+        final again = await _flushAndCheck(shift);
+        if (!mounted) return;
+        if (again.unsent.isNotEmpty) {
+          setState(() => _unsent = again.unsent);
+          return;
+        }
+        try {
+          result = await send(event(again.orderUuids));
+        } on ShiftUnsyncedSalesException catch (e) {
+          if (mounted) setState(() => _missing = e.missing);
+          return;
+        }
+      }
+      _closeOther?.grant?.forget();
+      _closeOther = null;
       // Phase C6 — assemble the Z-report: server numbers when present (same
       // transaction as the close), the device-local fold as the fallback.
       final closedAt = DateTime.now();
@@ -105,7 +221,7 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
         closedAt: closedAt,
         openingBaisas: shift.openingCashBaisas,
         expectedBaisas: result.expectedCashBaisas,
-        countedBaisas: _closingBaisas,
+        countedBaisas: counted,
         varianceBaisas: result.varianceBaisas,
         summary: summary,
       );
@@ -122,9 +238,27 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
           }
         }));
       }
+      // LAUNCH-P5 C6 — clock out with the close (default yes) when the
+      // person closes their own shift.
+      if (_clockOutToo &&
+          staff != null &&
+          shift.staffId == staff.id &&
+          staff.attendance?.open == true) {
+        try {
+          await ref
+              .read(attendanceServiceProvider)
+              .clockOut(staff.id, attendanceUuid: staff.attendance?.uuid);
+          await ref
+              .read(sessionControllerProvider.notifier)
+              .updateAttendance(const StaffAttendance(open: false));
+        } catch (_) {
+          // The close stands; the clock-out can be done from the PIN screen.
+        }
+      }
       if (mounted) {
         setState(() {
           _result = result;
+          _closingBaisas = counted;
           _ticket = ticket;
         });
       }
@@ -139,6 +273,17 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
         return;
       }
       if (mounted) setState(() => _error = e.message);
+    } on ShiftApprovalRefusedException {
+      // The server did not accept the close_other approval: ask again.
+      _closeOther?.grant?.forget();
+      _closeOther = null;
+      if (mounted) setState(() => _error = l10n.approvalNotGiven);
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(
+          () => _error = e.isNetwork ? l10n.shiftCloseNeedsInternet : e.message,
+        );
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _error = l10n.shiftCloseFailed);
@@ -162,6 +307,8 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
     final shift = ref.watch(sessionControllerProvider).openShift;
+    // LAUNCH-P5 C5 — keep the online state current for the close check.
+    ref.watch(connectivityProvider);
     return Scaffold(
       backgroundColor: const Color(0xFF102028),
       appBar: AppBar(
@@ -225,12 +372,32 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
             muted: true),
         const SizedBox(height: 12),
         _amountCard(l10n.shiftCloseCountedDrawerCashLabel, _money(_closingBaisas)),
+        if (_unsent.isNotEmpty || _missing.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _blockedCard(l10n),
+        ],
         if (_error != null) ...[
           const SizedBox(height: 14),
           Text(
             _error!,
             textAlign: TextAlign.center,
             style: const TextStyle(color: Color(0xFFFF6B6B), fontSize: 14),
+          ),
+        ],
+        if (_ownShift) ...[
+          const SizedBox(height: 10),
+          CheckboxListTile(
+            key: const ValueKey('shift-close-clock-out'),
+            value: _clockOutToo,
+            onChanged: _busy
+                ? null
+                : (v) => setState(() => _clockOutToo = v ?? true),
+            title: Text(
+              l10n.shiftCloseClockOutToo,
+              style: const TextStyle(color: Colors.white),
+            ),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
           ),
         ],
         const SizedBox(height: 18),
@@ -251,6 +418,61 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// The logged-in person closes their own shift and is clocked in.
+  bool get _ownShift {
+    final staff = ref.read(sessionServiceProvider).staff;
+    final shift = ref.read(sessionControllerProvider).openShift;
+    return staff != null &&
+        shift != null &&
+        shift.staffId == staff.id &&
+        staff.attendance?.open == true;
+  }
+
+  /// "3 sales still sending" (or the server's own list) with a retry.
+  Widget _blockedCard(L10n l10n) {
+    final lines = _unsent.isNotEmpty
+        ? [
+            for (final row in _unsent)
+              l10n.shiftCloseSendingSale(
+                (row.orderNumber ?? 0) > 0
+                    ? '#${row.orderNumber}'
+                    : row.orderUuid.split(':').first,
+              ),
+          ]
+        : [for (final uuid in _missing) l10n.shiftCloseSendingSale(uuid)];
+    final count = _unsent.isNotEmpty ? _unsent.length : _missing.length;
+    return Container(
+      key: const ValueKey('shift-close-blocked'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0x33E0A93B),
+        border: Border.all(color: const Color(0xFFE0A93B)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            l10n.shiftCloseSalesSending(count),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (final line in lines.take(8))
+            Text(line, style: const TextStyle(color: Colors.white70)),
+          const SizedBox(height: 8),
+          Text(
+            l10n.shiftCloseSalesSendingHint,
+            style: const TextStyle(color: Colors.white60, fontSize: 12.5),
+          ),
+        ],
+      ),
     );
   }
 

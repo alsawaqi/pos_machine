@@ -68,7 +68,13 @@ class ConfigRepository {
       BusinessBoundary.assertGeneration(_ownerGeneration);
       await _session.saveLocationMode(config.locationMode);
     }
+    // LAUNCH-P5 — the tick list and the shift-end reminder time.
+    BusinessBoundary.assertGeneration(_ownerGeneration);
+    await _session.saveStaffSettings(_settingsOf(config.data));
   }
+
+  static Map<String, dynamic>? _settingsOf(Map<String, dynamic> data) =>
+      (data['settings'] as Map?)?.cast<String, dynamic>();
 
   /// Incremental sync (Phase 7): a DELTA when we hold a cursor from a prior
   /// sync, else a full [fetchAndCache]. A delta failure (bad/expired cursor,
@@ -159,6 +165,8 @@ class ConfigRepository {
         BusinessBoundary.assertGeneration(_ownerGeneration);
         await _session.saveLocationMode(res.locationMode);
       }
+      BusinessBoundary.assertGeneration(_ownerGeneration);
+      await _session.saveStaffSettings(_settingsOf(res.data));
     } catch (_) {
       // Self-heal: drop back to a full sync on any delta failure.
       await fetchAndCache();

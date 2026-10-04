@@ -1,6 +1,8 @@
 import 'dart:convert';
 import '../../tenancy/business_identity.dart';
 import 'package:drift/drift.dart';
+
+import '../../core/training_flag.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
 import 'tables.dart';
@@ -483,19 +485,31 @@ class AppDatabase extends _$AppDatabase {
   // ---------------------------------------------------------------------------
   Future<void> enqueueOutbox(OrderOutboxCompanion row) async {
     BusinessBoundary.assertWritable();
-    if (BusinessBoundary.initialized && row.eventsJson.present) {
+    if (row.eventsJson.present &&
+        (BusinessBoundary.initialized || TrainingMode.active)) {
       final events = (jsonDecode(row.eventsJson.value) as List).cast<Map>();
       row = row.copyWith(
         eventsJson: Value(
           jsonEncode([
             for (final event in events)
-              BusinessBoundary.stampEvent(event.cast<String, dynamic>()),
+              _p5Stamp(
+                BusinessBoundary.initialized
+                    ? BusinessBoundary.stampEvent(event.cast<String, dynamic>())
+                    : event.cast<String, dynamic>(),
+              ),
           ]),
         ),
       );
     }
     await into(orderOutbox).insertOnConflictUpdate(row);
   }
+
+  /// LAUNCH-P5 C7 — an event queued while training mode is on carries the
+  /// `training: true` safety marker, so the server refuses it if it is
+  /// ever sent. (`auth_v` is stamped by the event builders, not here: an
+  /// event an older build created stays legacy, byte for byte.)
+  static Map<String, dynamic> _p5Stamp(Map<String, dynamic> event) =>
+      TrainingMode.active ? TrainingMode.mark(event) : event;
 
   Future<void> quarantineOutbox(OrderOutboxRow row) async {
     await BusinessBoundary.quarantine(

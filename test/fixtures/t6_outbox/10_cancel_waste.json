@@ -69,7 +69,8 @@
             "seating_key": "00000000-0000-4000-8000-000000001002",
             "table_id": 5,
             "queued_offline": false,
-            "staff_id": 1
+            "staff_id": 1,
+            "auth_v": 1
           }
         }
       ],
@@ -113,7 +114,8 @@
             "seating_key": "00000000-0000-4000-8000-000000001002",
             "table_id": 5,
             "queued_offline": true,
-            "staff_id": 1
+            "staff_id": 1,
+            "auth_v": 1
           }
         }
       ],
@@ -170,7 +172,8 @@
             "note": "cancelled after preparation — table Table 5, ref T-0906-001",
             "staff_id": 1,
             "wasted_at": "2099-09-06T12:00:00.000Z",
-            "table_cancellation_request_id": "00000000-0000-4000-8000-000000001003"
+            "table_cancellation_request_id": "00000000-0000-4000-8000-000000001003",
+            "auth_v": 1
           }
         }
       ],

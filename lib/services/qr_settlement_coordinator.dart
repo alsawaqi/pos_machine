@@ -237,6 +237,7 @@ abstract interface class QrSettlementOutbox {
     int? voidReasonId,
     int? staffId,
     String? authorizedBy,
+    Map<String, dynamic>? authorization,
   });
 }
 
@@ -277,12 +278,14 @@ class OrderSyncQrSettlementOutbox implements QrSettlementOutbox {
     int? voidReasonId,
     int? staffId,
     String? authorizedBy,
+    Map<String, dynamic>? authorization,
   }) => _repository.enqueueVoid(
     orderUuid,
     reason: reason,
     voidReasonId: voidReasonId,
     staffId: staffId,
     authorizedBy: authorizedBy,
+    authorization: authorization,
   );
 }
 
@@ -305,6 +308,7 @@ abstract interface class QrSettlementFlow {
     int? voidReasonId,
     int? staffId,
     String? authorizedBy,
+    Map<String, dynamic>? authorization,
   });
 }
 
@@ -652,11 +656,13 @@ class QrSettlementCoordinator implements QrSettlementFlow {
     int? voidReasonId,
     int? staffId,
     String? authorizedBy,
+    Map<String, dynamic>? authorization,
   }) => _outbox.enqueueVoid(
     orderUuid,
     reason: reason,
     voidReasonId: voidReasonId,
     staffId: staffId,
     authorizedBy: authorizedBy,
+    authorization: authorization,
   );
 }

@@ -189,7 +189,7 @@ void main() {
       final old = store.held.single;
       await c.resumeHeldOrder(old);
       var voided = 0;
-      c.onOrderVoided = (_, {orderNumber, reason, voidReasonId}) {
+      c.onOrderVoided = (_, {orderNumber, reason, voidReasonId, authorization}) {
         voided++;
       };
       await c.discardHeldOrder(old);

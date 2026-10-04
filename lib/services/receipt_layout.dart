@@ -90,6 +90,10 @@ class ReceiptHeader {
   final String branchNameAr;
 }
 
+/// LAUNCH-P5 C7 — the banner on every training-mode print.
+const trainingReceiptEn = 'TRAINING — NOT A RECEIPT';
+const trainingReceiptAr = 'تدريب — ليس إيصالاً';
+
 String receiptAmount(double value) => value.toStringAsFixed(3);
 String receiptMoney(double value) => '${value.toStringAsFixed(3)} OMR';
 
@@ -226,6 +230,12 @@ List<ReceiptLine> buildReceiptLines(
 
   // ---- 6-8: what it is --------------------------------------------------------
   lines.add(const ReceiptLine(ReceiptLineKind.gap));
+  // LAUNCH-P5 C7 — a training sale is never a receipt.
+  if (order.training) {
+    lines
+      ..add(const ReceiptLine(ReceiptLineKind.title, text: trainingReceiptEn))
+      ..add(const ReceiptLine(ReceiptLineKind.title, text: trainingReceiptAr));
+  }
   if (order.receiptPending) {
     lines
       ..add(const ReceiptLine(ReceiptLineKind.title, text: pendingReceiptEn))

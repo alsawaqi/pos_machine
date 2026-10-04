@@ -263,6 +263,8 @@ void main() {
         'order_uuid',
         'paid_at',
         'payments',
+        // LAUNCH-P5 C3 — the P5 wire marker.
+        'auth_v',
       });
       expect(await store.active(), isNull);
       uuid = 'next-table-bill';

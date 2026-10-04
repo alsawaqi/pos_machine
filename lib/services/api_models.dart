@@ -54,6 +54,32 @@ class PairResult {
   }
 }
 
+/// LAUNCH-P5 C6 — the login reply's attendance state for this person.
+class StaffAttendance {
+  const StaffAttendance({required this.open, this.clockInAt, this.uuid});
+
+  final bool open;
+  final DateTime? clockInAt;
+
+  /// The open attendance row's uuid when the server sends it.
+  final String? uuid;
+
+  static StaffAttendance? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    return StaffAttendance(
+      open: raw['open'] == true,
+      clockInAt: DateTime.tryParse(raw['clock_in_at']?.toString() ?? ''),
+      uuid: raw['uuid']?.toString() ?? raw['attendance_uuid']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'open': open,
+    if (clockInAt != null) 'clock_in_at': clockInAt!.toUtc().toIso8601String(),
+    if (uuid != null) 'uuid': uuid,
+  };
+}
+
 class StaffSessionData {
   const StaffSessionData({
     required this.id,
@@ -61,6 +87,8 @@ class StaffSessionData {
     this.uuid,
     this.position,
     this.branchId,
+    this.branchIds = const <int>[],
+    this.attendance,
   });
 
   final int id;
@@ -69,6 +97,12 @@ class StaffSessionData {
   final String? position;
   final int? branchId;
 
+  /// LAUNCH-P5 — every branch this person works at (home branch included).
+  final List<int> branchIds;
+
+  /// LAUNCH-P5 C6 — the attendance state; null from an older server.
+  final StaffAttendance? attendance;
+
   factory StaffSessionData.fromJson(Map<String, dynamic> json) =>
       StaffSessionData(
         id: (json['id'] as num).toInt(),
@@ -76,6 +110,11 @@ class StaffSessionData {
         uuid: json['uuid'] as String?,
         position: json['position'] as String?,
         branchId: (json['branch_id'] as num?)?.toInt(),
+        branchIds: [
+          for (final id in json['branch_ids'] as List? ?? const [])
+            if (id is num) id.toInt(),
+        ],
+        attendance: StaffAttendance.fromJson(json['attendance']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -84,7 +123,20 @@ class StaffSessionData {
     'uuid': uuid,
     'position': position,
     'branch_id': branchId,
+    if (branchIds.isNotEmpty) 'branch_ids': branchIds,
+    if (attendance != null) 'attendance': attendance!.toJson(),
   };
+
+  StaffSessionData withAttendance(StaffAttendance? attendance) =>
+      StaffSessionData(
+        id: id,
+        name: name,
+        uuid: uuid,
+        position: position,
+        branchId: branchId,
+        branchIds: branchIds,
+        attendance: attendance,
+      );
 
   factory StaffSessionData.fromStored(Map<String, dynamic> json) =>
       StaffSessionData.fromJson(json);

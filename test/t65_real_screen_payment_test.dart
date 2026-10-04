@@ -16,6 +16,7 @@ import 'package:pos_machine/draft_recovery/recovery_store.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/models/remote_table_state.dart';
 import 'package:pos_machine/l10n/l10n_en.dart';
+import 'package:pos_machine/core/manager_auth.dart';
 import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/services/local_order_storage_service.dart';
 import 'package:pos_machine/services/pos_api_service.dart';
@@ -42,6 +43,16 @@ const product = Product(
 // Only the external server is simulated. Payment, outbox ACK processing,
 // identity persistence, receipt history and retirement use production code.
 class AckServer implements PosApiService {
+  // LAUNCH-P5 C2 — the online approval check (PIN 1234 approves).
+  int approvals = 0;
+  @override
+  Future<ApproverVerification?> verifyApprover(String pin) async {
+    approvals++;
+    return pin == '1234'
+        ? const ApproverVerification(staffId: 19, name: 'Verified Approver')
+        : null;
+  }
+
   bool paid = false;
   bool shared = false;
   bool claimed = false;
@@ -126,7 +137,15 @@ class AckServer implements PosApiService {
             ? 270
             : (5400 * (a['percent_bp'] as int) / 10000).round();
       case 'comp':
-        expect(a['mode'] == 'clear' || a['authorized_by'] == 'Manager', true);
+        // LAUNCH-P5 C3 — the comp names who allowed it (never the fixed
+        // word "Manager") and carries its authorization block.
+        expect(
+          a['mode'] == 'clear' ||
+              (a['authorized_by'] == 'Test Cashier' &&
+                  (p['authorization'] as Map)['action'] == 'comp' &&
+                  (p['authorization'] as Map)['mode'] == 'position'),
+          true,
+        );
         comp = a['mode'] == 'clear'
             ? 0
             : 2700 * ((a['target'] as Map)['qty'] as int);
@@ -751,21 +770,27 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           await tap(
             find.text(L10nEn().posDiscountDlgApply('10% Discount')).last,
           );
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('manager_biometric_registered', true);
-          var authorized = false, gateCalls = 0;
-          const gate = MethodChannel('com.example.manager_biometrics');
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-              .setMockMethodCallHandler(gate, (call) async {
-                gateCalls++;
-                return authorized;
-              });
-          addTearDown(
-            () => TestDefaultBinaryMessengerBinding
-                .instance
-                .defaultBinaryMessenger
-                .setMockMethodCallHandler(gate, null),
-          );
+          // LAUNCH-P5 — the comp tick lets this cashier comp without a
+          // sheet; a rule marked "needs manager" always asks for an
+          // approver's PIN (M7). There is no fingerprint path any more.
+          Future<void> approverPin() async {
+            final sheet = find.byType(ManagerApprovalSheet);
+            await pumpUntilRealCondition(
+              tester,
+              () => sheet.evaluate().isNotEmpty,
+              reason: 'approval sheet',
+            );
+            for (final digit in ['1', '2', '3', '4']) {
+              await tap(find.descendant(of: sheet, matching: find.text(digit)));
+            }
+            await tap(
+              find.descendant(
+                of: sheet,
+                matching: find.text(L10nEn().posManagerPinVerify),
+              ),
+            );
+          }
+
           final compButton = find.byKey(const ValueKey('table-adjust-comp'));
           final beforeDenied = server.adjustments.length;
           await tap(compButton);
@@ -781,7 +806,6 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           );
           // The warning uses the existing temporary feedback overlay; wait it out.
           await settle(45);
-          authorized = true;
           await tap(compButton);
           await tap(find.byKey(const ValueKey('comp-target-dropdown')));
           await tap(find.text('Coffee ×2').last);
@@ -805,7 +829,7 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           await tap(compButton);
           await tap(find.text(L10nEn().posCompRemoveButton).last);
           expect(server.comp, 0);
-          expect(gateCalls, 3);
+          expect(server.approvals, 0, reason: 'the comp tick needs no sheet');
           c.availableDiscounts = const [
             MerchantDiscount(
               id: 8,
@@ -816,10 +840,10 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
               requiresManagerApproval: true,
             ),
           ];
-          authorized = false;
           final beforeRule = server.adjustments.length;
           await tap(discount);
           await tap(find.text('Manager five').last);
+          expect(find.byType(ManagerApprovalSheet), findsOneWidget);
           await tap(find.text(L10nEn().commonCancel).last);
           await settle(45);
           expect(server.adjustments, hasLength(beforeRule));
@@ -831,13 +855,18 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
             ),
             isEmpty,
           );
-          authorized = true;
           await tap(discount);
           await tap(find.text('Manager five').last);
+          await approverPin();
           expect(server.manual, 270);
+          // The real approver, never the fixed word "Manager".
           expect(
             (server.adjustments.last['adjustment'] as Map)['authorized_by'],
-            'Manager',
+            'Verified Approver',
+          );
+          expect(
+            (server.adjustments.last['authorization'] as Map)['mode'],
+            'approval',
           );
           c.availableDiscounts = [];
           await tap(discount);
@@ -896,10 +925,10 @@ void runPaymentRegression({bool gps = false, bool parkedWaste = false}) {
           await tap(find.text('Remove customer').last);
           expect(server.customer, null);
           expect(
-            gateCalls,
-            5,
+            server.approvals,
+            1,
             reason:
-                'Manual discounts and customer changes have no manager gate',
+                'Manual discounts within the limit and customer changes have no gate',
           );
           // Leave all three adjustments on the paid bill: only the server
           // receipt carries them; the original local draft remains unadjusted.

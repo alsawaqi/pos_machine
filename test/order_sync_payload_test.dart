@@ -1025,12 +1025,15 @@ void main() {
           '"amount_baisas":400,"offer_id":9,"line_index":2}],"comps":'
           '[{"comp_reason_id":5,"amount_baisas":1000,"line_index":0,"qty":1,'
           '"staff_id":7,"note":"Staff Meal"},{"is_gift":true,'
-          '"amount_baisas":2000,"line_index":1,"staff_id":7}],"staff_id":7}}},'
+          // LAUNCH-P5 C3 — every event carries auth_v: 1.
+          '"amount_baisas":2000,"line_index":1,"staff_id":7}],"staff_id":7},'
+          '"auth_v":1}},'
           '{"client_event_id":"uuid-2","event_type":"order.pay",'
           '"client_timestamp":"2026-08-24T12:00:00.000Z","payload":'
           '{"order_uuid":"uuid-0","paid_at":"2026-08-24T12:00:00.000Z",'
           '"payments":[{"method":"cash","amount_baisas":2600,'
-          '"status":"success"}]}}]';
+          // LAUNCH-P5 C3 — order.pay names who took the payment.
+          '"status":"success"}],"staff_id":7,"auth_v":1}}]';
 
       expect(jsonEncode(payload.events), expected);
     });

@@ -7,6 +7,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pos_machine/core/manager_auth.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:pos_machine/bill_combine/combine_store.dart';
 import 'package:pos_machine/data/db/app_database.dart';
@@ -616,6 +617,9 @@ void runPaymentRegression({
         Future<void> mount() async {
           await pumpWorkspaceMachine(
             tester,
+            // LAUNCH-P5 — the cashier has no loyalty.redeem tick, so the
+            // approver's PIN is asked for, as this suite expects.
+            allowAllTicks: false,
             mode: 'live',
             toggle: false,
             realTableHealth: parkedWaste,
@@ -759,6 +763,22 @@ void runPaymentRegression({
           await tap(find.text('Add Discount').first);
           await tap(find.text('Redeem loyalty points'));
           await tap(find.widgetWithText(FilledButton, 'Redeem'));
+          // LAUNCH-P5 C1 — this cashier has no loyalty.redeem tick: an
+          // approver's PIN allows the redeem.
+          await pumpUntilRealCondition(
+            tester,
+            () => find.byType(ManagerApprovalSheet).evaluate().isNotEmpty,
+            reason: 'approval sheet for the cart redeem',
+          );
+          for (final digit in ['1', '2', '3', '4']) {
+            await tap(
+              find.descendant(
+                of: find.byType(ManagerApprovalSheet),
+                matching: find.text(digit),
+              ),
+            );
+          }
+          await tap(find.byKey(const ValueKey('manager-approval-verify')));
           expectSync(c.loyaltyRedeemRuleId, 11);
           expectSync(c.loyaltyRedeemPoints, 100);
           // ignore: avoid_print

@@ -957,7 +957,12 @@ Future<void> _pumpBoard(
   _FakeRoundPrinter? roundPrinter,
   DateTime Function()? clock,
 }) async {
-  SharedPreferences.setMockInitialValues(const {});
+  // LAUNCH-P5 — the board's void is gated by order.void_unpaid; a supervisor
+  // holds that tick, so these board tests need no approver.
+  SharedPreferences.setMockInitialValues({
+    'staff_session_json':
+        '{"id":7,"name":"Test Supervisor","position":"supervisor"}',
+  });
   final preferences = await SharedPreferences.getInstance();
   tester.view.physicalSize = const Size(1500, 900);
   tester.view.devicePixelRatio = 1;
@@ -1327,6 +1332,7 @@ class _FakeSettlementFlow implements QrSettlementFlow {
     int? voidReasonId,
     int? staffId,
     String? authorizedBy,
+    Map<String, dynamic>? authorization,
   }) async {
     calls.add('void:$orderUuid');
     timeline?.add('void:$orderUuid');

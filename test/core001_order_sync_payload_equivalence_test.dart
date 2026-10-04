@@ -215,6 +215,10 @@ _LegacyPayload _legacyBuildOrderSyncPayload(
     'order_uuid': orderUuid,
     'paid_at': timestamp,
     'payments': payments,
+    // LAUNCH-P5 C3 — wire additions (the P5 marker, who took the
+    // payment), not pricing.
+    'staff_id': ?staffId,
+    'auth_v': 1,
   };
   return (
     orderUuid: orderUuid,
@@ -223,7 +227,7 @@ _LegacyPayload _legacyBuildOrderSyncPayload(
         'client_event_id': newUuid(),
         'event_type': 'order.create',
         'client_timestamp': timestamp,
-        'payload': {'order': order},
+        'payload': {'order': order, 'auth_v': 1},
       },
       {
         'client_event_id': newUuid(),

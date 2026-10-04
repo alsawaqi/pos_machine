@@ -542,6 +542,7 @@ class _Outbox implements QrSettlementOutbox {
     int? voidReasonId,
     int? staffId,
     String? authorizedBy,
+    Map<String, dynamic>? authorization,
   }) async {
     voided.add(orderUuid);
   }

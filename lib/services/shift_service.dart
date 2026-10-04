@@ -10,6 +10,25 @@ class ShiftException implements Exception {
   String toString() => message;
 }
 
+/// LAUNCH-P5 C5 — the server refused the close because some of the
+/// shift's paid sales have not reached it yet (retryable).
+class ShiftUnsyncedSalesException implements Exception {
+  ShiftUnsyncedSalesException(this.missing);
+  final List<String> missing;
+  @override
+  String toString() => 'unsynced_sales: ${missing.length}';
+}
+
+/// LAUNCH-P5 C5 — closing another cashier's drawer was refused
+/// (`approval_required` / `approval_invalid`); retryable with a new
+/// approval under the same event id.
+class ShiftApprovalRefusedException implements Exception {
+  ShiftApprovalRefusedException(this.code);
+  final String code;
+  @override
+  String toString() => code;
+}
+
 /// Opens / closes a cash-drawer shift through the device sync pipeline
 /// (`/device/sync/push`). Online-required: open and close both need the server
 /// (close computes expected cash from the device's sales). The events are
@@ -37,17 +56,51 @@ class ShiftService {
   }
 
   /// Close the drawer session and return the reconciliation outcome.
+  /// LAUNCH-P5 C5 — [event] is the close the screen built (fixed id);
+  /// otherwise one is built here.
   Future<ShiftCloseResult> close({
     required String shiftUuid,
     required int closingCashBaisas,
+    int? closedByStaffId,
+    List<String> orderUuids = const <String>[],
+    Map<String, dynamic>? authorization,
+    int reopenCount = 0,
+    Map<String, dynamic>? event,
   }) async {
     final data = await _api.pushSync([
-      buildShiftCloseEvent(
-        shiftUuid: shiftUuid,
-        closingCashBaisas: closingCashBaisas,
-      ),
+      event ??
+          buildShiftCloseEvent(
+            shiftUuid: shiftUuid,
+            closingCashBaisas: closingCashBaisas,
+            closedByStaffId: closedByStaffId,
+            orderUuids: orderUuids,
+            authorization: authorization,
+            reopenCount: reopenCount,
+          ),
     ]);
     return ShiftCloseResult.fromResult(_settledResult(data));
+  }
+
+  /// The `unsynced_sales` refusal, wherever the server puts the code and
+  /// the missing uuids.
+  static List<String>? unsyncedSales(Map<String, dynamic> result) {
+    final details = result['details'];
+    final nested = result['unsynced_sales'];
+    final isUnsynced = [
+      result['code'],
+      result['refusal_code'],
+      result['error'],
+      if (details is Map) details['code'],
+    ].any((v) => v == 'unsynced_sales') ||
+        nested is Map ||
+        (result['error']?.toString().contains('unsynced_sales') ?? false);
+    if (!isUnsynced) return null;
+    final raw = result['missing'] ??
+        (details is Map ? details['missing'] : null) ??
+        (nested is Map ? nested['missing'] : null);
+    return [
+      for (final uuid in raw is List ? raw : const []) uuid.toString(),
+    ];
   }
 
   /// Extract the single event's settled result. A `processed` or `duplicate`
@@ -62,6 +115,12 @@ class ShiftService {
     final result = (ack['result'] as Map?)?.cast<String, dynamic>() ??
         const <String, dynamic>{};
     if (ack['status'] == 'failed') {
+      final missing = unsyncedSales(result);
+      if (missing != null) throw ShiftUnsyncedSalesException(missing);
+      final code = result['code'];
+      if (code == 'approval_required' || code == 'approval_invalid') {
+        throw ShiftApprovalRefusedException(code as String);
+      }
       throw ShiftException(
         (result['error'] ?? 'The server rejected the shift.').toString(),
       );

@@ -26,7 +26,13 @@ void main() {
   });
 
   test('a missing setting resolves to the fixture defaults', () {
-    for (final raw in <Object?>[null, '', 'not json', 42, <String, dynamic>{}]) {
+    for (final raw in <Object?>[
+      null,
+      '',
+      'not json',
+      42,
+      <String, dynamic>{},
+    ]) {
       expect(PositionPermissions.resolve(raw).toJson(), defaults);
     }
   });

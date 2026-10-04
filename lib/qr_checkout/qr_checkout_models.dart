@@ -330,7 +330,16 @@ class CheckoutAttempt {
             'paid_at',
             'payments',
             if (attempt.paymentContract != 'qr') 'gps',
+            // LAUNCH-P5 C3 — who took it, a gift tender's block, and the
+            // P5 wire marker.
+            'staff_id',
+            'authorizations',
+            'auth_v',
           }).isNotEmpty ||
+          (payload.containsKey('authorizations') &&
+              payload['authorizations'] is! List) ||
+          (payload.containsKey('staff_id') && payload['staff_id'] is! int) ||
+          (payload.containsKey('auth_v') && payload['auth_v'] != 1) ||
           (payload.containsKey('gps') && !_validSavedGps(payload['gps'])) ||
           payments.any((p) => p['status'] != 'success') ||
           jsonEncode(payments) != jsonEncode(attempt.captures)) {

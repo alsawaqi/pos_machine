@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pos_machine/core/permissions.dart';
 import 'package:pos_machine/data/db/app_database.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/providers/providers.dart';
@@ -75,12 +76,12 @@ void main() {
       expect(c.cart.single.product.id, '11');
     });
 
-    test('managers and supervisors may switch without a PIN', () {
-      final c = build();
-      expect(c.positionMaySetSoldOut('manager'), isTrue);
-      expect(c.positionMaySetSoldOut('Supervisor'), isTrue);
-      expect(c.positionMaySetSoldOut('cashier'), isFalse);
-      expect(c.positionMaySetSoldOut(null), isFalse);
+    test('the tick list (sold_out.toggle) decides who switches directly', () {
+      final m = PositionPermissions.defaults;
+      expect(m.allows('manager', 'sold_out.toggle'), isTrue);
+      expect(m.allows('Supervisor', 'sold_out.toggle'), isTrue);
+      expect(m.allows('cashier', 'sold_out.toggle'), isFalse);
+      expect(m.allows(null, 'sold_out.toggle'), isFalse);
     });
   });
 
@@ -173,11 +174,19 @@ void main() {
     });
 
     test('POST /device/products/{id}/sold-out sends the contract', () async {
+      // LAUNCH-P5 C3 — the authorization block replaces approver_staff_id.
+      final block = {
+        'action': 'sold_out.toggle',
+        'ref': 'product:11',
+        'mode': 'approval',
+        'actor_staff_id': 7,
+        'approver_staff_id': 3,
+      };
       await api.setProductSoldOut(
         11,
         soldOut: true,
         staffId: 7,
-        approverStaffId: 3,
+        authorization: block,
       );
       final request = adapter.requests.single;
       expect(request.method, 'POST');
@@ -185,10 +194,15 @@ void main() {
       expect(request.body, {
         'sold_out': true,
         'staff_id': 7,
-        'approver_staff_id': 3,
+        'authorization': block,
+        'auth_v': 1,
       });
       await api.setProductSoldOut(11, soldOut: false, staffId: 7);
-      expect(adapter.requests.last.body, {'sold_out': false, 'staff_id': 7});
+      expect(adapter.requests.last.body, {
+        'sold_out': false,
+        'staff_id': 7,
+        'auth_v': 1,
+      });
     });
   });
 
@@ -268,7 +282,17 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('sold-out-switch-confirm')));
       await tester.pumpAndSettle();
       expect(api.switches, [
-        {'product': 10, 'sold_out': true, 'staff': 7, 'approver': null},
+        {
+          'product': 10,
+          'sold_out': true,
+          'staff': 7,
+          'authorization': {
+            'action': 'sold_out.toggle',
+            'ref': 'product:10',
+            'mode': 'position',
+            'actor_staff_id': 7,
+          },
+        },
       ]);
       expect(controller.isSoldOut(latte), isTrue);
       expect(find.byKey(const ValueKey('product-sold-out-badge')), findsNWidgets(2));
@@ -288,13 +312,13 @@ class _Api implements PosApiService {
     int productId, {
     required bool soldOut,
     required int staffId,
-    int? approverStaffId,
+    Map<String, dynamic>? authorization,
   }) async {
     switches.add({
       'product': productId,
       'sold_out': soldOut,
       'staff': staffId,
-      'approver': approverStaffId,
+      'authorization': authorization,
     });
   }
 

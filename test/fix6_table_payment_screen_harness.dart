@@ -38,6 +38,15 @@ class ReviewServer extends RecoveryServer {
     return pin == '1234' ? 'Manager' : null;
   }
 
+  // LAUNCH-P5 C2 — the approval sheet's online check.
+  @override
+  Future<ApproverVerification?> verifyApprover(String pin) async {
+    approvals++;
+    return pin == '1234'
+        ? const ApproverVerification(staffId: 19, name: 'Manager')
+        : null;
+  }
+
   @override
   Dio dio() {
     final d = Dio();
@@ -515,7 +524,7 @@ void runFix6PaymentScreen(String scenario) {
         reason: 'real manager PIN dialog',
       );
       // Cancel is denied authority: row and manager-review route stay intact.
-      Navigator.of(tester.element(find.byType(AlertDialog))).pop(false);
+      Navigator.of(tester.element(find.byType(AlertDialog))).pop();
       await tester.pump();
       expect(
         (await drive(

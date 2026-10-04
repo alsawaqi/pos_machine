@@ -2280,54 +2280,6 @@ abstract class L10n {
   /// **'The order total has been sent to Payment Terminal. Please follow the terminal instructions while we wait for the final response.'**
   String get ctrlMsgTotalSentToTerminal;
 
-  /// No description provided for @managerAuthRegisterTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Register Manager Fingerprint'**
-  String get managerAuthRegisterTitle;
-
-  /// No description provided for @managerAuthRegisterSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Manager authorization setup'**
-  String get managerAuthRegisterSubtitle;
-
-  /// No description provided for @managerAuthRegisterDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Place the manager fingerprint on the device sensor.'**
-  String get managerAuthRegisterDescription;
-
-  /// No description provided for @managerAuthApprovalRequiredTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Manager Approval Required'**
-  String get managerAuthApprovalRequiredTitle;
-
-  /// No description provided for @managerAuthCancelOrderSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Cancel completed order'**
-  String get managerAuthCancelOrderSubtitle;
-
-  /// No description provided for @managerAuthCancelOrderDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Place your fingerprint to unlock order cancellation.'**
-  String get managerAuthCancelOrderDescription;
-
-  /// No description provided for @managerAuthDefaultSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Manager approval'**
-  String get managerAuthDefaultSubtitle;
-
-  /// No description provided for @managerAuthDefaultDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Place the manager fingerprint to approve.'**
-  String get managerAuthDefaultDescription;
-
   /// No description provided for @posCompNothingTitle.
   ///
   /// In en, this message translates to:
@@ -2442,53 +2394,11 @@ abstract class L10n {
   /// **'\"{reason}\" — {amount} written off.'**
   String posCompAppliedMessage(String reason, String amount);
 
-  /// No description provided for @posManagerRegisterFingerprintTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Register Manager Fingerprint'**
-  String get posManagerRegisterFingerprintTitle;
-
   /// No description provided for @posManagerApprovalRequiredTitle.
   ///
   /// In en, this message translates to:
   /// **'Manager Approval Required'**
   String get posManagerApprovalRequiredTitle;
-
-  /// No description provided for @posManagerFingerprintNotApprovedMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Manager fingerprint was not approved.'**
-  String get posManagerFingerprintNotApprovedMessage;
-
-  /// No description provided for @posManagerRegisterSensorMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Place the manager finger on the sensor to enable cancellation.'**
-  String get posManagerRegisterSensorMessage;
-
-  /// No description provided for @posManagerRegisteredTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Manager Registered'**
-  String get posManagerRegisteredTitle;
-
-  /// No description provided for @posManagerRegistrationNotCompletedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Registration Not Completed'**
-  String get posManagerRegistrationNotCompletedTitle;
-
-  /// No description provided for @posManagerRegisteredMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Manager fingerprint approval is ready for order cancellation.'**
-  String get posManagerRegisteredMessage;
-
-  /// No description provided for @posManagerNotRegisteredMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'The manager fingerprint was not registered on this terminal.'**
-  String get posManagerNotRegisteredMessage;
 
   /// No description provided for @posPayTenderedTooLowTitle.
   ///
@@ -2657,12 +2567,6 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Register the manager fingerprint once before cancelling this completed order.'**
   String get posCancelReqRegisterManagerMessage;
-
-  /// No description provided for @posCancelReqManagerRequiredTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Manager Fingerprint Required'**
-  String get posCancelReqManagerRequiredTitle;
 
   /// No description provided for @posCancelReqUnlockMessage.
   ///
@@ -4188,30 +4092,6 @@ abstract class L10n {
   /// **'Completed payments will be archived here so the staff can review them or print receipts again.'**
   String get posStorageHistoryEmptyMessage;
 
-  /// No description provided for @posFingerprintBannerTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Manager cancellation approval'**
-  String get posFingerprintBannerTitle;
-
-  /// No description provided for @posFingerprintBannerMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Register once, then use fingerprint approval before opening completed order cancellation.'**
-  String get posFingerprintBannerMessage;
-
-  /// No description provided for @posFingerprintRegisterManager.
-  ///
-  /// In en, this message translates to:
-  /// **'Register Manager'**
-  String get posFingerprintRegisterManager;
-
-  /// No description provided for @posFingerprintWaiting.
-  ///
-  /// In en, this message translates to:
-  /// **'Waiting for fingerprint'**
-  String get posFingerprintWaiting;
-
   /// No description provided for @posStorageHeldRef.
   ///
   /// In en, this message translates to:
@@ -4329,7 +4209,7 @@ abstract class L10n {
   /// No description provided for @posManagerPinOffline.
   ///
   /// In en, this message translates to:
-  /// **'PIN approval needs a connection — use the fingerprint instead.'**
+  /// **'PIN not recognised on this till. An approver who has not approved online since the update needs a connection once.'**
   String get posManagerPinOffline;
 
   /// No description provided for @posManagerPinVerify.
@@ -6502,6 +6382,228 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Add combo · {price}'**
   String posComboAdd(String price);
+
+  /// No description provided for @approvalLockedCountdown.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many wrong PINs. Try again in {time}.'**
+  String approvalLockedCountdown(String time);
+
+  /// No description provided for @approvalCheckFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The approval could not be checked. Try again.'**
+  String get approvalCheckFailed;
+
+  /// No description provided for @approvalNotGiven.
+  ///
+  /// In en, this message translates to:
+  /// **'Approval was not given.'**
+  String get approvalNotGiven;
+
+  /// No description provided for @payoutApprovalSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Paying out cash from the drawer needs approval.'**
+  String get payoutApprovalSubtitle;
+
+  /// No description provided for @discountAboveMaxApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'This discount is above your {max}% limit. An approver must allow it.'**
+  String discountAboveMaxApproval(int max);
+
+  /// No description provided for @shiftCloseNeedsInternet.
+  ///
+  /// In en, this message translates to:
+  /// **'Closing needs the internet. Connect and try again.'**
+  String get shiftCloseNeedsInternet;
+
+  /// No description provided for @shiftCloseSalesSending.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 sale still sending} other{{count} sales still sending}}'**
+  String shiftCloseSalesSending(int count);
+
+  /// No description provided for @shiftCloseSendingSale.
+  ///
+  /// In en, this message translates to:
+  /// **'Sale {reference}'**
+  String shiftCloseSendingSale(String reference);
+
+  /// No description provided for @shiftCloseSalesSendingHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The shift closes once every sale has reached the server. Keep the till online and tap Close shift again.'**
+  String get shiftCloseSalesSendingHint;
+
+  /// No description provided for @shiftCloseClockOutToo.
+  ///
+  /// In en, this message translates to:
+  /// **'Clock out too'**
+  String get shiftCloseClockOutToo;
+
+  /// No description provided for @shiftCloseOtherApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'Closing another cashier\'s drawer needs approval.'**
+  String get shiftCloseOtherApproval;
+
+  /// No description provided for @trainingCashOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Training mode: cash only.'**
+  String get trainingCashOnly;
+
+  /// No description provided for @trainingNotAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available in training mode.'**
+  String get trainingNotAvailable;
+
+  /// No description provided for @pinLoginManagerUnlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Manager unlock'**
+  String get pinLoginManagerUnlock;
+
+  /// No description provided for @pinLoginManagerUnlockHint.
+  ///
+  /// In en, this message translates to:
+  /// **'A manager\'s PIN clears this till\'s lock'**
+  String get pinLoginManagerUnlockHint;
+
+  /// No description provided for @pinLoginUnlockedBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlocked by {name}. Enter your PIN.'**
+  String pinLoginUnlockedBy(String name);
+
+  /// No description provided for @pinLoginUnlockOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlocking needs a connection.'**
+  String get pinLoginUnlockOffline;
+
+  /// No description provided for @signedOutInactive.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} was signed out: this account is no longer active.'**
+  String signedOutInactive(String name);
+
+  /// No description provided for @clockInOutButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Clock in / out'**
+  String get clockInOutButton;
+
+  /// No description provided for @clockInOutTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Clock in / out'**
+  String get clockInOutTitle;
+
+  /// No description provided for @clockInOutHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Your PIN'**
+  String get clockInOutHint;
+
+  /// No description provided for @clockInOutConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get clockInOutConfirm;
+
+  /// No description provided for @clockedInMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} clocked in.'**
+  String clockedInMessage(String name);
+
+  /// No description provided for @clockedOutMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} clocked out.'**
+  String clockedOutMessage(String name);
+
+  /// No description provided for @clockInFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The clock could not be saved. Try again.'**
+  String get clockInFailed;
+
+  /// No description provided for @clockInTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome, {name}'**
+  String clockInTitle(String name);
+
+  /// No description provided for @clockInSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Clock in to start selling.'**
+  String get clockInSubtitle;
+
+  /// No description provided for @clockInButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Clock in'**
+  String get clockInButton;
+
+  /// No description provided for @clockOutButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Clock out'**
+  String get clockOutButton;
+
+  /// No description provided for @trainingBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'TRAINING'**
+  String get trainingBanner;
+
+  /// No description provided for @trainingEnter.
+  ///
+  /// In en, this message translates to:
+  /// **'Training mode'**
+  String get trainingEnter;
+
+  /// No description provided for @trainingExit.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave training'**
+  String get trainingExit;
+
+  /// No description provided for @trainingExitConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything done in training is discarded.'**
+  String get trainingExitConfirm;
+
+  /// No description provided for @trainingEnteredMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Training mode: nothing you do here is saved or sent.'**
+  String get trainingEnteredMessage;
+
+  /// No description provided for @trainingClearCartFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish or clear the current order first.'**
+  String get trainingClearCartFirst;
+
+  /// No description provided for @shiftEndReminderBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'Your shift should end now. Please close your shift.'**
+  String get shiftEndReminderBanner;
+
+  /// No description provided for @shiftEndReminderDismiss.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get shiftEndReminderDismiss;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

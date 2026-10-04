@@ -2246,6 +2246,13 @@ class OrderSnapshot {
   final String deliveryProviderName;
   final String deliveryReference;
   final String deliveryDriverPhone;
+  // LAUNCH-P5 C3 — the authorization blocks of this sale (manual discount
+  // above the maximum or a needs-manager rule, comp, gift, loyalty redeem),
+  // signed at completion and sent as order.create's authorizations.
+  final List<Map<String, dynamic>> authorizations;
+  // LAUNCH-P5 C7 — a training-mode sale: never sent, printed as
+  // "TRAINING — NOT A RECEIPT".
+  final bool training;
 
   const OrderSnapshot({
     this.businessIdentity,
@@ -2304,6 +2311,8 @@ class OrderSnapshot {
     this.deliveryProviderName = '',
     this.deliveryReference = '',
     this.deliveryDriverPhone = '',
+    this.authorizations = const <Map<String, dynamic>>[],
+    this.training = false,
   });
 
   factory OrderSnapshot.initial() {
@@ -2437,6 +2446,11 @@ class OrderSnapshot {
       deliveryProviderName: map['deliveryProviderName']?.toString() ?? '',
       deliveryReference: map['deliveryReference']?.toString() ?? '',
       deliveryDriverPhone: map['deliveryDriverPhone']?.toString() ?? '',
+      authorizations: [
+        for (final a in map['authorizations'] as List? ?? const [])
+          if (a is Map) Map<String, dynamic>.from(a),
+      ],
+      training: map['training'] == true,
     );
   }
 
@@ -2503,6 +2517,8 @@ class OrderSnapshot {
       if (deliveryReference.isNotEmpty) 'deliveryReference': deliveryReference,
       if (deliveryDriverPhone.isNotEmpty)
         'deliveryDriverPhone': deliveryDriverPhone,
+      if (authorizations.isNotEmpty) 'authorizations': authorizations,
+      if (training) 'training': true,
     };
   }
 
@@ -2562,6 +2578,8 @@ class OrderSnapshot {
     String? deliveryProviderName,
     String? deliveryReference,
     String? deliveryDriverPhone,
+    List<Map<String, dynamic>>? authorizations,
+    bool? training,
   }) {
     return OrderSnapshot(
       businessIdentity: businessIdentity,
@@ -2627,6 +2645,8 @@ class OrderSnapshot {
       deliveryProviderName: deliveryProviderName ?? this.deliveryProviderName,
       deliveryReference: deliveryReference ?? this.deliveryReference,
       deliveryDriverPhone: deliveryDriverPhone ?? this.deliveryDriverPhone,
+      authorizations: authorizations ?? this.authorizations,
+      training: training ?? this.training,
     );
   }
 

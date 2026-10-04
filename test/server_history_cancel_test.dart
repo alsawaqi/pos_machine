@@ -81,7 +81,7 @@ void main() {
     addTearDown(controller.dispose);
     final voided = <String>[];
     int? voidedReasonId;
-    controller.onOrderVoided = (uuid, {orderNumber, reason, voidReasonId}) {
+    controller.onOrderVoided = (uuid, {orderNumber, reason, voidReasonId, authorization}) {
       voided.add(uuid);
       voidedReasonId = voidReasonId;
     };
@@ -128,7 +128,7 @@ void main() {
     addTearDown(controller.dispose);
     final voided = <String>[];
     controller.onOrderVoided =
-        (uuid, {orderNumber, reason, voidReasonId}) => voided.add(uuid);
+        (uuid, {orderNumber, reason, voidReasonId, authorization}) => voided.add(uuid);
 
     final voidRecord = _serverRecord(status: 'void');
     controller.applyServerOrderHistory([voidRecord]);

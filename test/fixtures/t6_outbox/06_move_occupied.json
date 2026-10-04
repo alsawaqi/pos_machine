@@ -19,7 +19,8 @@
             "seating_key": "00000000-0000-4000-8000-000000001002",
             "table_id": 5,
             "queued_offline": false,
-            "staff_id": 1
+            "staff_id": 1,
+            "auth_v": 1
           }
         }
       ],
@@ -65,7 +66,8 @@
             "seating_key": "00000000-0000-4000-8000-000000001002",
             "table_id": 7,
             "queued_offline": true,
-            "staff_id": 1
+            "staff_id": 1,
+            "auth_v": 1
           }
         }
       ],

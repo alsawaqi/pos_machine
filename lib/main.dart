@@ -22,6 +22,7 @@ import 'core/render_error_logging.dart';
 import 'order_attention/app_order_attention.dart';
 import 'l10n/l10n.dart';
 import 'providers/providers.dart';
+import 'core/approver_store.dart';
 import 'services/session_service.dart';
 import 'services/settings_service.dart';
 import 'screens/staff_startup_gate.dart';
@@ -39,6 +40,10 @@ Future<void> main() async {
   BusinessBoundary.registerWiper(AppDatabase.wipePersistedTenantData);
   BusinessBoundary.registerWiper(
     PresentationService.instance.wipeBusinessPresentation,
+  );
+  // LAUNCH-P5 C2 — a device reset leaves no approver verifiers behind.
+  BusinessBoundary.registerWiper(
+    ApproverStore(const FlutterSecureStorage()).wipe,
   );
   final prefs = TenantPreferences(rawPreferences);
   const secureStorage = FlutterSecureStorage();

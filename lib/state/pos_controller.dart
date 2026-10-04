@@ -14,7 +14,11 @@ import '../services/display_strings.dart';
 import '../services/kitchen_ticket.dart';
 import '../services/local_order_storage_service.dart';
 import '../services/mosambee_payment_service.dart';
-import '../services/order_sync_payload.dart' show uuidV4;
+import '../core/authorization.dart';
+import '../core/permissions.dart';
+import '../core/training_flag.dart' show TrainingOrderStore;
+import '../services/order_sync_payload.dart'
+    show orderAuthorizationTargets, uuidV4;
 import '../services/pricing_adapter.dart' as machine_pricing;
 import '../services/presentation_service.dart';
 import '../services/sunmi_receipt_service.dart';
@@ -798,6 +802,135 @@ class PosController extends ChangeNotifier
   @override
   AppliedComp? appliedComp;
 
+  // ---------------------------------------------------------------------------
+  // LAUNCH-P5 C3 — the approvals given while building THIS order. They are
+  // signed into order.create's `authorizations` when the sale completes
+  // (the order uuid and the final amounts are known only then) and the
+  // approvers' keys are wiped. Never persisted: a held or restored cart
+  // carries no approvals (the server then records them as missing).
+  // ---------------------------------------------------------------------------
+  final Map<String, ActionAuthorization> _orderAuthorizations = {};
+  final Map<CartItem, ActionAuthorization> _giftAuthorizations =
+      Map.identity();
+
+  /// Slots: `discount`, `comp`, `loyalty`, `gift_tender`. Replaces any
+  /// earlier approval of the slot; null clears it.
+  void recordOrderAuthorization(String slot, ActionAuthorization? value) {
+    final previous = _orderAuthorizations.remove(slot);
+    if (previous != null && !identical(previous, value)) {
+      previous.grant?.forget();
+    }
+    if (value != null) _orderAuthorizations[slot] = value;
+  }
+
+  ActionAuthorization? orderAuthorization(String slot) =>
+      _orderAuthorizations[slot];
+
+  /// The gift approval of one cart line.
+  void recordGiftAuthorization(CartItem item, ActionAuthorization value) {
+    _giftAuthorizations.remove(item)?.grant?.forget();
+    _giftAuthorizations[item] = value;
+  }
+
+  void _forgetOrderAuthorizations() {
+    for (final a in [
+      ..._orderAuthorizations.values,
+      ..._giftAuthorizations.values,
+    ]) {
+      a.grant?.forget();
+    }
+    _orderAuthorizations.clear();
+    _giftAuthorizations.clear();
+  }
+
+  /// The tick list of the person ringing this sale, for the discount check
+  /// at completion (wired by the screen).
+  StaffPermissions Function()? staffPermissions;
+
+  /// Who is ringing this sale: `(id, name)` (wired by the screen).
+  ({int? id, String name}) Function()? currentActor;
+
+  /// LAUNCH-P5 C3 — sign this sale's approvals over its uuid and its final
+  /// order.create rows. A manual discount above the person's maximum with no
+  /// approval still gets a `position` block, so the server records it.
+  List<Map<String, dynamic>> signOrderAuthorizations(OrderSnapshot snapshot) {
+    final uuid = snapshot.serverOrderUuid;
+    final targets = orderAuthorizationTargets(snapshot);
+    final blocks = <Map<String, dynamic>>[];
+    final discountApproval = _orderAuthorizations['discount'];
+    if (targets.orderDiscountBaisas > 0 && !isLoyaltyOwnedDiscount(discount)) {
+      if (discountApproval != null) {
+        blocks.add(
+          discountApproval.block(
+            subjectUuid: uuid,
+            amountBaisas: targets.orderDiscountBaisas,
+            ref: 'discount:0',
+          ),
+        );
+      } else if (discount.discountId == null && staffPermissions != null) {
+        final percent = discountPercentOf(
+          discountAmount: targets.orderDiscountBaisas / 1000,
+          subtotal: snapshot.rawSubtotal,
+        );
+        if (!staffPermissions!().can(
+          'discount.manual',
+          amountPercent: percent,
+        )) {
+          final actor = currentActor?.call();
+          blocks.add(
+            ActionAuthorization.position(
+              action: 'discount.manual',
+              actorStaffId: actor?.id,
+              actorName: actor?.name ?? '',
+            ).block(ref: 'discount:0'),
+          );
+        }
+      }
+    }
+    final comp = _orderAuthorizations['comp'];
+    for (final row in targets.comps) {
+      if (!row.gift) {
+        if (comp != null) {
+          blocks.add(
+            comp.block(
+              subjectUuid: uuid,
+              amountBaisas: row.amountBaisas,
+              ref: row.ref,
+            ),
+          );
+        }
+        continue;
+      }
+      final line = row.lineIndex;
+      final item = line != null && line >= 0 && line < _cart.length
+          ? _cart[line]
+          : null;
+      final gift = item == null ? null : _giftAuthorizations[item];
+      if (gift != null) {
+        blocks.add(
+          gift.block(
+            subjectUuid: uuid,
+            amountBaisas: row.amountBaisas,
+            ref: row.ref,
+          ),
+        );
+      }
+    }
+    final loyalty = _orderAuthorizations['loyalty'];
+    if (loyalty != null && loyaltyRedeemRuleId != null) {
+      blocks.add(loyalty.block(subjectUuid: uuid, ref: 'loyalty:0'));
+    }
+    final giftTender = _orderAuthorizations['gift_tender'];
+    if (giftTender != null &&
+        snapshot.paymentMethod.trim().toLowerCase() == 'gift') {
+      // The whole-bill gift tender is payments[0] of order.pay; its block
+      // rides in order.create, so its amount stays empty (Part A §6).
+      blocks.add(giftTender.block(subjectUuid: uuid, ref: 'tender:0'));
+    }
+    _forgetOrderAuthorizations();
+    return blocks;
+  }
+
   /// Whether a staff member with [position] may cancel an order under the
   /// current company policy. Case-insensitive; an unknown / null position is
   /// denied. With no policy cached, the default managers-only list applies.
@@ -1111,6 +1244,8 @@ class PosController extends ChangeNotifier
     int? orderNumber,
     String? reason,
     int? voidReasonId,
+    // LAUNCH-P5 C3 — the order.void_unpaid / order.void_paid gate result.
+    ActionAuthorization? authorization,
   })?
   onOrderVoided;
 
@@ -1458,13 +1593,6 @@ class PosController extends ChangeNotifier
   /// LAUNCH-P4 C6 — this branch switched [product] off by hand ("sold out").
   /// Never driven by stock (owner decision 4).
   bool isSoldOut(Product product) => _liveProduct(product).soldOut;
-
-  /// LAUNCH-P4 C6 — positions that may switch sold out without a manager
-  /// approval PIN (the server applies the same rule).
-  static const soldOutPositions = <String>{'manager', 'supervisor'};
-
-  bool positionMaySetSoldOut(String? position) =>
-      soldOutPositions.contains(position?.trim().toLowerCase());
 
   /// LAUNCH-P4 C6 — reflect a sold-out switch at once (the cached catalog
   /// re-emits the same flag shortly after).
@@ -1870,6 +1998,7 @@ class PosController extends ChangeNotifier
       return false;
     }
     item.gifted = !item.gifted;
+    if (!item.gifted) _giftAuthorizations.remove(item)?.grant?.forget();
     _resetCharityRoundUp();
     _markOrderUpdated(item.product.id);
     _broadcast();
@@ -1910,6 +2039,7 @@ class PosController extends ChangeNotifier
         normalizedQty = requestedQty.clamp(1, lineQty - 1).toInt();
       }
     }
+    recordOrderAuthorization('comp', null);
     appliedComp = AppliedComp(
       reasonId: comp.reasonId,
       reasonName: comp.reasonName,
@@ -1925,6 +2055,7 @@ class PosController extends ChangeNotifier
     if (!_cartMutationAllowed()) return;
     if (appliedComp == null) return;
     appliedComp = null;
+    recordOrderAuthorization('comp', null);
     _resetCharityRoundUp();
     _broadcast();
   }
@@ -1932,6 +2063,7 @@ class PosController extends ChangeNotifier
   void _dropCompForCartMutation() {
     if (appliedComp == null) return;
     appliedComp = null;
+    recordOrderAuthorization('comp', null);
     _resetCharityRoundUp();
     onCompClearedAfterCartEdit?.call();
   }
@@ -2301,6 +2433,14 @@ class PosController extends ChangeNotifier
 
   Future<void> _selectOrderType(OrderType orderType) async {
     if (!_cartMutationAllowed(insideTableTransition: true)) return;
+    // LAUNCH-P5 C7 — training sells over the counter only (no tables, no
+    // delivery providers).
+    if (training &&
+        orderType != OrderType.quickOrder &&
+        orderType != OrderType.toGo) {
+      _trainingRefusal();
+      return;
+    }
     if (selectedOrderType == orderType) {
       if (orderType == OrderType.dineIn && activeDiningTableId == null) {
         displayNote = _l10n.ctrlMsgChooseTableDineIn;
@@ -2549,6 +2689,8 @@ class PosController extends ChangeNotifier
     // P-G7 — delivery-provider orders take no discounts.
     if (selectedOrderType == OrderType.delivery) return false;
     discount = configuration;
+    recordOrderAuthorization('discount', null);
+    recordOrderAuthorization('loyalty', null);
     // A manual/merchant discount reuses the single discount slot — drop any
     // pending loyalty redemption so we don't send a stale redeem on pay.
     loyaltyRedeemRuleId = null;
@@ -2587,6 +2729,8 @@ class PosController extends ChangeNotifier
       value: valueOmr,
       label: label,
     );
+    recordOrderAuthorization('discount', null);
+    recordOrderAuthorization('loyalty', null);
     loyaltyRedeemCustomerId = selectedCustomer!.id;
     loyaltyRedeemRuleId = ruleId;
     loyaltyRedeemPoints = points;
@@ -2599,6 +2743,8 @@ class PosController extends ChangeNotifier
   bool clearDiscount() {
     if (!_identityMutationAllowed(money: true)) return false;
     discount = const DiscountConfiguration();
+    recordOrderAuthorization('discount', null);
+    recordOrderAuthorization('loyalty', null);
     loyaltyRedeemRuleId = null;
     loyaltyRedeemPoints = 0;
     loyaltyRedeemStamps = 0;
@@ -3602,6 +3748,9 @@ class PosController extends ChangeNotifier
 
   Future<String?> holdCurrentOrder() async {
     if (_cart.isEmpty || isProcessingPayment) return null;
+    // LAUNCH-P5 C7 — a training cart is never held (that would save it and
+    // mirror it to the server).
+    if (training) return _trainingRefusal();
     if (!await _combineMutationAllowed() || isProcessingPayment) {
       return lastPaymentMessage;
     }
@@ -3719,7 +3868,10 @@ class PosController extends ChangeNotifier
   /// emits an order.void (an unpaid void has no inventory unwind) so the
   /// mirror leaves the branch's active list. The CALLER owns any
   /// confirmation / manager gate.
-  Future<String> discardHeldOrder(HeldOrderRecord record) async {
+  Future<String> discardHeldOrder(
+    HeldOrderRecord record, {
+    ActionAuthorization? authorization,
+  }) async {
     if (!await _combineMutationAllowed()) return lastPaymentMessage;
     if (!await _draftAllowed(
           uuid: record.draft.serverOrderUuid,
@@ -3737,6 +3889,7 @@ class PosController extends ChangeNotifier
         uuid,
         orderNumber: record.orderNumber,
         reason: 'Held order discarded',
+        authorization: authorization,
       );
     }
     return _l10n.ctrlMsgHeldOrderDiscarded(record.orderReference);
@@ -3773,8 +3926,11 @@ class PosController extends ChangeNotifier
     // Phase B — the picked void reason (required by the dialog when the
     // company has reason codes). Threaded onto the order.void event.
     VoidReasonRef? voidReason,
+    // LAUNCH-P5 C1 — the order.void_paid gate (own tick or an approver).
+    ActionAuthorization? authorization,
   }) async {
     final snapshot = record.snapshot;
+    final authorizedBy = authorization?.authorizedByName ?? 'Manager';
     if (snapshot.isFullyCanceled || record.isServerTerminal) {
       return _l10n.ctrlMsgOrderAlreadyCanceled(record.orderNumber);
     }
@@ -3804,7 +3960,7 @@ class PosController extends ChangeNotifier
             ),
             amount: snapshot.payableTotal,
             canceledAt: now,
-            authorizedBy: 'Manager',
+            authorizedBy: authorizedBy,
           ),
         ],
       );
@@ -3826,6 +3982,7 @@ class PosController extends ChangeNotifier
         orderNumber: record.orderNumber,
         reason: voidReason?.name ?? 'Canceled by manager at POS',
         voidReasonId: voidReason?.id,
+        authorization: authorization,
       );
       return _l10n.ctrlMsgOrderFullyCanceled(record.orderNumber);
     }
@@ -3855,7 +4012,7 @@ class PosController extends ChangeNotifier
           quantity: quantity,
           amount: remainingAmount > 0 ? remainingAmount : snapshot.payableTotal,
           canceledAt: now,
-          authorizedBy: 'Manager',
+          authorizedBy: authorizedBy,
         ),
       );
     } else {
@@ -3879,7 +4036,7 @@ class PosController extends ChangeNotifier
             quantity: quantity,
             amount: amount,
             canceledAt: now,
-            authorizedBy: 'Manager',
+            authorizedBy: authorizedBy,
           ),
         );
       }
@@ -3923,6 +4080,7 @@ class PosController extends ChangeNotifier
           orderNumber: record.orderNumber,
           reason: voidReason?.name ?? 'Canceled by manager at POS',
           voidReasonId: voidReason?.id,
+          authorization: authorization,
         );
       }
       return _l10n.ctrlMsgOrderFullyCanceled(record.orderNumber);
@@ -4016,6 +4174,13 @@ class PosController extends ChangeNotifier
     final loyaltyRefusal = _guardLoyaltyTender();
     if (loyaltyRefusal != null) return loyaltyRefusal;
     if (_cart.isEmpty || isProcessingPayment) return null;
+    // LAUNCH-P5 C7 — no card, SoftPOS, bank terminal or gift in training.
+    if (training && selectedPaymentMethod != 'Cash') {
+      lastPaymentMessage = _l10n.trainingCashOnly;
+      displayNote = lastPaymentMessage;
+      _notifySafely();
+      return lastPaymentMessage;
+    }
 
     final transactionMethod = selectedPaymentMethod;
     final transactionSplitCount = splitCount;
@@ -4609,10 +4774,48 @@ class PosController extends ChangeNotifier
   /// The outbox key of the sale being completed, once it is final.
   String? _paidSaleKey;
 
+  /// LAUNCH-P5 C7 — training mode (set by the screen). A training sale is
+  /// printed as "TRAINING — NOT A RECEIPT", kept only in the separate
+  /// [TrainingOrderStore], never saved to the history, never queued for the
+  /// server, never sent to the kitchen and never moves stock.
+  bool training = false;
+
+  String _trainingRefusal() {
+    lastPaymentMessage = _l10n.trainingNotAvailable;
+    displayNote = lastPaymentMessage;
+    _notifySafely();
+    return lastPaymentMessage;
+  }
+
+  Future<String> _finishTrainingOrder({required String successMessage}) async {
+    final completed = snapshot().copyWith(
+      serverOrderUuid: uuidV4(),
+      training: true,
+      authorizations: const <Map<String, dynamic>>[],
+    );
+    _forgetOrderAuthorizations();
+    if (printReceipts) {
+      final ok = await SunmiReceiptService.printReceipt(
+        completed,
+        template: receiptTemplate,
+        tax: activeTaxSettings,
+        branchName: receiptBranchName,
+        branchNameAr: receiptBranchNameAr,
+      );
+      if (!ok) _reportPrintFailure('receipt');
+    }
+    TrainingOrderStore.orders.add(completed);
+    _activeServerOrderUuid = null;
+    _paidSaleQueued = true;
+    _resetForNextOrder(advanceOrderNumber: false, clearActiveDiningTable: true);
+    return successMessage;
+  }
+
   Future<String> _finishCompletedOrderAdmitted({
     required bool isDineInPayment,
     required String successMessage,
   }) async {
+    if (training) return _finishTrainingOrder(successMessage: successMessage);
     _assignFinalOrderNumber();
     // Stamp the server order_uuid now, so the saved record + the order.create
     // push share it — a later full-cancel can then emit a matching order.void.
@@ -4625,6 +4828,11 @@ class PosController extends ChangeNotifier
       receiptNumber: serverOwned ? '' : receiptNumber,
       tempReference: serverOwned ? currentOrderReference : '',
     );
+    if (!serverOwned) {
+      completedSnapshot = completedSnapshot.copyWith(
+        authorizations: signOrderAuthorizations(completedSnapshot),
+      );
+    }
     if (printReceipts && !serverOwned) {
       // Fail-safe: a printer error must never abort the local save or the
       // pos_api push below — it only surfaces a staff alert (Phase G4).
@@ -5402,6 +5610,7 @@ class PosController extends ChangeNotifier
     _tenderPrice = null;
     _tenderSnapshot = null;
     _reservedDiningBill = null;
+    _forgetOrderAuthorizations();
     _cart.clear();
     // Phase C2 — a leftover uuid (resumed-then-cleared cart) is dropped, not
     // voided: the server mirror stays held and remains resumable/discardable

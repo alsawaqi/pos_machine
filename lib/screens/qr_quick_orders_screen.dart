@@ -12,7 +12,6 @@ import '../qr_quick/qr_quick_screen.dart';
 import '../qr_quick/qr_quick_store.dart';
 import '../services/config_mapper.dart';
 import 'qr_pending_sheet.dart';
-import 'workspace_void.dart';
 import '../order_workspace/workspace_void.dart'
     show assertWorkspaceVoidJournals;
 import '../qr_checkout/payment_review_store.dart';
@@ -106,7 +105,10 @@ class QrQuickOrdersScreen extends ConsumerWidget {
     onOpen: onOpen,
     workspace: workspace,
     workspaceUuid: workspaceUuid,
-    onVoid: (uuid) => openMachineWorkspaceVoid(context, ref, uuid),
+    // LAUNCH-P5 C9 — the quick-order "Void" is hidden: its server route is
+    // not on launch-p4 (M9). Phase 6 brings it back
+    // (openMachineWorkspaceVoid).
+    onVoid: null,
     arabic: Localizations.localeOf(context).languageCode == 'ar',
     createController: () async {
       final api = ref.read(apiServiceProvider);

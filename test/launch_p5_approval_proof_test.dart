@@ -10,7 +10,9 @@ import 'package:pos_machine/core/approval_proof.dart';
 void main() {
   final goldens =
       jsonDecode(
-            File('test/fixtures/approval_proof_goldens.json').readAsStringSync(),
+            File(
+              'test/fixtures/approval_proof_goldens.json',
+            ).readAsStringSync(),
           )
           as Map<String, dynamic>;
   final vectors = (goldens['vectors'] as List).cast<Map<String, dynamic>>();

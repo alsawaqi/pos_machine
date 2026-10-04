@@ -126,7 +126,8 @@ class CancelServer {
             approvals++;
             data = {
               'ok': !deny,
-              'staff': {'name': 'Test Manager'},
+              // The server has always sent the approver's id.
+              'staff': {'id': 5, 'name': 'Test Manager'},
             };
             h.resolve(Response(requestOptions: o, statusCode: 200, data: data));
             return;
@@ -486,6 +487,9 @@ void main() {
             tester,
             mode: 'live',
             toggle: false,
+            // LAUNCH-P5 — the cashier has no table.cancel_bill tick, so the
+            // approver's PIN is asked for, as this suite expects.
+            allowAllTicks: false,
             wrapStaff: (child) => MediaQuery(
               data: const MediaQueryData(textScaler: TextScaler.linear(0.8)),
               child: child,

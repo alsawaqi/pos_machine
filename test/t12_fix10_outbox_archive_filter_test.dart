@@ -100,6 +100,9 @@ void main() {
         ),
       );
     }
+    // LAUNCH-P5 — the outbox stamps auth_v on insert; the archive records
+    // the row exactly as stored.
+    archivedJson = (await db.getOutbox(archivedKey))!.eventsJson;
     // The archived row and one live row are parked (deterministic refusals).
     await (db.update(
       db.orderOutbox,

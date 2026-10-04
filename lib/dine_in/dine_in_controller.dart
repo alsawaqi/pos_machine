@@ -1,6 +1,7 @@
 import '../table_cancellation/table_bill_cancellation.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import '../core/authorization.dart';
 import '../qr_quick/qr_quick_models.dart';
 import 'dine_in_models.dart';
 import 'dine_in_store.dart';
@@ -248,16 +249,27 @@ class DineInController extends ChangeNotifier {
       if (approval['prepared'] == true && recordCancellationWaste == null) {
         throw StateError('Waste journal unavailable');
       }
+      // LAUNCH-P5 C3 — the table.cancel_line gate, signed over this
+      // request's seating_key (one approval may cover several lines of a
+      // clear).
+      final requestId = QrQuickRequest.newId();
+      final seatingKey = QrQuickRequest.newId();
+      final gate = approval['gate'];
+      final authorization = gate is ActionAuthorization
+          ? gate.block(subjectUuid: seatingKey, ref: requestId)
+          : null;
       final request = DineInRequest(
         tableId: tableId,
         seatingUuid: current.seatingUuid!,
         billUuid: current.billUuid,
         payload: {
           'table_id': current.primaryTableId!,
-          'seating_key': QrQuickRequest.newId(),
-          'client_request_id': QrQuickRequest.newId(),
+          'seating_key': seatingKey,
+          'client_request_id': requestId,
           'queued_offline': false,
           'staff_id': ?staffId,
+          'authorization': ?authorization,
+          if (authorization != null) 'auth_v': 1,
           'cancellation': {
             'product_id': line['product_id'],
             'qty': qty,
@@ -267,7 +279,11 @@ class DineInController extends ChangeNotifier {
             ],
             'notes': line['notes'],
             'prepared': approval['prepared'],
-            'authorized_by': 'Manager',
+            'authorized_by':
+                (approval['authorized_by'] as String?)?.trim().isNotEmpty ==
+                    true
+                ? approval['authorized_by']
+                : 'Manager',
             'reason': approval['reason'],
             'cancelled_at': DateTime.now().toUtc().toIso8601String(),
             'waste_event_id': QrQuickRequest.newId(),
@@ -317,8 +333,23 @@ class DineInController extends ChangeNotifier {
         return false;
       }
       detail = before;
-      final intent = await pick(before);
-      if (intent == null) return false;
+      final picked = await pick(before);
+      if (picked == null) return false;
+      // LAUNCH-P5 C3 — the gate rides beside the price-free intent, never
+      // inside it; it is signed over this request's seating_key and, for a
+      // fixed discount, its amount (Part A §6).
+      final intent = Map<String, dynamic>.from(picked);
+      final gate = intent.remove('gate');
+      final seatingKey = QrQuickRequest.newId();
+      final authorization = gate is ActionAuthorization
+          ? gate.block(
+              subjectUuid: seatingKey,
+              amountBaisas: intent['kind'] == 'discount'
+                  ? intent['amount_baisas'] as int?
+                  : null,
+            )
+          : null;
+      if (gate is ActionAuthorization) gate.grant?.forget();
       if (_disposed || !_foreground) {
         notice = 'refresh';
         return false;
@@ -342,11 +373,13 @@ class DineInController extends ChangeNotifier {
         billUuid: current.billUuid,
         payload: {
           'table_id': current.primaryTableId!,
-          'seating_key': QrQuickRequest.newId(),
+          'seating_key': seatingKey,
           'client_request_id': QrQuickRequest.newId(),
           'queued_offline': false,
           'staff_id': ?staffId,
           'adjustment': intent,
+          'authorization': ?authorization,
+          if (authorization != null) 'auth_v': 1,
         },
       );
       try {

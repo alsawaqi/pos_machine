@@ -26,6 +26,8 @@ class ExpenseRestockService {
     required int amountBaisas,
     int? staffId,
     String? note,
+    bool paidFromDrawer = false,
+    Map<String, dynamic>? authorization,
   }) async {
     final data = await _api.pushSync([
       buildExpenseLogEvent(
@@ -33,6 +35,8 @@ class ExpenseRestockService {
         amountBaisas: amountBaisas,
         staffId: staffId,
         note: note,
+        paidFromDrawer: paidFromDrawer,
+        authorization: authorization,
       ),
     ]);
     _settledResult(data); // throws on a failed ACK

@@ -10,6 +10,10 @@ import 'staff_pin_login_screen.dart';
 import 'staff_pos_screen.dart';
 import 'card_reversal_sheet.dart';
 import 'card_reversal_factory.dart';
+import 'clock_in_screen.dart';
+import '../core/staff_session_guard.dart';
+import '../core/training_mode.dart';
+import '../services/session_service.dart' show SessionState;
 
 /// Boot stages, decided from the persisted session:
 ///   not configured      → DeviceSetupScreen     (one-time terminal-ID claim)
@@ -32,6 +36,27 @@ class StaffStartupGate extends ConsumerWidget {
     }
     if (!session.hasStaff) {
       return const StaffPinLoginScreen();
+    }
+    // LAUNCH-P5 — every logged-in screen runs inside the session guard
+    // (staff-status poll, approver refresh, shift-end reminder, training
+    // banner).
+    return StaffSessionGuard(child: _loggedIn(ref, session));
+  }
+
+  Widget _loggedIn(WidgetRef ref, SessionState session) {
+    // LAUNCH-P5 C7 — training needs no clock-in and no shift.
+    if (ref.watch(trainingModeProvider)) {
+      return CardReversalRecoveryGate(
+        createController: () => createMachineReversalController(ref),
+        operatorName: session.staff?.name ?? '',
+        child: const GeofenceGate(child: StaffPosScreen()),
+      );
+    }
+    // LAUNCH-P5 C6 — clock in before the first sale (when the server says
+    // this person is not clocked in; an older server says nothing).
+    final attendance = session.staff!.attendance;
+    if (attendance != null && !attendance.open) {
+      return const ClockInScreen();
     }
 
     // MC-003 — every staff session gets a staff-keyed server probe, even when

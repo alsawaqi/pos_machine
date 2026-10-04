@@ -956,14 +956,6 @@
   "ctrlMsgTerminalOpening": "Payment Terminal is opening securely. Please wait while the payment terminal prepares the transaction.",
   "ctrlMsgRoundedSentToTerminal": "The rounded amount has been sent to Payment Terminal. Please follow the terminal instructions while we wait for the final response.",
   "ctrlMsgTotalSentToTerminal": "The order total has been sent to Payment Terminal. Please follow the terminal instructions while we wait for the final response.",
-  "managerAuthRegisterTitle": "Register Manager Fingerprint",
-  "managerAuthRegisterSubtitle": "Manager authorization setup",
-  "managerAuthRegisterDescription": "Place the manager fingerprint on the device sensor.",
-  "managerAuthApprovalRequiredTitle": "Manager Approval Required",
-  "managerAuthCancelOrderSubtitle": "Cancel completed order",
-  "managerAuthCancelOrderDescription": "Place your fingerprint to unlock order cancellation.",
-  "managerAuthDefaultSubtitle": "Manager approval",
-  "managerAuthDefaultDescription": "Place the manager fingerprint to approve.",
   "posCompNothingTitle": "Nothing to Comp",
   "posCompNothingMessage": "Add items to the order first.",
   "posCompAppliedTitle": "Comp Applied",
@@ -1020,14 +1012,7 @@
       }
     }
   },
-  "posManagerRegisterFingerprintTitle": "Register Manager Fingerprint",
   "posManagerApprovalRequiredTitle": "Manager Approval Required",
-  "posManagerFingerprintNotApprovedMessage": "Manager fingerprint was not approved.",
-  "posManagerRegisterSensorMessage": "Place the manager finger on the sensor to enable cancellation.",
-  "posManagerRegisteredTitle": "Manager Registered",
-  "posManagerRegistrationNotCompletedTitle": "Registration Not Completed",
-  "posManagerRegisteredMessage": "Manager fingerprint approval is ready for order cancellation.",
-  "posManagerNotRegisteredMessage": "The manager fingerprint was not registered on this terminal.",
   "posPayTenderedTooLowTitle": "Tendered Amount Too Low",
   "posPayTenderedTooLowMessage": "Tendered cash must be at least {amount}.",
   "@posPayTenderedTooLowMessage": {
@@ -1098,7 +1083,6 @@
   "posCancelReqNotAllowedTitle": "Cancellation Not Allowed",
   "posCancelReqNotAllowedMessage": "Your role is not permitted to cancel orders on this terminal.",
   "posCancelReqRegisterManagerMessage": "Register the manager fingerprint once before cancelling this completed order.",
-  "posCancelReqManagerRequiredTitle": "Manager Fingerprint Required",
   "posCancelReqUnlockMessage": "Place the manager fingerprint to unlock cancellation.",
   "posCancelReqLockedTitle": "Cancellation Locked",
   "posCancelReqOrderCanceledTitle": "Order Canceled",
@@ -1678,10 +1662,6 @@
   "posStorageHeldEmptyMessage": "Any order you place on hold will appear here so the staff can continue it later.",
   "posStorageHistoryEmptyTitle": "No completed orders yet",
   "posStorageHistoryEmptyMessage": "Completed payments will be archived here so the staff can review them or print receipts again.",
-  "posFingerprintBannerTitle": "Manager cancellation approval",
-  "posFingerprintBannerMessage": "Register once, then use fingerprint approval before opening completed order cancellation.",
-  "posFingerprintRegisterManager": "Register Manager",
-  "posFingerprintWaiting": "Waiting for fingerprint",
   "posStorageHeldRef": "Ref {ref}",
   "@posStorageHeldRef": {
     "placeholders": {
@@ -1760,7 +1740,7 @@
   "posManagerPinTitle": "Manager PIN",
   "posManagerPinSubtitle": "Enter a manager's PIN to approve this action.",
   "posManagerPinInvalid": "PIN not accepted. Check it and try again.",
-  "posManagerPinOffline": "PIN approval needs a connection — use the fingerprint instead.",
+  "posManagerPinOffline": "PIN not recognised on this till. An approver who has not approved online since the update needs a connection once.",
   "posManagerPinVerify": "Verify",
   "posCustomerDetailsTooltip": "Customer details",
   "posCustomerDetailsWallet": "Wallet",
@@ -2478,5 +2458,105 @@
         "type": "String"
       }
     }
-  }
+  },
+  "approvalLockedCountdown": "Too many wrong PINs. Try again in {time}.",
+  "@approvalLockedCountdown": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "approvalCheckFailed": "The approval could not be checked. Try again.",
+  "approvalNotGiven": "Approval was not given.",
+  "payoutApprovalSubtitle": "Paying out cash from the drawer needs approval.",
+  "discountAboveMaxApproval": "This discount is above your {max}% limit. An approver must allow it.",
+  "@discountAboveMaxApproval": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "shiftCloseNeedsInternet": "Closing needs the internet. Connect and try again.",
+  "shiftCloseSalesSending": "{count, plural, =1{1 sale still sending} other{{count} sales still sending}}",
+  "@shiftCloseSalesSending": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shiftCloseSendingSale": "Sale {reference}",
+  "@shiftCloseSendingSale": {
+    "placeholders": {
+      "reference": {
+        "type": "String"
+      }
+    }
+  },
+  "shiftCloseSalesSendingHint": "The shift closes once every sale has reached the server. Keep the till online and tap Close shift again.",
+  "shiftCloseClockOutToo": "Clock out too",
+  "shiftCloseOtherApproval": "Closing another cashier's drawer needs approval.",
+  "trainingCashOnly": "Training mode: cash only.",
+  "trainingNotAvailable": "Not available in training mode.",
+  "pinLoginManagerUnlock": "Manager unlock",
+  "pinLoginManagerUnlockHint": "A manager's PIN clears this till's lock",
+  "pinLoginUnlockedBy": "Unlocked by {name}. Enter your PIN.",
+  "@pinLoginUnlockedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "pinLoginUnlockOffline": "Unlocking needs a connection.",
+  "signedOutInactive": "{name} was signed out: this account is no longer active.",
+  "@signedOutInactive": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "clockInOutButton": "Clock in / out",
+  "clockInOutTitle": "Clock in / out",
+  "clockInOutHint": "Your PIN",
+  "clockInOutConfirm": "Continue",
+  "clockedInMessage": "{name} clocked in.",
+  "@clockedInMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "clockedOutMessage": "{name} clocked out.",
+  "@clockedOutMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "clockInFailed": "The clock could not be saved. Try again.",
+  "clockInTitle": "Welcome, {name}",
+  "@clockInTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "clockInSubtitle": "Clock in to start selling.",
+  "clockInButton": "Clock in",
+  "clockOutButton": "Clock out",
+  "trainingBanner": "TRAINING",
+  "trainingEnter": "Training mode",
+  "trainingExit": "Leave training",
+  "trainingExitConfirm": "Everything done in training is discarded.",
+  "trainingEnteredMessage": "Training mode: nothing you do here is saved or sent.",
+  "trainingClearCartFirst": "Finish or clear the current order first.",
+  "shiftEndReminderBanner": "Your shift should end now. Please close your shift.",
+  "shiftEndReminderDismiss": "OK"
 }

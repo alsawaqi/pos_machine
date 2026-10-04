@@ -5,6 +5,7 @@ import 'package:mithqal_softpos/mithqal_softpos.dart';
 import 'package:dio/dio.dart';
 
 import '../core/api_config.dart';
+import '../core/training_flag.dart';
 import '../models/branch_report.dart';
 import '../models/kitchen_production.dart';
 import '../models/pos_models.dart';
@@ -45,6 +46,19 @@ class PosApiService {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
+          // LAUNCH-P5 C7 — training mode: no stock, kitchen, card, QR,
+          // table-server or loyalty call ever leaves the till.
+          if (TrainingMode.active &&
+              !TrainingMode.allows(options.method, options.path)) {
+            handler.reject(
+              DioException(
+                requestOptions: options,
+                error: const TrainingModeRefusal(),
+                type: DioExceptionType.cancel,
+              ),
+            );
+            return;
+          }
           options.headers['X-Mithqal-SoftPos-Capable'] = '1';
           // Resolve the server URL per request so debug Settings changes take
           // effect without rebuilding the client. Release reads are locked to
@@ -163,11 +177,93 @@ class PosApiService {
       ),
     );
     final staff = body.dataMap['staff'] as Map<String, dynamic>;
-    return StaffSessionData.fromJson(staff);
+    // LAUNCH-P5 — the login reply adds `attendance` and `branch_ids`
+    // (read at the data level, or inside `staff`).
+    return StaffSessionData.fromJson({
+      ...staff,
+      if (!staff.containsKey('attendance') &&
+          body.dataMap.containsKey('attendance'))
+        'attendance': body.dataMap['attendance'],
+      if (!staff.containsKey('branch_ids') &&
+          body.dataMap.containsKey('branch_ids'))
+        'branch_ids': body.dataMap['branch_ids'],
+    });
   }
 
-  /// POST /device/auth/verify-manager-pin — P-F1 manager PIN fallback for the
-  /// fingerprint gates. The server checks the PIN against ACTIVE staff of
+  /// LAUNCH-P5 C2 — GET /device/approvers: the approvers of this device's
+  /// branch with their offline verifier (`{salt, iterations, check}`; never
+  /// the key). Kept by [ApproverStore] in secure storage.
+  Future<({List<Map<String, dynamic>> approvers, String? asOf})>
+  fetchApprovers() async {
+    final body = await _send(() => _dio.get('/device/approvers'));
+    final rows = body.dataMap['approvers'];
+    if (rows is! List) throw const FormatException('Missing approvers');
+    return (
+      approvers: [
+        for (final row in rows)
+          if (row is Map) row.cast<String, dynamic>(),
+      ],
+      asOf: body.dataMap['as_of']?.toString(),
+    );
+  }
+
+  /// LAUNCH-P5 C2 — the online approval fallback: POST verify-manager-pin.
+  /// The reply now also carries the approver's `{salt, iterations, check}`
+  /// (in `staff`, at the top level, or under `verifier`), so the device can
+  /// derive the key and sign the approval. Null = the PIN was rejected.
+  Future<ApproverVerification?> verifyApprover(String pin) async {
+    try {
+      final envelope = await _send(
+        () => _dio.post('/device/auth/verify-manager-pin', data: {'pin': pin}),
+      );
+      final data = envelope.body.containsKey('ok')
+          ? envelope.body
+          : envelope.dataMap;
+      if (data['ok'] != true) return null;
+      return ApproverVerification.fromReply(data);
+    } on ApiException catch (e) {
+      if (e.code == 'invalid_pin') return null;
+      rethrow;
+    }
+  }
+
+  /// LAUNCH-P5 C6 — GET /device/staff-status: the ids of the branch's
+  /// active staff. A logged-in person missing from it is logged out.
+  Future<Set<int>> fetchActiveStaffIds() async {
+    final body = await _send(() => _dio.get('/device/staff-status'));
+    final ids = body.dataMap['active_staff_ids'];
+    if (ids is! List) throw const FormatException('Missing staff ids');
+    return {
+      for (final id in ids)
+        if (id is num) id.toInt(),
+    };
+  }
+
+  /// PHASE-1A D-7 — POST /device/auth/unlock-pin-lock: a manager PIN clears
+  /// this device's login lock on the server. Returns the approver's name, or
+  /// null when the PIN is rejected.
+  Future<String?> unlockPinLock(String pin) async {
+    try {
+      final envelope = await _send(
+        () => _dio.post('/device/auth/unlock-pin-lock', data: {'pin': pin}),
+      );
+      final data = envelope.body.containsKey('ok')
+          ? envelope.body
+          : envelope.dataMap;
+      if (data['ok'] == false) return null;
+      final staff = data['staff'] ?? data['approver'];
+      final name = staff is Map ? staff['name']?.toString() : null;
+      return name ?? data['name']?.toString() ?? '';
+    } on ApiException catch (e) {
+      if (e.code == 'invalid_pin') return null;
+      rethrow;
+    }
+  }
+
+  /// POST /device/auth/verify-manager-pin — the server-checked manager PIN
+  /// (LAUNCH-P5: the approval sheet calls [verifyApprover]; the card
+  /// reversal and the six PIN-checked server actions keep using the PIN on
+  /// their own requests). The server checks the PIN against ACTIVE staff of
   /// this company whose position is in the merchant's
   /// manager_approval_positions policy (default managers only) — any such
   /// staff member, not necessarily the logged-in operator. Returns the
@@ -911,14 +1007,15 @@ class PosApiService {
   }
 
   /// LAUNCH-P4 C6 — POST /device/products/{id}/sold-out: switch a product
-  /// sold out (or back on sale) at this branch. The server applies the
-  /// position rule (manager / supervisor, or [approverStaffId] verified by
-  /// the manager-approval PIN), writes or deletes the row and audits it.
+  /// sold out (or back on sale) at this branch. LAUNCH-P5 C3 — the request
+  /// carries the `sold_out.toggle` [authorization] block (it replaces
+  /// `approver_staff_id`); the server refuses with 403 `approval_required`
+  /// / `approval_invalid` when it does not hold.
   Future<void> setProductSoldOut(
     int productId, {
     required bool soldOut,
     required int staffId,
-    int? approverStaffId,
+    Map<String, dynamic>? authorization,
   }) async {
     await _send(
       () => _dio.post(
@@ -926,7 +1023,8 @@ class PosApiService {
         data: {
           'sold_out': soldOut,
           'staff_id': staffId,
-          'approver_staff_id': ?approverStaffId,
+          'authorization': ?authorization,
+          'auth_v': 1,
         },
       ),
     );
@@ -1189,6 +1287,8 @@ class PosApiService {
       openedAt:
           DateTime.tryParse(m['opened_at']?.toString() ?? '') ?? DateTime.now(),
       staffId: (m['staff_id'] as num?)?.toInt() ?? 0,
+      // LAUNCH-P5 C5 — part of the fixed close id (absent = 0).
+      reopenCount: (m['reopen_count'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -1327,6 +1427,12 @@ class PosApiService {
     try {
       resp = await request();
     } on DioException catch (e) {
+      if (e.error is TrainingModeRefusal) {
+        throw ApiException(
+          message: 'Not available in training mode.',
+          code: 'training_mode',
+        );
+      }
       // Transport-level failure (no/again-unreachable server, timeout, ...).
       if (e.response != null) {
         return _interpret(e.response!, topLevelErrorCode: topLevelErrorCode);
@@ -1463,6 +1569,54 @@ class PosApiService {
   }
 }
 
+/// LAUNCH-P5 C2 — a verify-manager-pin reply: who approved, and (from a P5
+/// server) their offline verifier.
+class ApproverVerification {
+  const ApproverVerification({
+    required this.staffId,
+    required this.name,
+    this.position,
+    this.salt,
+    this.iterations,
+    this.check,
+  });
+
+  final int staffId;
+  final String name;
+  final String? position;
+  final String? salt;
+  final int? iterations;
+  final String? check;
+
+  bool get hasVerifier =>
+      (salt ?? '').isNotEmpty && (iterations ?? 0) > 0 && (check ?? '').isNotEmpty;
+
+  static ApproverVerification? fromReply(Map<String, dynamic> reply) {
+    final staff = reply['staff'];
+    if (staff is! Map) return null;
+    final id = staff['id'];
+    if (id is! num || id <= 0) return null;
+    Map? source(String key) {
+      for (final candidate in [staff, reply['verifier'], reply]) {
+        if (candidate is Map && candidate[key] != null) return candidate;
+      }
+      return null;
+    }
+
+    final salt = source('salt')?['salt']?.toString();
+    final iterations = source('iterations')?['iterations'];
+    final check = source('check')?['check']?.toString();
+    return ApproverVerification(
+      staffId: id.toInt(),
+      name: (staff['name'] ?? '').toString(),
+      position: staff['position']?.toString(),
+      salt: salt,
+      iterations: iterations is num ? iterations.toInt() : null,
+      check: check,
+    );
+  }
+}
+
 class _Envelope {
   _Envelope(this.body);
   final Map<String, dynamic> body;
@@ -1486,6 +1640,7 @@ class ApiException implements Exception {
     this.isNetwork = false,
     this.hasStructuredErrorCode = false,
     this.retryAfter,
+    this.retryAfterSeconds,
   });
 
   final String message;
@@ -1497,7 +1652,26 @@ class ApiException implements Exception {
   final bool hasStructuredErrorCode;
   final Duration? retryAfter;
 
+  /// PHASE-1A D-6 — `errors[0].retry_after_seconds` of a 423 `pin_locked`
+  /// or 429 `too_many_attempts`. Devices read this integer, never a message.
+  final int? retryAfterSeconds;
+
   bool get isUnauthorized => statusCode == 401;
+
+  /// A PIN lock or throttle the device must count down (D-9).
+  bool get isPinLock =>
+      code == 'pin_locked' ||
+      code == 'too_many_attempts' ||
+      statusCode == 423 ||
+      statusCode == 429;
+
+  /// How long the PIN pad stays locked: the body's integer first, then the
+  /// Retry-After header.
+  Duration? get lockDuration {
+    final seconds = retryAfterSeconds;
+    if (seconds != null && seconds > 0) return Duration(seconds: seconds);
+    return retryAfter;
+  }
 
   factory ApiException.fromErrors(
     List<dynamic> errors,
@@ -1506,6 +1680,7 @@ class ApiException implements Exception {
   }) {
     final first = errors.first;
     if (first is Map) {
+      final seconds = first['retry_after_seconds'];
       return ApiException(
         message: (first['message'] ?? 'Request failed.').toString(),
         code: first['code']?.toString(),
@@ -1514,6 +1689,7 @@ class ApiException implements Exception {
             (first['code'] as String).trim().isNotEmpty,
         statusCode: status,
         retryAfter: retryAfter,
+        retryAfterSeconds: seconds is num ? seconds.toInt() : null,
       );
     }
     return ApiException(

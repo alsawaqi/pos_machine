@@ -11,6 +11,7 @@ import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/services/local_order_storage_service.dart';
 import 'package:pos_machine/services/pos_api_service.dart';
 import 'package:pos_machine/screens/settings_screen.dart';
+import 'package:pos_machine/core/manager_auth.dart';
 import 'support/fake_order_storage.dart';
 import 'workspace_machine_harness.dart';
 
@@ -23,10 +24,13 @@ class _Api implements PosApiService {
   String get quickOrderBaseUrl => 'http://fixture.invalid/api/v1';
   @override
   Future<List<Map<String, dynamic>>> fetchIncomingTransfers() async => [];
+  bool approve = false;
   @override
-  Future<String?> verifyManagerPin(String pin) async {
+  Future<ApproverVerification?> verifyApprover(String pin) async {
     pins++;
-    return null;
+    return approve
+        ? const ApproverVerification(staffId: 3, name: 'Mona')
+        : null;
   }
 
   @override
@@ -46,7 +50,10 @@ Future<void> tick(WidgetTester tester, [int count = 20]) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
-  for (final scenario in ['denied', 'cancelled', 'unregistered', 'approved']) {
+  // LAUNCH-P5 C2 — the archive step uses the approval sheet (PIN only).
+  // An old "manager fingerprint" flag left on the device is ignored: the
+  // biometric channel is never called (H2).
+  for (final scenario in ['denied', 'cancelled', 'approved']) {
     testWidgets('archive real manager gate $scenario', (tester) async {
       tester.view.physicalSize = const Size(1600, 1000);
       tester.view.devicePixelRatio = 1;
@@ -105,7 +112,7 @@ void main() {
         await journal.db.insert('qr_checkout_attempts', original);
       });
       debugOrderStorageOverride = FakeOrderStorage();
-      final api = _Api();
+      final api = _Api()..approve = scenario == 'approved';
       final harness = await pumpWorkspaceMachine(
         tester,
         mode: 'off',
@@ -119,10 +126,7 @@ void main() {
           taxes: [],
         ),
       );
-      await harness.preferences.setBool(
-        'manager_biometric_registered',
-        scenario != 'unregistered',
-      );
+      await harness.preferences.setBool('manager_biometric_registered', true);
       await tester.tap(find.byIcon(Icons.settings_outlined));
       await tester.pumpAndSettle();
       // The Settings route's existing action dispatches the real private gate.
@@ -135,11 +139,20 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Confirm'));
       await tick(tester);
-      if (scenario != 'approved') {
-        final pin = find.byWidgetPredicate(
-          (w) => w.runtimeType.toString() == '_ManagerPinDialog',
+      final pin = find.byType(ManagerApprovalSheet);
+      expect(pin, findsOneWidget);
+      if (scenario == 'approved') {
+        for (final digit in ['6', '5', '4', '3']) {
+          await tester.tap(find.descendant(of: pin, matching: find.text(digit)));
+          await tester.pump();
+        }
+        await tester.tap(
+          find.descendant(of: pin, matching: find.byIcon(Icons.check_rounded)),
         );
-        expect(pin, findsOneWidget);
+        await tick(tester, 6);
+        expect(api.pins, 1);
+      }
+      if (scenario != 'approved') {
         if (scenario == 'denied') {
           for (final digit in ['1', '2', '3', '4']) {
             await tester.tap(
@@ -179,7 +192,7 @@ void main() {
         expect(rows!.single['authority'], 'existing_manager_approval');
         expect(jsonDecode(rows.single['original_row'] as String), original);
       }
-      expect(biometrics, scenario == 'unregistered' ? 0 : 1);
+      expect(biometrics, 0);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
     });

@@ -314,6 +314,7 @@ class _FakeSettlementFlow implements QrSettlementFlow {
     int? voidReasonId,
     int? staffId,
     String? authorizedBy,
+    Map<String, dynamic>? authorization,
   }) async {
     calls.add('void:$orderUuid');
   }

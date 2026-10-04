@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/manager_auth.dart';
 import '../models/qr_till_models.dart';
 import '../qr_quick/qr_quick_models.dart' show serverComboLabels;
 import '../providers/providers.dart';
@@ -860,16 +861,26 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    // LAUNCH-P5 C1 — the order.void_unpaid tick, or an approver's PIN.
+    final gate = await authorizeAction(
+      context,
+      ref,
+      action: 'order.void_unpaid',
+    );
+    if (gate == null || !mounted) return;
     setState(() => _acting = true);
     final staff = ref.read(sessionServiceProvider).staff;
     try {
+      final block = gate.block(subjectUuid: order.uuid);
+      gate.grant?.forget();
       await ref
           .read(qrSettlementCoordinatorProvider)
           .voidOrder(
             order.uuid,
             reason: 'Voided from the QR Tables board',
             staffId: staff?.id,
-            authorizedBy: staff?.name,
+            authorizedBy: gate.authorizedByName,
+            authorization: block,
           );
       if (!mounted) return;
       _notice('QR order void queued safely.', success: true);

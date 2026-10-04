@@ -1,3 +1,6 @@
+import 'package:uuid/uuid.dart';
+
+import '../core/auth_wire.dart';
 import 'order_sync_payload.dart' show uuidV4;
 
 /// Builds the pos_api `/device/sync/push` events for a cash-drawer shift.
@@ -68,27 +71,54 @@ Map<String, dynamic> buildShiftOpenEvent({
       // GET /device/shift/current?staff_id), close attributed by staff.
       // Builds that predate this flag keep pure per-device semantics.
       'shared_shift': true,
+      'auth_v': authWireVersion,
     },
   };
 }
 
+/// LAUNCH-P5 C5 — the FIXED client_event_id of a shift's close: UUID v5
+/// (RFC 4122 URL namespace `6ba7b811-9dad-11d1-80b4-00c04fd430c8`) of
+/// `shift-close:{shift_uuid}:{reopen_count}`. A retry after a lost reply is
+/// the same event (the server returns the original Z instead of "already
+/// closed"); a refused close re-sent under it replaces the stored payload;
+/// after a portal re-open the count moves on, so the shift can close again.
+String shiftCloseEventId(String shiftUuid, {int reopenCount = 0}) =>
+    const Uuid().v5(
+      Namespace.url.value,
+      'shift-close:$shiftUuid:$reopenCount',
+    );
+
 /// Build the `shift.close` event for the open shift [shiftUuid].
+///
+/// LAUNCH-P5 C5 — it names who closed it ([closedByStaffId]), lists the
+/// paid orders of this shift on this device ([orderUuids]; the server
+/// refuses with `unsynced_sales` while one has not arrived), and carries
+/// the `shift.close_other` [authorization] when closing another cashier's
+/// drawer.
 Map<String, dynamic> buildShiftCloseEvent({
   required String shiftUuid,
   required int closingCashBaisas,
+  int? closedByStaffId,
+  List<String> orderUuids = const <String>[],
+  Map<String, dynamic>? authorization,
+  int reopenCount = 0,
   DateTime? now,
+  // Kept for older callers; the event id is fixed per shift.
   String Function()? newUuid,
 }) {
-  final gen = newUuid ?? uuidV4;
   final ts = (now ?? DateTime.now()).toUtc().toIso8601String();
   return <String, dynamic>{
-    'client_event_id': gen(),
+    'client_event_id': shiftCloseEventId(shiftUuid, reopenCount: reopenCount),
     'event_type': 'shift.close',
     'client_timestamp': ts,
     'payload': <String, dynamic>{
       'shift_uuid': shiftUuid,
       'closing_cash_baisas': closingCashBaisas,
       'closed_at': ts,
+      'closed_by_staff_id': ?closedByStaffId,
+      'order_uuids': orderUuids,
+      'authorization': ?authorization,
+      'auth_v': authWireVersion,
     },
   };
 }

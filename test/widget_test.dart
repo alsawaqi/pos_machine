@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'package:drift/native.dart';
+import 'package:pos_machine/data/db/app_database.dart';
 import 'package:pos_machine/main.dart';
 import 'package:pos_machine/models/kitchen_production.dart';
 import 'package:pos_machine/models/pos_models.dart';
@@ -83,7 +85,11 @@ void main() {
   // in, shift open — the boot gate walks straight through to the POS. The
   // startup flow gained these gates after the tests were written; each POS
   // test seeds this instead of the old bare terminal_id.
-  void seedSignedInSession({int staffId = 7, int shiftStaffId = 7}) {
+  void seedSignedInSession({
+    int staffId = 7,
+    int shiftStaffId = 7,
+    String position = 'cashier',
+  }) {
     mockDeviceToken = 'test-device-token';
     SharedPreferences.setMockInitialValues({
       'terminal_id': 'TERM-1001',
@@ -93,7 +99,7 @@ void main() {
       'staff_session_json': jsonEncode({
         'id': staffId,
         'name': 'Test Cashier',
-        'position': 'cashier',
+        'position': position,
         'branch_id': 6,
       }),
       'open_shift_json': jsonEncode({
@@ -115,6 +121,7 @@ void main() {
     ShiftService? shiftService,
     bool stubShiftReconciliation = true,
     bool? releaseBuild,
+    AppDatabase? database,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final session = SessionService(const FlutterSecureStorage(), prefs);
@@ -130,6 +137,7 @@ void main() {
           apiServiceProvider.overrideWithValue(apiService),
         if (shiftService != null)
           shiftServiceProvider.overrideWithValue(shiftService),
+        if (database != null) appDatabaseProvider.overrideWithValue(database),
         if (releaseBuild != null)
           releaseBuildProvider.overrideWithValue(releaseBuild),
         // Most widget cases exercise screens below the startup gate. Keep the
@@ -256,7 +264,9 @@ void main() {
   testWidgets('forced close saves the drawer owner on the Z ticket', (
     WidgetTester tester,
   ) async {
-    seedSignedInSession(staffId: 8, shiftStaffId: 7);
+    // LAUNCH-P5 C5 — a supervisor holds the shift.close_other tick, so the
+    // handover close needs no approver here.
+    seedSignedInSession(staffId: 8, shiftStaffId: 7, position: 'supervisor');
     final api = _WidgetShiftApi(const []);
 
     tester.view.physicalSize = const Size(1440, 1000);
@@ -264,16 +274,32 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
+    // LAUNCH-P5 C5 — the close reads the outbox (paid sales of the shift).
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
     await tester.pumpWidget(
-      await testApp(apiService: api, shiftService: _SettledShiftService(api)),
+      await testApp(
+        apiService: api,
+        shiftService: _SettledShiftService(api),
+        database: db,
+      ),
     );
     await tester.pumpAndSettle();
     final closeButton = find.widgetWithText(FilledButton, 'Close shift');
     await tester.ensureVisible(closeButton);
     await tester.tap(closeButton);
-    await tester.pumpAndSettle();
-
+    // LAUNCH-P5 C5 — the close flushes the outbox and lists the shift's
+    // paid sales first (real I/O), then closes.
     final prefs = await SharedPreferences.getInstance();
+    for (var i = 0;
+        i < 400 && prefs.getString('last_shift_summary_json') == null;
+        i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+    }
+
     final saved =
         jsonDecode(prefs.getString('last_shift_summary_json')!)
             as Map<String, dynamic>;
@@ -713,6 +739,11 @@ class _SettledShiftService extends ShiftService {
   Future<ShiftCloseResult> close({
     required String shiftUuid,
     required int closingCashBaisas,
+    int? closedByStaffId,
+    List<String> orderUuids = const <String>[],
+    Map<String, dynamic>? authorization,
+    int reopenCount = 0,
+    Map<String, dynamic>? event,
   }) async => const ShiftCloseResult(
     expectedCashBaisas: 0,
     varianceBaisas: 0,

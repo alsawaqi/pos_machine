@@ -4,13 +4,18 @@ import 'dart:async';
 import 'dart:ui' show Locale;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/foundation.dart' show kReleaseMode;
+import 'package:flutter/foundation.dart' show ValueListenable, kReleaseMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show SentryLevel;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/approver_store.dart';
+import '../core/attendance.dart';
+import '../core/manager_auth.dart' show ApprovalEngine;
+import '../core/permissions.dart';
+import '../core/pin_lockout.dart';
 import '../core/sentry.dart';
 import '../data/config_repository.dart';
 import '../data/table_shadow_repository.dart';
@@ -184,6 +189,15 @@ class SessionController extends Notifier<SessionState> {
     sentryBreadcrumb('auth', 'staff login');
   }
 
+  /// LAUNCH-P5 C6 — record a clock in / out of the logged-in person
+  /// without starting a new staff session.
+  Future<void> updateAttendance(StaffAttendance attendance) async {
+    final staff = _svc.staff;
+    if (staff == null) return;
+    await _svc.saveStaff(staff.withAttendance(attendance));
+    state = _svc.snapshot();
+  }
+
   Future<void> logoutStaff() async {
     _staffSessionGeneration++;
     ref.invalidate(shiftReconciliationProvider);
@@ -247,6 +261,10 @@ class SessionController extends Notifier<SessionState> {
     _staffSessionGeneration++;
     ref.invalidate(shiftReconciliationProvider);
     await _svc.clearForRePair();
+    // LAUNCH-P5 C2 — an un-paired till keeps no approver verifiers.
+    try {
+      await ref.read(approverStoreProvider).wipe();
+    } catch (_) {}
     state = _svc.snapshot();
     await setSentryStaff(id: null);
     sentryBreadcrumb(
@@ -293,6 +311,91 @@ final deviceHardwareIdentityReaderProvider =
       (ref) => const DeviceHardwareIdentityReader(),
     );
 
+// --- LAUNCH-P5: tick list + approvals ---------------------------------------
+
+/// Bumps whenever a config sync saves the P5 staff settings.
+final staffSettingsRevisionProvider = Provider<int>((ref) {
+  final session = ref.read(sessionServiceProvider);
+  final ValueListenable<int> revision;
+  try {
+    revision = session.staffSettingsRevision;
+  } catch (_) {
+    return 0; // a test double without the P5 settings
+  }
+  void changed() => ref.invalidateSelf();
+  revision.addListener(changed);
+  ref.onDispose(() => revision.removeListener(changed));
+  return revision.value;
+});
+
+/// C1 — the merchant's tick list (the shared defaults until a config sync).
+final positionPermissionsProvider = Provider<PositionPermissions>((ref) {
+  ref.watch(staffSettingsRevisionProvider);
+  try {
+    return ref.read(sessionServiceProvider).positionPermissions;
+  } catch (_) {
+    return PositionPermissions.defaults;
+  }
+});
+
+/// C1 — `can(action, {amountPercent})` for the logged-in person. The
+/// position is read from the persisted session (the source of truth); the
+/// session controller is watched only to refresh on login / logout.
+final staffPermissionsProvider = Provider<StaffPermissions>((ref) {
+  ref.watch(sessionControllerProvider);
+  return StaffPermissions(
+    ref.watch(positionPermissionsProvider),
+    ref.read(sessionServiceProvider).staff?.position,
+  );
+});
+
+/// C2 — the branch's approver verifiers (secure storage).
+final approverStoreProvider = Provider<ApproverStore>(
+  (ref) => ApproverStore(ref.read(secureStorageProvider)),
+);
+
+/// C2 — the approval sheet's persisted wrong-PIN lock.
+final approvalLockoutProvider = Provider<PinLockout>(
+  (ref) => PinLockout(ref.read(sharedPreferencesProvider), approvalLockoutKey),
+);
+
+const approvalLockoutKey = 'p5_approval_lockout';
+
+/// C4 — the login pad's persisted server lock (PHASE-1A D-9).
+const loginLockoutKey = 'p5_login_lockout';
+
+final loginLockoutProvider = Provider<PinLockout>(
+  (ref) => PinLockout(ref.read(sharedPreferencesProvider), loginLockoutKey),
+);
+
+final approvalEngineProvider = Provider<ApprovalEngine>(
+  (ref) => ApprovalEngine(
+    api: ref.read(apiServiceProvider),
+    store: ref.read(approverStoreProvider),
+    lockout: ref.read(approvalLockoutProvider),
+  ),
+);
+
+/// C6 — clock in / out through the outbox.
+final attendanceServiceProvider = Provider<AttendanceService>(
+  (ref) => AttendanceService(ref.read(orderSyncRepositoryProvider)),
+);
+
+/// C6 — the name of a person the till signed out because the server no
+/// longer lists them as active (shown once on the PIN screen).
+final signOutNoticeProvider = NotifierProvider<SignOutNotice, String?>(
+  SignOutNotice.new,
+);
+
+class SignOutNotice extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void show(String name) => state = name;
+
+  void clear() => state = null;
+}
+
 /// Opens / closes cash-drawer shifts through the device sync pipeline.
 final shiftServiceProvider = Provider<ShiftService>(
   (ref) => ShiftService(ref.read(apiServiceProvider)),
@@ -321,6 +424,13 @@ final orderSyncRepositoryProvider = Provider<OrderSyncRepository>((ref) {
         (debugOrderStorageOverride ?? LocalOrderStorageService.instance)
             .assertNoPendingCombine(),
   );
+  repository.payStaffId = () {
+    try {
+      return ref.read(sessionServiceProvider).staff?.id;
+    } catch (_) {
+      return null;
+    }
+  };
   final localArchive =
       debugOrderStorageOverride ?? LocalOrderStorageService.instance;
   if (localArchive is LocalOrderStorageService) {
