@@ -120,6 +120,11 @@ String dineInText(bool ar, String key) {
       'The round is saved. Retry the same request; do not enter it again.',
       'الجولة محفوظة. أعد محاولة نفس الطلب ولا تدخله مجدداً.',
     ],
+    // LAUNCH-P5 F1 — the saved request's staff login was not accepted.
+    'staff_unverified': [
+      'The staff login of this saved request was not accepted. It is kept: the person who made it logs in again, then retry.',
+      'لم يُقبل تسجيل دخول الموظف لهذا الطلب المحفوظ. تم الاحتفاظ به: يسجّل صاحبه الدخول مجدداً ثم أعد المحاولة.',
+    ],
     'recovery': [
       'This seating changed. The saved request needs reconciliation before another send or payment.',
       'تغيرت الجلسة. يجب التحقق من الطلب المحفوظ قبل إرسال جديد أو دفع.',

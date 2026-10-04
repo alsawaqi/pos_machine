@@ -63,6 +63,16 @@ Map<String, Object> authStamp({int? staffId, String? staffToken}) {
   };
 }
 
+/// LAUNCH-P5 fix order 1 — the token to keep with a saved online request
+/// made for [staffId]: the logged-in person's, when it is theirs (or names
+/// nobody); null otherwise. A retry later sends it as `X-Staff-Token`,
+/// whoever is logged in then.
+String? makerStaffToken(int? staffId) {
+  final owner = StaffTokenHolder.staffId;
+  if (staffId != null && owner != null && staffId != owner) return null;
+  return StaffTokenHolder.token;
+}
+
 /// [event] with `payload.auth_v` (and the maker's `staff_token`) set (a
 /// copy; the input is not changed). A payload that already carries
 /// `auth_v` is left as it is.

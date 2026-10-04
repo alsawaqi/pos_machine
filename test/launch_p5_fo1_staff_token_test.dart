@@ -392,6 +392,8 @@ void main() {
   test(
     '403 staff_unverified fires the callback (any reason); others do not',
     () async {
+      // The logged-in person's own requests (their token in the header).
+      StaffTokenHolder.set(4, 'tok-4');
       var fired = 0;
       final reasons = <String?>[];
       for (final reason in const [

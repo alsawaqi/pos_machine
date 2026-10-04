@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../core/auth_wire.dart' show makerStaffToken;
 import 'bill_adjustment_intent.dart';
 import '../qr_checkout/qr_checkout_models.dart';
 import '../qr_quick/qr_quick_models.dart';
@@ -116,6 +117,7 @@ class DineInRequest {
     required this.seatingUuid,
     required this.billUuid,
     required Map<String, dynamic> payload,
+    this.staffToken,
   }) : encoded = jsonEncode(payload) {
     final p = this.payload;
     if (p['adjustment'] is Map) {
@@ -253,6 +255,7 @@ class DineInRequest {
     tableId: detail.tableId,
     seatingUuid: detail.seatingUuid!,
     billUuid: detail.billUuid,
+    staffToken: makerStaffToken(staffId),
     payload: {
       'table_id': detail.primaryTableId!,
       'seating_key': QrQuickRequest.newId(),
@@ -267,6 +270,20 @@ class DineInRequest {
   final String seatingUuid;
   final String? billUuid;
   final String encoded;
+
+  /// LAUNCH-P5 fix order 1 — the maker's staff token, kept beside the
+  /// immutable intent (never in it) and sent as `X-Staff-Token` on every
+  /// retry, whoever is logged in then. Null = none (an older saved request).
+  final String? staffToken;
+
+  /// The same request with its maker's [token] (the journal reads it back).
+  DineInRequest withStaffToken(String? token) => DineInRequest(
+    tableId: tableId,
+    seatingUuid: seatingUuid,
+    billUuid: billUuid,
+    payload: payload,
+    staffToken: token,
+  );
   Map<String, dynamic> get payload => tableMap(jsonDecode(encoded));
   String get id => payload['client_request_id'] as String;
   bool get isAdjustment => payload['adjustment'] is Map;

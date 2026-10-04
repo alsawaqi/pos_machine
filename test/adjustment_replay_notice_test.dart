@@ -35,7 +35,11 @@ import 'package:pos_machine/dine_in/dine_in_store.dart';
 class _ReplayServer extends AckServer {
   final requests = <Map<String, dynamic>>[];
   @override
-  Future<Map<String, dynamic>> dineInAdjust(String id, Map<String, dynamic> p) {
+  Future<Map<String, dynamic>> dineInAdjust(
+    String id,
+    Map<String, dynamic> p, {
+    String? staffToken,
+  }) {
     final d = Dio();
     d.interceptors.add(
       InterceptorsWrapper(

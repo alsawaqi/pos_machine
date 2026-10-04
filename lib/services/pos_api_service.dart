@@ -81,8 +81,10 @@ class PosApiService {
             options.headers['Authorization'] = 'Bearer $token';
           }
           // LAUNCH-P5 F1 — every call made while someone is logged in
-          // names that person.
-          final staffToken = StaffTokenHolder.token;
+          // names that person. A saved request retried for its maker sends
+          // the maker's stored token; a request naming another staff
+          // member never carries this person's token.
+          final staffToken = _staffTokenFor(options);
           if (staffToken != null && staffToken.isNotEmpty) {
             options.headers['X-Staff-Token'] = staffToken;
           } else {
@@ -108,6 +110,44 @@ class PosApiService {
       ),
     );
     return result.dataMap;
+  }
+
+  /// LAUNCH-P5 fix order 1 — the `RequestOptions.extra` key of a saved
+  /// request's maker token (sent as `X-Staff-Token` instead of the
+  /// logged-in person's).
+  static const makerStaffTokenKey = 'p5_maker_staff_token';
+
+  static Options? _makerOptions(String? staffToken) =>
+      staffToken == null || staffToken.isEmpty
+      ? null
+      : Options(extra: {makerStaffTokenKey: staffToken});
+
+  /// The staff id a request names (`staff_id` in its JSON body or query).
+  static int? _namedStaffId(RequestOptions options) {
+    Object? raw;
+    final data = options.data;
+    if (data is Map) raw = data['staff_id'];
+    raw ??= options.queryParameters['staff_id'];
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw);
+    return null;
+  }
+
+  static String? _staffTokenFor(RequestOptions options) {
+    final maker = options.extra[makerStaffTokenKey];
+    if (maker is String && maker.isNotEmpty) return maker;
+    final named = _namedStaffId(options);
+    final owner = StaffTokenHolder.staffId;
+    if (named != null && owner != null && named != owner) return null;
+    return StaffTokenHolder.token;
+  }
+
+  /// Whether [options] went out as the logged-in person's own request: only
+  /// a `staff_unverified` refusal of that signs them out. A retry of
+  /// somebody else's saved request is shown and kept instead.
+  static bool _ownRequest(RequestOptions options) {
+    final current = StaffTokenHolder.token;
+    return current != null && options.headers['X-Staff-Token'] == current;
   }
 
   final Dio _dio;
@@ -727,41 +767,57 @@ class PosApiService {
 
   Future<Map<String, dynamic>> dineInAppend(
     String uuid,
-    Map<String, dynamic> payload,
-  ) async => (await _send(
+    Map<String, dynamic> payload, {
+    // LAUNCH-P5 F1 — a saved request's maker token (null = the logged-in
+    // person's).
+    String? staffToken,
+  }) async => (await _send(
     () => _dio.post(
       '/device/tables/${Uri.encodeComponent(uuid)}/round',
       data: payload,
+      options: _makerOptions(staffToken),
     ),
   )).dataMap;
 
   Future<Map<String, dynamic>> dineInAdjust(
     String uuid,
-    Map<String, dynamic> payload,
-  ) async => (await _send(
+    Map<String, dynamic> payload, {
+    // LAUNCH-P5 F1 — a saved request's maker token (null = the logged-in
+    // person's).
+    String? staffToken,
+  }) async => (await _send(
     () => _dio.post(
       '/device/tables/${Uri.encodeComponent(uuid)}/adjust',
       data: payload,
+      options: _makerOptions(staffToken),
     ),
   )).dataMap;
 
   Future<Map<String, dynamic>> dineInCancelBill(
     String uuid,
-    Map<String, dynamic> payload,
-  ) async => (await _send(
+    Map<String, dynamic> payload, {
+    // LAUNCH-P5 F1 — a saved request's maker token (null = the logged-in
+    // person's).
+    String? staffToken,
+  }) async => (await _send(
     () => _dio.post(
       '/device/tables/${Uri.encodeComponent(uuid)}/cancel-bill',
       data: payload,
+      options: _makerOptions(staffToken),
     ),
   )).dataMap;
 
   Future<Map<String, dynamic>> dineInCancelLine(
     String uuid,
-    Map<String, dynamic> payload,
-  ) async => (await _send(
+    Map<String, dynamic> payload, {
+    // LAUNCH-P5 F1 — a saved request's maker token (null = the logged-in
+    // person's).
+    String? staffToken,
+  }) async => (await _send(
     () => _dio.post(
       '/device/tables/${Uri.encodeComponent(uuid)}/cancel-line',
       data: payload,
+      options: _makerOptions(staffToken),
     ),
   )).dataMap;
 
@@ -1501,9 +1557,11 @@ class PosApiService {
           retryAfter: _retryAfter(resp),
           reason: data is Map ? data['reason']?.toString() : null,
         );
-        // LAUNCH-P5 F1 — the staff token was not accepted: log out and ask
-        // for the PIN again.
-        if (error.isStaffUnverified) onStaffUnverified?.call(error.reason);
+        // LAUNCH-P5 F1 — the person's own staff token was not accepted:
+        // log out and ask for the PIN again.
+        if (error.isStaffUnverified && _ownRequest(resp.requestOptions)) {
+          onStaffUnverified?.call(error.reason);
+        }
         throw error;
       }
       final topCode = map['code'];

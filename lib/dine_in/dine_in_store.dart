@@ -90,6 +90,10 @@ class SqliteDineInStore implements DineInStore, DineInDraftStore {
     return request;
   }
 
+  /// LAUNCH-P5 fix order 1 — where a saved request's maker token is kept
+  /// (beside the immutable intent, in the same database).
+  String _makerScope(String requestId) => '$scope::maker:$requestId';
+
   Future<List<DineInRequest>> _all(DatabaseExecutor executor) async {
     final prefix = '$scope::adjustment:';
     final rows = await executor.query(
@@ -97,7 +101,28 @@ class SqliteDineInStore implements DineInStore, DineInDraftStore {
       where: 'scope = ? OR substr(scope, 1, ?) = ?',
       whereArgs: [scope, prefix.length, prefix],
     );
-    return rows.map(_decode).toList();
+    final requests = rows.map(_decode).toList();
+    if (requests.isEmpty) return requests;
+    final makers = <String, String>{};
+    final makerPrefix = '$scope::maker:';
+    for (final row in await executor.query(
+      'dine_in_drafts',
+      where: 'substr(scope, 1, ?) = ?',
+      whereArgs: [makerPrefix.length, makerPrefix],
+    )) {
+      try {
+        final token =
+            (jsonDecode(row['payload'] as String) as Map)['staff_token'];
+        if (token is String && token.isNotEmpty) {
+          makers[(row['scope'] as String).substring(makerPrefix.length)] =
+              token;
+        }
+      } catch (_) {}
+    }
+    return [
+      for (final r in requests)
+        makers[r.id] == null ? r : r.withStaffToken(makers[r.id]),
+    ];
   }
 
   @override
@@ -156,6 +181,14 @@ class SqliteDineInStore implements DineInStore, DineInDraftStore {
         'request_id': request.id,
         'payload': request.encoded,
       }, conflictAlgorithm: ConflictAlgorithm.abort);
+      final token = request.staffToken;
+      if (token != null && token.isNotEmpty) {
+        await txn.insert('dine_in_drafts', {
+          'scope': _makerScope(request.id),
+          'table_id': request.tableId,
+          'payload': jsonEncode({'staff_token': token}),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
       // The durable send intent takes ownership atomically, even if the process
       // dies before its response. Never restore these lines as a fresh draft.
       if (!request.isAdjustment) {
@@ -183,5 +216,10 @@ class SqliteDineInStore implements DineInStore, DineInDraftStore {
       ],
     );
     if (count != 1) throw StateError('Round journal changed');
+    await executor.delete(
+      'dine_in_drafts',
+      where: 'scope = ?',
+      whereArgs: [_makerScope(request.id)],
+    );
   }
 }

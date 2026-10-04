@@ -31,8 +31,9 @@ class _RetryServer extends AckServer {
   @override
   Future<Map<String, dynamic>> dineInAdjust(
     String id,
-    Map<String, dynamic> p,
-  ) async {
+    Map<String, dynamic> p, {
+    String? staffToken,
+  }) async {
     requests.add(jsonDecode(jsonEncode(p)));
     if (requests.length == 1) {
       throw ApiException(message: 'lost', isNetwork: true);

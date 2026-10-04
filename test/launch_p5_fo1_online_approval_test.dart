@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/core/approval_proof.dart';
+import 'package:pos_machine/core/auth_wire.dart';
 import 'package:pos_machine/core/manager_auth.dart';
 import 'package:pos_machine/data/db/app_database.dart';
 import 'package:pos_machine/data/order_sync_repository.dart';
@@ -85,19 +86,26 @@ class _TableServer {
   final Database db;
   final base = AdjustmentServer();
   final cancels = <Map<String, dynamic>>[];
+
+  /// The `X-Staff-Token` of every write (attach the server after the
+  /// client's own interceptors to see it: [dio] with `into`).
+  final tokens = <Object?>[];
   String? refuseWith;
 
   /// The server's `data.bill.adjustment_basis_baisas` (deliberately not
   /// the 5.000 OMR subtotal of the T6.5 bill).
   int basis = 4800;
 
-  Dio dio() {
+  Dio dio({Dio? into}) {
     base.db = db;
     final adjust = base.dio();
-    return Dio()
+    return (into ?? Dio())
       ..interceptors.add(
         InterceptorsWrapper(
           onRequest: (o, h) async {
+            if (!o.path.endsWith('/detail')) {
+              tokens.add(o.headers['X-Staff-Token']);
+            }
             final refusal = refuseWith;
             if (refusal != null && !o.path.endsWith('/detail')) {
               refuseWith = null;
@@ -165,6 +173,7 @@ class _TableServer {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
+  savedRequestRules();
 
   group('table adjust', () {
     late Database db;
@@ -609,15 +618,198 @@ void main() {
   });
 }
 
+/// LAUNCH-P5 fix order 1 — rules from the handheld build, applied to the
+/// till: a saved request keeps its maker's token for every retry, and only
+/// the logged-in person's own live request can sign them out.
+void savedRequestRules() {
+  group('saved requests keep their maker', () {
+    late Database db;
+    late _TableServer server;
+    late PosApiService api;
+    var signedOut = <String?>[];
+
+    setUp(() async {
+      db = await databaseFactoryFfiNoIsolate.openDatabase(
+        inMemoryDatabasePath,
+        options: OpenDatabaseOptions(
+          singleInstance: false,
+          version: 2,
+          onCreate: (db, _) => SqliteDineInStore.createSchema(db),
+        ),
+      );
+      server = _TableServer(db);
+      signedOut = <String?>[];
+      final dio = Dio();
+      api = PosApiService(
+        tokenGetter: () => 'fixture',
+        dio: dio,
+        onStaffUnverified: signedOut.add,
+      );
+      server.dio(into: dio);
+      StaffTokenHolder.set(7, 'tok-7');
+    });
+    tearDown(() async {
+      StaffTokenHolder.clear();
+      await db.close();
+    });
+
+    Future<DineInController> controller(int staffId) async {
+      final c = DineInController(
+        ApiDineInGateway(api, () => 'scope'),
+        SqliteDineInStore(db, 'scope'),
+        1,
+        staffId: staffId,
+      );
+      await c.start();
+      return c;
+    }
+
+    Future<bool> adjust(DineInController c) => c.adjust(
+      (_) async => {
+        'kind': 'discount',
+        'mode': 'fixed',
+        'amount_baisas': 300,
+        'label': 'Friend',
+        'gate': _gate('discount.manual', _grant()),
+      },
+    );
+
+    test(
+      'a retry sends the maker\'s stored token, whoever is logged in',
+      () async {
+        final made = await controller(7);
+        server.base.loseAck = true; // applied, but the reply is lost
+        expect(await adjust(made), isFalse);
+        expect(made.notice, 'uncertain');
+        made.dispose();
+        // Omar logs in on the till; the saved request comes back with its
+        // maker's token from the journal.
+        StaffTokenHolder.set(8, 'tok-8');
+        final next = await controller(8);
+        expect(next.pending?.staffToken, 'tok-7');
+        expect(await next.retry(), isTrue);
+        next.dispose();
+        expect(server.tokens, ['tok-7', 'tok-7']);
+        // Settled: the maker's token leaves with the request.
+        expect(
+          await db.query(
+            'dine_in_drafts',
+            where: 'scope LIKE ?',
+            whereArgs: ['scope::maker:%'],
+          ),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'staff_unverified on somebody else\'s saved request: kept, shown, nobody signed out',
+      () async {
+        final made = await controller(7);
+        server.base.loseAck = true;
+        await adjust(made);
+        made.dispose();
+        StaffTokenHolder.set(8, 'tok-8');
+        final next = await controller(8);
+        server.refuseWith = 'staff_unverified';
+        expect(await next.retry(), isFalse);
+        expect(next.notice, 'staff_unverified');
+        expect(next.pending, isNotNull, reason: 'the request is kept');
+        expect(signedOut, isEmpty, reason: 'Omar stays logged in');
+        next.dispose();
+      },
+    );
+
+    test(
+      'staff_unverified on one\'s own live request signs them out',
+      () async {
+        final c = await controller(7);
+        server.refuseWith = 'staff_unverified';
+        expect(await adjust(c), isFalse);
+        expect(server.tokens.single, 'tok-7');
+        expect(signedOut, hasLength(1));
+        expect(c.pending, isNotNull, reason: 'kept for the next login');
+        c.dispose();
+      },
+    );
+
+    test(
+      'a request naming another staff member never carries this token',
+      () async {
+        final shiftDio = Dio();
+        final headers = <Object?>[];
+        final shiftApi = PosApiService(
+          tokenGetter: () => 'fixture',
+          dio: shiftDio,
+        );
+        shiftDio.interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (o, h) {
+              headers.add(o.headers['X-Staff-Token']);
+              h.resolve(
+                Response(
+                  requestOptions: o,
+                  statusCode: 200,
+                  data: {
+                    'data': {'shift': null},
+                    'errors': <Object>[],
+                  },
+                ),
+              );
+            },
+          ),
+        );
+        await shiftApi.fetchCurrentShift(staffId: 9);
+        await shiftApi.fetchCurrentShift(staffId: 7);
+        await shiftApi.fetchCurrentShift();
+        expect(headers, [null, 'tok-7', 'tok-7']);
+      },
+    );
+
+    test('a queued cancel_bill is sent with its maker\'s token', () async {
+      final bills = _BillApi();
+      final outboxDb = AppDatabase.forTesting(NativeDatabase.memory());
+      addTearDown(outboxDb.close);
+      final repo = OrderSyncRepository(bills, outboxDb)
+        ..cancellationRoute = (_) async => seat;
+      await outboxDb.enqueueOutbox(
+        OrderOutboxCompanion.insert(
+          orderUuid: 'cancel-bill:cb-2',
+          eventsJson: jsonEncode([
+            {
+              'client_event_id': 'cb-2',
+              'event_type': 'table.session.cancel_bill',
+              'client_timestamp': '2026-10-04T06:00:00.000Z',
+              'payload': {
+                'client_request_id': 'cb-2',
+                'seating_key': 's-2',
+                'staff_id': 7,
+                'staff_token': 'tok-7',
+              },
+            },
+          ]),
+          createdAt: DateTime.utc(2026, 10, 4, 6),
+        ),
+      );
+      StaffTokenHolder.set(8, 'tok-8');
+      await repo.flush();
+      expect(bills.tokens, ['tok-7']);
+    });
+  });
+}
+
 class _BillApi implements PosApiService {
   int calls = 0;
+  final tokens = <String?>[];
 
   @override
   Future<Map<String, dynamic>> dineInCancelBill(
     String uuid,
-    Map<String, dynamic> payload,
-  ) async {
+    Map<String, dynamic> payload, {
+    String? staffToken,
+  }) async {
     calls++;
+    tokens.add(staffToken);
     throw ApiException(
       message: 'The approval could not be verified. Approve again.',
       statusCode: 403,

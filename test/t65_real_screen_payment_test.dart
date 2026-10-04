@@ -114,8 +114,9 @@ class AckServer implements PosApiService {
   @override
   Future<Map<String, dynamic>> dineInAdjust(
     String id,
-    Map<String, dynamic> p,
-  ) async {
+    Map<String, dynamic> p, {
+    String? staffToken,
+  }) async {
     try {
       final journal = await SqliteDineInStore.open('inspection');
       final saved = (await journal.db.query('dine_in_requests')).single;

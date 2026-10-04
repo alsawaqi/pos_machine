@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pos_machine/core/auth_wire.dart';
 import 'package:pos_machine/data/db/app_database.dart';
 import 'package:pos_machine/data/order_sync_repository.dart';
 import 'package:pos_machine/l10n/l10n.dart';
@@ -395,8 +396,15 @@ void main() {
       // Sara (supervisor: shift.close_other ticked) closes Omar's drawer;
       // the server refuses a staff_id the closer's token does not name.
       await session.saveStaff(
-        const StaffSessionData(id: 4, name: 'Sara', position: 'supervisor'),
+        const StaffSessionData(
+          id: 4,
+          name: 'Sara',
+          position: 'supervisor',
+          staffToken: 'tok-4',
+        ),
+        login: true,
       );
+      addTearDown(StaffTokenHolder.clear);
       await session.saveOpenShift(
         OpenShiftData(
           uuid: 'shift-1',
@@ -417,6 +425,10 @@ void main() {
       expect(shifts.events, hasLength(1));
       expect(api.shiftReads, isNotEmpty);
       expect(api.shiftReads, everyElement(isNull));
+      // The close names its closer, with the closer's own token.
+      final payload = shifts.events.single['payload'] as Map;
+      expect(payload['closed_by_staff_id'], 4);
+      expect(payload['staff_token'], 'tok-4');
     },
   );
 

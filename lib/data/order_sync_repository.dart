@@ -1023,9 +1023,14 @@ class OrderSyncRepository {
           final route = await cancellationRoute!(e);
           Map<String, dynamic> ack;
           try {
+            final payload = Map<String, dynamic>.from(e['payload'] as Map);
             final result = await _api.dineInCancelBill(
               route,
-              Map<String, dynamic>.from(e['payload'] as Map),
+              payload,
+              // LAUNCH-P5 F1 — the maker's token, whoever is logged in now.
+              staffToken: payload['staff_token'] is String
+                  ? payload['staff_token'] as String
+                  : null,
             );
             ack = {
               'client_event_id': e['client_event_id'],

@@ -1,6 +1,7 @@
 import '../table_cancellation/table_bill_cancellation.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import '../core/auth_wire.dart' show makerStaffToken;
 import '../core/authorization.dart';
 import '../qr_quick/qr_quick_models.dart';
 import 'dine_in_models.dart';
@@ -262,6 +263,7 @@ class DineInController extends ChangeNotifier {
         tableId: tableId,
         seatingUuid: current.seatingUuid!,
         billUuid: current.billUuid,
+        staffToken: makerStaffToken(staffId),
         payload: {
           'table_id': current.primaryTableId!,
           'seating_key': seatingKey,
@@ -379,6 +381,7 @@ class DineInController extends ChangeNotifier {
         tableId: tableId,
         seatingUuid: current.seatingUuid!,
         billUuid: current.billUuid,
+        staffToken: makerStaffToken(staffId),
         payload: {
           'table_id': current.primaryTableId!,
           'seating_key': seatingKey,
@@ -447,7 +450,7 @@ class DineInController extends ChangeNotifier {
       !busy &&
       _foreground &&
       pending?.isAdjustment == true &&
-      notice == 'uncertain' &&
+      (notice == 'uncertain' || notice == 'staff_unverified') &&
       store is SqliteDineInStore;
 
   Future<bool> discardPendingAdjustment(Future<bool> Function() approve) async {
@@ -602,7 +605,12 @@ class DineInController extends ChangeNotifier {
         notice = 'adjust_refused:${error.code}';
         return false;
       }
-      notice = 'uncertain';
+      // LAUNCH-P5 F1 — the server did not accept the token this request
+      // went with. It is kept (the server wrote nothing); a retry of
+      // somebody else's saved request never signs this person out.
+      notice = error.code == 'staff_unverified'
+          ? 'staff_unverified'
+          : 'uncertain';
       return false;
     } catch (_) {
       // Unknown errors, HTTP refusals and lost responses keep the immutable intent.
