@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/core/manager_auth.dart';
 import 'package:pos_machine/data/db/app_database.dart';
 import 'package:pos_machine/models/pos_models.dart';
-import 'package:pos_machine/screens/staff_pos_screen.dart';
 import 'package:pos_machine/services/config_mapper.dart';
 import 'package:pos_machine/services/local_order_storage_service.dart';
 import 'package:pos_machine/services/pos_api_service.dart';
