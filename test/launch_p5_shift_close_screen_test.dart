@@ -182,12 +182,20 @@ void main() {
     await tester.pump();
   }
 
-  Future<void> settle(WidgetTester tester, [int rounds = 30]) async {
-    for (var i = 0; i < rounds; i++) {
+  /// Pump until the close is no longer busy (no spinner for a few frames,
+  /// or the approval sheet is up). The close runs real Drift work, which
+  /// is slower under a loaded full-suite run than a fixed count allows.
+  Future<void> settle(WidgetTester tester) async {
+    var idle = 0;
+    for (var i = 0; i < 1000 && idle < 3; i++) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 10)),
       );
       await tester.pump();
+      final waiting =
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty &&
+          find.byType(ManagerApprovalSheet).evaluate().isEmpty;
+      idle = waiting ? 0 : idle + 1;
     }
   }
 
