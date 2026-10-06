@@ -94,6 +94,18 @@ void main() {
     expect(await route(boardRow(tabletRounds: 0)), ['local']);
   });
 
+  test('T-1: the F-20 board shape (customer_rounds includes tablet rounds) '
+      'and the detail bill count', () async {
+    final row = boardRow(tabletRounds: 1);
+    (row['bill'] as Map)
+      ..['customer_rounds'] = 1
+      ..['staff_rounds'] = 1;
+    expect(await route(row), ['sheet']);
+    final json = detail(enteredBy: 'staff');
+    (json['bill'] as Map)['tablet_rounds'] = 1;
+    expect(dineInDetailHasTabletRound(DineInDetail(json)), isTrue);
+  });
+
   test('T-1: the table detail names a tablet round (entered_by tablet)', () {
     expect(
       dineInDetailHasTabletRound(DineInDetail(detail(enteredBy: 'tablet'))),
