@@ -4384,4 +4384,20 @@ class L10nEn extends L10n {
 
   @override
   String get tabletOrderNotFoundYet => 'Order not found yet — try again';
+
+  @override
+  String get tabletOpenTableToPay => 'Open the table to pay';
+
+  @override
+  String get tabletPaidAndSent => 'Paid and sent to the kitchen.';
+
+  @override
+  String tabletThisOrderLine(String amount) {
+    return 'This order $amount OMR';
+  }
+
+  @override
+  String tabletTableBillLine(String amount) {
+    return 'Table bill $amount OMR';
+  }
 }

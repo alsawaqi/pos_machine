@@ -4417,4 +4417,20 @@ class L10nAr extends L10n {
 
   @override
   String get tabletOrderNotFoundYet => 'لم يُعثر على الطلب بعد — حاول مرة أخرى';
+
+  @override
+  String get tabletOpenTableToPay => 'افتح الطاولة للدفع';
+
+  @override
+  String get tabletPaidAndSent => 'تم الدفع والإرسال إلى المطبخ.';
+
+  @override
+  String tabletThisOrderLine(String amount) {
+    return 'هذا الطلب $amount ر.ع';
+  }
+
+  @override
+  String tabletTableBillLine(String amount) {
+    return 'فاتورة الطاولة $amount ر.ع';
+  }
 }

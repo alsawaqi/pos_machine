@@ -26,6 +26,7 @@ class TabletOrderActions {
     this.myStaffId,
     this.onOpened,
     this.printsKitchenTickets,
+    this.openTableToPay,
   });
 
   /// The till's `_authorizeAction`: the person's own tick, or an approver's
@@ -59,6 +60,10 @@ class TabletOrderActions {
   /// A sent dine-in order is cancelled at its table.
   final void Function(TabletOrderRow row)? openTable;
 
+  /// T-9 — a sent, unpaid dine-in order is paid at its table: open the
+  /// table's bill and go to Pay.
+  final void Function(TabletOrderRow row)? openTableToPay;
+
   /// F-13 / F-15 — recovery of a lapsed or uncertain cash claim. Move to
   /// counter answers the server's refusal code (null when it worked, T-6).
   final Future<String?> Function(TabletOrderRow row)? moveToCounter;
@@ -74,6 +79,83 @@ class TabletOrderActions {
 }
 
 String tabletMoney(int baisas) => (baisas / 1000).toStringAsFixed(3);
+
+/// LAUNCH-P6 T-11 — the till's own look for its secondary screens (the
+/// settings and shift close palette): dark navy, light text, the till's
+/// green accent. No new design.
+const tabletBackground = Color(0xFF102028);
+const tabletSurface = Color(0xFF16313B);
+const tabletAccent = Color(0xFF35C28B);
+const tabletDanger = Color(0xFFFF6B6B);
+const tabletWarning = Color(0xFFFBBF24);
+
+ThemeData tabletOrdersTheme(ThemeData base) => base.copyWith(
+  brightness: Brightness.dark,
+  colorScheme: const ColorScheme.dark(
+    primary: tabletAccent,
+    onPrimary: Color(0xFF06261A),
+    secondary: tabletAccent,
+    onSecondary: Color(0xFF06261A),
+    surface: tabletSurface,
+    onSurface: Colors.white,
+    error: tabletDanger,
+  ),
+  scaffoldBackgroundColor: tabletBackground,
+  canvasColor: tabletBackground,
+  appBarTheme: const AppBarTheme(
+    backgroundColor: tabletBackground,
+    foregroundColor: Colors.white,
+    elevation: 0,
+  ),
+  cardTheme: CardThemeData(
+    color: tabletSurface,
+    elevation: 0,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(14),
+      side: const BorderSide(color: Color(0x2235C28B)),
+    ),
+  ),
+  dialogTheme: DialogThemeData(
+    backgroundColor: tabletSurface,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  ),
+  dividerColor: Colors.white24,
+  textTheme: base.textTheme.apply(
+    bodyColor: Colors.white,
+    displayColor: Colors.white,
+  ),
+);
+
+/// T-9 — runs [action] once [ready] holds (waiting on [listenable], at most
+/// [timeout]); answers whether it ran.
+Future<bool> runWhenReady(
+  Listenable listenable,
+  bool Function() ready,
+  Future<void> Function() action, {
+  Duration timeout = const Duration(seconds: 20),
+}) async {
+  if (!ready()) {
+    final done = Completer<bool>();
+    void check() {
+      if (!done.isCompleted && ready()) done.complete(true);
+    }
+
+    listenable.addListener(check);
+    final timer = Timer(timeout, () {
+      if (!done.isCompleted) done.complete(false);
+    });
+    final ok = await done.future;
+    timer.cancel();
+    try {
+      listenable.removeListener(check);
+    } catch (_) {
+      // The workspace may already be gone.
+    }
+    if (!ok) return false;
+  }
+  await action();
+  return true;
+}
 
 /// LAUNCH-P6 till fix order 1 (T-4) — the tablet list opens only over the
 /// staff POS itself: null when [context]'s route is the current one, else
@@ -138,6 +220,39 @@ String tabletNoticeText(L10n l10n, String code, String? name) => switch (code) {
   'network' => l10n.tabletRefusedNetwork,
   _ => l10n.tabletRefusedGeneric(code),
 };
+
+/// T-12 — dine in with F-22: "This order X" and "Table bill Y"; otherwise
+/// (Quick / To go, or an older server) the one total, as before.
+List<Widget> tabletTotalLines(
+  L10n l10n,
+  TabletOrderRow row, {
+  bool big = false,
+}) {
+  final style = big
+      ? const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)
+      : null;
+  final order = row.orderTotalBaisas;
+  if (row.dineIn && order != null) {
+    return [
+      Text(
+        l10n.tabletThisOrderLine(tabletMoney(order)),
+        key: big ? const ValueKey('tablet-sheet-order-total') : null,
+        style: style,
+      ),
+      Text(
+        l10n.tabletTableBillLine(tabletMoney(row.payableBaisas)),
+        key: big ? const ValueKey('tablet-sheet-total') : null,
+      ),
+    ];
+  }
+  return [
+    Text(
+      l10n.tabletTotalLine(tabletMoney(row.payableBaisas)),
+      key: big ? const ValueKey('tablet-sheet-total') : null,
+      style: style,
+    ),
+  ];
+}
 
 /// The points line: requested, approved (what was approved), rejected (0).
 String? tabletPointsLine(L10n l10n, TabletRedeem? redeem) {
@@ -304,10 +419,14 @@ class _TabletOrdersScreenState extends State<TabletOrdersScreen> {
     try {
       await showDialog<void>(
         context: context,
-        builder: (_) => TabletOrderSheet(
-          controller: widget.controller,
-          actions: widget.actions,
-          uuid: uuid,
+        // T-11 — the sheet (and every dialog it opens) in the till look.
+        builder: (dialogContext) => Theme(
+          data: tabletOrdersTheme(Theme.of(dialogContext)),
+          child: TabletOrderSheet(
+            controller: widget.controller,
+            actions: widget.actions,
+            uuid: uuid,
+          ),
         ),
       );
     } finally {
@@ -326,7 +445,16 @@ class _TabletOrdersScreenState extends State<TabletOrdersScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
+    return Theme(
+      data: tabletOrdersTheme(Theme.of(context)),
+      child: _scaffold(l10n),
+    );
+  }
+
+  Widget _scaffold(L10n l10n) {
     return Scaffold(
+      key: const ValueKey('tablet-orders-scaffold'),
+      backgroundColor: tabletBackground,
       appBar: AppBar(
         title: Text(l10n.tabletOrdersTitle),
         actions: [
@@ -352,7 +480,7 @@ class _TabletOrdersScreenState extends State<TabletOrdersScreen> {
                   child: Text(
                     l10n.tabletOrdersStale,
                     key: const ValueKey('tablet-orders-stale'),
-                    style: const TextStyle(color: Color(0xFFB3261E)),
+                    style: const TextStyle(color: tabletDanger),
                   ),
                 ),
               if (c.loaded && rows.isEmpty)
@@ -439,7 +567,7 @@ class TabletOrderCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
-              Text(l10n.tabletTotalLine(tabletMoney(row.payableBaisas))),
+              ...tabletTotalLines(l10n, row),
               if (row.phoneMasked != null)
                 Text(l10n.tabletPhone(row.phoneMasked!)),
               ?points == null ? null : Text(points),
@@ -452,10 +580,7 @@ class TabletOrderCard extends StatelessWidget {
                 ),
               ?charge == null
                   ? null
-                  : Text(
-                      charge,
-                      style: const TextStyle(color: Color(0xFF8A5300)),
-                    ),
+                  : Text(charge, style: const TextStyle(color: tabletWarning)),
             ],
           ),
         ),
@@ -475,7 +600,13 @@ class _Chip extends StatelessWidget {
       color: color ?? const Color(0xFFE6EEF2),
       borderRadius: BorderRadius.circular(10),
     ),
-    child: Text(text, style: const TextStyle(fontWeight: FontWeight.w700)),
+    child: Text(
+      text,
+      style: const TextStyle(
+        fontWeight: FontWeight.w700,
+        color: Color(0xFF17252C),
+      ),
+    ),
   );
 }
 
@@ -498,6 +629,10 @@ class TabletOrderSheet extends StatefulWidget {
 class _TabletOrderSheetState extends State<TabletOrderSheet> {
   bool _working = false;
   String? _message;
+
+  /// T-10 — this sheet paid (and sent) the order: it leaving the list is
+  /// success, never "already closed".
+  String? _done;
 
   TabletOrdersController get c => widget.controller;
   TabletOrderActions get a => widget.actions;
@@ -587,15 +722,45 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
       return;
     }
     if (!paid) return;
-    // Cash first, then the kitchen.
-    if (wasPending) {
+    final l10n = L10n.of(context);
+    // Cash first, then the kitchen — unless the pay already sent it.
+    final after = c.find(row.uuid);
+    if (wasPending && after != null && after.pending && !after.closed) {
       final sent = await c.send(row.uuid);
-      if (!sent && mounted) {
-        setState(() => _message = L10n.of(context).tabletPaidNotSent);
-      } else {
-        _warnIfNoPrint();
+      if (!mounted) return;
+      if (!sent) {
+        if (const {
+          'tablet_order_closed',
+          'tablet_order_sent',
+          'tablet_order_paid',
+          'tablet_round_not_sendable',
+        }.contains(c.notice)) {
+          // Already sent / closed after our own pay: that is success.
+          c.clearNotice();
+        } else {
+          setState(() => _message = l10n.tabletPaidNotSent);
+          return;
+        }
       }
     }
+    setState(
+      () => _done = wasPending ? l10n.tabletPaidAndSent : l10n.tabletPaid,
+    );
+    _warnIfNoPrint();
+  });
+
+  /// T-9 — pay the table bill at the table (points answered first).
+  Future<void> _openTableToPay(TabletOrderRow row) => _guard(() async {
+    final l10n = L10n.of(context);
+    if (row.redeemWaiting &&
+        !await _confirm(
+          l10n.tabletResolvePointsFirst,
+          yes: l10n.tabletOpenTableToPay,
+        )) {
+      return;
+    }
+    a.openTableToPay?.call(row);
+    if (mounted) Navigator.of(context).pop();
   });
 
   Future<void> _approve(TabletOrderRow row) => _guard(() async {
@@ -707,9 +872,12 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
     builder: (context, _) {
       final l10n = L10n.of(context);
       final row = c.find(widget.uuid);
-      if (row == null) {
+      if (row == null || (_done != null && row.closed)) {
         return AlertDialog(
-          content: Text(l10n.tabletRefusedClosed),
+          key: _done == null ? null : const ValueKey('tablet-sheet-done'),
+          content: Text(
+            _done == null ? l10n.tabletRefusedClosed : (_message ?? _done!),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -833,6 +1001,12 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
                   }),
             child: Text(l10n.tabletPaymentReview),
           ),
+        if (row.dineIn && row.sent && open && a.openTableToPay != null)
+          FilledButton(
+            key: const ValueKey('tablet-open-table-pay'),
+            onPressed: busy ? null : () => _openTableToPay(row),
+            child: Text(l10n.tabletOpenTableToPay),
+          ),
         if (mine && open && !recovery && !row.charge.beingPaid)
           TextButton(
             key: const ValueKey('tablet-cancel'),
@@ -874,14 +1048,7 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
                 const SizedBox(height: 8),
                 for (final line in row.lines) ..._lineTexts(line, ar),
                 const Divider(),
-                Text(
-                  l10n.tabletTotalLine(tabletMoney(row.payableBaisas)),
-                  key: const ValueKey('tablet-sheet-total'),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
+                ...tabletTotalLines(l10n, row, big: true),
                 if (row.phoneMasked != null)
                   Text(l10n.tabletPhone(row.phoneMasked!)),
                 if (points != null)
@@ -918,7 +1085,7 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
                   Text(
                     charge,
                     key: const ValueKey('tablet-sheet-charge'),
-                    style: const TextStyle(color: Color(0xFF8A5300)),
+                    style: const TextStyle(color: tabletWarning),
                   ),
                 if (row.paid && row.pending) Text(l10n.tabletPaidNotSent),
                 if (notice != null || _message != null)
@@ -927,7 +1094,7 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
                     child: Text(
                       _message ?? notice!,
                       key: const ValueKey('tablet-sheet-notice'),
-                      style: const TextStyle(color: Color(0xFFB3261E)),
+                      style: const TextStyle(color: tabletDanger),
                     ),
                   ),
                 const SizedBox(height: 12),

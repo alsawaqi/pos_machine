@@ -2719,5 +2719,11 @@
   "tabletAlertsNotUpdating": "alerts not updating",
   "checkoutLoginAgain": "Log in again",
   "tabletKitchenNoticeOk": "OK",
-  "tabletOrderNotFoundYet": "Order not found yet — try again"
+  "tabletOrderNotFoundYet": "Order not found yet — try again",
+  "tabletOpenTableToPay": "Open the table to pay",
+  "tabletPaidAndSent": "Paid and sent to the kitchen.",
+  "tabletThisOrderLine": "This order {amount} OMR",
+  "@tabletThisOrderLine": {"placeholders": {"amount": {"type": "String"}}},
+  "tabletTableBillLine": "Table bill {amount} OMR",
+  "@tabletTableBillLine": {"placeholders": {"amount": {"type": "String"}}}
 }

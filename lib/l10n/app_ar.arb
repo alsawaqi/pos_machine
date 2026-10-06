@@ -1411,5 +1411,9 @@
   "tabletAlertsNotUpdating": "التنبيهات لا تتحدث",
   "checkoutLoginAgain": "سجّل الدخول مرة أخرى",
   "tabletKitchenNoticeOk": "حسناً",
-  "tabletOrderNotFoundYet": "لم يُعثر على الطلب بعد — حاول مرة أخرى"
+  "tabletOrderNotFoundYet": "لم يُعثر على الطلب بعد — حاول مرة أخرى",
+  "tabletOpenTableToPay": "افتح الطاولة للدفع",
+  "tabletPaidAndSent": "تم الدفع والإرسال إلى المطبخ.",
+  "tabletThisOrderLine": "هذا الطلب {amount} ر.ع",
+  "tabletTableBillLine": "فاتورة الطاولة {amount} ر.ع"
 }

@@ -78,6 +78,10 @@ class TabletOrderRow {
   /// The order (or table bill) now — this is what cash pays.
   int? get grandTotalBaisas => json['grand_total_baisas'] as int?;
   int get payableBaisas => grandTotalBaisas ?? totalBaisas;
+
+  /// F-22 — this order's (or this round's) own total; null on an older
+  /// server (then only the bill total is shown, as before).
+  int? get orderTotalBaisas => (json['order_total_baisas'] as num?)?.toInt();
   String? get phoneMasked => _text(json['phone_masked']);
   String get payment => json['payment'] as String? ?? 'cash';
   int? get readyInMinutes => (json['ready_in_minutes'] as num?)?.toInt();

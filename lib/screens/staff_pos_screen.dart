@@ -1216,6 +1216,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                 if (navigator.canPop()) navigator.pop();
                 unawaited(_openCustomerBill('$id', tableLabel: row.tableName));
               },
+              // T-9 — the table's bill, then straight to Pay.
+              openTableToPay: (row) {
+                final id = row.tableId;
+                if (id == null) return;
+                if (navigator.canPop()) navigator.pop();
+                unawaited(
+                  _openCustomerBill(
+                    '$id',
+                    tableLabel: row.tableName,
+                    thenPay: true,
+                  ),
+                );
+              },
               moveToCounter: (row) async {
                 try {
                   await api.fallbackQrToCounter(row.orderUuid);
@@ -4627,7 +4640,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
   }
 
-  Future<void> _openCustomerBill(String tableId, {String? tableLabel}) async {
+  Future<void> _openCustomerBill(
+    String tableId, {
+    String? tableLabel,
+    bool thenPay = false,
+  }) async {
     final id = int.tryParse(tableId);
     if (!mounted ||
         id == null ||
@@ -4804,6 +4821,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       tableLabel: tableLabel ?? table?.name ?? tableId,
     );
     _customerBillRouteOpen = _workspace != null;
+    // LAUNCH-P6 T-9 — "Open the table to pay": once the bill is loaded
+    // and payable, go to Pay (the server sheet's own checkout).
+    final opened = _workspace;
+    if (thenPay && opened != null) {
+      unawaited(runWhenReady(opened, () => opened.canPay, opened.requestPay));
+    }
   }
 
   bool _tableCancellationBusy = false;

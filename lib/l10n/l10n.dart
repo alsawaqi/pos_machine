@@ -7210,6 +7210,30 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Order not found yet — try again'**
   String get tabletOrderNotFoundYet;
+
+  /// No description provided for @tabletOpenTableToPay.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the table to pay'**
+  String get tabletOpenTableToPay;
+
+  /// No description provided for @tabletPaidAndSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid and sent to the kitchen.'**
+  String get tabletPaidAndSent;
+
+  /// No description provided for @tabletThisOrderLine.
+  ///
+  /// In en, this message translates to:
+  /// **'This order {amount} OMR'**
+  String tabletThisOrderLine(String amount);
+
+  /// No description provided for @tabletTableBillLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Table bill {amount} OMR'**
+  String tabletTableBillLine(String amount);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {
