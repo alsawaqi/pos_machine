@@ -6,6 +6,9 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../services/row_parsing.dart';
+import '../tablet_orders/tablet_order_models.dart';
+
 /// A device/server ledger survives staff logout; credentials never enter storage.
 class AttentionIdentity {
   const AttentionIdentity(this.scope, this.authorization);
@@ -22,10 +25,15 @@ class AttentionIdentity {
 }
 
 class AttentionSnapshot {
-  AttentionSnapshot(this.quick, this.rounds);
+  AttentionSnapshot(this.quick, this.rounds, [this.tablet = const {}]);
   final Set<String> quick;
   final Set<String> rounds;
-  Set<String> get keys => {...quick, ...rounds};
+
+  /// LAUNCH-P6 — `tablet:<uuid>` keys (Quick / To go unpaid orders and
+  /// dine-in pending rounds), sent only to a `tablet-orders` build, until
+  /// a staff member takes the order on any device.
+  final Set<String> tablet;
+  Set<String> get keys => {...quick, ...rounds, ...tablet};
 
   factory AttentionSnapshot.parse(Map<String, dynamic> data) {
     Set<String> read(String field, String prefix) {
@@ -46,15 +54,43 @@ class AttentionSnapshot {
       return keys;
     }
 
+    // LAUNCH-P6 — the tablet list is new: a bad or unknown key in it is
+    // skipped and logged, and an absent list (older server) is empty, so
+    // tablet data can never stop the QR alerts.
+    Set<String> readTablet() {
+      final value = data['tablet_order_keys'];
+      if (value == null) return const {};
+      return parseRowsSkippingBad<String>(
+        value is List
+            ? [
+                for (final key in value) {'key': key},
+              ]
+            : value,
+        (row) {
+          final key = row['key'];
+          if (key is! String ||
+              !key.startsWith(tabletAttentionPrefix) ||
+              key.length <= tabletAttentionPrefix.length) {
+            throw const FormatException('Invalid tablet attention key');
+          }
+          return key;
+        },
+        list: 'order-attention/tablet',
+      ).toSet();
+    }
+
     if (data['version'] != 1) {
       throw const FormatException('Unsupported attention snapshot');
     }
     return AttentionSnapshot(
       read('quick_order_keys', 'quick:'),
       read('table_round_keys', 'round:'),
+      readTablet(),
     );
   }
 }
+
+const tabletAttentionPrefix = 'tablet:';
 
 abstract interface class AttentionLedger {
   /// Null means first use: baseline silently. Never treat corruption as first use.
@@ -80,7 +116,9 @@ class PreferencesAttentionLedger implements AttentionLedger {
     if (keys.any(
           (key) =>
               key is! String ||
-              !(key.startsWith('quick:') || key.startsWith('round:')),
+              !(key.startsWith('quick:') ||
+                  key.startsWith('round:') ||
+                  key.startsWith(tabletAttentionPrefix)),
         ) ||
         keys.toSet().length != keys.length) {
       throw const FormatException('Invalid attention ledger keys');
@@ -126,6 +164,8 @@ class OrderAttentionController extends ChangeNotifier {
     required this.ledger,
     this.play = OrderAttentionSound.play,
     this.stop = OrderAttentionSound.stop,
+    this.fetchTablet,
+    this.repeatEvery = const Duration(seconds: 10),
   });
 
   final AttentionIdentity? Function() identity;
@@ -133,6 +173,54 @@ class OrderAttentionController extends ChangeNotifier {
   final AttentionLedger ledger;
   final Future<bool> Function() play;
   final Future<void> Function() stop;
+
+  /// LAUNCH-P6 — reads the tablet orders (for the banner's "Table 5" /
+  /// "#27"). Null: no labels, the banner still shows.
+  final Future<List<TabletOrderRow>> Function()? fetchTablet;
+
+  /// LAUNCH-P6 item 3 — a tablet order rings again this often until it is
+  /// opened here or taken on any device (its key leaves the snapshot).
+  final Duration repeatEvery;
+
+  /// The tablet orders known from the last read (for labels).
+  List<TabletOrderRow> tabletRows = const [];
+
+  /// Tablet keys opened on this device: they stop ringing here.
+  final Set<String> _opened = {};
+  Timer? _repeat;
+
+  /// Tablet keys still ringing: in the snapshot, not opened here.
+  Set<String> get ringing =>
+      (snapshot?.tablet ?? const <String>{}).difference(_opened);
+
+  /// Staff opened this tablet order: it stops ringing on this device.
+  void opened(String key) {
+    if (!_opened.add(key)) return;
+    _updateRing();
+    _notify();
+  }
+
+  void _updateRing() {
+    final ring = active && !_disposed && ringing.isNotEmpty;
+    if (ring && _repeat == null) {
+      _repeat = Timer.periodic(repeatEvery, (_) {
+        if (_disposed || !active || ringing.isEmpty) {
+          _updateRing();
+          return;
+        }
+        unawaited(
+          play().then((requested) {
+            if (!_disposed) soundUnavailable = !requested;
+          }),
+        );
+      });
+    } else if (!ring && _repeat != null) {
+      _repeat!.cancel();
+      _repeat = null;
+      unawaited(stop());
+    }
+  }
+
   // Serialises ledger consumption even during overlapping root replacement.
   static Future<void>? _ledgerTail;
   static const maxRememberedArrivals = 50000;
@@ -157,6 +245,9 @@ class OrderAttentionController extends ChangeNotifier {
       snapshot = null;
       newArrivals = 0;
       stale = storageFailed = soundUnavailable = false;
+      tabletRows = const [];
+      _opened.clear();
+      _updateRing();
       _notify();
     }
     unawaited(refresh());
@@ -166,6 +257,7 @@ class OrderAttentionController extends ChangeNotifier {
     if (active == value) return;
     active = value;
     _epoch++;
+    _updateRing();
     if (!value) {
       unawaited(stop());
     } else {
@@ -185,6 +277,9 @@ class OrderAttentionController extends ChangeNotifier {
       snapshot = null;
       newArrivals = 0;
       stale = storageFailed = soundUnavailable = false;
+      tabletRows = const [];
+      _opened.clear();
+      _updateRing();
       _notify();
     }
     final epoch = _epoch;
@@ -195,6 +290,20 @@ class OrderAttentionController extends ChangeNotifier {
       snapshot = next;
       stale = false;
       newArrivals = 0;
+      // Forget opened keys that left (taken, sent, paid or cancelled).
+      _opened.retainAll(next.tablet);
+      _updateRing();
+      if (next.tablet.isNotEmpty && fetchTablet != null) {
+        try {
+          final rows = await fetchTablet!();
+          if (!_current(captured, epoch)) return;
+          tabletRows = rows;
+        } catch (_) {
+          // Labels only: the banner shows without them.
+        }
+      } else if (next.tablet.isEmpty) {
+        tabletRows = const [];
+      }
       // Reserve this consumer's place before awaiting any storage operation.
       final previous = _ledgerTail;
       final finished = Completer<void>();
@@ -258,6 +367,8 @@ class OrderAttentionController extends ChangeNotifier {
     if (_disposed) return;
     _disposed = true;
     _epoch++;
+    _repeat?.cancel();
+    _repeat = null;
     unawaited(stop());
     super.dispose();
   }
@@ -275,3 +386,8 @@ Object enterStaffAttention() {
 void leaveStaffAttention(Object lease) {
   staffAttentionHosts.value = {...staffAttentionHosts.value}..remove(lease);
 }
+
+/// LAUNCH-P6 — the mounted staff POS registers how to open the tablet
+/// orders (optionally at one order, by its attention key). The banner and
+/// the bell use it; null hides their Open action.
+final tabletOrdersOpener = ValueNotifier<void Function(String? key)?>(null);

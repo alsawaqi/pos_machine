@@ -1,6 +1,84 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
+import '../tablet_orders/tablet_order_models.dart';
 import 'order_attention.dart';
+
+/// LAUNCH-P6 item 3 — "Table 5" / "#27" for a ringing tablet key, from the
+/// last tablet list read (the bare order number while it is unknown).
+String tabletAttentionLabel(L10n l10n, String key, List<TabletOrderRow> rows) {
+  for (final row in rows) {
+    if (row.attentionKey == key) {
+      return row.label(tableWord: l10n.tabletTableWord);
+    }
+  }
+  return l10n.tabletBadge;
+}
+
+/// The visible tablet banner: "New tablet order — Table 5" (+ "and 2
+/// more") with Open. Shown above every staff screen while a tablet order
+/// rings (it is not hidden with the QR summary bar).
+class TabletAttentionBanner extends StatelessWidget {
+  const TabletAttentionBanner({super.key, required this.controller});
+  final OrderAttentionController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final ringing = controller.ringing.toList()..sort();
+    if (ringing.isEmpty) return const SizedBox.shrink();
+    final l10n = L10n.of(context);
+    // The oldest known order first (the list is oldest first).
+    final known = [
+      for (final row in controller.tabletRows)
+        if (ringing.contains(row.attentionKey)) row.attentionKey,
+    ];
+    final first = known.isNotEmpty ? known.first : ringing.first;
+    final text = [
+      l10n.tabletNewOrderBanner(
+        tabletAttentionLabel(l10n, first, controller.tabletRows),
+      ),
+      if (ringing.length > 1) l10n.tabletNewOrdersMore(ringing.length - 1),
+    ].join(' · ');
+    return ValueListenableBuilder<void Function(String?)?>(
+      valueListenable: tabletOrdersOpener,
+      builder: (context, open, _) => Material(
+        color: const Color(0xFFFFE08A),
+        child: SafeArea(
+          bottom: false,
+          child: Semantics(
+            liveRegion: true,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.only(start: 12, end: 4),
+              child: Row(
+                key: const ValueKey('tablet-attention-banner'),
+                children: [
+                  const Icon(Icons.tablet_android_rounded, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      text,
+                      key: const ValueKey('tablet-attention-text'),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (open != null)
+                    TextButton(
+                      key: const ValueKey('tablet-attention-open'),
+                      onPressed: () => open(first),
+                      child: Text(l10n.tabletOpen),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Above the staff navigator: stays visible on catalog, quick, table and pay
 /// routes. A separate bar reserves its own space and never overlays a tender.
@@ -81,7 +159,21 @@ class _OrderAttentionHostState extends State<OrderAttentionHost>
     animation: controller,
     child: OrderAttentionScope(controller: controller, child: widget.child),
     builder: (context, child) {
-      if (!widget.showBanner) return child!;
+      // LAUNCH-P6 — the tablet banner shows even where the QR summary bar
+      // is hidden (the till).
+      final tabletBanner = controller.ringing.isEmpty
+          ? null
+          : TabletAttentionBanner(controller: controller);
+      if (!widget.showBanner) {
+        if (tabletBanner == null) return child!;
+        return Column(
+          verticalDirection: VerticalDirection.up,
+          children: [
+            Expanded(child: child!),
+            tabletBanner,
+          ],
+        );
+      }
       final snap = controller.snapshot;
       final quick = snap?.quick.length ?? 0;
       final rounds = snap?.rounds.length ?? 0;
@@ -90,10 +182,14 @@ class _OrderAttentionHostState extends State<OrderAttentionHost>
           controller.storageFailed ||
           controller.soundUnavailable;
       final visible = quick + rounds > 0 || problem;
+      final tablet = snap?.tablet.length ?? 0;
       final ar = Localizations.localeOf(context).languageCode == 'ar';
-      final summary = ar
-          ? 'بانتظار الموظف: طلبات QR السريعة $quick · جولات الطاولات $rounds'
-          : 'Staff attention: QR quick $quick · Table rounds $rounds';
+      final summary = [
+        ar
+            ? 'بانتظار الموظف: طلبات QR السريعة $quick · جولات الطاولات $rounds'
+            : 'Staff attention: QR quick $quick · Table rounds $rounds',
+        if (tablet > 0) '${L10n.of(context).tabletOrdersTitle} $tablet',
+      ].join(' · ');
       final warning = controller.stale
           ? (ar
                 ? 'تعذر تحديث التنبيهات — تحقق من الاتصال'
@@ -114,6 +210,7 @@ class _OrderAttentionHostState extends State<OrderAttentionHost>
         verticalDirection: VerticalDirection.up,
         children: [
           Expanded(child: child!),
+          ?tabletBanner,
           if (!visible)
             const SizedBox.shrink()
           else
@@ -183,6 +280,10 @@ class OrderAttentionScope extends InheritedNotifier<OrderAttentionController> {
   static OrderAttentionController? of(BuildContext context) => context
       .dependOnInheritedWidgetOfExactType<OrderAttentionScope>()
       ?.notifier;
+
+  /// The controller without a rebuild dependency (for callbacks).
+  static OrderAttentionController? read(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<OrderAttentionScope>()?.notifier;
 }
 
 class OrderAttentionBell extends StatelessWidget {
@@ -190,10 +291,14 @@ class OrderAttentionBell extends StatelessWidget {
     super.key,
     required this.onQuickOrders,
     required this.onTables,
+    this.onTabletOrders,
     this.color,
   });
   final VoidCallback? onQuickOrders;
   final VoidCallback? onTables;
+
+  /// LAUNCH-P6 — opens the tablet orders list.
+  final VoidCallback? onTabletOrders;
   final Color? color;
   @override
   Widget build(BuildContext context) {
@@ -213,6 +318,7 @@ class OrderAttentionBell extends StatelessWidget {
           builder: (_, _) {
             final quick = controller.snapshot?.quick.length ?? 0;
             final rounds = controller.snapshot?.rounds.length ?? 0;
+            final tablet = controller.snapshot?.tablet.length ?? 0;
             void open(VoidCallback action) {
               Navigator.of(dialogContext).pop();
               action();
@@ -253,7 +359,17 @@ class OrderAttentionBell extends StatelessWidget {
                         trailing: Text('$rounds'),
                         onTap: onTables == null ? null : () => open(onTables!),
                       ),
-                    if (quick + rounds == 0)
+                    if (tablet > 0 || onTabletOrders != null)
+                      ListTile(
+                        key: const ValueKey('order-attention-tablet'),
+                        leading: const Icon(Icons.tablet_android_rounded),
+                        title: Text(L10n.of(context).tabletOrdersTitle),
+                        trailing: Text('$tablet'),
+                        onTap: onTabletOrders == null
+                            ? null
+                            : () => open(onTabletOrders!),
+                      ),
+                    if (quick + rounds + tablet == 0)
                       Text(
                         ar
                             ? 'لا توجد طلبات تحتاج متابعة'

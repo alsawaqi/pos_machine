@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
 import '../qr_quick/qr_quick_gateway.dart';
+import '../tablet_orders/tablet_order_models.dart';
 import 'order_attention.dart';
 import 'order_attention_host.dart';
 
@@ -35,6 +36,10 @@ class AppOrderAttention extends ConsumerWidget {
         }
       },
       fetch: () => ref.read(apiServiceProvider).fetchOrderAttention(),
+      // LAUNCH-P6 — the banner's "Table 5" / "#27".
+      fetchTablet: () async => parseTabletOrderRows(
+        await ref.read(apiServiceProvider).fetchTabletOrders(),
+      ),
       ledger: PreferencesAttentionLedger(),
     ),
     child: child,
