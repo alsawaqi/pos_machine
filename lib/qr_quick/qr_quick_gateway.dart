@@ -3,6 +3,7 @@ import 'qr_expired_cancel.dart';
 import 'qr_payment_review.dart';
 import '../qr_checkout/payment_review_store.dart';
 import '../services/pos_api_service.dart';
+import '../services/row_parsing.dart';
 import 'qr_quick_controller.dart';
 import 'qr_quick_models.dart';
 
@@ -237,9 +238,16 @@ class ApiQrQuickGateway
   @override
   Future<List<QrQuickOrder>> fetch() => _call(() async {
     final data = await api.fetchQuickInbox();
-    return (data['orders'] as List)
-        .map((row) => QrQuickOrder(qrMap(row)))
-        .toList();
+    if (data['orders'] is! List) {
+      throw const FormatException('Missing quick orders');
+    }
+    // LAUNCH-P6 — one unknown or bad row (another source, a new field
+    // shape) is skipped and logged; it never empties the whole inbox.
+    return parseRowsSkippingBad(
+      data['orders'],
+      QrQuickOrder.new,
+      list: 'qr/quick-inbox',
+    );
   });
   @override
   Future<void> move(String uuid) =>

@@ -13,12 +13,17 @@ import '../models/pos_models.dart';
 import '../models/qr_till_models.dart';
 import '../models/qr_pending_order.dart';
 import 'api_models.dart';
+import 'row_parsing.dart';
 import 'device_hardware_identity.dart';
 import 'device_location_mode.dart';
 import 'session_service.dart' show OpenShiftData;
 import 'table_shadow_service.dart';
 
 typedef TokenGetter = String? Function();
+
+/// LAUNCH-P6 Part C item 1 — the capability header every API call carries.
+const posCapabilitiesHeader = 'X-Pos-Capabilities';
+const posCapabilities = 'tablet-orders';
 typedef UnauthorizedCallback = void Function();
 
 /// LAUNCH-P5 fix order 1 (F1) — a 403 `staff_unverified`: the server did
@@ -69,6 +74,10 @@ class PosApiService {
             return;
           }
           options.headers['X-Mithqal-SoftPos-Capable'] = '1';
+          // LAUNCH-P6 Part C item 1 — this build reads tablet orders: the
+          // server sends tablet rows (attention keys, the board's tablet
+          // rounds, the accepted-round feed) only to devices that say so.
+          options.headers[posCapabilitiesHeader] = posCapabilities;
           // Resolve the server URL per request so debug Settings changes take
           // effect without rebuilding the client. Release reads are locked to
           // the compile-time configuration by SettingsService.
@@ -167,6 +176,7 @@ class PosApiService {
         connectTimeout: const Duration(seconds: 6),
         receiveTimeout: const Duration(seconds: 6),
         validateStatus: (_) => true,
+        headers: {posCapabilitiesHeader: posCapabilities},
       ),
     );
     try {
@@ -523,7 +533,8 @@ class PosApiService {
     final body = await _send(() => _dio.get('/device/tables/board'));
     final rows = body.dataMap['tables'];
     if (rows is! List) throw const FormatException('Missing table board rows');
-    return [for (final row in rows) (row as Map).cast<String, dynamic>()];
+    // LAUNCH-P6 — one unreadable row is skipped and logged.
+    return parseRowsSkippingBad(rows, (row) => row, list: 'tables/board');
   }
 
   Future<TableShadowFeed> fetchTableFeed({
@@ -538,18 +549,20 @@ class PosApiService {
     );
     final rows = body.dataMap['events'] as List;
     return TableShadowFeed(
-      events: [
-        for (final row in rows)
-          TableShadowEvent(
-            id: (row['id'] as num).toInt(),
-            tableId: (row['table_id'] as num).toInt(),
-            eventType: row['event_type']?.toString() ?? '',
-            payload: Map<String, dynamic>.from(row['payload'] as Map? ?? {}),
-            deviceId: (row['device_id'] as num?)?.toInt(),
-            orderUuid: row['order_uuid']?.toString(),
-            createdAt: DateTime.tryParse(row['created_at']?.toString() ?? ''),
-          ),
-      ],
+      // LAUNCH-P6 — one unreadable event is skipped and logged.
+      events: parseRowsSkippingBad(
+        rows,
+        (row) => TableShadowEvent(
+          id: (row['id'] as num).toInt(),
+          tableId: (row['table_id'] as num).toInt(),
+          eventType: row['event_type']?.toString() ?? '',
+          payload: Map<String, dynamic>.from(row['payload'] as Map? ?? {}),
+          deviceId: (row['device_id'] as num?)?.toInt(),
+          orderUuid: row['order_uuid']?.toString(),
+          createdAt: DateTime.tryParse(row['created_at']?.toString() ?? ''),
+        ),
+        list: 'tables/feed',
+      ),
       latestId: (body.metaMap['latest_id'] as num).toInt(),
       hasMore: body.metaMap['has_more'] == true,
     );
@@ -575,10 +588,11 @@ class PosApiService {
     final body = await _send(() => _dio.get('/device/qr/table-board'));
     final rows = body.dataMap['tables'];
     if (rows is! List) return const <QrTableBoardRow>[];
-    return rows
-        .whereType<Map>()
-        .map((row) => QrTableBoardRow.fromJson(row.cast<String, dynamic>()))
-        .toList(growable: false);
+    return parseRowsSkippingBad(
+      rows,
+      QrTableBoardRow.fromJson,
+      list: 'qr/board',
+    ).toList(growable: false);
   }
 
   Future<QrKitchenTicket> claimKitchenPrint(String ticketKey) async {
@@ -649,14 +663,13 @@ class PosApiService {
     );
     final rows = body.dataMap['rounds'];
     return QrAcceptedRoundsPage(
+      // LAUNCH-P6 — one unreadable round is skipped and logged.
       rounds: rows is List
-          ? rows
-                .whereType<Map>()
-                .map(
-                  (row) =>
-                      QrRoundEnvelope.fromFeedJson(row.cast<String, dynamic>()),
-                )
-                .toList(growable: false)
+          ? parseRowsSkippingBad(
+              rows,
+              QrRoundEnvelope.fromFeedJson,
+              list: 'qr/accepted-rounds',
+            ).toList(growable: false)
           : const <QrRoundEnvelope>[],
       nextCursor: _nullableApiString(body.metaMap['next_cursor']),
       latestCursor: _nullableApiString(body.metaMap['latest_cursor']),
@@ -672,11 +685,11 @@ class PosApiService {
     final body = await _send(() => _dio.get('/device/orders/active'));
     final rows = body.dataMap['orders'];
     if (rows is! List) return const <QrActiveOrder>[];
-    return rows
-        .whereType<Map>()
-        .map((row) => QrActiveOrder.fromJson(row.cast<String, dynamic>()))
-        .where((order) => order.isQrWeb)
-        .toList(growable: false);
+    return parseRowsSkippingBad(
+      rows,
+      QrActiveOrder.fromJson,
+      list: 'orders/active',
+    ).where((order) => order.isQrWeb).toList(growable: false);
   }
 
   Future<List<QrPendingOrder>> fetchQrPendingOrders() async {
@@ -688,12 +701,11 @@ class PosApiService {
     );
     final orders = body.dataMap['orders'];
     if (orders is! List) throw const FormatException('Missing pending orders');
-    return orders
-        .map(
-          (row) =>
-              QrPendingOrder.fromJson((row as Map).cast<String, dynamic>()),
-        )
-        .toList(growable: false);
+    return parseRowsSkippingBad(
+      orders,
+      QrPendingOrder.fromJson,
+      list: 'qr/pending-orders',
+    ).toList(growable: false);
   }
 
   String get quickOrderBaseUrl => baseUrlGetter?.call() ?? _dio.options.baseUrl;
@@ -944,6 +956,95 @@ class PosApiService {
 
   Future<Map<String, dynamic>> fetchOrderAttention() async =>
       (await _send(() => _dio.get('/device/order-attention'))).dataMap;
+
+  // ---------------------------------------------------------------------------
+  // LAUNCH-P6 — customer tablet orders (staff side; X-Staff-Token required)
+  // ---------------------------------------------------------------------------
+
+  /// `GET device/tablet-orders[?unpaid_only=1]` — the raw rows (parse with
+  /// `parseTabletOrderRows`, which skips a bad row).
+  Future<List<dynamic>> fetchTabletOrders({bool unpaidOnly = false}) async {
+    final body = await _send(
+      () => _dio.get(
+        '/device/tablet-orders',
+        queryParameters: {if (unpaidOnly) 'unpaid_only': 1},
+      ),
+    );
+    final orders = body.dataMap['orders'];
+    if (orders is! List) throw const FormatException('Missing tablet orders');
+    return orders;
+  }
+
+  /// `POST device/tablet-orders/{uuid}/take` → `{outcome, order}`.
+  Future<Map<String, dynamic>> takeTabletOrder(
+    String uuid, {
+    bool takeOver = false,
+  }) async {
+    await orderMutationGuard?.call();
+    return (await _send(
+      () => _dio.post(
+        '/device/tablet-orders/${Uri.encodeComponent(uuid)}/take',
+        data: {'take_over': takeOver},
+      ),
+    )).dataMap;
+  }
+
+  /// `POST device/tablet-orders/{uuid}/send-to-kitchen` → `{outcome, order}`.
+  Future<Map<String, dynamic>> sendTabletOrder(String uuid) async {
+    await orderMutationGuard?.call();
+    return (await _send(
+      () => _dio.post(
+        '/device/tablet-orders/${Uri.encodeComponent(uuid)}/send-to-kitchen',
+      ),
+    )).dataMap;
+  }
+
+  /// `POST device/tablet-orders/{uuid}/redeem/approve` — the P5 approval
+  /// block (`loyalty.redeem`, subject = the tablet order, amount, ref =
+  /// [clientRequestId]).
+  Future<Map<String, dynamic>> approveTabletRedeem(
+    String uuid, {
+    required String clientRequestId,
+    required Map<String, dynamic> authorization,
+  }) async {
+    await orderMutationGuard?.call();
+    return (await _send(
+      () => _dio.post(
+        '/device/tablet-orders/${Uri.encodeComponent(uuid)}/redeem/approve',
+        data: {
+          'client_request_id': clientRequestId,
+          'authorization': authorization,
+          'auth_v': 1,
+        },
+      ),
+    )).dataMap;
+  }
+
+  /// `POST device/tablet-orders/{uuid}/redeem/reject`.
+  Future<Map<String, dynamic>> rejectTabletRedeem(String uuid) async {
+    await orderMutationGuard?.call();
+    return (await _send(
+      () => _dio.post(
+        '/device/tablet-orders/${Uri.encodeComponent(uuid)}/redeem/reject',
+      ),
+    )).dataMap;
+  }
+
+  /// `PUT device/tablet-orders/{uuid}/lines` (F-8) — staff change the lines
+  /// before sending (identity only; the server prices them).
+  Future<Map<String, dynamic>> editTabletOrderLines(
+    String uuid, {
+    required String clientRequestId,
+    required List<Map<String, dynamic>> lines,
+  }) async {
+    await orderMutationGuard?.call();
+    return (await _send(
+      () => _dio.put(
+        '/device/tablet-orders/${Uri.encodeComponent(uuid)}/lines',
+        data: {'client_request_id': clientRequestId, 'lines': lines},
+      ),
+    )).dataMap;
+  }
 
   Future<void> moveQuickInbox(String uuid) async {
     await moveQrPendingToCounter(uuid);
@@ -1556,6 +1657,7 @@ class PosApiService {
           status,
           retryAfter: _retryAfter(resp),
           reason: data is Map ? data['reason']?.toString() : null,
+          data: data is Map ? Map<String, dynamic>.from(data) : null,
         );
         // LAUNCH-P5 F1 — the person's own staff token was not accepted:
         // log out and ask for the PIN again.
@@ -1735,6 +1837,7 @@ class ApiException implements Exception {
     this.retryAfter,
     this.retryAfterSeconds,
     this.reason,
+    this.data,
   });
 
   final String message;
@@ -1753,6 +1856,10 @@ class ApiException implements Exception {
   /// LAUNCH-P5 fix order 1 — the refusal's `data.reason` when the server
   /// sends one (e.g. `token_missing`, `approval_stale`, `ref_mismatch`).
   final String? reason;
+
+  /// LAUNCH-P6 — the refusal's `data` object when the server sends one (e.g.
+  /// `taken_by` of a 409 `tablet_order_taken`).
+  final Map<String, dynamic>? data;
 
   bool get isUnauthorized => statusCode == 401;
 
@@ -1781,6 +1888,7 @@ class ApiException implements Exception {
     int? status, {
     Duration? retryAfter,
     String? reason,
+    Map<String, dynamic>? data,
   }) {
     final first = errors.first;
     if (first is Map) {
@@ -1795,6 +1903,7 @@ class ApiException implements Exception {
         retryAfter: retryAfter,
         retryAfterSeconds: seconds is num ? seconds.toInt() : null,
         reason: reason,
+        data: data,
       );
     }
     return ApiException(
@@ -1802,6 +1911,7 @@ class ApiException implements Exception {
       statusCode: status,
       retryAfter: retryAfter,
       reason: reason,
+      data: data,
     );
   }
 
