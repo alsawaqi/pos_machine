@@ -464,12 +464,17 @@ class QrAcceptedRoundsPage {
     required this.skippedExpiredCount,
     this.nextCursor,
     this.latestCursor,
+    this.skippedUnreadableCount = 0,
   });
 
   final List<QrRoundEnvelope> rounds;
   final String? nextCursor;
   final String? latestCursor;
   final int skippedExpiredCount;
+
+  /// LAUNCH-P6 — rows of this page this build could not read (skipped):
+  /// staff see a notice, never only a log line.
+  final int skippedUnreadableCount;
 }
 
 class QrOrderAddon {

@@ -1376,7 +1376,7 @@
   "tabletRedeemQuestion": "استخدام {units} نقطة ({amount} ر.ع) للعميل {phone}؟",
   "tabletApprove": "موافقة",
   "tabletReject": "رفض",
-  "tabletResolvePointsFirst": "وافق على طلب النقاط أو ارفضه أولاً.",
+  "tabletResolvePointsFirst": "أجب على طلب النقاط أولاً",
   "tabletBeingPaidOn": "يتم الدفع على {device}",
   "tabletThisDevice": "هذا الجهاز",
   "tabletAnotherDevice": "جهاز آخر",
@@ -1398,5 +1398,10 @@
   "tabletShiftCloseHint": "تبقى مفتوحة بعد الإغلاق. استلم النقد أو ألغها.",
   "tabletTicketQuick": "جهاز لوحي · سريع",
   "tabletTicketToGo": "جهاز لوحي · سفري",
-  "tabletTicketDineIn": "جهاز لوحي · طاولة · الجولة {round}"
+  "tabletTicketDineIn": "جهاز لوحي · طاولة · الجولة {round}",
+  "tabletRefusedRateLimited": "محاولات كثيرة. انتظر دقيقة ثم حاول مرة أخرى.",
+  "tabletRefusedBillReserved": "فاتورة هذه الطاولة قيد الدفع. حاول مرة أخرى بعد الدفع.",
+  "tabletRefusedNeedsUpdate": "يحتاج هذا الجهاز إلى تحديث التطبيق لطلبات الجهاز اللوحي.",
+  "tabletTakenCheckout": "هذا الطلب مع موظف آخر. استلمه بدلاً منه أولاً.",
+  "tabletKitchenUnreadable": "{count, plural, =1{تعذرت قراءة تذكرة مطبخ واحدة — راجع المدير} other{تعذرت قراءة {count} تذاكر مطبخ — راجع المدير}}"
 }

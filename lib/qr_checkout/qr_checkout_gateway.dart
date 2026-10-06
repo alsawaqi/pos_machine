@@ -76,6 +76,10 @@ class ApiCheckoutGateway implements CheckoutGateway {
             'qr_session_not_settleable',
             'geofence_fix_required',
             'geofence_outside',
+            // LAUNCH-P6 — a tablet order with an open points request, or
+            // taken by another staff member, is not claimed.
+            'redeem_pending',
+            'tablet_order_taken',
           }.contains(error.code)) {
         throw CheckoutRefusal(error.code!);
       }

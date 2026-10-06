@@ -2677,7 +2677,7 @@
   "@tabletRedeemQuestion": {"placeholders": {"units": {"type": "int"}, "amount": {"type": "String"}, "phone": {"type": "String"}}},
   "tabletApprove": "Approve",
   "tabletReject": "Reject",
-  "tabletResolvePointsFirst": "Approve or reject the points request first.",
+  "tabletResolvePointsFirst": "Answer the points request first",
   "tabletBeingPaidOn": "Being paid on {device}",
   "@tabletBeingPaidOn": {"placeholders": {"device": {"type": "String"}}},
   "tabletThisDevice": "this till",
@@ -2705,5 +2705,11 @@
   "tabletTicketQuick": "TABLET · QUICK",
   "tabletTicketToGo": "TABLET · TO GO",
   "tabletTicketDineIn": "TABLET DINE-IN · ROUND {round}",
-  "@tabletTicketDineIn": {"placeholders": {"round": {"type": "int"}}}
+  "@tabletTicketDineIn": {"placeholders": {"round": {"type": "int"}}},
+  "tabletRefusedRateLimited": "Too many tries. Wait a minute, then try again.",
+  "tabletRefusedBillReserved": "This table's bill is being paid. Try again after the payment.",
+  "tabletRefusedNeedsUpdate": "This device needs the app update for tablet orders.",
+  "tabletTakenCheckout": "Another staff member has this tablet order. Take it over first.",
+  "tabletKitchenUnreadable": "{count, plural, =1{1 kitchen ticket could not be read — check with the manager} other{{count} kitchen tickets could not be read — check with the manager}}",
+  "@tabletKitchenUnreadable": {"placeholders": {"count": {"type": "int"}}}
 }

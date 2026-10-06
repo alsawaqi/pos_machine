@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/authorization.dart';
@@ -83,6 +84,10 @@ String tabletNoticeText(L10n l10n, String code, String? name) => switch (code) {
   'redeem_already_resolved' ||
   'redeem_not_requested' => l10n.tabletRefusedClosed,
   'tablet_order_being_paid' => l10n.tabletRefusedBeingPaid,
+  'redeem_pending' => l10n.tabletResolvePointsFirst,
+  'too_many_attempts' || 'rate_limited' => l10n.tabletRefusedRateLimited,
+  'bill_reserved' => l10n.tabletRefusedBillReserved,
+  'tablet_round_needs_update' => l10n.tabletRefusedNeedsUpdate,
   'approval_required' || 'approval_invalid' => l10n.tabletRefusedApproval,
   'loyalty_customer_limit' ||
   'loyalty_staff_limit' ||
@@ -179,10 +184,15 @@ class TabletOrdersScreen extends StatefulWidget {
     required this.controller,
     required this.actions,
     this.initialKey,
+    this.openRequests,
     this.poll = const Duration(seconds: 5),
   });
   final TabletOrdersController controller;
   final TabletOrderActions actions;
+
+  /// Later "Open" requests (banner) while this screen is up: they open the
+  /// order here; a second list screen is never pushed.
+  final ValueListenable<String?>? openRequests;
 
   /// Open this order (attention key or tablet order uuid) once listed.
   final String? initialKey;
@@ -195,10 +205,19 @@ class TabletOrdersScreen extends StatefulWidget {
 class _TabletOrdersScreenState extends State<TabletOrdersScreen> {
   Timer? _timer;
   bool _openedInitial = false;
+  bool _sheetOpen = false;
+
+  void _openRequested() {
+    final key = widget.openRequests?.value;
+    if (key == null || _sheetOpen || !mounted) return;
+    final uuid = key.startsWith('tablet:') ? key.substring(7) : key;
+    if (widget.controller.find(uuid) != null) unawaited(_open(uuid));
+  }
 
   @override
   void initState() {
     super.initState();
+    widget.openRequests?.addListener(_openRequested);
     widget.controller.addListener(_maybeOpenInitial);
     unawaited(widget.controller.refresh());
     _timer = Timer.periodic(widget.poll, (_) {
@@ -222,21 +241,27 @@ class _TabletOrdersScreenState extends State<TabletOrdersScreen> {
 
   Future<void> _open(String uuid) async {
     final row = widget.controller.find(uuid);
-    if (row == null) return;
+    if (row == null || _sheetOpen) return;
     widget.actions.onOpened?.call(row.attentionKey);
-    await showDialog<void>(
-      context: context,
-      builder: (_) => TabletOrderSheet(
-        controller: widget.controller,
-        actions: widget.actions,
-        uuid: uuid,
-      ),
-    );
+    _sheetOpen = true;
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => TabletOrderSheet(
+          controller: widget.controller,
+          actions: widget.actions,
+          uuid: uuid,
+        ),
+      );
+    } finally {
+      _sheetOpen = false;
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    widget.openRequests?.removeListener(_openRequested);
     widget.controller.removeListener(_maybeOpenInitial);
     super.dispose();
   }
@@ -525,6 +550,14 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
     final l10n = L10n.of(context);
     if (row.dineIn) {
       if (row.sent) {
+        // Points still waiting: answer them here before the table.
+        if (row.redeemWaiting &&
+            !await _confirm(
+              l10n.tabletResolvePointsFirst,
+              yes: l10n.tabletCancelAtTable,
+            )) {
+          return;
+        }
         a.openTable?.call(row);
         if (mounted) Navigator.of(context).pop();
         return;
@@ -659,10 +692,16 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
                   : (row.paid ? l10n.tabletSendNow : l10n.tabletSendLater),
             ),
           ),
-        if (mine && row.canTakeCash && a.takeCash != null && !recovery)
+        // Shown but disabled while a points request waits (answer it first).
+        if (mine &&
+            !row.dineIn &&
+            open &&
+            row.charge.state == 'none' &&
+            a.takeCash != null &&
+            !recovery)
           FilledButton(
             key: const ValueKey('tablet-take-cash'),
-            onPressed: busy ? null : () => _takeCash(row),
+            onPressed: busy || !row.canTakeCash ? null : () => _takeCash(row),
             child: Text(
               row.pending ? l10n.tabletTakeCashThenSend : l10n.tabletTakeCash,
             ),
@@ -774,8 +813,11 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
                     key: const ValueKey('tablet-redeem-question'),
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
-                if (row.redeemWaiting && mine && !row.dineIn)
-                  Text(l10n.tabletResolvePointsFirst),
+                if (row.redeemWaiting && mine && (!row.dineIn || row.sent))
+                  Text(
+                    l10n.tabletResolvePointsFirst,
+                    key: const ValueKey('tablet-points-first'),
+                  ),
                 if (row.readyInMinutes != null)
                   Text(l10n.tabletReadyIn(row.readyInMinutes!)),
                 if (row.takenBy != null)

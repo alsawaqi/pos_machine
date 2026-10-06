@@ -2,9 +2,17 @@ import '../dine_in/table_loyalty.dart';
 import 'package:flutter/material.dart';
 import 'qr_checkout_controller.dart';
 import 'qr_checkout_models.dart';
+import '../l10n/l10n.dart';
 
 String checkoutText(BuildContext context, String key) {
   final ar = Localizations.localeOf(context).languageCode == 'ar';
+  // LAUNCH-P6 — the tablet order refusals of the claim.
+  if (key == 'redeem_pending' || key == 'tablet_order_taken') {
+    final l10n = lookupL10n(Locale(ar ? 'ar' : 'en'));
+    return key == 'redeem_pending'
+        ? l10n.tabletResolvePointsFirst
+        : l10n.tabletTakenCheckout;
+  }
   const copy = <String, (String, String)>{
     'title': ('Payment', 'الدفع'),
     'cash': ('Cash', 'نقداً'),

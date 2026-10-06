@@ -662,6 +662,7 @@ class PosApiService {
       ),
     );
     final rows = body.dataMap['rounds'];
+    var unreadable = 0;
     return QrAcceptedRoundsPage(
       // LAUNCH-P6 — one unreadable round is skipped and logged.
       rounds: rows is List
@@ -669,12 +670,14 @@ class PosApiService {
               rows,
               QrRoundEnvelope.fromFeedJson,
               list: 'qr/accepted-rounds',
+              onSkip: () => unreadable++,
             ).toList(growable: false)
           : const <QrRoundEnvelope>[],
       nextCursor: _nullableApiString(body.metaMap['next_cursor']),
       latestCursor: _nullableApiString(body.metaMap['latest_cursor']),
       skippedExpiredCount:
           (body.metaMap['skipped_expired_count'] as num?)?.toInt() ?? 0,
+      skippedUnreadableCount: unreadable,
     );
   }
 

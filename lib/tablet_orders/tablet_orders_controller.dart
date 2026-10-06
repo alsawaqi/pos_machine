@@ -148,6 +148,9 @@ class TabletOrdersController extends ChangeNotifier {
   bool _fetching = false;
   bool _disposed = false;
 
+  /// Bumped by every action: a list read started before it is dropped.
+  int _generation = 0;
+
   /// The order an action is running on.
   String? busy;
 
@@ -171,8 +174,14 @@ class TabletOrdersController extends ChangeNotifier {
   Future<void> refresh() async {
     if (_fetching || _disposed) return;
     _fetching = true;
+    final generation = _generation;
     try {
       final next = await gateway.list();
+      if (generation != _generation) {
+        // An action answered meanwhile: its Row is newer than this read.
+        stale = false;
+        return;
+      }
       orders = List.unmodifiable(next);
       stale = false;
       loaded = true;
@@ -213,9 +222,11 @@ class TabletOrdersController extends ChangeNotifier {
     busy = uuid;
     notice = null;
     noticeName = null;
+    _generation++;
     _notify();
     try {
       final result = await action();
+      _generation++;
       _replace(result.order);
       return result;
     } on TabletOrderFailure catch (failure) {

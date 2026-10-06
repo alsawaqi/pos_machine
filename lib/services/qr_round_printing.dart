@@ -111,6 +111,9 @@ enum QrRoundPrintNoticeKind {
   printerFailed,
   positionReset,
   heldForReview,
+
+  /// LAUNCH-P6 — a feed row could not be read and was skipped.
+  unreadable,
 }
 
 class QrRoundPrintNotice {
@@ -285,6 +288,14 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
           limit: pageSize,
         );
         requestAfter = null;
+        if (page.skippedUnreadableCount > 0) {
+          _onNotice(
+            QrRoundPrintNotice(
+              QrRoundPrintNoticeKind.unreadable,
+              count: page.skippedUnreadableCount,
+            ),
+          );
+        }
         if (page.skippedExpiredCount > 0) {
           _onNotice(
             QrRoundPrintNotice(

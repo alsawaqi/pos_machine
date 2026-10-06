@@ -372,11 +372,13 @@ void main() {
       findsOneWidget,
     );
     // Cash waits until the points are decided.
-    expect(find.byKey(const ValueKey('tablet-take-cash')), findsNothing);
     expect(
-      find.text('Approve or reject the points request first.'),
-      findsOneWidget,
+      tester
+          .widget<FilledButton>(find.byKey(const ValueKey('tablet-take-cash')))
+          .onPressed,
+      isNull,
     );
+    expect(find.text('Answer the points request first'), findsOneWidget);
     await tapKey(tester, 'tablet-redeem-approve');
     expect(gates.single, startsWith('loyalty.redeem|Use 50 points'));
     expect(gateway.approvedBlock!['action'], 'loyalty.redeem');

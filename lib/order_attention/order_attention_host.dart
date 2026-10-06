@@ -165,12 +165,14 @@ class _OrderAttentionHostState extends State<OrderAttentionHost>
           ? null
           : TabletAttentionBanner(controller: controller);
       if (!widget.showBanner) {
-        if (tabletBanner == null) return child!;
+        // One tree shape whether or not the banner shows: the app-wide
+        // state below (kitchen printing, table lifecycle, card reversal
+        // recovery) is never disposed or recreated by a banner toggle.
         return Column(
           verticalDirection: VerticalDirection.up,
           children: [
             Expanded(child: child!),
-            tabletBanner,
+            ?tabletBanner,
           ],
         );
       }

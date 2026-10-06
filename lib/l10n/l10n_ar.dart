@@ -4274,7 +4274,7 @@ class L10nAr extends L10n {
   String get tabletReject => 'رفض';
 
   @override
-  String get tabletResolvePointsFirst => 'وافق على طلب النقاط أو ارفضه أولاً.';
+  String get tabletResolvePointsFirst => 'أجب على طلب النقاط أولاً';
 
   @override
   String tabletBeingPaidOn(String device) {
@@ -4362,5 +4362,32 @@ class L10nAr extends L10n {
   @override
   String tabletTicketDineIn(int round) {
     return 'جهاز لوحي · طاولة · الجولة $round';
+  }
+
+  @override
+  String get tabletRefusedRateLimited =>
+      'محاولات كثيرة. انتظر دقيقة ثم حاول مرة أخرى.';
+
+  @override
+  String get tabletRefusedBillReserved =>
+      'فاتورة هذه الطاولة قيد الدفع. حاول مرة أخرى بعد الدفع.';
+
+  @override
+  String get tabletRefusedNeedsUpdate =>
+      'يحتاج هذا الجهاز إلى تحديث التطبيق لطلبات الجهاز اللوحي.';
+
+  @override
+  String get tabletTakenCheckout =>
+      'هذا الطلب مع موظف آخر. استلمه بدلاً منه أولاً.';
+
+  @override
+  String tabletKitchenUnreadable(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'تعذرت قراءة $count تذاكر مطبخ — راجع المدير',
+      one: 'تعذرت قراءة تذكرة مطبخ واحدة — راجع المدير',
+    );
+    return '$_temp0';
   }
 }

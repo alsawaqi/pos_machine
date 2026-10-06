@@ -30,6 +30,7 @@ List<T> parseRowsSkippingBad<T>(
   Object? rows,
   T Function(Map<String, dynamic> row) parse, {
   required String list,
+  void Function()? onSkip,
 }) {
   if (rows == null) return <T>[];
   if (rows is! List) {
@@ -44,6 +45,7 @@ List<T> parseRowsSkippingBad<T>(
       out.add(parse(Map<String, dynamic>.from(row)));
     } catch (error) {
       skippedRowLogger(list, index, error);
+      onSkip?.call();
     }
   }
   return out;

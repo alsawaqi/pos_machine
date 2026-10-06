@@ -4237,8 +4237,7 @@ class L10nEn extends L10n {
   String get tabletReject => 'Reject';
 
   @override
-  String get tabletResolvePointsFirst =>
-      'Approve or reject the points request first.';
+  String get tabletResolvePointsFirst => 'Answer the points request first';
 
   @override
   String tabletBeingPaidOn(String device) {
@@ -4329,5 +4328,33 @@ class L10nEn extends L10n {
   @override
   String tabletTicketDineIn(int round) {
     return 'TABLET DINE-IN · ROUND $round';
+  }
+
+  @override
+  String get tabletRefusedRateLimited =>
+      'Too many tries. Wait a minute, then try again.';
+
+  @override
+  String get tabletRefusedBillReserved =>
+      'This table\'s bill is being paid. Try again after the payment.';
+
+  @override
+  String get tabletRefusedNeedsUpdate =>
+      'This device needs the app update for tablet orders.';
+
+  @override
+  String get tabletTakenCheckout =>
+      'Another staff member has this tablet order. Take it over first.';
+
+  @override
+  String tabletKitchenUnreadable(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count kitchen tickets could not be read — check with the manager',
+      one: '1 kitchen ticket could not be read — check with the manager',
+    );
+    return '$_temp0';
   }
 }

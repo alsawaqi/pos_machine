@@ -201,7 +201,9 @@ class OrderAttentionController extends ChangeNotifier {
   }
 
   void _updateRing() {
-    final ring = active && !_disposed && ringing.isNotEmpty;
+    // A stale snapshot (reads failing) never keeps ringing: the order may
+    // already be taken elsewhere.
+    final ring = active && !_disposed && !stale && ringing.isNotEmpty;
     if (ring && _repeat == null) {
       _repeat = Timer.periodic(repeatEvery, (_) {
         if (_disposed || !active || ringing.isEmpty) {
@@ -340,7 +342,10 @@ class OrderAttentionController extends ChangeNotifier {
         finished.complete();
       }
     } catch (_) {
-      if (_current(captured, epoch)) stale = true;
+      if (_current(captured, epoch)) {
+        stale = true;
+        _updateRing();
+      }
     } finally {
       _busy = false;
       if (!_disposed) {

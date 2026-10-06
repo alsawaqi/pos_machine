@@ -6998,7 +6998,7 @@ abstract class L10n {
   /// No description provided for @tabletResolvePointsFirst.
   ///
   /// In en, this message translates to:
-  /// **'Approve or reject the points request first.'**
+  /// **'Answer the points request first'**
   String get tabletResolvePointsFirst;
 
   /// No description provided for @tabletBeingPaidOn.
@@ -7132,6 +7132,36 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'TABLET DINE-IN · ROUND {round}'**
   String tabletTicketDineIn(int round);
+
+  /// No description provided for @tabletRefusedRateLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many tries. Wait a minute, then try again.'**
+  String get tabletRefusedRateLimited;
+
+  /// No description provided for @tabletRefusedBillReserved.
+  ///
+  /// In en, this message translates to:
+  /// **'This table\'s bill is being paid. Try again after the payment.'**
+  String get tabletRefusedBillReserved;
+
+  /// No description provided for @tabletRefusedNeedsUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'This device needs the app update for tablet orders.'**
+  String get tabletRefusedNeedsUpdate;
+
+  /// No description provided for @tabletTakenCheckout.
+  ///
+  /// In en, this message translates to:
+  /// **'Another staff member has this tablet order. Take it over first.'**
+  String get tabletTakenCheckout;
+
+  /// No description provided for @tabletKitchenUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 kitchen ticket could not be read — check with the manager} other{{count} kitchen tickets could not be read — check with the manager}}'**
+  String tabletKitchenUnreadable(int count);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

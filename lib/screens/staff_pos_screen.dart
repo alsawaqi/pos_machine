@@ -1120,13 +1120,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       unawaited(_openTabletOrders(initialKey: key));
   bool _tabletOrdersOpen = false;
 
+  /// "Open" requests while the tablet list is up open the order there.
+  final _tabletOpenRequest = ValueNotifier<String?>(null);
+
   /// LAUNCH-P6 Part C item 4 — the tablet orders list and sheet. Cash goes
   /// through the existing QR checkout (claim, then the frozen total), a
   /// cancel through the existing order.void, points through
   /// `_authorizeAction('loyalty.redeem')`.
   Future<void> _openTabletOrders({String? initialKey}) async {
-    if (_tabletOrdersOpen ||
-        _workspace != null ||
+    if (_tabletOrdersOpen) {
+      // Never a second list: bring the order up in the open one.
+      _tabletOpenRequest.value = null;
+      _tabletOpenRequest.value = initialKey;
+      return;
+    }
+    if (_workspace != null ||
         _showPaymentPage ||
         _normalQrCheckoutOpen ||
         controller.isProcessingPayment ||
@@ -1149,6 +1157,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           builder: (routeContext) => TabletOrdersScreen(
             controller: tablet,
             initialKey: initialKey,
+            openRequests: _tabletOpenRequest,
             actions: TabletOrderActions(
               myStaffId: staff?.id,
               onOpened: (key) => OrderAttentionScope.read(context)?.opened(key),
@@ -1714,6 +1723,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           arabic
               ? 'جولة المطبخ معلقة للمراجعة.'
               : 'Kitchen round held for review.',
+        QrRoundPrintNoticeKind.unreadable => lookupL10n(
+          Locale(arabic ? 'ar' : 'en'),
+        ).tabletKitchenUnreadable(next.count),
       };
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -2835,6 +2847,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     if (tabletOrdersOpener.value == _tabletOpener) {
       tabletOrdersOpener.value = null;
     }
+    _tabletOpenRequest.dispose();
     if (_tableKitchen?.coordinator.paymentAcknowledged == _tablePaymentAck) {
       _tableKitchen!.coordinator.paymentAcknowledged = null;
     }
