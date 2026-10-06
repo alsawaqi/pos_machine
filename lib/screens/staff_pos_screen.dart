@@ -6278,7 +6278,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         // bill from the server sheet (its full server total).
         _tenderNeedsServerSheet = true;
         refusal = lookupL10n(
-          Localizations.localeOf(context),
+          Locale(
+            ref.read(settingsControllerProvider).language == 'ar' ? 'ar' : 'en',
+          ),
         ).tabletBillUseServerSheet;
       } else if (tender && (detail.billUuid == null || detail.pendingReview)) {
         refusal =

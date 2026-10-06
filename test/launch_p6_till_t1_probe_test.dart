@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_machine/dine_in/dine_in_models.dart';
 import 'package:pos_machine/models/remote_table_state.dart';
 import 'package:pos_machine/screens/staff_pos_screen.dart'
-    show TableCartPayRouter, tableBillNeedsSheet, dineInDetailHasTabletRound;
+    show TableCartPayRouter, tableBillNeedsSheet;
 
 /// LAUNCH-P6 till fix order 1, T-1 (HIGH) — a till-opened table bill with a
 /// sent tablet round must be paid from the server sheet (the full server
