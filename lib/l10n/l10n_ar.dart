@@ -4093,4 +4093,274 @@ class L10nAr extends L10n {
 
   @override
   String get shiftCloseRetryParked => 'إعادة المحاولة';
+
+  @override
+  String get tabletOrdersTitle => 'طلبات الجهاز اللوحي';
+
+  @override
+  String get tabletOrdersEmpty => 'لا توجد طلبات من الجهاز اللوحي.';
+
+  @override
+  String get tabletOrdersStale =>
+      'طلبات الجهاز اللوحي لا تتحدث — تحقق من الاتصال.';
+
+  @override
+  String get tabletOrdersRefresh => 'تحديث';
+
+  @override
+  String get tabletTableWord => 'طاولة';
+
+  @override
+  String get tabletTypeDineIn => 'داخل المطعم';
+
+  @override
+  String get tabletTypeQuick => 'طلب سريع';
+
+  @override
+  String get tabletTypeToGo => 'سفري';
+
+  @override
+  String tabletNewOrderBanner(String label) {
+    return 'طلب جديد من الجهاز اللوحي — $label';
+  }
+
+  @override
+  String tabletNewOrdersMore(int count) {
+    return 'و$count أخرى';
+  }
+
+  @override
+  String get tabletOpen => 'فتح';
+
+  @override
+  String get tabletTake => 'استلام';
+
+  @override
+  String get tabletTakeOver => 'استلام بدلاً منه';
+
+  @override
+  String tabletTakeOverConfirm(String name) {
+    return 'هذا الطلب مع $name. هل تريد استلامه بدلاً منه؟ سيتم تسجيل ذلك.';
+  }
+
+  @override
+  String tabletTakenBy(String name) {
+    return 'استلمه $name';
+  }
+
+  @override
+  String get tabletTakenByYou => 'استلمته أنت';
+
+  @override
+  String get tabletSomeone => 'موظف آخر';
+
+  @override
+  String get tabletSendLater => 'إرسال للمطبخ (الدفع لاحقاً)';
+
+  @override
+  String get tabletSendDineIn => 'إرسال للمطبخ (يُضاف إلى فاتورة الطاولة)';
+
+  @override
+  String get tabletSendNow => 'إرسال للمطبخ';
+
+  @override
+  String get tabletTakeCash => 'استلام النقد';
+
+  @override
+  String get tabletTakeCashThenSend => 'استلام النقد ثم الإرسال للمطبخ';
+
+  @override
+  String get tabletPaidNotSent =>
+      'تم الدفع لكن لم يُرسل للمطبخ بعد. اضغط إرسال للمطبخ.';
+
+  @override
+  String get tabletEditLines => 'تعديل الأصناف';
+
+  @override
+  String get tabletSaveLines => 'حفظ التعديلات';
+
+  @override
+  String get tabletAddItem => 'إضافة صنف';
+
+  @override
+  String get tabletRemoveLine => 'حذف';
+
+  @override
+  String get tabletEditedNotice => 'تم تعديل الطلب. راجعه قبل استلام النقد.';
+
+  @override
+  String get tabletCancelOrder => 'إلغاء الطلب';
+
+  @override
+  String get tabletCancelUnsentConfirm =>
+      'إلغاء طلب الجهاز اللوحي؟ لم يُرسل للمطبخ ولم يُدفع شيء.';
+
+  @override
+  String get tabletCancelRoundConfirm =>
+      'رفض جولة الجهاز اللوحي؟ تبقى جولات الطاولة الأخرى كما هي.';
+
+  @override
+  String get tabletCancelMadeTitle => 'سبب الإلغاء؟ (تم تحضير الطعام)';
+
+  @override
+  String get tabletCancelNoMadeReason =>
+      'لا يوجد سبب إلغاء بعلامة “تم تحضير الطعام”. اطلب من المسؤول إضافته.';
+
+  @override
+  String get tabletCancelAtTable => 'افتح الطاولة للإلغاء';
+
+  @override
+  String get tabletCancelQueued =>
+      'تم إرسال الإلغاء. تتحدث القائمة عند وصوله للخادم.';
+
+  @override
+  String get tabletUnpaid => 'غير مدفوع';
+
+  @override
+  String get tabletPaid => 'مدفوع';
+
+  @override
+  String get tabletWaiting => 'بانتظار الموظف';
+
+  @override
+  String get tabletSent => 'أُرسل للمطبخ';
+
+  @override
+  String tabletSentBy(String name) {
+    return 'أرسله للمطبخ $name';
+  }
+
+  @override
+  String tabletPhone(String phone) {
+    return 'العميل $phone';
+  }
+
+  @override
+  String tabletReadyIn(int minutes) {
+    return 'جاهز خلال $minutes دقيقة تقريباً';
+  }
+
+  @override
+  String tabletTotalLine(String amount) {
+    return 'الإجمالي $amount ر.ع';
+  }
+
+  @override
+  String tabletPointsRequested(int units, String amount) {
+    return 'يطلب استخدام $units نقطة ($amount ر.ع)';
+  }
+
+  @override
+  String tabletPointsApproved(int units, String amount) {
+    return 'النقاط المستخدمة: $units ($amount ر.ع)';
+  }
+
+  @override
+  String get tabletPointsRejected =>
+      'تم رفض النقاط — 0 نقطة، المبلغ كاملاً نقداً';
+
+  @override
+  String get tabletPointsSuperseded => 'لم تعد النقاط مطبقة — 0 نقطة';
+
+  @override
+  String tabletRedeemQuestion(int units, String amount, String phone) {
+    return 'استخدام $units نقطة ($amount ر.ع) للعميل $phone؟';
+  }
+
+  @override
+  String get tabletApprove => 'موافقة';
+
+  @override
+  String get tabletReject => 'رفض';
+
+  @override
+  String get tabletResolvePointsFirst => 'وافق على طلب النقاط أو ارفضه أولاً.';
+
+  @override
+  String tabletBeingPaidOn(String device) {
+    return 'يتم الدفع على $device';
+  }
+
+  @override
+  String get tabletThisDevice => 'هذا الجهاز';
+
+  @override
+  String get tabletAnotherDevice => 'جهاز آخر';
+
+  @override
+  String get tabletNeedsRecovery =>
+      'يحتاج إلى معالجة — نتيجة الدفع غير معروفة.';
+
+  @override
+  String get tabletCheckPayment => 'التحقق من نتيجة الدفع';
+
+  @override
+  String get tabletMoveToCounter => 'نقل إلى الكاونتر';
+
+  @override
+  String get tabletPaymentReview => 'مراجعة الدفع من المدير';
+
+  @override
+  String get tabletBadge => 'الجهاز اللوحي';
+
+  @override
+  String tabletBoardPending(int count) {
+    return 'الجهاز اللوحي: $count بانتظار';
+  }
+
+  @override
+  String tabletRefusedTaken(String name) {
+    return 'استلم $name هذا الطلب بالفعل.';
+  }
+
+  @override
+  String get tabletRefusedClosed => 'هذا الطلب مغلق بالفعل. تم تحديث القائمة.';
+
+  @override
+  String get tabletRefusedBeingPaid =>
+      'يتم استلام الدفع لهذا الطلب. انتظر أو عالج الدفع أولاً.';
+
+  @override
+  String get tabletRefusedApproval => 'لم تُقبل الموافقة. وافق مرة أخرى.';
+
+  @override
+  String get tabletRefusedLimit => 'تم بلوغ حد النقاط. ارفض الطلب.';
+
+  @override
+  String get tabletRefusedUnavailable =>
+      'أحد الأصناف لم يعد متاحاً. عدّل الأصناف.';
+
+  @override
+  String tabletRefusedGeneric(String code) {
+    return 'رفض الخادم هذا الإجراء ($code). تم تحديث القائمة.';
+  }
+
+  @override
+  String get tabletRefusedNetwork => 'لا يوجد رد من الخادم. حاول مرة أخرى.';
+
+  @override
+  String tabletShiftCloseWarning(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count طلبات من الجهاز اللوحي لم تُدفع بعد',
+      one: 'طلب واحد من الجهاز اللوحي لم يُدفع بعد',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tabletShiftCloseHint =>
+      'تبقى مفتوحة بعد الإغلاق. استلم النقد أو ألغها.';
+
+  @override
+  String get tabletTicketQuick => 'جهاز لوحي · سريع';
+
+  @override
+  String get tabletTicketToGo => 'جهاز لوحي · سفري';
+
+  @override
+  String tabletTicketDineIn(int round) {
+    return 'جهاز لوحي · طاولة · الجولة $round';
+  }
 }

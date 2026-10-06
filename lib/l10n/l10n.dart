@@ -6694,6 +6694,444 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'Retry'**
   String get shiftCloseRetryParked;
+
+  /// No description provided for @tabletOrdersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Tablet orders'**
+  String get tabletOrdersTitle;
+
+  /// No description provided for @tabletOrdersEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No tablet orders waiting.'**
+  String get tabletOrdersEmpty;
+
+  /// No description provided for @tabletOrdersStale.
+  ///
+  /// In en, this message translates to:
+  /// **'Tablet orders are not updating — check the connection.'**
+  String get tabletOrdersStale;
+
+  /// No description provided for @tabletOrdersRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get tabletOrdersRefresh;
+
+  /// No description provided for @tabletTableWord.
+  ///
+  /// In en, this message translates to:
+  /// **'Table'**
+  String get tabletTableWord;
+
+  /// No description provided for @tabletTypeDineIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Dine in'**
+  String get tabletTypeDineIn;
+
+  /// No description provided for @tabletTypeQuick.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick order'**
+  String get tabletTypeQuick;
+
+  /// No description provided for @tabletTypeToGo.
+  ///
+  /// In en, this message translates to:
+  /// **'To go'**
+  String get tabletTypeToGo;
+
+  /// No description provided for @tabletNewOrderBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'New tablet order — {label}'**
+  String tabletNewOrderBanner(String label);
+
+  /// No description provided for @tabletNewOrdersMore.
+  ///
+  /// In en, this message translates to:
+  /// **'and {count} more'**
+  String tabletNewOrdersMore(int count);
+
+  /// No description provided for @tabletOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get tabletOpen;
+
+  /// No description provided for @tabletTake.
+  ///
+  /// In en, this message translates to:
+  /// **'Take'**
+  String get tabletTake;
+
+  /// No description provided for @tabletTakeOver.
+  ///
+  /// In en, this message translates to:
+  /// **'Take over'**
+  String get tabletTakeOver;
+
+  /// No description provided for @tabletTakeOverConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} has this order. Take it over? This is recorded.'**
+  String tabletTakeOverConfirm(String name);
+
+  /// No description provided for @tabletTakenBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Taken by {name}'**
+  String tabletTakenBy(String name);
+
+  /// No description provided for @tabletTakenByYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Taken by you'**
+  String get tabletTakenByYou;
+
+  /// No description provided for @tabletSomeone.
+  ///
+  /// In en, this message translates to:
+  /// **'another staff member'**
+  String get tabletSomeone;
+
+  /// No description provided for @tabletSendLater.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to kitchen (cash later)'**
+  String get tabletSendLater;
+
+  /// No description provided for @tabletSendDineIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to kitchen (joins the table bill)'**
+  String get tabletSendDineIn;
+
+  /// No description provided for @tabletSendNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Send to kitchen'**
+  String get tabletSendNow;
+
+  /// No description provided for @tabletTakeCash.
+  ///
+  /// In en, this message translates to:
+  /// **'Take cash'**
+  String get tabletTakeCash;
+
+  /// No description provided for @tabletTakeCashThenSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Take cash, then send to kitchen'**
+  String get tabletTakeCashThenSend;
+
+  /// No description provided for @tabletPaidNotSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid, but not sent to the kitchen yet. Tap Send to kitchen.'**
+  String get tabletPaidNotSent;
+
+  /// No description provided for @tabletEditLines.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit items'**
+  String get tabletEditLines;
+
+  /// No description provided for @tabletSaveLines.
+  ///
+  /// In en, this message translates to:
+  /// **'Save changes'**
+  String get tabletSaveLines;
+
+  /// No description provided for @tabletAddItem.
+  ///
+  /// In en, this message translates to:
+  /// **'Add item'**
+  String get tabletAddItem;
+
+  /// No description provided for @tabletRemoveLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get tabletRemoveLine;
+
+  /// No description provided for @tabletEditedNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'The order was changed. Check it before taking cash.'**
+  String get tabletEditedNotice;
+
+  /// No description provided for @tabletCancelOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel order'**
+  String get tabletCancelOrder;
+
+  /// No description provided for @tabletCancelUnsentConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel this tablet order? It was not sent to the kitchen and nothing was paid.'**
+  String get tabletCancelUnsentConfirm;
+
+  /// No description provided for @tabletCancelRoundConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject this tablet round? The table\'s other rounds stay.'**
+  String get tabletCancelRoundConfirm;
+
+  /// No description provided for @tabletCancelMadeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Why cancel? (the food was made)'**
+  String get tabletCancelMadeTitle;
+
+  /// No description provided for @tabletCancelNoMadeReason.
+  ///
+  /// In en, this message translates to:
+  /// **'No cancel reason marked “food was made” exists. Ask the admin to add one.'**
+  String get tabletCancelNoMadeReason;
+
+  /// No description provided for @tabletCancelAtTable.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the table to cancel'**
+  String get tabletCancelAtTable;
+
+  /// No description provided for @tabletCancelQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel sent. The list updates once the server has it.'**
+  String get tabletCancelQueued;
+
+  /// No description provided for @tabletUnpaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpaid'**
+  String get tabletUnpaid;
+
+  /// No description provided for @tabletPaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Paid'**
+  String get tabletPaid;
+
+  /// No description provided for @tabletWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for staff'**
+  String get tabletWaiting;
+
+  /// No description provided for @tabletSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to kitchen'**
+  String get tabletSent;
+
+  /// No description provided for @tabletSentBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent to kitchen by {name}'**
+  String tabletSentBy(String name);
+
+  /// No description provided for @tabletPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Customer {phone}'**
+  String tabletPhone(String phone);
+
+  /// No description provided for @tabletReadyIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready in about {minutes} min'**
+  String tabletReadyIn(int minutes);
+
+  /// No description provided for @tabletTotalLine.
+  ///
+  /// In en, this message translates to:
+  /// **'Total {amount} OMR'**
+  String tabletTotalLine(String amount);
+
+  /// No description provided for @tabletPointsRequested.
+  ///
+  /// In en, this message translates to:
+  /// **'Asks to use {units} points ({amount} OMR)'**
+  String tabletPointsRequested(int units, String amount);
+
+  /// No description provided for @tabletPointsApproved.
+  ///
+  /// In en, this message translates to:
+  /// **'Points used: {units} ({amount} OMR)'**
+  String tabletPointsApproved(int units, String amount);
+
+  /// No description provided for @tabletPointsRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Points rejected — 0 points, full amount in cash'**
+  String get tabletPointsRejected;
+
+  /// No description provided for @tabletPointsSuperseded.
+  ///
+  /// In en, this message translates to:
+  /// **'Points no longer applied — 0 points'**
+  String get tabletPointsSuperseded;
+
+  /// No description provided for @tabletRedeemQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Use {units} points ({amount} OMR) for {phone}?'**
+  String tabletRedeemQuestion(int units, String amount, String phone);
+
+  /// No description provided for @tabletApprove.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve'**
+  String get tabletApprove;
+
+  /// No description provided for @tabletReject.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject'**
+  String get tabletReject;
+
+  /// No description provided for @tabletResolvePointsFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve or reject the points request first.'**
+  String get tabletResolvePointsFirst;
+
+  /// No description provided for @tabletBeingPaidOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Being paid on {device}'**
+  String tabletBeingPaidOn(String device);
+
+  /// No description provided for @tabletThisDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'this till'**
+  String get tabletThisDevice;
+
+  /// No description provided for @tabletAnotherDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'another device'**
+  String get tabletAnotherDevice;
+
+  /// No description provided for @tabletNeedsRecovery.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs recovery — the cash result is not known.'**
+  String get tabletNeedsRecovery;
+
+  /// No description provided for @tabletCheckPayment.
+  ///
+  /// In en, this message translates to:
+  /// **'Check payment result'**
+  String get tabletCheckPayment;
+
+  /// No description provided for @tabletMoveToCounter.
+  ///
+  /// In en, this message translates to:
+  /// **'Move to counter'**
+  String get tabletMoveToCounter;
+
+  /// No description provided for @tabletPaymentReview.
+  ///
+  /// In en, this message translates to:
+  /// **'Manager payment review'**
+  String get tabletPaymentReview;
+
+  /// No description provided for @tabletBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Tablet'**
+  String get tabletBadge;
+
+  /// No description provided for @tabletBoardPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Tablet: {count} waiting'**
+  String tabletBoardPending(int count);
+
+  /// No description provided for @tabletRefusedTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} already took this order.'**
+  String tabletRefusedTaken(String name);
+
+  /// No description provided for @tabletRefusedClosed.
+  ///
+  /// In en, this message translates to:
+  /// **'This order is already closed. The list was refreshed.'**
+  String get tabletRefusedClosed;
+
+  /// No description provided for @tabletRefusedBeingPaid.
+  ///
+  /// In en, this message translates to:
+  /// **'Cash is being taken for this order. Wait, or recover the payment first.'**
+  String get tabletRefusedBeingPaid;
+
+  /// No description provided for @tabletRefusedApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'The approval was not accepted. Approve again.'**
+  String get tabletRefusedApproval;
+
+  /// No description provided for @tabletRefusedLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'The points limit is reached. Reject the request.'**
+  String get tabletRefusedLimit;
+
+  /// No description provided for @tabletRefusedUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'An item is no longer available. Change the items.'**
+  String get tabletRefusedUnavailable;
+
+  /// No description provided for @tabletRefusedGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'The server refused this ({code}). The list was refreshed.'**
+  String tabletRefusedGeneric(String code);
+
+  /// No description provided for @tabletRefusedNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'No answer from the server. Try again.'**
+  String get tabletRefusedNetwork;
+
+  /// No description provided for @tabletShiftCloseWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 tablet order is still unpaid} other{{count} tablet orders are still unpaid}}'**
+  String tabletShiftCloseWarning(int count);
+
+  /// No description provided for @tabletShiftCloseHint.
+  ///
+  /// In en, this message translates to:
+  /// **'They stay open after the close. Take the cash or cancel them.'**
+  String get tabletShiftCloseHint;
+
+  /// No description provided for @tabletTicketQuick.
+  ///
+  /// In en, this message translates to:
+  /// **'TABLET · QUICK'**
+  String get tabletTicketQuick;
+
+  /// No description provided for @tabletTicketToGo.
+  ///
+  /// In en, this message translates to:
+  /// **'TABLET · TO GO'**
+  String get tabletTicketToGo;
+
+  /// No description provided for @tabletTicketDineIn.
+  ///
+  /// In en, this message translates to:
+  /// **'TABLET DINE-IN · ROUND {round}'**
+  String tabletTicketDineIn(int round);
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

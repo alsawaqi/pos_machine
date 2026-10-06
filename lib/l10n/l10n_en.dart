@@ -4055,4 +4055,279 @@ class L10nEn extends L10n {
 
   @override
   String get shiftCloseRetryParked => 'Retry';
+
+  @override
+  String get tabletOrdersTitle => 'Tablet orders';
+
+  @override
+  String get tabletOrdersEmpty => 'No tablet orders waiting.';
+
+  @override
+  String get tabletOrdersStale =>
+      'Tablet orders are not updating — check the connection.';
+
+  @override
+  String get tabletOrdersRefresh => 'Refresh';
+
+  @override
+  String get tabletTableWord => 'Table';
+
+  @override
+  String get tabletTypeDineIn => 'Dine in';
+
+  @override
+  String get tabletTypeQuick => 'Quick order';
+
+  @override
+  String get tabletTypeToGo => 'To go';
+
+  @override
+  String tabletNewOrderBanner(String label) {
+    return 'New tablet order — $label';
+  }
+
+  @override
+  String tabletNewOrdersMore(int count) {
+    return 'and $count more';
+  }
+
+  @override
+  String get tabletOpen => 'Open';
+
+  @override
+  String get tabletTake => 'Take';
+
+  @override
+  String get tabletTakeOver => 'Take over';
+
+  @override
+  String tabletTakeOverConfirm(String name) {
+    return '$name has this order. Take it over? This is recorded.';
+  }
+
+  @override
+  String tabletTakenBy(String name) {
+    return 'Taken by $name';
+  }
+
+  @override
+  String get tabletTakenByYou => 'Taken by you';
+
+  @override
+  String get tabletSomeone => 'another staff member';
+
+  @override
+  String get tabletSendLater => 'Send to kitchen (cash later)';
+
+  @override
+  String get tabletSendDineIn => 'Send to kitchen (joins the table bill)';
+
+  @override
+  String get tabletSendNow => 'Send to kitchen';
+
+  @override
+  String get tabletTakeCash => 'Take cash';
+
+  @override
+  String get tabletTakeCashThenSend => 'Take cash, then send to kitchen';
+
+  @override
+  String get tabletPaidNotSent =>
+      'Paid, but not sent to the kitchen yet. Tap Send to kitchen.';
+
+  @override
+  String get tabletEditLines => 'Edit items';
+
+  @override
+  String get tabletSaveLines => 'Save changes';
+
+  @override
+  String get tabletAddItem => 'Add item';
+
+  @override
+  String get tabletRemoveLine => 'Remove';
+
+  @override
+  String get tabletEditedNotice =>
+      'The order was changed. Check it before taking cash.';
+
+  @override
+  String get tabletCancelOrder => 'Cancel order';
+
+  @override
+  String get tabletCancelUnsentConfirm =>
+      'Cancel this tablet order? It was not sent to the kitchen and nothing was paid.';
+
+  @override
+  String get tabletCancelRoundConfirm =>
+      'Reject this tablet round? The table\'s other rounds stay.';
+
+  @override
+  String get tabletCancelMadeTitle => 'Why cancel? (the food was made)';
+
+  @override
+  String get tabletCancelNoMadeReason =>
+      'No cancel reason marked “food was made” exists. Ask the admin to add one.';
+
+  @override
+  String get tabletCancelAtTable => 'Open the table to cancel';
+
+  @override
+  String get tabletCancelQueued =>
+      'Cancel sent. The list updates once the server has it.';
+
+  @override
+  String get tabletUnpaid => 'Unpaid';
+
+  @override
+  String get tabletPaid => 'Paid';
+
+  @override
+  String get tabletWaiting => 'Waiting for staff';
+
+  @override
+  String get tabletSent => 'Sent to kitchen';
+
+  @override
+  String tabletSentBy(String name) {
+    return 'Sent to kitchen by $name';
+  }
+
+  @override
+  String tabletPhone(String phone) {
+    return 'Customer $phone';
+  }
+
+  @override
+  String tabletReadyIn(int minutes) {
+    return 'Ready in about $minutes min';
+  }
+
+  @override
+  String tabletTotalLine(String amount) {
+    return 'Total $amount OMR';
+  }
+
+  @override
+  String tabletPointsRequested(int units, String amount) {
+    return 'Asks to use $units points ($amount OMR)';
+  }
+
+  @override
+  String tabletPointsApproved(int units, String amount) {
+    return 'Points used: $units ($amount OMR)';
+  }
+
+  @override
+  String get tabletPointsRejected =>
+      'Points rejected — 0 points, full amount in cash';
+
+  @override
+  String get tabletPointsSuperseded => 'Points no longer applied — 0 points';
+
+  @override
+  String tabletRedeemQuestion(int units, String amount, String phone) {
+    return 'Use $units points ($amount OMR) for $phone?';
+  }
+
+  @override
+  String get tabletApprove => 'Approve';
+
+  @override
+  String get tabletReject => 'Reject';
+
+  @override
+  String get tabletResolvePointsFirst =>
+      'Approve or reject the points request first.';
+
+  @override
+  String tabletBeingPaidOn(String device) {
+    return 'Being paid on $device';
+  }
+
+  @override
+  String get tabletThisDevice => 'this till';
+
+  @override
+  String get tabletAnotherDevice => 'another device';
+
+  @override
+  String get tabletNeedsRecovery =>
+      'Needs recovery — the cash result is not known.';
+
+  @override
+  String get tabletCheckPayment => 'Check payment result';
+
+  @override
+  String get tabletMoveToCounter => 'Move to counter';
+
+  @override
+  String get tabletPaymentReview => 'Manager payment review';
+
+  @override
+  String get tabletBadge => 'Tablet';
+
+  @override
+  String tabletBoardPending(int count) {
+    return 'Tablet: $count waiting';
+  }
+
+  @override
+  String tabletRefusedTaken(String name) {
+    return '$name already took this order.';
+  }
+
+  @override
+  String get tabletRefusedClosed =>
+      'This order is already closed. The list was refreshed.';
+
+  @override
+  String get tabletRefusedBeingPaid =>
+      'Cash is being taken for this order. Wait, or recover the payment first.';
+
+  @override
+  String get tabletRefusedApproval =>
+      'The approval was not accepted. Approve again.';
+
+  @override
+  String get tabletRefusedLimit =>
+      'The points limit is reached. Reject the request.';
+
+  @override
+  String get tabletRefusedUnavailable =>
+      'An item is no longer available. Change the items.';
+
+  @override
+  String tabletRefusedGeneric(String code) {
+    return 'The server refused this ($code). The list was refreshed.';
+  }
+
+  @override
+  String get tabletRefusedNetwork => 'No answer from the server. Try again.';
+
+  @override
+  String tabletShiftCloseWarning(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count tablet orders are still unpaid',
+      one: '1 tablet order is still unpaid',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tabletShiftCloseHint =>
+      'They stay open after the close. Take the cash or cancel them.';
+
+  @override
+  String get tabletTicketQuick => 'TABLET · QUICK';
+
+  @override
+  String get tabletTicketToGo => 'TABLET · TO GO';
+
+  @override
+  String tabletTicketDineIn(int round) {
+    return 'TABLET DINE-IN · ROUND $round';
+  }
 }
