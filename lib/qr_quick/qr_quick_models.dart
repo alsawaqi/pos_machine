@@ -17,6 +17,25 @@ class QrQuickOrder {
       throw const FormatException('Invalid QR quick order');
     }
   }
+
+  /// LAUNCH-P6 — a customer tablet's Quick / To go order shown in the
+  /// existing manager payment review (F-13): display data only, never a
+  /// cart, and never listed with the QR quick orders.
+  QrQuickOrder.review({
+    required String uuid,
+    required String reference,
+    required int total,
+    String charge = 'uncertain',
+  }) : json = Map<String, dynamic>.unmodifiable({
+         'uuid': uuid,
+         'source': 'customer_tablet',
+         'temp_reference': reference,
+         'grand_total_baisas': total,
+         'charge': charge,
+         'session': 'none',
+         'items': const <Object>[],
+       });
+
   final Map<String, dynamic> json;
   String get uuid => json['uuid'] as String? ?? '';
   String get reference =>

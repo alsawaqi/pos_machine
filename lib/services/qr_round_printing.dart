@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../l10n/l10n.dart';
 import '../models/qr_till_models.dart';
 import 'kitchen_ticket.dart';
 import 'pos_api_service.dart';
@@ -65,6 +66,30 @@ KitchenTicketData buildQrKitchenTicket(
   final reference = receipt != null && receipt.isNotEmpty
       ? receipt
       : tempReference;
+  // LAUNCH-P6 item 8 — a customer tablet's round prints like a QR round,
+  // labelled as a tablet order; Quick / To go carry the big order number.
+  if (envelope.fromTablet) {
+    final l10n = lookupL10n(Locale(arabic ? 'ar' : 'en'));
+    final number = envelope.orderNumber?.trim();
+    return KitchenTicketData(
+      orderLabel: number != null && number.isNotEmpty
+          ? '#$number'
+          : (reference == null || reference.isEmpty
+                ? l10n.tabletBadge
+                : reference),
+      orderTypeLabel: switch (envelope.orderType) {
+        'quick' => l10n.tabletTicketQuick,
+        'to_go' => l10n.tabletTicketToGo,
+        _ => l10n.tabletTicketDineIn(round.roundNo),
+      },
+      tableLabel: envelope.tableLabel ?? '',
+      time: round.resolvedAt ?? round.submittedAt ?? DateTime.now().toUtc(),
+      items: [
+        for (final line in round.lines)
+          if (line.remainingQuantity > 0) line.toKitchenItem(arabic: arabic),
+      ],
+    );
+  }
   return KitchenTicketData(
     orderLabel: reference == null || reference.isEmpty
         ? (arabic ? 'طلب QR' : 'QR ORDER')

@@ -42,7 +42,12 @@ class DineInDetail {
       if (round['id'] is! int ||
           round['round_no'] is! int ||
           round['priced_lines'] is! List ||
-          !const {'staff', 'customer'}.contains(round['entered_by'])) {
+          // LAUNCH-P6 (F-6) — a customer tablet's round is `tablet`.
+          !const {
+            'staff',
+            'customer',
+            'tablet',
+          }.contains(round['entered_by'])) {
         throw const FormatException('Invalid round');
       }
     }

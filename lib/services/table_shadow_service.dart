@@ -43,12 +43,17 @@ class TableActivityBoardRow {
     this.reference,
     this.pendingCount = 0,
     this.pendingItems = const {},
+    this.tabletPendingCount = 0,
   });
   final int tableId;
   final String label;
   final String? reference;
   final int pendingCount;
   final Map<int, int> pendingItems;
+
+  /// LAUNCH-P6 item 6 — pending rounds a customer tablet sent (a
+  /// `tablet-orders` build sees `origin: customer_tablet` on them).
+  final int tabletPendingCount;
 
   factory TableActivityBoardRow.fromBoard(Map<String, dynamic> row) {
     final seating = row['seating'] as Map?;
@@ -59,6 +64,10 @@ class TableActivityBoardRow {
       reference: (seating?['temp_reference'] ?? bill?['temp_reference'])
           ?.toString(),
       pendingCount: (bill?['pending_rounds'] as num?)?.toInt() ?? 0,
+      tabletPendingCount: (seating?['pending_rounds'] as List? ?? [])
+          .whereType<Map>()
+          .where((round) => round['origin'] == 'customer_tablet')
+          .length,
       pendingItems: {
         for (final round
             in (seating?['pending_rounds'] as List? ?? []).whereType<Map>())

@@ -5,10 +5,24 @@ Map<String, dynamic> checkoutMap(Object? value) =>
     Map<String, dynamic>.from(value as Map);
 
 /// Explicit server capability; source alone cannot authorize staff recovery.
+/// LAUNCH-P6 — a table bill a customer tablet opened is a staff-served
+/// table bill too (the server's staff table checkout).
 bool hasStaffTableCheckoutPolicy(Map<String, dynamic>? bill) =>
     bill != null &&
-    const {'main_pos', 'handheld'}.contains(bill['source']) &&
+    const {
+      'main_pos',
+      'handheld',
+      'customer_tablet',
+    }.contains(bill['source']) &&
     bill['checkout_policy'] == 'staff_table_claim_v1';
+
+/// LAUNCH-P6 — a customer tablet's Quick / To go order at the counter: it
+/// is claimed (claim-settlement) and paid like a QR quick order (F-10).
+bool isTabletCounterCheckout(Map<String, dynamic>? order) =>
+    order != null &&
+    order['source'] == 'customer_tablet' &&
+    const {'quick', 'to_go'}.contains(order['order_type']) &&
+    order['table_id'] == null;
 
 Object? _freeze(Object? value) => switch (value) {
   Map value => Map<String, dynamic>.unmodifiable(
@@ -81,12 +95,14 @@ class CheckoutSnapshot {
     final identity = checkoutMap(data['claim']);
     if (order['uuid'] != claim.uuid ||
         !(order['source'] == 'qr_web' ||
+            isTabletCounterCheckout(order) ||
             (hasStaffTableCheckoutPolicy(order) &&
                 order['order_type'] == 'dine_in' &&
                 order['table_id'] is int &&
                 (order['table_id'] as int) > 0)) ||
         order['status'] != 'awaiting_payment' ||
         !((order['order_type'] == 'quick' && order['table_id'] == null) ||
+            isTabletCounterCheckout(order) ||
             (order['order_type'] == 'dine_in' && order['table_id'] is int)) ||
         identity['order_uuid'] != claim.uuid ||
         checkoutInt(identity['charge_amount_baisas']) != claim.amount ||

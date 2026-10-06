@@ -87,9 +87,12 @@ class ApiCheckoutGateway implements CheckoutGateway {
   Future<Map<String, dynamic>> snapshot(String orderUuid) => _call(() async {
     final result = await api.checkoutRead(orderUuid);
     final order = checkoutMap(result['order']);
+    // LAUNCH-P6 (F-10) — a tablet Quick / To go order goes back to `held`
+    // on Back too (cancel-settlement), so staff can edit it again.
     _editableQrOrder =
-        order['source'] == 'qr_web' &&
-        const ['quick', 'dine_in'].contains(order['order_type']);
+        (order['source'] == 'qr_web' &&
+            const ['quick', 'dine_in'].contains(order['order_type'])) ||
+        isTabletCounterCheckout(order);
     return result;
   });
   @override

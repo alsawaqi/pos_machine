@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../order_workspace/current_order_workspace.dart';
 import '../qr_quick/qr_quick_models.dart';
 import '../qr_quick/qr_quick_screen.dart';
+import '../l10n/l10n.dart';
 import 'dine_in_controller.dart';
 import 'dine_in_models.dart';
 import 'dine_in_store.dart';
@@ -192,6 +193,10 @@ String dineInText(bool ar, String key) {
     ],
     'print': ['Retry kitchen print', 'إعادة طباعة المطبخ'],
   };
+  // LAUNCH-P6 — a customer tablet's round is labelled "Tablet".
+  if (key == 'tablet') {
+    return lookupL10n(Locale(ar ? 'ar' : 'en')).tabletBadge;
+  }
   if (key.startsWith('adjust_refused:')) {
     final code = key.substring('adjust_refused:'.length);
     const adjustmentCodes = {

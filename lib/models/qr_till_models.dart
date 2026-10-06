@@ -298,6 +298,10 @@ class QrRoundEnvelope {
     this.claimedByDeviceId,
     this.printedAt,
     this.needsReview = false,
+    this.orderType,
+    this.origin,
+    this.tabletOrderUuid,
+    this.orderNumber,
   });
 
   final QrDeviceRound round;
@@ -306,6 +310,15 @@ class QrRoundEnvelope {
   final String? tableLabel;
   final String? receiptNumber;
   final String? tempReference;
+
+  /// LAUNCH-P6 — the accepted-round feed of a `tablet-orders` build names
+  /// the order type, where the round came from (`customer_tablet`), the
+  /// tablet order and its number ("27" for Quick / To go).
+  final String? orderType;
+  final String? origin;
+  final String? tabletOrderUuid;
+  final String? orderNumber;
+  bool get fromTablet => origin == 'customer_tablet' || tabletOrderUuid != null;
 
   final String? ticketKey;
   final int? claimedByDeviceId;
@@ -356,6 +369,10 @@ class QrRoundEnvelope {
         claimedByDeviceId: (json['claimed_by_device_id'] as num?)?.toInt(),
         printedAt: DateTime.tryParse(json['printed_at']?.toString() ?? ''),
         needsReview: json['needs_review'] == true,
+        orderType: _nullableString(json['order_type']),
+        origin: _nullableString(json['origin']),
+        tabletOrderUuid: _nullableString(json['tablet_order_uuid']),
+        orderNumber: _nullableString(json['order_number']),
       );
 }
 
@@ -433,6 +450,10 @@ class QrKitchenTicket {
       claimedByDeviceId: claimedByDeviceId,
       printedAt: printedAt,
       needsReview: envelope.needsReview,
+      orderType: envelope.orderType,
+      origin: envelope.origin,
+      tabletOrderUuid: envelope.tabletOrderUuid,
+      orderNumber: envelope.orderNumber,
     );
   }
 }

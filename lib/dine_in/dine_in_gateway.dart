@@ -93,7 +93,10 @@ class ApiDineInGateway implements DineInGateway, DineInContextGuard {
     () => api.dineInReview(
       detail.seatingUuid!,
       round['id'] as int,
-      staff: round['entered_by'] == 'staff',
+      // LAUNCH-P6 (F-6) — a tablet round is confirmed (= sent to the
+      // kitchen) or rejected through the staff table route, with the staff
+      // token and the capability header.
+      staff: const {'staff', 'tablet'}.contains(round['entered_by']),
       accept: accept,
     ),
     writes: true,
