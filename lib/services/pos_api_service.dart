@@ -1680,7 +1680,9 @@ class ApproverVerification {
   final String? check;
 
   bool get hasVerifier =>
-      (salt ?? '').isNotEmpty && (iterations ?? 0) > 0 && (check ?? '').isNotEmpty;
+      (salt ?? '').isNotEmpty &&
+      (iterations ?? 0) > 0 &&
+      (check ?? '').isNotEmpty;
 
   static ApproverVerification? fromReply(Map<String, dynamic> reply) {
     final staff = reply['staff'];

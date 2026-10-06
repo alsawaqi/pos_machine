@@ -78,13 +78,8 @@ class QrQuickComboPick {
 
   factory QrQuickComboPick.fromJson(Map<String, dynamic> json) {
     if (json.keys.any(
-      (key) => !{
-        'slot_id',
-        'product_id',
-        'qty',
-        'addon_ids',
-        'notes',
-      }.contains(key),
+      (key) =>
+          !{'slot_id', 'product_id', 'qty', 'addon_ids', 'notes'}.contains(key),
     )) {
       throw const FormatException('Unexpected combo field');
     }

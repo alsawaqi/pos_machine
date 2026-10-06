@@ -216,7 +216,10 @@ class QrRoundDisplayLine {
       'components': [
         for (final c in components)
           {
-            'name': arabic && _nullableString(c['product_name_ar'] ?? c['name_ar']) != null
+            'name':
+                arabic &&
+                    _nullableString(c['product_name_ar'] ?? c['name_ar']) !=
+                        null
                 ? _nullableString(c['product_name_ar'] ?? c['name_ar'])
                 : (c['product_name'] ?? c['name'])?.toString() ?? '',
             'qty': (c['qty'] as num?)?.toInt() ?? 1,
@@ -519,8 +522,8 @@ class QrOrderItem {
                 .toList(growable: false)
           : const <QrOrderAddon>[],
       combo: [
-        for (final c in ((json['combo'] ?? json['components']) as List?) ??
-            const [])
+        for (final c
+            in ((json['combo'] ?? json['components']) as List?) ?? const [])
           if (c is Map) c.cast<String, dynamic>(),
       ],
     );

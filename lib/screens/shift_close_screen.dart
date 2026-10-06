@@ -350,11 +350,13 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
         // Auto-print once; fail-safe inside the service. Phase G4 — a
         // failure flips the inline banner on the result step (the close
         // itself already settled server-side).
-        unawaited(SunmiReceiptService.printShiftSummary(ticket).then((ok) {
-          if (!ok && mounted && SunmiReceiptService.printerPluginAvailable) {
-            setState(() => _printFailed = true);
-          }
-        }));
+        unawaited(
+          SunmiReceiptService.printShiftSummary(ticket).then((ok) {
+            if (!ok && mounted && SunmiReceiptService.printerPluginAvailable) {
+              setState(() => _printFailed = true);
+            }
+          }),
+        );
       }
       // LAUNCH-P5 C6 — clock out with the close (default yes) when the
       // person closes their own shift.
@@ -489,10 +491,16 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
           ),
           const SizedBox(height: 18),
         ],
-        _amountCard(l10n.shiftCloseOpeningFloatLabel, _money(openingBaisas),
-            muted: true),
+        _amountCard(
+          l10n.shiftCloseOpeningFloatLabel,
+          _money(openingBaisas),
+          muted: true,
+        ),
         const SizedBox(height: 12),
-        _amountCard(l10n.shiftCloseCountedDrawerCashLabel, _money(_closingBaisas)),
+        _amountCard(
+          l10n.shiftCloseCountedDrawerCashLabel,
+          _money(_closingBaisas),
+        ),
         if (_unsent.isNotEmpty ||
             _missing.isNotEmpty ||
             _payouts.isNotEmpty ||
@@ -672,8 +680,8 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
     final (label, color) = variance == 0
         ? (l10n.shiftCloseDrawerBalanced, const Color(0xFF35C28B))
         : variance < 0
-            ? (l10n.shiftCloseDrawerShort, const Color(0xFFFF6B6B))
-            : (l10n.shiftCloseDrawerOver, const Color(0xFFE0A93B));
+        ? (l10n.shiftCloseDrawerShort, const Color(0xFFFF6B6B))
+        : (l10n.shiftCloseDrawerOver, const Color(0xFFE0A93B));
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -685,13 +693,25 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
         const SizedBox(height: 10),
         Text(
           label,
-          style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.w800),
+          style: TextStyle(
+            color: color,
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const SizedBox(height: 20),
-        _resultRow(l10n.shiftCloseExpectedCash, _money(result.expectedCashBaisas)),
+        _resultRow(
+          l10n.shiftCloseExpectedCash,
+          _money(result.expectedCashBaisas),
+        ),
         _resultRow(l10n.shiftCloseCountedCash, _money(_closingBaisas)),
         const Divider(color: Colors.white24, height: 28),
-        _resultRow(l10n.shiftCloseVariance, _money(variance), color: color, bold: true),
+        _resultRow(
+          l10n.shiftCloseVariance,
+          _money(variance),
+          color: color,
+          bold: true,
+        ),
         const SizedBox(height: 24),
         if (_printFailed) ...[
           Text(
@@ -707,11 +727,14 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
             height: 52,
             child: OutlinedButton.icon(
               onPressed: () async {
-                final ok =
-                    await SunmiReceiptService.printShiftSummary(_ticket!);
+                final ok = await SunmiReceiptService.printShiftSummary(
+                  _ticket!,
+                );
                 if (mounted) {
-                  setState(() => _printFailed =
-                      !ok && SunmiReceiptService.printerPluginAvailable);
+                  setState(
+                    () => _printFailed =
+                        !ok && SunmiReceiptService.printerPluginAvailable,
+                  );
                 }
               },
               icon: const Icon(Icons.print_outlined, color: Colors.white70),
@@ -726,10 +749,7 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
         SizedBox(
           width: 260,
           height: 52,
-          child: FilledButton(
-            onPressed: _done,
-            child: Text(l10n.commonDone),
-          ),
+          child: FilledButton(onPressed: _done, child: Text(l10n.commonDone)),
         ),
       ],
     );
@@ -745,7 +765,10 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
       ),
       child: Column(
         children: [
-          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white54, fontSize: 13),
+          ),
           const SizedBox(height: 6),
           Text(
             value,
@@ -760,14 +783,21 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
     );
   }
 
-  Widget _resultRow(String label, String value,
-      {Color color = Colors.white, bool bold = false}) {
+  Widget _resultRow(
+    String label,
+    String value, {
+    Color color = Colors.white,
+    bool bold = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.white60, fontSize: 15)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white60, fontSize: 15),
+          ),
           Text(
             value,
             style: TextStyle(
@@ -809,7 +839,10 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
               },
               child: Center(
                 child: k == '<'
-                    ? const Icon(Icons.backspace_outlined, color: Colors.white70)
+                    ? const Icon(
+                        Icons.backspace_outlined,
+                        color: Colors.white70,
+                      )
                     : Text(
                         k,
                         style: const TextStyle(

@@ -592,13 +592,7 @@ class _DineInScreenState extends State<DineInScreen>
     setState(() {
       final entry = (
         widget.arabic ? product.nameAr : product.name,
-        QrQuickLine(
-          product.id,
-          quantity,
-          selected,
-          notes: notes,
-          combo: combo,
-        ),
+        QrQuickLine(product.id, quantity, selected, notes: notes, combo: combo),
       );
       if (index < 0) {
         drafts.add(entry);

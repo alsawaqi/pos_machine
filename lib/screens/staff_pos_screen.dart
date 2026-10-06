@@ -1257,7 +1257,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Future<void> _openComboBuilder(Product combo, {CartItem? editing}) async {
     final slots = controller.comboSlotsFor(combo);
     if (slots.isEmpty || !mounted) return;
-    final priced = editing?.product ??
+    final priced =
+        editing?.product ??
         controller.allProducts.firstWhere(
           (p) => p.id == combo.id,
           orElse: () => combo,
@@ -11115,9 +11116,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               ListTile(
                 key: const ValueKey('staff-menu-training'),
                 leading: const Icon(Icons.school_outlined),
-                title: Text(
-                  training ? l10n.trainingExit : l10n.trainingEnter,
-                ),
+                title: Text(training ? l10n.trainingExit : l10n.trainingEnter),
                 onTap: () => Navigator.pop(
                   ctx,
                   training ? 'training_exit' : 'training_enter',
@@ -13447,11 +13446,7 @@ class _OrderItemCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ProductArtwork(
-            product: item.product,
-            width: 84,
-            height: 84,
-          ),
+          _ProductArtwork(product: item.product, width: 84, height: 84),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -20960,7 +20955,10 @@ class _ComboBuilderDialogState extends State<_ComboBuilderDialog> {
                                   ),
                                   onPressed: () =>
                                       _editOptions(choice, product),
-                                  icon: const Icon(Icons.tune_rounded, size: 18),
+                                  icon: const Icon(
+                                    Icons.tune_rounded,
+                                    size: 18,
+                                  ),
                                   label: Text(l10n.posComboItemOptions),
                                 ),
                               ],
@@ -21020,9 +21018,7 @@ class _ComboBuilderDialogState extends State<_ComboBuilderDialog> {
     final soldOut = widget.isSoldOut(product);
     return InkWell(
       key: ValueKey('combo-option-${slot.id}-${option.productId}'),
-      onTap: soldOut && !selected
-          ? null
-          : () => _toggle(slot, option, product),
+      onTap: soldOut && !selected ? null : () => _toggle(slot, option, product),
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
