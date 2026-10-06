@@ -293,7 +293,11 @@ class OrderAttentionController extends ChangeNotifier {
       // Forget opened keys that left (taken, sent, paid or cancelled).
       _opened.retainAll(next.tablet);
       _updateRing();
-      if (next.tablet.isNotEmpty && fetchTablet != null) {
+      // Read the tablet list only for a ringing order without a label yet.
+      final unlabelled = ringing.any(
+        (key) => !tabletRows.any((row) => row.attentionKey == key),
+      );
+      if (unlabelled && fetchTablet != null) {
         try {
           final rows = await fetchTablet!();
           if (!_current(captured, epoch)) return;
