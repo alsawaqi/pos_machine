@@ -1142,19 +1142,21 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     if (!mounted) return;
-    // T-4 — never over another screen (shift close, settings, a payment).
-    final blocked = tabletOrdersOpenBlock(context);
+    // T-4 — never over another screen (shift close, settings, a payment),
+    // nor over a payment or workspace open on the POS itself (fix 2).
+    final blocked = tabletOrdersOpenBlock(
+      context,
+      busy:
+          _workspace != null ||
+          _showPaymentPage ||
+          _normalQrCheckoutOpen ||
+          controller.isProcessingPayment ||
+          controller.hasRecordedSplitPayments,
+    );
     if (blocked != null) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(blocked)));
-      return;
-    }
-    if (_workspace != null ||
-        _showPaymentPage ||
-        _normalQrCheckoutOpen ||
-        controller.isProcessingPayment ||
-        controller.hasRecordedSplitPayments) {
       return;
     }
     final location = ref.read(qrLocationProvider);
@@ -4680,9 +4682,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             await SqliteDineInStore.open(gateway.scope),
             id,
             staffId: session.staff?.id,
-            // LAUNCH-P6 T-3 — a confirmed tablet round does not print here.
-            tabletPrintOff: () =>
-                !ref.read(settingsControllerProvider).printKitchenTickets,
+            // LAUNCH-P6 T-3 (fix 2) — warn only when this till prints
+            // neither kitchen tickets nor QR / tablet kitchen rounds.
+            tabletPrintOff: () {
+              final settings = ref.read(settingsControllerProvider);
+              return tabletRoundPrintOff(
+                printKitchenTickets: settings.printKitchenTickets,
+                printQrKitchenRounds: settings.printQrKitchenRounds,
+              );
+            },
             recordCancellationWaste: (request, qty) async {
               gateway.check();
               final cancel = request.cancellation;
@@ -6342,8 +6350,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     if (await _verifyLocalTableBill(tender: true) != null) {
-      if (_tenderNeedsServerSheet && mounted) {
-        await _openCustomerBill(tableId.toString());
+      if (mounted) {
+        await tabletTenderHandover(
+          needsServerSheet: _tenderNeedsServerSheet,
+          closeLocalPage: () {},
+          openServerSheet: () => _openCustomerBill(tableId.toString()),
+        );
       }
       return;
     }
@@ -6452,7 +6464,18 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final mode = ref.read(tableSessionsModeProvider);
     final tableId = int.tryParse(controller.activeDiningTableId ?? '');
     if (mode != 'live' || tableId == null) return true;
-    if (await _verifyLocalTableBill(tender: true) != null) return false;
+    if (await _verifyLocalTableBill(tender: true) != null) {
+      // Fix 2 (T-1) — a tablet round found at dispatch: leave the dead
+      // local page for the table's server bill.
+      if (mounted) {
+        await tabletTenderHandover(
+          needsServerSheet: _tenderNeedsServerSheet,
+          closeLocalPage: () => setState(() => _showPaymentPage = false),
+          openServerSheet: () => _openCustomerBill(tableId.toString()),
+        );
+      }
+      return false;
+    }
     final contextKey = _tablePayContext;
     var allowed = false;
     bool current() =>

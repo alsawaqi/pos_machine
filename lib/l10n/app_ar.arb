@@ -1410,5 +1410,6 @@
   "tabletOtherCheckoutFinished": "تم إنهاء دفعة محفوظة لطلب آخر أولاً. هذا الطلب لم يُدفع ولم يُرسل — استلم نقده مرة أخرى.",
   "tabletAlertsNotUpdating": "التنبيهات لا تتحدث",
   "checkoutLoginAgain": "سجّل الدخول مرة أخرى",
-  "tabletKitchenNoticeOk": "حسناً"
+  "tabletKitchenNoticeOk": "حسناً",
+  "tabletOrderNotFoundYet": "لم يُعثر على الطلب بعد — حاول مرة أخرى"
 }

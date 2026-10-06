@@ -171,8 +171,25 @@ class TabletOrdersController extends ChangeNotifier {
     return null;
   }
 
-  Future<void> refresh() async {
-    if (_fetching || _disposed) return;
+  Future<void>? _inFlight;
+
+  /// A fresh read: waits for a read already in flight, then reads again.
+  Future<void> refreshNow() async {
+    final running = _inFlight;
+    if (running != null) await running;
+    await refresh();
+  }
+
+  Future<void> refresh() {
+    if (_fetching || _disposed) return _inFlight ?? Future<void>.value();
+    final read = _refresh();
+    _inFlight = read;
+    return read.whenComplete(() {
+      if (identical(_inFlight, read)) _inFlight = null;
+    });
+  }
+
+  Future<void> _refresh() async {
     _fetching = true;
     final generation = _generation;
     try {

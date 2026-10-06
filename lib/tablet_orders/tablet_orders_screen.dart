@@ -78,10 +78,34 @@ String tabletMoney(int baisas) => (baisas / 1000).toStringAsFixed(3);
 /// LAUNCH-P6 till fix order 1 (T-4) — the tablet list opens only over the
 /// staff POS itself: null when [context]'s route is the current one, else
 /// "Finish this screen first".
-String? tabletOrdersOpenBlock(BuildContext context) =>
-    ModalRoute.of(context)?.isCurrent ?? true
+///
+/// Fix 2 — [busy] (the local payment page, a server workspace, a QR checkout
+/// or a recorded split on the POS itself) blocks it the same way.
+String? tabletOrdersOpenBlock(BuildContext context, {bool busy = false}) =>
+    !busy && (ModalRoute.of(context)?.isCurrent ?? true)
     ? null
     : L10n.of(context).tabletFinishScreenFirst;
+
+/// LAUNCH-P6 till fix 2 (T-3) — a confirmed tablet round prints nowhere on
+/// this till only when both kitchen printing settings are off.
+bool tabletRoundPrintOff({
+  required bool printKitchenTickets,
+  required bool printQrKitchenRounds,
+}) => !printKitchenTickets && !printQrKitchenRounds;
+
+/// LAUNCH-P6 till fix 2 (T-1) — a local tender refused for a tablet round
+/// hands over to the server sheet: the local page closes first, then the
+/// table's server bill opens. Answers whether it handed over.
+Future<bool> tabletTenderHandover({
+  required bool needsServerSheet,
+  required void Function() closeLocalPage,
+  required Future<void> Function() openServerSheet,
+}) async {
+  if (!needsServerSheet) return false;
+  closeLocalPage();
+  await openServerSheet();
+  return true;
+}
 
 String tabletTypeLabel(L10n l10n, TabletOrderRow row) =>
     switch (row.orderType) {
@@ -231,10 +255,20 @@ class _TabletOrdersScreenState extends State<TabletOrdersScreen> {
     if (key == null || _sheetOpen || !mounted) return;
     final uuid = key.startsWith('tablet:') ? key.substring(7) : key;
     if (widget.controller.find(uuid) == null) {
-      await widget.controller.refresh();
+      // Fix 2 — a read already in flight may predate the order: wait for
+      // it, then read again.
+      await widget.controller.refreshNow();
     }
     if (!mounted || _sheetOpen || widget.openRequests?.value != key) return;
-    if (widget.controller.find(uuid) != null) await _open(uuid);
+    if (widget.controller.find(uuid) != null) {
+      await _open(uuid);
+    } else {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(L10n.of(context).tabletOrderNotFoundYet)),
+        );
+    }
   }
 
   @override

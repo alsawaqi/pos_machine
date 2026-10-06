@@ -4381,4 +4381,7 @@ class L10nEn extends L10n {
 
   @override
   String get tabletKitchenNoticeOk => 'OK';
+
+  @override
+  String get tabletOrderNotFoundYet => 'Order not found yet — try again';
 }

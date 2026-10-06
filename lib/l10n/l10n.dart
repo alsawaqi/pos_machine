@@ -7204,6 +7204,12 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'OK'**
   String get tabletKitchenNoticeOk;
+
+  /// No description provided for @tabletOrderNotFoundYet.
+  ///
+  /// In en, this message translates to:
+  /// **'Order not found yet — try again'**
+  String get tabletOrderNotFoundYet;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

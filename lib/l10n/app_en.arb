@@ -2718,5 +2718,6 @@
   "tabletOtherCheckoutFinished": "A saved payment of another order was finished first. This order is not paid and was not sent — take its cash again.",
   "tabletAlertsNotUpdating": "alerts not updating",
   "checkoutLoginAgain": "Log in again",
-  "tabletKitchenNoticeOk": "OK"
+  "tabletKitchenNoticeOk": "OK",
+  "tabletOrderNotFoundYet": "Order not found yet — try again"
 }

@@ -4414,4 +4414,7 @@ class L10nAr extends L10n {
 
   @override
   String get tabletKitchenNoticeOk => 'حسناً';
+
+  @override
+  String get tabletOrderNotFoundYet => 'لم يُعثر على الطلب بعد — حاول مرة أخرى';
 }
