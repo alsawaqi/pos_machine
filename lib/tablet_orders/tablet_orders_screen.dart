@@ -25,6 +25,7 @@ class TabletOrderActions {
     this.pickItem,
     this.myStaffId,
     this.onOpened,
+    this.printsKitchenTickets,
   });
 
   /// The till's `_authorizeAction`: the person's own tick, or an approver's
@@ -37,8 +38,14 @@ class TabletOrderActions {
   authorize;
 
   /// The claim, then the existing cash pay of the order's frozen total.
-  /// True once the server confirmed the payment.
-  final Future<bool> Function(TabletOrderRow row)? takeCash;
+  /// True once the server confirmed THIS order's payment; false when not
+  /// paid; null when a saved checkout of another order was finished instead
+  /// (T-2: this order is neither paid nor sent).
+  final Future<bool?> Function(TabletOrderRow row)? takeCash;
+
+  /// T-3 — false when this till does not print QR / tablet kitchen tickets
+  /// (the "QR kitchen rounds" setting is off): staff are warned on send.
+  final bool Function()? printsKitchenTickets;
 
   /// The existing `order.void` (durable outbox) with its gate's block.
   final Future<void> Function(
@@ -52,8 +59,9 @@ class TabletOrderActions {
   /// A sent dine-in order is cancelled at its table.
   final void Function(TabletOrderRow row)? openTable;
 
-  /// F-13 / F-15 — recovery of a lapsed or uncertain cash claim.
-  final Future<void> Function(TabletOrderRow row)? moveToCounter;
+  /// F-13 / F-15 — recovery of a lapsed or uncertain cash claim. Move to
+  /// counter answers the server's refusal code (null when it worked, T-6).
+  final Future<String?> Function(TabletOrderRow row)? moveToCounter;
   final Future<void> Function(TabletOrderRow row)? paymentReview;
   final Future<void> Function()? checkPaymentResult;
 
@@ -66,6 +74,14 @@ class TabletOrderActions {
 }
 
 String tabletMoney(int baisas) => (baisas / 1000).toStringAsFixed(3);
+
+/// LAUNCH-P6 till fix order 1 (T-4) — the tablet list opens only over the
+/// staff POS itself: null when [context]'s route is the current one, else
+/// "Finish this screen first".
+String? tabletOrdersOpenBlock(BuildContext context) =>
+    ModalRoute.of(context)?.isCurrent ?? true
+    ? null
+    : L10n.of(context).tabletFinishScreenFirst;
 
 String tabletTypeLabel(L10n l10n, TabletOrderRow row) =>
     switch (row.orderType) {
@@ -207,11 +223,18 @@ class _TabletOrdersScreenState extends State<TabletOrdersScreen> {
   bool _openedInitial = false;
   bool _sheetOpen = false;
 
-  void _openRequested() {
+  void _openRequested() => unawaited(_openRequestedAsync());
+
+  /// T-5 — the requested order may be newer than this list: read it first.
+  Future<void> _openRequestedAsync() async {
     final key = widget.openRequests?.value;
     if (key == null || _sheetOpen || !mounted) return;
     final uuid = key.startsWith('tablet:') ? key.substring(7) : key;
-    if (widget.controller.find(uuid) != null) unawaited(_open(uuid));
+    if (widget.controller.find(uuid) == null) {
+      await widget.controller.refresh();
+    }
+    if (!mounted || _sheetOpen || widget.openRequests?.value != key) return;
+    if (widget.controller.find(uuid) != null) await _open(uuid);
   }
 
   @override
@@ -499,8 +522,15 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
     await c.take(row.uuid, takeOver: other);
   });
 
+  /// T-3 — sent, but this till does not print the ticket.
+  void _warnIfNoPrint() {
+    if (a.printsKitchenTickets?.call() == false && mounted) {
+      setState(() => _message = L10n.of(context).tabletPrintOffWarning);
+    }
+  }
+
   Future<void> _send(TabletOrderRow row) => _guard(() async {
-    await c.send(row.uuid);
+    if (await c.send(row.uuid)) _warnIfNoPrint();
   });
 
   Future<void> _takeCash(TabletOrderRow row) => _guard(() async {
@@ -516,12 +546,20 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
     final wasPending = current.pending;
     final paid = await takeCash(current);
     await c.refresh();
-    if (!paid || !mounted) return;
+    if (!mounted) return;
+    if (paid == null) {
+      // T-2 — another order's saved checkout finished: not this one.
+      setState(() => _message = L10n.of(context).tabletOtherCheckoutFinished);
+      return;
+    }
+    if (!paid) return;
     // Cash first, then the kitchen.
     if (wasPending) {
       final sent = await c.send(row.uuid);
       if (!sent && mounted) {
         setState(() => _message = L10n.of(context).tabletPaidNotSent);
+      } else {
+        _warnIfNoPrint();
       }
     }
   });
@@ -712,7 +750,8 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
             onPressed: busy ? null : () => _edit(row),
             child: Text(l10n.tabletEditLines),
           ),
-        if (recovery &&
+        // T-7 — a live claim held here (an interrupted checkout) too.
+        if ((recovery || row.charge.beingPaid) &&
             row.charge.heldByThisDevice &&
             a.checkPaymentResult != null)
           FilledButton(
@@ -734,8 +773,18 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
             onPressed: busy
                 ? null
                 : () => _guard(() async {
-                    await a.moveToCounter!(row);
+                    final refusal = await a.moveToCounter!(row);
                     await c.refresh();
+                    // T-6 — the refusal is shown, not swallowed.
+                    if (refusal != null && mounted) {
+                      setState(
+                        () => _message = tabletNoticeText(
+                          L10n.of(context),
+                          refusal,
+                          null,
+                        ),
+                      );
+                    }
                   }),
             child: Text(l10n.tabletMoveToCounter),
           ),

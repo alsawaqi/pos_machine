@@ -293,7 +293,7 @@
   "settingsPrintReceiptsHint": "اطبع إيصال Sunmi عند اكتمال الطلب.",
   "settingsPrintKitchenTickets": "طباعة تذاكر المطبخ",
   "settingsPrintKitchenTicketsHint": "اطبع تذكرة مطبخ بالأصناف فقط عند اكتمال الطلب أو تعليقه.",
-  "settingsPrintQrKitchenRounds": "طباعة جولات QR للمطبخ على هذا الجهاز",
+  "settingsPrintQrKitchenRounds": "طباعة جولات QR والجهاز اللوحي للمطبخ على هذا الجهاز",
   "settingsPrintQrKitchenRoundsHint": "اطبع جولات طلبات الطاولة عبر QR بعد قبولها. عطّلها على أجهزة الكاشير الأخرى لمنع التذاكر المكررة.",
   "settingsSectionLanguage": "اللغة",
   "settingsLanguageHint": "تُطبَّق فورًا في كامل التطبيق.",
@@ -1403,5 +1403,12 @@
   "tabletRefusedBillReserved": "فاتورة هذه الطاولة قيد الدفع. حاول مرة أخرى بعد الدفع.",
   "tabletRefusedNeedsUpdate": "يحتاج هذا الجهاز إلى تحديث التطبيق لطلبات الجهاز اللوحي.",
   "tabletTakenCheckout": "هذا الطلب مع موظف آخر. استلمه بدلاً منه أولاً.",
-  "tabletKitchenUnreadable": "{count, plural, =1{تعذرت قراءة تذكرة مطبخ واحدة — راجع المدير} other{تعذرت قراءة {count} تذاكر مطبخ — راجع المدير}}"
+  "tabletKitchenUnreadable": "{count, plural, =1{تعذرت قراءة تذكرة مطبخ واحدة — راجع المدير} other{تعذرت قراءة {count} تذاكر مطبخ — راجع المدير}}",
+  "tabletBillUseServerSheet": "هذه الفاتورة فيها جولة من الجهاز اللوحي. ادفعها من فاتورة الطاولة (إجمالي الخادم).",
+  "tabletPrintOffWarning": "هذا الجهاز لا يطبع تذاكر المطبخ لطلبات QR والجهاز اللوحي. فعّلها من الإعدادات أو اطبع من جهاز آخر.",
+  "tabletFinishScreenFirst": "أنهِ هذه الشاشة أولاً",
+  "tabletOtherCheckoutFinished": "تم إنهاء دفعة محفوظة لطلب آخر أولاً. هذا الطلب لم يُدفع ولم يُرسل — استلم نقده مرة أخرى.",
+  "tabletAlertsNotUpdating": "التنبيهات لا تتحدث",
+  "checkoutLoginAgain": "سجّل الدخول مرة أخرى",
+  "tabletKitchenNoticeOk": "حسناً"
 }

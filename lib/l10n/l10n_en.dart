@@ -399,7 +399,7 @@ class L10nEn extends L10n {
 
   @override
   String get settingsPrintQrKitchenRounds =>
-      'Print QR kitchen rounds on this device';
+      'Print QR and tablet kitchen rounds on this device';
 
   @override
   String get settingsPrintQrKitchenRoundsHint =>
@@ -4357,4 +4357,28 @@ class L10nEn extends L10n {
     );
     return '$_temp0';
   }
+
+  @override
+  String get tabletBillUseServerSheet =>
+      'This bill has a tablet round. Pay it from the table bill (server total).';
+
+  @override
+  String get tabletPrintOffWarning =>
+      'This till does not print kitchen tickets for QR and tablet orders. Turn it on in Settings or print from another device.';
+
+  @override
+  String get tabletFinishScreenFirst => 'Finish this screen first';
+
+  @override
+  String get tabletOtherCheckoutFinished =>
+      'A saved payment of another order was finished first. This order is not paid and was not sent — take its cash again.';
+
+  @override
+  String get tabletAlertsNotUpdating => 'alerts not updating';
+
+  @override
+  String get checkoutLoginAgain => 'Log in again';
+
+  @override
+  String get tabletKitchenNoticeOk => 'OK';
 }

@@ -38,6 +38,9 @@ class TabletAttentionBanner extends StatelessWidget {
         tabletAttentionLabel(l10n, first, controller.tabletRows),
       ),
       if (ringing.length > 1) l10n.tabletNewOrdersMore(ringing.length - 1),
+      // Offline: the banner stays, saying it is not updating (the repeat
+      // ring alone stops).
+      if (controller.stale) l10n.tabletAlertsNotUpdating,
     ].join(' · ');
     return ValueListenableBuilder<void Function(String?)?>(
       valueListenable: tabletOrdersOpener,

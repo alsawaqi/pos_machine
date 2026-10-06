@@ -83,6 +83,11 @@ class ApiCheckoutGateway implements CheckoutGateway {
           }.contains(error.code)) {
         throw CheckoutRefusal(error.code!);
       }
+      // The staff token was refused: no claim was made. Never leave the
+      // attempt saved as "claiming" — log in again.
+      if (error.isStaffUnverified) {
+        throw const CheckoutRefusal('staff_unverified');
+      }
       rethrow;
     }
   }

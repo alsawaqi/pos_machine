@@ -321,7 +321,7 @@
   "settingsPrintReceiptsHint": "Print a Sunmi receipt when an order completes.",
   "settingsPrintKitchenTickets": "Print kitchen tickets",
   "settingsPrintKitchenTicketsHint": "Print an items-only kitchen ticket when an order completes or is held.",
-  "settingsPrintQrKitchenRounds": "Print QR kitchen rounds on this device",
+  "settingsPrintQrKitchenRounds": "Print QR and tablet kitchen rounds on this device",
   "settingsPrintQrKitchenRoundsHint": "Print newly accepted dine-in QR rounds. Leave off on other tills to prevent duplicate kitchen tickets.",
   "settingsSectionLanguage": "Language",
   "settingsLanguageHint": "Applies immediately across the app.",
@@ -2711,5 +2711,12 @@
   "tabletRefusedNeedsUpdate": "This device needs the app update for tablet orders.",
   "tabletTakenCheckout": "Another staff member has this tablet order. Take it over first.",
   "tabletKitchenUnreadable": "{count, plural, =1{1 kitchen ticket could not be read — check with the manager} other{{count} kitchen tickets could not be read — check with the manager}}",
-  "@tabletKitchenUnreadable": {"placeholders": {"count": {"type": "int"}}}
+  "@tabletKitchenUnreadable": {"placeholders": {"count": {"type": "int"}}},
+  "tabletBillUseServerSheet": "This bill has a tablet round. Pay it from the table bill (server total).",
+  "tabletPrintOffWarning": "This till does not print kitchen tickets for QR and tablet orders. Turn it on in Settings or print from another device.",
+  "tabletFinishScreenFirst": "Finish this screen first",
+  "tabletOtherCheckoutFinished": "A saved payment of another order was finished first. This order is not paid and was not sent — take its cash again.",
+  "tabletAlertsNotUpdating": "alerts not updating",
+  "checkoutLoginAgain": "Log in again",
+  "tabletKitchenNoticeOk": "OK"
 }

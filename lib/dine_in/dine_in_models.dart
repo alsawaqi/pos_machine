@@ -17,6 +17,9 @@ Map<String, dynamic> tableMap(Object? value) {
   return Map<String, dynamic>.from(value);
 }
 
+/// LAUNCH-P6 (T-1) — see [DineInDetail.hasTabletRound].
+bool dineInDetailHasTabletRound(DineInDetail detail) => detail.hasTabletRound;
+
 /// A display snapshot, never a cart, local table record or payment authority.
 class DineInDetail {
   DineInDetail(Map<String, dynamic> value)
@@ -104,6 +107,15 @@ class DineInDetail {
       (bill == null || bill?['status'] == 'open') &&
       (bill == null || bill?['charge'] == 'none');
   bool get qrBill => bill?['source'] == 'qr_web';
+
+  /// LAUNCH-P6 till fix order 1 (T-1) — the bill has a customer tablet's
+  /// round (`entered_by: tablet`, or F-20's `tablet_rounds`): it is paid from
+  /// the server sheet, never from the till's local cart.
+  bool get hasTabletRound =>
+      ((bill?['tablet_rounds'] as num?)?.toInt() ?? 0) > 0 ||
+      rounds.any(
+        (r) => r['entered_by'] == 'tablet' && r['status'] != 'rejected',
+      );
   bool get protectedCheckout =>
       qrBill ||
       (hasStaffTableCheckoutPolicy(bill) &&

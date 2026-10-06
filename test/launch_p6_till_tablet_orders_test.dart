@@ -238,7 +238,10 @@ void main() {
         },
         voidReasons: reasons,
         openTable: (row) => events.add('table:${row.tableId}'),
-        moveToCounter: (row) async => events.add('counter:${row.orderUuid}'),
+        moveToCounter: (row) async {
+          events.add('counter:${row.orderUuid}');
+          return null;
+        },
         paymentReview: (row) async => events.add('review:${row.orderUuid}'),
         checkPaymentResult: () async => events.add('check'),
         onOpened: (key) => events.add('opened:$key'),

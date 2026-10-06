@@ -33,6 +33,7 @@ class DineInController extends ChangeNotifier {
     this.localDraftTables,
     this.printAccepted,
     this.recordCancellationWaste,
+    this.tabletPrintOff,
   }) : store = store is SqliteDineInStore ? store.forTable(tableId) : store;
   final DineInGateway gateway;
   final DineInStore store;
@@ -42,6 +43,9 @@ class DineInController extends ChangeNotifier {
   final Set<int> Function()? localDraftTables;
   final Future<bool> Function(DineInDetail, Map<String, dynamic>)?
   printAccepted;
+
+  /// LAUNCH-P6 T-3 — this till does not print a confirmed tablet round.
+  final bool Function()? tabletPrintOff;
   bool _localConflict(DineInDetail value) => value.coveredTableIds.any(
     (id) => localDraftTables?.call().contains(id) == true,
   );
@@ -652,6 +656,12 @@ class DineInController extends ChangeNotifier {
       if (round == null || round['status'] != 'pending_confirmation') return;
       await gateway.review(now, round, accept);
       if (accept) await _printAcceptedRound(tableId, roundId);
+      if (accept &&
+          round['entered_by'] == 'tablet' &&
+          tabletPrintOff?.call() == true &&
+          notice == null) {
+        notice = 'tablet_print_off';
+      }
     });
   }
 

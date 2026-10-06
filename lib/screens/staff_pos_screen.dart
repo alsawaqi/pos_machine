@@ -68,7 +68,10 @@ import '../services/order_sync_payload.dart'
         uuidV4;
 import '../services/pos_api_service.dart' show ApiException;
 import '../services/qr_round_printing.dart'
-    show QrRoundAutoPrintController, QrRoundPrintNoticeKind;
+    show
+        KitchenUnreadableTally,
+        QrRoundAutoPrintController,
+        QrRoundPrintNoticeKind;
 import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
 import '../services/sold_out_sync.dart';
@@ -1119,6 +1122,10 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   void _tabletOpener(String? key) =>
       unawaited(_openTabletOrders(initialKey: key));
   bool _tabletOrdersOpen = false;
+  final _kitchenUnreadable = KitchenUnreadableTally();
+
+  /// T-2 — the last checkout finished another order's saved payment.
+  bool _otherCheckoutFinished = false;
 
   /// "Open" requests while the tablet list is up open the order there.
   final _tabletOpenRequest = ValueNotifier<String?>(null);
@@ -1134,12 +1141,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       _tabletOpenRequest.value = initialKey;
       return;
     }
+    if (!mounted) return;
+    // T-4 — never over another screen (shift close, settings, a payment).
+    final blocked = tabletOrdersOpenBlock(context);
+    if (blocked != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(blocked)));
+      return;
+    }
     if (_workspace != null ||
         _showPaymentPage ||
         _normalQrCheckoutOpen ||
         controller.isProcessingPayment ||
-        controller.hasRecordedSplitPayments ||
-        !mounted) {
+        controller.hasRecordedSplitPayments) {
       return;
     }
     final location = ref.read(qrLocationProvider);
@@ -1167,7 +1182,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     subtitle: subtitle,
                     alwaysApproval: alwaysApproval,
                   ),
-              takeCash: (row) => _launchQrCheckout(row.orderUuid),
+              takeCash: (row) async {
+                _otherCheckoutFinished = false;
+                final paid = await _launchQrCheckout(row.orderUuid);
+                // T-2 — another order's saved checkout finished instead.
+                if (!paid && _otherCheckoutFinished) return null;
+                return paid;
+              },
+              printsKitchenTickets: () =>
+                  ref.read(settingsControllerProvider).printQrKitchenRounds,
               checkPaymentResult: () => _launchQrCheckout(null),
               voidOrder: (row, {reason, required authorization}) async {
                 // LAUNCH-P5 C3 — the voider and the signed block.
@@ -1194,8 +1217,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
               moveToCounter: (row) async {
                 try {
                   await api.fallbackQrToCounter(row.orderUuid);
+                  return null;
+                } on ApiException catch (error) {
+                  // T-6 — the refusal is shown on the sheet.
+                  return error.isNetwork
+                      ? 'network'
+                      : (error.code ?? 'refused');
                 } catch (_) {
-                  // The list shows the order's state after a refresh.
+                  return 'network';
                 }
               },
               paymentReview: (row) async {
@@ -1723,15 +1752,27 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           arabic
               ? 'جولة المطبخ معلقة للمراجعة.'
               : 'Kitchen round held for review.',
-        QrRoundPrintNoticeKind.unreadable => lookupL10n(
-          Locale(arabic ? 'ar' : 'en'),
-        ).tabletKitchenUnreadable(next.count),
+        QrRoundPrintNoticeKind.unreadable => '',
       };
+      final l10n = lookupL10n(Locale(arabic ? 'ar' : 'en'));
+      // LAUNCH-P6 — an unreadable ticket stays on every later kitchen
+      // notice until staff tap OK.
+      final text = _kitchenUnreadable.compose(next, message, l10n);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(content: Text(message)));
+          ..showSnackBar(
+            SnackBar(
+              content: Text(text),
+              action: _kitchenUnreadable.count > 0
+                  ? SnackBarAction(
+                      label: l10n.tabletKitchenNoticeOk,
+                      onPressed: _kitchenUnreadable.acknowledge,
+                    )
+                  : null,
+            ),
+          );
         ref.read(qrRoundPrintNoticeProvider.notifier).clear();
       });
     });
@@ -4639,6 +4680,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             await SqliteDineInStore.open(gateway.scope),
             id,
             staffId: session.staff?.id,
+            // LAUNCH-P6 T-3 — a confirmed tablet round does not print here.
+            tabletPrintOff: () =>
+                !ref.read(settingsControllerProvider).printKitchenTickets,
             recordCancellationWaste: (request, qty) async {
               gateway.check();
               final cancel = request.cancellation;
@@ -6174,11 +6218,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     return null;
   }
 
+  /// LAUNCH-P6 T-1 — the last tender check found a tablet round.
+  bool _tenderNeedsServerSheet = false;
+
   Future<String?> _verifyLocalTableBill({
     DiningTableSession? source,
     bool tender = false,
     bool clearing = false,
   }) async {
+    if (tender) _tenderNeedsServerSheet = false;
     if (ref.read(tableSessionsModeProvider) != 'live') return null;
     final id = source?.tableId ?? controller.activeDiningTableId;
     if (id == null) return null;
@@ -6225,6 +6273,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           }.contains(detail.bill?['status']) ||
           const {'closed', 'expired'}.contains(detail.seating?['status'])) {
         refusal = _closedTableMessage;
+      } else if (tender && detail.hasTabletRound) {
+        // LAUNCH-P6 T-1 — the local cart lacks the tablet lines: pay this
+        // bill from the server sheet (its full server total).
+        _tenderNeedsServerSheet = true;
+        refusal = lookupL10n(
+          Localizations.localeOf(context),
+        ).tabletBillUseServerSheet;
       } else if (tender && (detail.billUuid == null || detail.pendingReview)) {
         refusal =
             'Open the table bill and confirm or reject pending rounds before payment.';
@@ -6284,7 +6339,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       await _openCustomerBill(tableId.toString());
       return;
     }
-    if (await _verifyLocalTableBill(tender: true) != null) return;
+    if (await _verifyLocalTableBill(tender: true) != null) {
+      if (_tenderNeedsServerSheet && mounted) {
+        await _openCustomerBill(tableId.toString());
+      }
+      return;
+    }
     final contextKey = _tablePayContext;
     bool current() =>
         mounted &&
@@ -9472,7 +9532,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       }
       unawaited(payment.open(uuid));
       await showQrCheckout(payment);
-      paid = payment.phase == CheckoutPhase.paid;
+      // T-2 — paid only when the finished checkout is this order's.
+      paid = checkoutPaidFor(payment, uuid);
+      if (!paid && payment.phase == CheckoutPhase.paid) {
+        _otherCheckoutFinished = true;
+      }
     } catch (_) {
       if (mounted) {
         _showPopupMessage(

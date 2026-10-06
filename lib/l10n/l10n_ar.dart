@@ -399,7 +399,7 @@ class L10nAr extends L10n {
 
   @override
   String get settingsPrintQrKitchenRounds =>
-      'طباعة جولات QR للمطبخ على هذا الجهاز';
+      'طباعة جولات QR والجهاز اللوحي للمطبخ على هذا الجهاز';
 
   @override
   String get settingsPrintQrKitchenRoundsHint =>
@@ -4390,4 +4390,28 @@ class L10nAr extends L10n {
     );
     return '$_temp0';
   }
+
+  @override
+  String get tabletBillUseServerSheet =>
+      'هذه الفاتورة فيها جولة من الجهاز اللوحي. ادفعها من فاتورة الطاولة (إجمالي الخادم).';
+
+  @override
+  String get tabletPrintOffWarning =>
+      'هذا الجهاز لا يطبع تذاكر المطبخ لطلبات QR والجهاز اللوحي. فعّلها من الإعدادات أو اطبع من جهاز آخر.';
+
+  @override
+  String get tabletFinishScreenFirst => 'أنهِ هذه الشاشة أولاً';
+
+  @override
+  String get tabletOtherCheckoutFinished =>
+      'تم إنهاء دفعة محفوظة لطلب آخر أولاً. هذا الطلب لم يُدفع ولم يُرسل — استلم نقده مرة أخرى.';
+
+  @override
+  String get tabletAlertsNotUpdating => 'التنبيهات لا تتحدث';
+
+  @override
+  String get checkoutLoginAgain => 'سجّل الدخول مرة أخرى';
+
+  @override
+  String get tabletKitchenNoticeOk => 'حسناً';
 }

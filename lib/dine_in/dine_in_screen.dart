@@ -197,6 +197,9 @@ String dineInText(bool ar, String key) {
   if (key == 'tablet') {
     return lookupL10n(Locale(ar ? 'ar' : 'en')).tabletBadge;
   }
+  if (key == 'tablet_print_off') {
+    return lookupL10n(Locale(ar ? 'ar' : 'en')).tabletPrintOffWarning;
+  }
   if (key.startsWith('adjust_refused:')) {
     final code = key.substring('adjust_refused:'.length);
     const adjustmentCodes = {

@@ -78,12 +78,26 @@ class RemoteTableState {
       billReceiptNumber: bill?['receipt_number'] as String?,
       billTempReference: bill?['temp_reference'] as String?,
       billSource: bill?['source'] as String?,
-      billCustomerRounds: (bill?['customer_rounds'] as num?)?.toInt(),
+      billCustomerRounds: _customerRounds(bill),
       billStaffRounds: (bill?['staff_rounds'] as num?)?.toInt(),
       credentialStatus: seating?['credential_status'] as String?,
       chargeClaimLive: bill?['charge_claim_live'] == true,
       fetchedAt: fetchedAt,
     );
+  }
+
+  /// LAUNCH-P6 till fix order 1 (T-1) — a customer tablet's round has no
+  /// QR session, so the board counts it as a staff round; F-20 adds
+  /// `tablet_rounds` (0 when missing). A bill with a tablet round is paid
+  /// from the server sheet like one with QR customer rounds, so the tablet
+  /// count also counts as customer rounds here (the larger of the two: a
+  /// server that already includes it is not counted twice).
+  static int? _customerRounds(Map<String, dynamic>? bill) {
+    final customer = (bill?['customer_rounds'] as num?)?.toInt();
+    final tablet = (bill?['tablet_rounds'] as num?)?.toInt() ?? 0;
+    if (customer == null && tablet <= 0) return null;
+    final value = customer ?? 0;
+    return tablet > value ? tablet : value;
   }
 
   Map<String, Object?> toRow() => {
@@ -121,9 +135,9 @@ class RemoteTableState {
         expiresAt: _date(row['expires_at']),
         needsReviewCount: row['needs_review_count'] as int,
         joinedTableIds: [
-          for (final id in jsonDecode(
-            row['joined_table_ids_json'] as String? ?? '[]',
-          ) as List)
+          for (final id
+              in jsonDecode(row['joined_table_ids_json'] as String? ?? '[]')
+                  as List)
             (id as num).toInt(),
         ],
         billOrderUuid: row['bill_order_uuid'] as String?,
@@ -176,7 +190,8 @@ class RemoteSyncMeta {
     'last_feed_ok_at': lastFeedOkAt?.toIso8601String(),
     'last_error': lastError,
     'consecutive_failures': consecutiveFailures,
-    if (lastNotifiedEventId != null) 'last_notified_event_id': lastNotifiedEventId,
+    if (lastNotifiedEventId != null)
+      'last_notified_event_id': lastNotifiedEventId,
   };
 }
 

@@ -25,6 +25,13 @@ class CheckoutRefusal implements Exception {
 
 typedef CheckoutCaptureFn = Future<CheckoutCapture> Function(int baisas);
 
+/// LAUNCH-P6 till fix order 1 (T-2) — the checkout paid [orderUuid] itself.
+/// `open` resumes any saved checkout first: a finished payment of another
+/// order never counts as this order's.
+bool checkoutPaidFor(QrCheckoutController checkout, String? orderUuid) =>
+    checkout.phase == CheckoutPhase.paid &&
+    (orderUuid == null || checkout.attempt?.orderUuid == orderUuid);
+
 enum CheckoutPhase {
   loading,
   ready,

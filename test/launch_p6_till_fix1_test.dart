@@ -191,7 +191,10 @@ void main() {
       return true;
     },
     openTable: (row) => events.add('table'),
-    moveToCounter: (row) async => events.add('counter'),
+    moveToCounter: (row) async {
+      events.add('counter');
+      return null;
+    },
     paymentReview: (row) async => events.add('review'),
     checkPaymentResult: () async => events.add('check'),
   );

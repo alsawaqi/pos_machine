@@ -688,7 +688,7 @@ abstract class L10n {
   /// No description provided for @settingsPrintQrKitchenRounds.
   ///
   /// In en, this message translates to:
-  /// **'Print QR kitchen rounds on this device'**
+  /// **'Print QR and tablet kitchen rounds on this device'**
   String get settingsPrintQrKitchenRounds;
 
   /// No description provided for @settingsPrintQrKitchenRoundsHint.
@@ -7162,6 +7162,48 @@ abstract class L10n {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 kitchen ticket could not be read — check with the manager} other{{count} kitchen tickets could not be read — check with the manager}}'**
   String tabletKitchenUnreadable(int count);
+
+  /// No description provided for @tabletBillUseServerSheet.
+  ///
+  /// In en, this message translates to:
+  /// **'This bill has a tablet round. Pay it from the table bill (server total).'**
+  String get tabletBillUseServerSheet;
+
+  /// No description provided for @tabletPrintOffWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This till does not print kitchen tickets for QR and tablet orders. Turn it on in Settings or print from another device.'**
+  String get tabletPrintOffWarning;
+
+  /// No description provided for @tabletFinishScreenFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish this screen first'**
+  String get tabletFinishScreenFirst;
+
+  /// No description provided for @tabletOtherCheckoutFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'A saved payment of another order was finished first. This order is not paid and was not sent — take its cash again.'**
+  String get tabletOtherCheckoutFinished;
+
+  /// No description provided for @tabletAlertsNotUpdating.
+  ///
+  /// In en, this message translates to:
+  /// **'alerts not updating'**
+  String get tabletAlertsNotUpdating;
+
+  /// No description provided for @checkoutLoginAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Log in again'**
+  String get checkoutLoginAgain;
+
+  /// No description provided for @tabletKitchenNoticeOk.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get tabletKitchenNoticeOk;
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

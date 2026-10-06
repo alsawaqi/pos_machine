@@ -21,6 +21,21 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import 'pos_api_service.dart' show posCapabilitiesHeader, posCapabilities;
+
+/// Opens the websocket (injectable for tests).
+typedef LiveSocketConnector =
+    Future<WebSocket> Function(String url, Map<String, dynamic> headers);
+
+Future<WebSocket> _connectSocket(String url, Map<String, dynamic> headers) =>
+    WebSocket.connect(url, headers: headers);
+
+/// LAUNCH-P6 till fix order 1 (T-8) — the websocket connect says what this
+/// build reads, like every API call.
+const liveSyncHeaders = <String, dynamic>{
+  posCapabilitiesHeader: posCapabilities,
+};
+
 /// The websocket endpoint served in /device/config meta.websocket.
 class WebsocketEndpoint {
   const WebsocketEndpoint({
@@ -55,7 +70,10 @@ class WebsocketEndpoint {
 /// ws(s)://host:port/app/{key}?protocol=7… — the Pusher handshake URL. The
 /// endpoint's null host falls back to [apiBaseUrl]'s host (the LAN/proxy the
 /// operator already configured).
-String? buildWebsocketUrl(WebsocketEndpoint endpoint, {required String apiBaseUrl}) {
+String? buildWebsocketUrl(
+  WebsocketEndpoint endpoint, {
+  required String apiBaseUrl,
+}) {
   var host = endpoint.host;
   if (host == null || host.isEmpty) {
     host = Uri.tryParse(apiBaseUrl)?.host;
@@ -89,7 +107,11 @@ String buildPongFrame() => jsonEncode({'event': 'pusher:pong', 'data': {}});
 /// One parsed incoming Pusher frame. `data` may arrive double-encoded (a JSON
 /// string) — normalized to a map here.
 class PusherMessage {
-  const PusherMessage({required this.event, this.channel, this.data = const {}});
+  const PusherMessage({
+    required this.event,
+    this.channel,
+    this.data = const {},
+  });
 
   final String event;
   final String? channel;
@@ -117,8 +139,7 @@ class PusherMessage {
     }
   }
 
-  bool get isConnectionEstablished =>
-      event == 'pusher:connection_established';
+  bool get isConnectionEstablished => event == 'pusher:connection_established';
   bool get isPing => event == 'pusher:ping';
 
   /// Protocol-internal frames (handshake, subscription acks, errors) — never
@@ -133,10 +154,11 @@ class PusherMessage {
       (data['activity_timeout'] as num?)?.toInt() ?? 120;
 }
 
-typedef BroadcastAuthorizer = Future<String> Function({
-  required String socketId,
-  required String channelName,
-});
+typedef BroadcastAuthorizer =
+    Future<String> Function({
+      required String socketId,
+      required String channelName,
+    });
 
 /// Owns the websocket lifecycle. All collaborators are injected as getters so
 /// a branch/server change between reconnects is picked up automatically.
@@ -147,7 +169,10 @@ class LiveSyncService {
     required this.channelGetter,
     required this.authorize,
     required this.onLiveEvent,
+    this.connectSocket = _connectSocket,
   });
+
+  final LiveSocketConnector connectSocket;
 
   final WebsocketEndpoint? Function() endpointGetter;
   final String Function() apiBaseUrlGetter;
@@ -216,8 +241,10 @@ class LiveSyncService {
     }
 
     try {
-      final socket =
-          await WebSocket.connect(url).timeout(const Duration(seconds: 10));
+      final socket = await connectSocket(
+        url,
+        liveSyncHeaders,
+      ).timeout(const Duration(seconds: 10));
       _socket = socket;
       _frames = socket.listen(
         _onFrame,
@@ -243,8 +270,7 @@ class LiveSyncService {
       if (socketId == null || channel == null) return;
       try {
         // The signature binds to THIS socket_id — re-authorized per connect.
-        final auth =
-            await authorize(socketId: socketId, channelName: channel);
+        final auth = await authorize(socketId: socketId, channelName: channel);
         _socket?.add(buildSubscribeFrame(channel: channel, auth: auth));
       } catch (e) {
         // 403 = branch changed / token revoked; transport = server down.

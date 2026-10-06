@@ -116,6 +116,25 @@ enum QrRoundPrintNoticeKind {
   unreadable,
 }
 
+/// LAUNCH-P6 — kitchen tickets that could not be read stay counted until
+/// staff acknowledge them (OK); closing or replacing another kitchen notice
+/// never clears the count.
+class KitchenUnreadableTally {
+  int count = 0;
+
+  /// Counts [notice] and answers the text to show for it: the notice's own
+  /// [base] text plus the outstanding unreadable count, if any.
+  String compose(QrRoundPrintNotice notice, String base, L10n l10n) {
+    if (notice.kind == QrRoundPrintNoticeKind.unreadable) {
+      count += notice.count;
+      return l10n.tabletKitchenUnreadable(count);
+    }
+    return count > 0 ? '$base\n${l10n.tabletKitchenUnreadable(count)}' : base;
+  }
+
+  void acknowledge() => count = 0;
+}
+
 class QrRoundPrintNotice {
   const QrRoundPrintNotice(this.kind, {this.count = 0});
 

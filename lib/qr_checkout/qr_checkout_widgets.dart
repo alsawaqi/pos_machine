@@ -7,6 +7,9 @@ import '../l10n/l10n.dart';
 String checkoutText(BuildContext context, String key) {
   final ar = Localizations.localeOf(context).languageCode == 'ar';
   // LAUNCH-P6 — the tablet order refusals of the claim.
+  if (key == 'staff_unverified') {
+    return lookupL10n(Locale(ar ? 'ar' : 'en')).checkoutLoginAgain;
+  }
   if (key == 'redeem_pending' || key == 'tablet_order_taken') {
     final l10n = lookupL10n(Locale(ar ? 'ar' : 'en'));
     return key == 'redeem_pending'
