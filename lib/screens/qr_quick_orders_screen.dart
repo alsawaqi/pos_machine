@@ -88,6 +88,80 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
   ];
 }
 
+/// The till's QR quick gateway (its guards, payment evidence and review
+/// journal). LAUNCH-P6 — the tablet orders' manager payment review uses it
+/// too.
+ApiQrQuickGateway machineQrQuickGateway(WidgetRef ref) {
+  final api = ref.read(apiServiceProvider);
+  final session = ref.read(sessionServiceProvider);
+  String scope() => quickDeviceScope(
+    api.quickOrderBaseUrl,
+    session.companyId,
+    session.branchId,
+    session.kioskId,
+  );
+  return ApiQrQuickGateway(
+    api,
+    scope,
+    cancellationGuard: (uuid) async {
+      if (ref
+              .read(qrSettlementCoordinatorProvider)
+              .pendingManagerRecoveries
+              .isNotEmpty ||
+          await ref
+              .read(orderSyncRepositoryProvider)
+              .hasUnresolvedStandaloneQrPay(uuid)) {
+        throw StateError('Payment evidence requires reconciliation');
+      }
+      await assertWorkspaceVoidJournals(
+        quickDeviceScope(
+          api.quickOrderBaseUrl,
+          session.companyId,
+          session.branchId,
+          session.kioskId,
+        ),
+        uuid,
+      );
+    },
+    mutationGuard: () =>
+        (debugOrderStorageOverride ?? LocalOrderStorageService.instance)
+            .assertNoPendingCombine(),
+    localPaymentOrders: () async {
+      final at = scope();
+      return ordersWithUnreviewedPayments(
+        (await SqliteCheckoutStore.open(at)).db,
+        at,
+      );
+    },
+    loadPaymentEvidence: (uuid) async {
+      final at = scope();
+      return loadPaymentReviewEvidence(
+        (await SqliteCheckoutStore.open(at)).db,
+        at,
+        uuid,
+        sending: await ref
+            .read(orderSyncRepositoryProvider)
+            .hasUnresolvedStandaloneQrPay(uuid),
+      );
+    },
+    recordPaymentReview: (uuid, evidence, requestId, result) async {
+      final at = scope();
+      await recordPaymentReview(
+        (await SqliteCheckoutStore.open(at)).db,
+        at,
+        uuid,
+        evidence,
+        requestId,
+        result,
+      );
+    },
+    currentGps: () async {
+      final fix = await const GeolocatorQrLocation().currentFix();
+      return fix == null ? null : {'lat': fix.lat, 'lng': fix.lng};
+    },
+  );
+}
+
 class QrQuickOrdersScreen extends ConsumerWidget {
   const QrQuickOrdersScreen({
     super.key,
@@ -111,74 +185,7 @@ class QrQuickOrdersScreen extends ConsumerWidget {
     onVoid: null,
     arabic: Localizations.localeOf(context).languageCode == 'ar',
     createController: () async {
-      final api = ref.read(apiServiceProvider);
-      final session = ref.read(sessionServiceProvider);
-      String scope() => quickDeviceScope(
-        api.quickOrderBaseUrl,
-        session.companyId,
-        session.branchId,
-        session.kioskId,
-      );
-      final gateway = ApiQrQuickGateway(
-        api,
-        scope,
-        cancellationGuard: (uuid) async {
-          if (ref
-                  .read(qrSettlementCoordinatorProvider)
-                  .pendingManagerRecoveries
-                  .isNotEmpty ||
-              await ref
-                  .read(orderSyncRepositoryProvider)
-                  .hasUnresolvedStandaloneQrPay(uuid)) {
-            throw StateError('Payment evidence requires reconciliation');
-          }
-          await assertWorkspaceVoidJournals(
-            quickDeviceScope(
-              api.quickOrderBaseUrl,
-              session.companyId,
-              session.branchId,
-              session.kioskId,
-            ),
-            uuid,
-          );
-        },
-        mutationGuard: () =>
-            (debugOrderStorageOverride ?? LocalOrderStorageService.instance)
-                .assertNoPendingCombine(),
-        localPaymentOrders: () async {
-          final at = scope();
-          return ordersWithUnreviewedPayments(
-            (await SqliteCheckoutStore.open(at)).db,
-            at,
-          );
-        },
-        loadPaymentEvidence: (uuid) async {
-          final at = scope();
-          return loadPaymentReviewEvidence(
-            (await SqliteCheckoutStore.open(at)).db,
-            at,
-            uuid,
-            sending: await ref
-                .read(orderSyncRepositoryProvider)
-                .hasUnresolvedStandaloneQrPay(uuid),
-          );
-        },
-        recordPaymentReview: (uuid, evidence, requestId, result) async {
-          final at = scope();
-          await recordPaymentReview(
-            (await SqliteCheckoutStore.open(at)).db,
-            at,
-            uuid,
-            evidence,
-            requestId,
-            result,
-          );
-        },
-        currentGps: () async {
-          final fix = await const GeolocatorQrLocation().currentFix();
-          return fix == null ? null : {'lat': fix.lat, 'lng': fix.lng};
-        },
-      );
+      final gateway = machineQrQuickGateway(ref);
       final store = await SqliteQrQuickStore.open(gateway.scope);
       return QrQuickController(gateway, store);
     },

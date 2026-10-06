@@ -77,7 +77,11 @@ import '../state/pos_controller.dart';
 import '../widgets/animated_feedback_widgets.dart';
 import '../widgets/product_artwork.dart';
 import '../qr_quick/qr_quick_copy.dart';
-import '../qr_quick/qr_quick_screen.dart' show pickStaffRoundProduct;
+import '../qr_quick/qr_quick_screen.dart'
+    show pickStaffRoundItem, pickStaffRoundProduct;
+import '../qr_quick/qr_payment_review.dart' show showQrPaymentReview;
+import '../tablet_orders/tablet_orders_controller.dart';
+import '../tablet_orders/tablet_orders_screen.dart';
 import '../qr_quick/qr_quick_gateway.dart';
 import '../qr_quick/qr_quick_store.dart';
 import '../qr_quick/qr_quick_models.dart';
@@ -374,6 +378,8 @@ bool tableBillNeedsSheet(String mode, RemoteTableState? bill) =>
     bill?.billOrderUuid != null &&
     ((bill?.needsReviewCount ?? 0) > 0 ||
         bill?.billSource == 'qr_web' ||
+        // LAUNCH-P6 — a bill a customer tablet opened lives on the server.
+        bill?.billSource == 'customer_tablet' ||
         (const {'main_pos', 'handheld'}.contains(bill?.billSource) &&
             (bill?.billCustomerRounds ?? 0) > 0));
 
@@ -927,10 +933,15 @@ class DiningTableActivityBadge extends StatelessWidget {
     this.sending = false,
     this.pendingRounds = 0,
     this.needsReview = 0,
+    this.tabletRounds = 0,
   });
   final String mode;
   final bool sending;
   final int pendingRounds, needsReview;
+
+  /// LAUNCH-P6 — of the pending rounds, those a customer tablet sent
+  /// ("Tablet: 1 waiting").
+  final int tabletRounds;
   @override
   Widget build(BuildContext context) {
     if (mode != 'live') return const SizedBox.shrink();
@@ -939,6 +950,7 @@ class DiningTableActivityBadge extends StatelessWidget {
       if (sending) l10n.tableSending,
       if (needsReview > 0) l10n.tableActivityReview(needsReview),
       if (pendingRounds > 0) l10n.tablePendingBell(pendingRounds),
+      if (tabletRounds > 0) l10n.tabletBoardPending(tabletRounds),
     ];
     if (parts.isEmpty) return const SizedBox.shrink();
     return IgnorePointer(
@@ -1102,6 +1114,108 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       _workspaceEditor = editor;
     });
     _workspaceChanged();
+  }
+
+  void _tabletOpener(String? key) =>
+      unawaited(_openTabletOrders(initialKey: key));
+  bool _tabletOrdersOpen = false;
+
+  /// LAUNCH-P6 Part C item 4 — the tablet orders list and sheet. Cash goes
+  /// through the existing QR checkout (claim, then the frozen total), a
+  /// cancel through the existing order.void, points through
+  /// `_authorizeAction('loyalty.redeem')`.
+  Future<void> _openTabletOrders({String? initialKey}) async {
+    if (_tabletOrdersOpen ||
+        _workspace != null ||
+        _showPaymentPage ||
+        _normalQrCheckoutOpen ||
+        controller.isProcessingPayment ||
+        controller.hasRecordedSplitPayments ||
+        !mounted) {
+      return;
+    }
+    final location = ref.read(qrLocationProvider);
+    if (location is PreparedQrLocation) unawaited(location.prepare());
+    final api = ref.read(apiServiceProvider);
+    final staff = ref.read(sessionServiceProvider).staff;
+    final arabic = Localizations.localeOf(context).languageCode == 'ar';
+    final tablet = TabletOrdersController(ApiTabletOrdersGateway(api));
+    final navigator = Navigator.of(context);
+    _tabletOrdersOpen = true;
+    _applyAudienceGate();
+    try {
+      await navigator.push<void>(
+        MaterialPageRoute(
+          builder: (routeContext) => TabletOrdersScreen(
+            controller: tablet,
+            initialKey: initialKey,
+            actions: TabletOrderActions(
+              myStaffId: staff?.id,
+              onOpened: (key) => OrderAttentionScope.read(context)?.opened(key),
+              authorize: (action, {subtitle, alwaysApproval = false}) =>
+                  _authorizeAction(
+                    action,
+                    subtitle: subtitle,
+                    alwaysApproval: alwaysApproval,
+                  ),
+              takeCash: (row) => _launchQrCheckout(row.orderUuid),
+              checkPaymentResult: () => _launchQrCheckout(null),
+              voidOrder: (row, {reason, required authorization}) async {
+                // LAUNCH-P5 C3 — the voider and the signed block.
+                final block = authorization.block(subjectUuid: row.orderUuid);
+                authorization.grant?.forget();
+                await ref
+                    .read(orderSyncRepositoryProvider)
+                    .enqueueVoid(
+                      row.orderUuid,
+                      reason: reason?.name,
+                      voidReasonId: reason?.id,
+                      staffId: ref.read(sessionServiceProvider).staff?.id,
+                      authorizedBy: authorization.authorizedByName,
+                      authorization: block,
+                    );
+              },
+              voidReasons: controller.voidReasons,
+              openTable: (row) {
+                final id = row.tableId;
+                if (id == null) return;
+                if (navigator.canPop()) navigator.pop();
+                unawaited(_openCustomerBill('$id', tableLabel: row.tableName));
+              },
+              moveToCounter: (row) async {
+                try {
+                  await api.fallbackQrToCounter(row.orderUuid);
+                } catch (_) {
+                  // The list shows the order's state after a refresh.
+                }
+              },
+              paymentReview: (row) async {
+                if (!routeContext.mounted) return;
+                await showQrPaymentReview(
+                  routeContext,
+                  machineQrQuickGateway(ref),
+                  QrQuickOrder.review(
+                    uuid: row.orderUuid,
+                    reference: row.tempReference ?? row.orderNumber ?? '',
+                    total: row.payableBaisas,
+                  ),
+                  arabic: arabic,
+                );
+              },
+              pickItem: (pickContext) async => (await pickStaffRoundItem(
+                pickContext,
+                machineQuickCatalogue(ref.read(catalogProvider).asData?.value),
+                arabic: arabic,
+              ))?.$2,
+            ),
+          ),
+        ),
+      );
+    } finally {
+      tablet.dispose();
+      _tabletOrdersOpen = false;
+      if (mounted) _applyAudienceGate();
+    }
   }
 
   Future<void> _openQuickOrders() async {
@@ -1437,6 +1551,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   void initState() {
     super.initState();
     _attentionLease = enterStaffAttention();
+    // LAUNCH-P6 — the tablet banner and the bell open the tablet orders.
+    tabletOrdersOpener.value = _tabletOpener;
     controller = PosController();
     _customerNumberController = TextEditingController();
     _vehiclePlateController = TextEditingController();
@@ -2646,6 +2762,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final operating =
         _workspace != null ||
         _qrOrdersListOpen ||
+        _tabletOrdersOpen ||
         _normalQrCheckoutOpen ||
         _showPaymentPage ||
         controller.cart.isNotEmpty ||
@@ -2715,6 +2832,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       unawaited(PresentationService.instance.clearWorkspaceBill(workspace));
     }
     leaveStaffAttention(_attentionLease);
+    if (tabletOrdersOpener.value == _tabletOpener) {
+      tabletOrdersOpener.value = null;
+    }
     if (_tableKitchen?.coordinator.paymentAcknowledged == _tablePaymentAck) {
       _tableKitchen!.coordinator.paymentAcknowledged = null;
     }
@@ -5913,6 +6033,13 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                                             table.id,
                                           )]
                                           ?.pendingCount ??
+                                      0,
+                                  tabletRounds:
+                                      _tableShadow
+                                          ?.displayActivityBoard[int.tryParse(
+                                            table.id,
+                                          )]
+                                          ?.tabletPendingCount ??
                                       0,
                                   searchMatch:
                                       _tableShadowMode == 'live' &&
@@ -9287,21 +9414,24 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     return checkout;
   }
 
-  Future<void> _launchQrCheckout(String? uuid) async {
+  /// True once the server confirmed the payment (LAUNCH-P6: a tablet
+  /// order is then sent to the kitchen).
+  Future<bool> _launchQrCheckout(String? uuid) async {
     if (_normalQrCheckoutOpen ||
         controller.isProcessingPayment ||
         controller.hasRecordedSplitPayments ||
         controller.showPaymentLaunchOverlay) {
-      return;
+      return false;
     }
     _normalQrCheckoutOpen = true;
     _syncPaymentHold();
     _applyAudienceGate();
     QrCheckoutController? checkout;
     VoidCallback? displayListener;
+    var paid = false;
     try {
       checkout = await _newQrCheckout();
-      if (!mounted) return;
+      if (!mounted) return false;
       final payment = checkout;
       final workspace = _workspace;
       if (workspace != null) {
@@ -9329,6 +9459,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       }
       unawaited(payment.open(uuid));
       await showQrCheckout(payment);
+      paid = payment.phase == CheckoutPhase.paid;
     } catch (_) {
       if (mounted) {
         _showPopupMessage(
@@ -9357,6 +9488,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         transferred.onExit();
       }
     }
+    return paid;
   }
 
   /// Close the selected quick bill only after checkout confirms payment and
@@ -10797,6 +10929,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           OrderAttentionBell(
             onQuickOrders: () => unawaited(_openQuickOrders()),
             onTables: () => unawaited(_handleOrderTypeTap(OrderType.dineIn)),
+            onTabletOrders: () => unawaited(_openTabletOrders()),
           ),
           const SizedBox(width: 8),
           // P-F1 — the gear opens Settings (which now hosts the operational
@@ -16287,6 +16420,7 @@ class _DiningTableCard extends StatelessWidget {
   final bool customerOccupied;
   final String? customerReference;
   final int pendingRounds;
+  final int tabletRounds;
   final RemoteTableState? remote;
   final DateTime now;
   final int remoteFailures;
@@ -16329,6 +16463,7 @@ class _DiningTableCard extends StatelessWidget {
     this.sending = false,
     this.searchMatch = false,
     this.pendingRounds = 0,
+    this.tabletRounds = 0,
     this.customerOccupied = false,
     this.customerReference,
   });
@@ -16704,10 +16839,15 @@ class _DiningTableCard extends StatelessWidget {
                         sending: sending,
                         pendingRounds: pendingRounds,
                         needsReview: remote?.needsReviewCount ?? 0,
+                        tabletRounds: tabletRounds,
                       )
                     else if (pendingRounds > 0 && remote != null)
                       Text(
-                        l10n.tablePendingBell(pendingRounds),
+                        [
+                          l10n.tablePendingBell(pendingRounds),
+                          if (tabletRounds > 0)
+                            l10n.tabletBoardPending(tabletRounds),
+                        ].join(' · '),
                         key: const ValueKey('customer-table-pending'),
                         style: const TextStyle(
                           fontSize: 11,

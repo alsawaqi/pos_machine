@@ -25,6 +25,8 @@ import '../services/shift_service.dart';
 import '../services/shift_summary.dart';
 import '../services/sunmi_receipt_service.dart';
 import 'shift_close_preflight.dart';
+import '../tablet_orders/tablet_order_models.dart';
+import '../tablet_orders/tablet_orders_screen.dart' show TabletUnpaidWarning;
 
 /// Close the device's open cash-drawer shift: the cashier counts the drawer,
 /// the server computes expected cash (opening + cash sales on this device) and
@@ -63,6 +65,27 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
   ActionAuthorization? _closeOther;
   // LAUNCH-P5 C6 — clock out with the close (default yes).
   bool _clockOutToo = true;
+
+  /// LAUNCH-P6 item 9 — unpaid tablet orders at this branch: a warning
+  /// only, the close is never blocked (tester call 11).
+  List<TabletOrderRow> _unpaidTablet = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadUnpaidTablet());
+  }
+
+  Future<void> _loadUnpaidTablet() async {
+    try {
+      final rows = parseTabletOrderRows(
+        await ref.read(apiServiceProvider).fetchTabletOrders(unpaidOnly: true),
+      ).where((row) => row.unpaid && !row.closed).toList();
+      if (mounted) setState(() => _unpaidTablet = rows);
+    } catch (_) {
+      // Offline or an older server: no warning, never a block.
+    }
+  }
 
   static String _money(int baisas) {
     final omr = baisas / 1000;
@@ -490,6 +513,10 @@ class _ShiftCloseScreenState extends ConsumerState<ShiftCloseScreen> {
             ),
           ),
           const SizedBox(height: 18),
+        ],
+        if (_unpaidTablet.isNotEmpty) ...[
+          TabletUnpaidWarning(rows: _unpaidTablet),
+          const SizedBox(height: 12),
         ],
         _amountCard(
           l10n.shiftCloseOpeningFloatLabel,
