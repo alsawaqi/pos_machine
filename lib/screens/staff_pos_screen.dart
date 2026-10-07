@@ -42,6 +42,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 import '../l10n/l10n.dart';
+import '../combo/combo_edit.dart';
 import '../combo/combo_sheet.dart';
 import '../models/pos_models.dart';
 import '../models/qr_till_models.dart' show QrDeviceRound, QrRoundEnvelope;
@@ -1332,7 +1333,9 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       unawaited(_openComboBuilder(product));
       return;
     }
-    if (controller.mealFor(product) case final meal?) {
+    // T-C4 — a meal whose items cannot be sold is not offered: the main is
+    // added alone (through its options sheet when it needs one).
+    if (controller.mealOffer(product) case final meal?) {
       unawaited(_offerMeal(product, meal));
       return;
     }
@@ -1582,7 +1585,20 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         .resolveCombo(lines, result.selections)
         .components;
     if (editing != null) {
+      // Fix order 1 (T-C3) — a changed sent combo is cancelled (approved)
+      // and re-added, never duplicated silently.
+      if (!await guardSentLineEdit(
+            liveTable: _liveTable,
+            before: editing,
+            after: editing.withProduct(editing.product)
+              ..components = components,
+            approveSentReduction: _approveSentReduction,
+          ) ||
+          !mounted) {
+        return;
+      }
       controller.updateComboComponents(editing, components);
+      await _refreshTableSentState();
     } else {
       controller.addCombo(combo, components);
     }
@@ -1681,12 +1697,27 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         .resolveCombo(lines, result.selections)
         .components;
     if (editing != null) {
+      // Fix order 1 (T-C3) — a changed sent meal is cancelled (approved) and
+      // re-added, never duplicated silently.
+      if (!await guardSentLineEdit(
+            liveTable: _liveTable,
+            before: editing,
+            after: editing.withProduct(editing.product)
+              ..components = components
+              ..modifiers = result.mainModifiers
+              ..notes = result.mainNotes,
+            approveSentReduction: _approveSentReduction,
+          ) ||
+          !mounted) {
+        return;
+      }
       controller.updateComboComponents(
         editing,
         components,
         modifiers: result.mainModifiers,
         notes: result.mainNotes,
       );
+      await _refreshTableSentState();
     } else {
       controller.addMeal(
         main,
@@ -1729,6 +1760,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final quickProduct = quick
         .where((p) => p.id == (line['product_id'] as num?)?.toInt())
         .firstOrNull;
+    if (line['meal_id'] != null && quickProduct == null) {
+      // Fix order 1 (T-C5) — never turn a meal into its plain main.
+      await showMealEditUnavailable(context);
+      return null;
+    }
     if (quickProduct != null &&
         (quickProduct.isCombo || line['meal_id'] != null)) {
       final picked = await pickStaffRoundProduct(
@@ -9141,13 +9177,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   Future<void> _openCustomizeDialog(CartItem item) async {
     // LAUNCH combo add-on — a combo / meal line reopens its sheet.
     if (item.isMeal) {
-      final meal =
-          controller.mealById(item.meal!.id) ??
-          controller.mealFor(item.product);
+      final meal = controller.mealById(item.meal!.id);
       if (meal != null) {
         await _openMealSheet(item.product, meal, editing: item);
-        return;
+      } else {
+        // Fix order 1 (T-C6) — never a silent refusal.
+        final isAr = Localizations.localeOf(context).languageCode == 'ar';
+        _showPopupMessage(
+          title: item.displayName(isAr),
+          message: L10n.of(context).posMealNoLongerAvailable,
+          tone: FeedbackTone.warning,
+        );
       }
+      return;
     } else if (item.isCombo) {
       await _openComboBuilder(item.product, editing: item);
       return;
@@ -9168,22 +9210,15 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     _CartItemCustomizationResult result,
   ) async {
     if (!mounted || !controller.cart.contains(item)) return false;
-    if (_liveTable) {
-      final before = buildTableRoundLines([item]);
-      final after = buildTableRoundLines([
-        CartItem(
-          product: item.product,
-          qty: item.qty,
-          modifiers: result.modifiers,
-          notes: result.notes,
-        ),
-      ]);
-      final changed =
-          before.isNotEmpty &&
-          after.isNotEmpty &&
-          tableLineFingerprint(before.single) !=
-              tableLineFingerprint(after.single);
-      if (changed && !await _approveSentReduction(item, item.qty)) return false;
+    if (!await guardSentLineEdit(
+      liveTable: _liveTable,
+      before: item,
+      after: item.withProduct(item.product)
+        ..modifiers = result.modifiers
+        ..notes = result.notes,
+      approveSentReduction: _approveSentReduction,
+    )) {
+      return false;
     }
     controller.updateCartItemCustomization(
       item,

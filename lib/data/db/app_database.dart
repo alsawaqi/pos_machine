@@ -205,7 +205,7 @@ class AppDatabase extends _$AppDatabase {
       if (from < 30) {
         // LAUNCH-P4 — products and menu: display order, product kind,
         // channels, sold out, Arabic description, delivery listing, combo
-        // slots; the category branch list; global add-on groups; the
+        // lines; the category branch list; global add-on groups; the
         // merchant's VAT setup (company.tax). Each table is extended only
         // when it exists (every real cache has them; a partial test or
         // half-created cache must not abort the whole upgrade).

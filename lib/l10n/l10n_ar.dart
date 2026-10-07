@@ -3897,6 +3897,18 @@ class L10nAr extends L10n {
   String get posMealOfferNo => 'لا، الصنف وحده';
 
   @override
+  String get posMealNoLongerAvailable =>
+      'هذه الوجبة لم تعد متاحة — ألغها ثم أضفها من جديد.';
+
+  @override
+  String get posComboNoLongerOffered => 'لم يعد متاحاً';
+
+  @override
+  String posComboStalePick(String item) {
+    return '$item لم يعد متاحاً هنا — أزله.';
+  }
+
+  @override
   String posComboAdd(String price) {
     return 'إضافة الكومبو · $price';
   }

@@ -107,6 +107,7 @@ class LocalLineCancellation {
     String status = 'queued',
     int? cancelledQty,
     DateTime? ackedAt,
+    Map<String, dynamic>? line,
   }) : this.fromRow({
          'client_request_id': clientRequestId,
          'table_id': tableId,
@@ -123,6 +124,16 @@ class LocalLineCancellation {
          'status': status,
          'cancelled_qty': cancelledQty,
          'acked_at': ackedAt?.toIso8601String(),
+         // LAUNCH combo add-on — only a meal / combo line stores its identity
+         // (a standard cancellation keeps its exact historical row).
+         if (line != null &&
+             (line['meal_id'] != null ||
+                 (line['combo'] is List && (line['combo'] as List).isNotEmpty)))
+           'line_json': jsonEncode({
+             if (line['meal_id'] != null) 'meal_id': line['meal_id'],
+             if (line['combo'] is List && (line['combo'] as List).isNotEmpty)
+               'combo': line['combo'],
+           }),
        });
 
   LocalLineCancellation.fromRow(Map<String, Object?> row)
@@ -143,6 +154,18 @@ class LocalLineCancellation {
   String get outboxKey => _row['outbox_key'] as String;
   String get status => _row['status'] as String;
   int? get cancelledQty => _row['cancelled_qty'] as int?;
+
+  /// LAUNCH combo add-on — the cancelled line's meal id and served items
+  /// (`{meal_id?, combo?}`), so the cancellation offsets exactly that line in
+  /// the round delta (a meal is never its main alone). Empty for a standard
+  /// line.
+  Map<String, dynamic> get lineIdentity {
+    final raw = _row['line_json'];
+    if (raw is! String || raw.isEmpty) return const <String, dynamic>{};
+    final decoded = jsonDecode(raw);
+    return decoded is Map ? decoded.cast<String, dynamic>() : const {};
+  }
+
   DateTime? get ackedAt => _date(_row['acked_at']);
   Map<String, Object?> toRow() => Map.of(_row);
   LocalLineCancellation withChanges(Map<String, Object?> fields) =>

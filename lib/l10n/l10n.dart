@@ -6425,6 +6425,24 @@ abstract class L10n {
   /// **'No, just the item'**
   String get posMealOfferNo;
 
+  /// No description provided for @posMealNoLongerAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'This meal is no longer available — cancel it and add it again.'**
+  String get posMealNoLongerAvailable;
+
+  /// No description provided for @posComboNoLongerOffered.
+  ///
+  /// In en, this message translates to:
+  /// **'No longer offered'**
+  String get posComboNoLongerOffered;
+
+  /// No description provided for @posComboStalePick.
+  ///
+  /// In en, this message translates to:
+  /// **'{item} is no longer offered here — remove it.'**
+  String posComboStalePick(String item);
+
   /// No description provided for @posComboAdd.
   ///
   /// In en, this message translates to:

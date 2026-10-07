@@ -1573,7 +1573,9 @@ class PosController extends ChangeNotifier
         _cart[i] = item.withProduct(src.copyWith(price: newPrice));
       }
       // LAUNCH combo add-on — the profit-split weights follow the order
-      // type (delivery price on a delivery order, else the base price).
+      // type (delivery price on a delivery order, else the base price), and
+      // the extras / upgrade prices / meal price follow the config (H-C1).
+      _refreshComboPrices(_cart[i]);
       _reweighCombo(_cart[i]);
     }
   }
@@ -1588,6 +1590,77 @@ class PosController extends ChangeNotifier
         ? (p.deliveryPrice ?? p.price)
         : p.price;
     return pricing.omrToBaisas(price);
+  }
+
+  /// Fix order 1 (H-C1 on the till) — a combo / meal line keeps its picks
+  /// but takes today's extra / upgrade prices (and a meal its meal price)
+  /// from the live lines, so a held, resumed, claimed or refreshed cart
+  /// never pays an old price. A pick its line no longer offers is left as it
+  /// is (the line cannot be paid until it is edited, H-C3).
+  void _refreshComboPrices(CartItem item) {
+    if (!item.isCombo) return;
+    final MealSetup? meal = item.isMeal ? mealById(item.meal!.id) : null;
+    final lines = item.isMeal
+        ? meal?.lines ?? const <pricing.ComboLineDef>[]
+        : comboLinesFor(item.product);
+    if (meal != null &&
+        pricing.omrToBaisas(item.meal!.price) != meal.mealPriceBaisas) {
+      item.meal = CartMeal(
+        id: meal.id,
+        name: meal.name,
+        nameAr: meal.nameAr,
+        price: meal.mealPrice,
+      );
+    }
+    if (lines.isEmpty) return;
+    final byId = {for (final l in lines) l.id: l};
+    item.components = [
+      for (final c in item.components)
+        () {
+          final line = byId[c.lineId];
+          int? extra;
+          if (line != null && line.isFixed) {
+            extra = '${line.productId}' == c.productId
+                ? 0
+                : line.upgrades
+                      .where((u) => '${u.productId}' == c.productId)
+                      .firstOrNull
+                      ?.upgradePriceBaisas;
+          } else if (line != null) {
+            extra = line.items
+                .where((i) => '${i.productId}' == c.productId)
+                .firstOrNull
+                ?.extraPriceBaisas;
+          }
+          if (extra == null || extra == pricing.omrToBaisas(c.extraPrice)) {
+            return c;
+          }
+          return ComboComponent(
+            lineId: c.lineId,
+            kind: c.kind,
+            productId: c.productId,
+            name: c.name,
+            nameAr: c.nameAr,
+            lineName: c.lineName,
+            lineNameAr: c.lineNameAr,
+            qty: c.qty,
+            extraPrice: extra / 1000.0,
+            modifiers: c.modifiers,
+            notes: c.notes,
+            filled: c.filled,
+            weightBaisas: c.weightBaisas,
+          );
+        }(),
+    ];
+  }
+
+  /// Re-price every combo / meal line in the cart against the live config
+  /// (a resumed hold, a claimed transfer, a reopened table).
+  void _refreshCartCombos() {
+    for (final item in _cart) {
+      _refreshComboPrices(item);
+      _reweighCombo(item);
+    }
   }
 
   void _reweighCombo(CartItem item) {
@@ -1680,12 +1753,17 @@ class PosController extends ChangeNotifier
   bool isComboUnavailable(Product product) {
     final live = _liveProduct(product);
     if (!live.isCombo) return false;
+    return comboLinesUnavailable(live.comboLines);
+  }
+
+  /// The same rule for any lines (a combo's or a meal's).
+  bool comboLinesUnavailable(List<pricing.ComboLineDef> lines) {
     bool sellable(int? id) {
       final item = id == null ? null : productForId('$id');
       return item != null && !item.soldOut && !isOutsideHours(item);
     }
 
-    for (final line in live.comboLines) {
+    for (final line in lines) {
       if (line.isFixed) {
         if (!sellable(line.productId)) return true;
       } else if (!line.items.any((i) => sellable(i.productId))) {
@@ -1693,6 +1771,15 @@ class PosController extends ChangeNotifier
       }
     }
     return false;
+  }
+
+  /// Fix order 1 (T-C4) — the meal to OFFER on [product]: its meal, only
+  /// when every fixed item and at least one item of each choice line can be
+  /// sold now. Null = add the main alone without asking.
+  MealSetup? mealOffer(Product product, {DateTime? now}) {
+    final meal = mealFor(product, now: now);
+    if (meal == null || comboLinesUnavailable(meal.lines)) return null;
+    return meal;
   }
 
   /// LAUNCH-P4 C6 — this branch switched [product] off by hand ("sold out").
@@ -3449,6 +3536,7 @@ class PosController extends ChangeNotifier
         ..addAll(
           session.draft!.items.map((item) => CartItem.fromMap(item.toMap())),
         );
+      _refreshCartCombos();
       currentOrderReference = session.orderReference.isNotEmpty
           ? session.orderReference
           : session.draft!.orderReference;
@@ -3998,6 +4086,7 @@ class PosController extends ChangeNotifier
       clearActiveDiningTable: true,
     );
     _cart.addAll(items);
+    _refreshCartCombos();
     _activeServerOrderUuid = orderUuid.isEmpty ? null : orderUuid;
     _broadcast();
     return true;
@@ -4089,6 +4178,7 @@ class PosController extends ChangeNotifier
       ..addAll(
         record.draft.items.map((item) => CartItem.fromMap(item.toMap())),
       );
+    _refreshCartCombos();
     // Phase C2 — carry the held mirror's uuid into this cart so completion
     // (order.create) upserts the server's held row instead of duplicating it.
     _activeServerOrderUuid = record.draft.serverOrderUuid.isEmpty

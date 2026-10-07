@@ -2476,6 +2476,16 @@
   },
   "posMealOfferYes": "Yes, make it a meal",
   "posMealOfferNo": "No, just the item",
+  "posMealNoLongerAvailable": "This meal is no longer available — cancel it and add it again.",
+  "posComboNoLongerOffered": "No longer offered",
+  "posComboStalePick": "{item} is no longer offered here — remove it.",
+  "@posComboStalePick": {
+    "placeholders": {
+      "item": {
+        "type": "String"
+      }
+    }
+  },
   "posComboAdd": "Add combo · {price}",
   "@posComboAdd": {
     "placeholders": {

@@ -406,7 +406,7 @@ class ConfigMapper {
               availableFrom: Value(_strN(p['available_from'])),
               availableUntil: Value(_strN(p['available_until'])),
               // LAUNCH-P4 — menu order, kind, channels, sold out, Arabic
-              // description, delivery listing and combo slots.
+              // description, delivery listing and combo lines.
               displayOrder: Value(_int(p['display_order']) ?? 0),
               productType: Value(
                 _str(p['product_type']).isEmpty

@@ -788,6 +788,7 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
         authorizedBy: authorizedBy,
         cancelledAt: at,
         outboxKey: key,
+        line: line,
       );
       final stockMode = stockModeForProduct?.call(cancellation.productId);
       final event = _event(
@@ -798,6 +799,9 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
           'product_id': cancellation.productId,
           'addon_ids': cancellation.addonIds,
           'notes': cancellation.notes,
+          // LAUNCH combo add-on — which line: a meal main is not the plain
+          // main (the server matches on product / add-ons / notes today).
+          if (line['meal_id'] != null) 'meal_id': line['meal_id'],
           'qty': qty,
           'prepared': prepared,
           'reason': reason,

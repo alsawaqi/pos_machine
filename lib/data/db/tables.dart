@@ -83,7 +83,7 @@ class Products extends Table {
   // LAUNCH-P4 — the menu display order (L1), the product kind (standard |
   // combo), the channel switches, this branch's manual sold-out flag, the
   // Arabic description, the delivery providers that do NOT list it, and a
-  // combo's slots (raw JSON from /device/config; empty = not a combo).
+  // combo's lines (raw JSON from /device/config; empty = not a combo).
   // All nullable with DB defaults (null reads as the default) so rows and
   // fixtures that predate P4 need no value.
   IntColumn get displayOrder =>

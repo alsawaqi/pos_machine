@@ -3860,6 +3860,18 @@ class L10nEn extends L10n {
   String get posMealOfferNo => 'No, just the item';
 
   @override
+  String get posMealNoLongerAvailable =>
+      'This meal is no longer available — cancel it and add it again.';
+
+  @override
+  String get posComboNoLongerOffered => 'No longer offered';
+
+  @override
+  String posComboStalePick(String item) {
+    return '$item is no longer offered here — remove it.';
+  }
+
+  @override
   String posComboAdd(String price) {
     return 'Add combo · $price';
   }

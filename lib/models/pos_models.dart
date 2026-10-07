@@ -845,12 +845,6 @@ class Product {
   /// LAUNCH combo add-on — a combo product: one price for its lines.
   bool get isCombo => productType == 'combo';
 
-  /// LAUNCH combo add-on — a combo with only fixed lines and no upgrades is
-  /// added with one tap (nobody picks anything).
-  bool get isFixedOnlyCombo =>
-      isCombo &&
-      comboLines.every((line) => line.isFixed && line.upgrades.isEmpty);
-
   /// LAUNCH-P4 C5 — whether delivery provider [providerId] sells it.
   bool isListedOn(int providerId) =>
       soldOnDelivery && !deliveryUnlistedProviderIds.contains(providerId);

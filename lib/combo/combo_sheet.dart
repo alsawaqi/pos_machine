@@ -251,7 +251,30 @@ class _ComboSheetState extends State<ComboSheet> {
     );
   }
 
+  /// Fix order 1 (H-C3) — the first pick its line no longer offers (a
+  /// choice item unticked or gone, an upgrade removed), or null.
+  String? get _stalePick {
+    for (final line in widget.lines) {
+      if (line.isFixed) {
+        final served = _fixed[line.id]!;
+        if (served != '${line.productId}' &&
+            !line.upgrades.any((u) => '${u.productId}' == served)) {
+          return served;
+        }
+      } else {
+        for (final entry in _choices[line.id]!.entries) {
+          if (entry.value > 0 &&
+              !line.items.any((i) => '${i.productId}' == entry.key)) {
+            return entry.key;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   bool get _valid {
+    if (_stalePick != null) return false;
     final main = widget.main;
     if (main != null && !_complete(main.productId, _mainOptions)) return false;
     for (final line in widget.lines) {
@@ -275,7 +298,9 @@ class _ComboSheetState extends State<ComboSheet> {
     final counts = _choices[line.id]!;
     final now = counts[productId] ?? 0;
     if (delta > 0 && _picked(line) >= line.pickCount) return;
-    if (delta > 0 && widget.source.itemFor(productId)?.available == false) {
+    if (delta > 0 &&
+        (widget.source.itemFor(productId)?.available == false ||
+            !line.items.any((i) => '${i.productId}' == productId))) {
       return;
     }
     setState(() {
@@ -410,8 +435,38 @@ class _ComboSheetState extends State<ComboSheet> {
                       const SizedBox(height: 8),
                       for (final item in line.items)
                         _choiceItem(line, item, l10n, arabic, nameOf),
+                      // H-C3 — picks the line no longer offers stay visible
+                      // with a minus, so an edit can repair them.
+                      for (final stale
+                          in (_choices[line.id] ?? const {}).keys
+                              .where(
+                                (id) => !line.items.any(
+                                  (i) => '${i.productId}' == id,
+                                ),
+                              )
+                              .toList())
+                        _choiceItem(
+                          line,
+                          pricing.ComboChoiceItemDef(
+                            productId: int.tryParse(stale) ?? 0,
+                          ),
+                          l10n,
+                          arabic,
+                          nameOf,
+                          stale: true,
+                        ),
                       const SizedBox(height: 16),
                     ],
+                    if (_stalePick case final stale?)
+                      Text(
+                        l10n.posComboStalePick(nameOf(stale)),
+                        key: const ValueKey('combo-stale-pick'),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: _warn,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -702,14 +757,19 @@ class _ComboSheetState extends State<ComboSheet> {
     pricing.ComboChoiceItemDef def,
     L10n l10n,
     bool arabic,
-    String Function(String id) nameOf,
-  ) {
+    String Function(String id) nameOf, {
+    bool stale = false,
+  }) {
     final id = '${def.productId}';
-    final item = widget.source.itemFor(id);
+    final item =
+        widget.source.itemFor(id) ??
+        (stale
+            ? ComboSheetItem(id: id, name: nameOf(id), available: false)
+            : null);
     if (item == null) return const SizedBox.shrink();
     final qty = _choices[line.id]?[id] ?? 0;
     final full = _picked(line) >= line.pickCount;
-    final canAdd = item.available && !full;
+    final canAdd = item.available && !full && !stale;
     return Container(
       key: ValueKey('combo-choice-${line.id}-$id'),
       margin: const EdgeInsets.only(bottom: 8),
@@ -740,9 +800,11 @@ class _ComboSheetState extends State<ComboSheet> {
                         color: item.available ? _ink : const Color(0xFF8A969C),
                       ),
                     ),
-                    if (!item.available)
+                    if (!item.available || stale)
                       Text(
-                        l10n.posSoldOutBadge,
+                        stale
+                            ? l10n.posComboNoLongerOffered
+                            : l10n.posSoldOutBadge,
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -802,6 +864,26 @@ class _ComboSheetState extends State<ComboSheet> {
     );
   }
 }
+
+/// Fix order 1 (T-C5 / T-C6) — a meal line whose meal no longer exists (or
+/// no longer covers its main) cannot be edited: "This meal is no longer
+/// available — cancel it and add it again."
+Future<void> showMealEditUnavailable(BuildContext context) => showDialog<void>(
+  context: context,
+  builder: (dialogContext) {
+    final l10n = L10n.of(dialogContext);
+    return AlertDialog(
+      key: const ValueKey('meal-edit-unavailable'),
+      content: Text(l10n.posMealNoLongerAvailable),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: Text(l10n.commonClose),
+        ),
+      ],
+    );
+  },
+);
 
 /// "Make it a meal? +1.200": true = yes, false = no (the main alone), null
 /// = cancelled.

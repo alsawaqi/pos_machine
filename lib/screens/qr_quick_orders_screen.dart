@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 import '../order_workspace/current_order_workspace.dart';
 import '../services/local_order_storage_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +26,18 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
   MealSetup? mealOf(Product p) => catalog.meals
       .where((m) => m.mains.contains(int.tryParse(p.id)) && m.onSaleOn(today))
       .firstOrNull;
+  final byId = {for (final p in catalog.products) p.id: p};
+  bool sellable(int? id) {
+    final p = byId['$id'];
+    return p != null && !p.soldOut && p.isAvailableAt(today);
+  }
+
+  // Fix order 1 (T-C4) — a meal is offered only when its items can be sold.
+  bool linesSellable(List<pricing.ComboLineDef> lines) => lines.every(
+    (l) => l.isFixed
+        ? sellable(l.productId)
+        : l.items.any((i) => sellable(i.productId)),
+  );
   List<int> ids(Product p) => <int>{
     ...p.addonGroupIds,
     ...?catalog.categoryAddonGroupIds[p.categoryId],
@@ -57,6 +70,7 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
               nameAr: m.nameAr,
               mealPriceBaisas: m.mealPriceBaisas,
               lines: m.lines,
+              available: linesSellable(m.lines),
             ),
             null => null,
           },

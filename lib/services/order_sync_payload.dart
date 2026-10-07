@@ -176,6 +176,9 @@ List<Map<String, dynamic>> tableRoundDelta(
       'product_id': cancellation.productId,
       'addon_ids': cancellation.addonIds,
       if ((cancellation.notes ?? '').isNotEmpty) 'notes': cancellation.notes,
+      // LAUNCH combo add-on — the same fingerprint as the cancelled meal /
+      // combo line, never a phantom plain main.
+      ...cancellation.lineIdentity,
     }, quantity);
   }
   return lines.values.where((line) => line['qty'] != 0).toList();
@@ -374,13 +377,23 @@ OrderSyncPayload buildOrderSyncPayload(
   // line_index -> order_item).
   final lineDiscounts = <Map<String, dynamic>>[];
   final wireLineIndexBySnapshotIndex = <int, int>{};
-  // LAUNCH combo add-on — each line's own discount rows (the server splits a
-  // combo's revenue over what the line paid after them, C-13).
+  // LAUNCH combo add-on — every discount row aimed at a line (its rule
+  // discounts AND its offer allocations): the server splits a combo's revenue
+  // over what the line paid after all of them (C-13, `paidOnWire`).
   final lineDiscountBaisas = <int, int>{};
+  void lineRow(int lineIndex, int amountBaisas) {
+    if (amountBaisas <= 0) return;
+    lineDiscountBaisas[lineIndex] =
+        (lineDiscountBaisas[lineIndex] ?? 0) + amountBaisas;
+  }
+
   for (final result in priced.lineDiscounts) {
-    if (result.amountBaisas <= 0) continue;
-    lineDiscountBaisas[result.lineIndex] =
-        (lineDiscountBaisas[result.lineIndex] ?? 0) + result.amountBaisas;
+    lineRow(result.lineIndex, result.amountBaisas);
+  }
+  for (final offer in priced.appliedOffers) {
+    for (final entry in offer.lineAmountsBaisas.entries) {
+      lineRow(entry.key, entry.value);
+    }
   }
   for (
     var snapshotIndex = 0;

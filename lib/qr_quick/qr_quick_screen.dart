@@ -1687,8 +1687,16 @@ Future<QrQuickLine?> quickPickLine(
     );
   }
   final meal = product.meal;
-  if (meal != null) {
-    final editingMeal = initial != null && initial['meal_id'] == meal.id;
+  // Fix order 1 (T-C5) — a server meal line whose meal no longer matches is
+  // never edited into its plain main: say so and change nothing.
+  final editedMeal = (initial?['meal_id'] as num?)?.toInt();
+  if (editedMeal != null && meal?.id != editedMeal) {
+    await showMealEditUnavailable(context);
+    return null;
+  }
+  // T-C4 — a meal whose items cannot be sold is not offered.
+  if (meal != null && (meal.available || editedMeal != null)) {
+    final editingMeal = editedMeal != null;
     final yes = initial != null
         ? editingMeal
         : await showMealOffer(

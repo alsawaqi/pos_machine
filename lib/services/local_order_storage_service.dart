@@ -489,7 +489,7 @@ class LocalOrderStorageService
 
     return openBusinessDatabase(
       path,
-      version: 10,
+      version: 11,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE order_history (
@@ -533,6 +533,7 @@ class LocalOrderStorageService
         await createRemoteBillIdentity(db);
         await CombineStore.createSchema(db);
         await RecoveryStore.createSchema(db);
+        await addCancellationLineIdentity(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 10) await RecoveryStore.createClosedSchema(db);
@@ -617,7 +618,17 @@ class LocalOrderStorageService
         if (oldVersion < 7) {
           await createRemoteBillIdentity(db);
         }
+        if (oldVersion < 11) await addCancellationLineIdentity(db);
       },
+    );
+  }
+
+  /// LAUNCH combo add-on — additive v10-to-v11: a line cancellation keeps the
+  /// cancelled meal / combo line's identity (`{meal_id?, combo?}` JSON); null
+  /// for every standard cancellation and every older row.
+  static Future<void> addCancellationLineIdentity(DatabaseExecutor db) async {
+    await db.execute(
+      'ALTER TABLE local_line_cancellations ADD COLUMN line_json TEXT',
     );
   }
 

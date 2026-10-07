@@ -221,11 +221,11 @@ List<Map<String, dynamic>> serverComboOf(Map<dynamic, dynamic> line) => [
 List<QrQuickComboPick> serverComboPicks(Map<dynamic, dynamic> line) => [
   for (final c in serverComboOf(line))
     if (c['filled'] != true && c['kind'] != 'main')
-      if ((c['line_id'] as num?)?.toInt() case final int slot when slot > 0)
+      if ((c['line_id'] as num?)?.toInt() case final int lineId when lineId > 0)
         if ((c['product_id'] as num?)?.toInt() case final int product
             when product > 0)
           QrQuickComboPick(
-            slot,
+            lineId,
             product,
             quantity: ((c['qty'] as num?) ?? 1).round().clamp(1, 99),
             addons: [
@@ -524,12 +524,16 @@ class QuickMeal {
     this.nameAr = '',
     this.mealPriceBaisas = 0,
     this.lines = const [],
+    this.available = true,
   });
   final int id;
   final String name;
   final String nameAr;
   final int mealPriceBaisas; // display only; the server prices it
   final List<pricing.ComboLineDef> lines;
+  // Fix order 1 (T-C4) — false when a fixed item or a whole choice line is
+  // sold out: the main is then added alone, without asking.
+  final bool available;
 }
 
 class QuickProduct {
