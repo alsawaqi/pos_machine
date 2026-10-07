@@ -225,7 +225,7 @@ class _QrTableMoneyPanelState extends ConsumerState<QrTableMoneyPanel> {
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(
-                      '${_qty(line.quantity)} × ${_arabic && line.nameAr != null ? line.nameAr : line.name}',
+                      '${_qty(line.quantity)} × ${line.displayLabel(arabic: _arabic)}',
                     ),
                     subtitle: line.notes == null
                         ? null

@@ -1089,7 +1089,8 @@ class _QuickEditorState extends State<_QuickEditor> {
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             title: Text(
-                              '${item['qty']} × ${item['product_name']}',
+                              '${item['qty']} × '
+                              '${serverLineName(item, arabic: copy.arabic)}',
                             ),
                             subtitle: Text(
                               [

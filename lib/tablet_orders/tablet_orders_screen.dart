@@ -1125,7 +1125,8 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
     return [
       Text(
         '${qty == qty.roundToDouble() ? qty.toInt() : qty} × '
-        '${name(line, 'product_name', 'product_name_ar')}',
+        // A meal shows as "Mocha meal", like the cart and checkout.
+        '${serverLineName(line, arabic: ar)}',
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
       for (final addon in (line['addons'] as List?) ?? const [])
@@ -1155,14 +1156,18 @@ class _TabletEditLinesDialogState extends State<TabletEditLinesDialog> {
   @override
   void initState() {
     super.initState();
-    final names = <int, String>{};
-    for (final line in widget.row.lines) {
-      final id = (line['product_id'] as num?)?.toInt();
-      if (id != null) names[id] = line['product_name']?.toString() ?? '#$id';
-    }
+    // Each edit line keeps its own row's name (a meal is "Mocha meal", never
+    // the plain main's name), in the order editLines builds them.
+    final names = [
+      for (final line in widget.row.lines)
+        if (((line['qty'] as num?) ?? 0) > 0 &&
+            (line['product_id'] as num?) != null)
+          serverLineName(line, arabic: false),
+    ];
+    final edits = widget.row.editLines;
     _lines = [
-      for (final line in widget.row.editLines)
-        (names[line.productId] ?? '#${line.productId}', line),
+      for (var i = 0; i < edits.length; i++)
+        (i < names.length ? names[i] : '#${edits[i].productId}', edits[i]),
     ];
   }
 

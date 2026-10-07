@@ -1,3 +1,5 @@
+import '../qr_quick/qr_quick_models.dart' show serverLineName;
+
 enum QrReleaseOutcome { cancelled, uncertain }
 
 enum QrTender { cash, card }
@@ -210,6 +212,12 @@ class QrRoundDisplayLine {
       displayNameAr: _nullableString(json['display_name_ar']),
     );
   }
+
+  /// The name to show on the bill (a meal: "Mocha meal"; its main is listed
+  /// under it with the items).
+  String displayLabel({required bool arabic}) => mealId != null
+      ? (arabic && displayNameAr != null ? displayNameAr! : displayName ?? name)
+      : (arabic && nameAr != null ? nameAr! : name);
 
   Map<String, dynamic> toKitchenItem({required bool arabic}) => {
     'name': arabic && nameAr != null ? nameAr : name,
@@ -548,7 +556,10 @@ class QrOrderItem {
     return QrOrderItem(
       id: (json['id'] as num?)?.toInt() ?? 0,
       productId: (json['product_id'] as num?)?.toInt(),
-      name: json['product_name']?.toString() ?? '',
+      // A meal shows as its display name ("Mocha meal").
+      name: json['meal_id'] != null
+          ? serverLineName(json, arabic: false)
+          : json['product_name']?.toString() ?? '',
       quantity: (json['qty'] as num?)?.toDouble() ?? 0,
       unitPriceBaisas: (json['unit_price_baisas'] as num?)?.toInt() ?? 0,
       lineDiscountBaisas: (json['line_discount_baisas'] as num?)?.toInt() ?? 0,

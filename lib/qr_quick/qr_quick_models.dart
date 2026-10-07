@@ -243,6 +243,24 @@ List<QrQuickComboPick> serverComboPicks(Map<dynamic, dynamic> line) => [
           ),
 ];
 
+/// LAUNCH combo add-on — the name a server bill / tablet / QR line shows: a
+/// meal line (`meal_id`) is its display name ("Mocha meal", §7.9), else
+/// "`<main> <meal name>`" from its parts; anything else its product name.
+/// Arabic names when [arabic] and present.
+String serverLineName(Map<dynamic, dynamic> line, {required bool arabic}) {
+  String pick(String key) => line[key]?.toString().trim() ?? '';
+  String either(String en, String ar) =>
+      arabic && pick(ar).isNotEmpty ? pick(ar) : pick(en);
+  final product = either('product_name', 'product_name_ar');
+  if (line['meal_id'] != null) {
+    final shown = either('display_name', 'display_name_ar');
+    if (shown.isNotEmpty) return shown;
+    final meal = either('meal_name', 'meal_name_ar');
+    if (product.isNotEmpty && meal.isNotEmpty) return '$product $meal';
+  }
+  return product.isNotEmpty ? product : '#${line['product_id']}';
+}
+
 /// LAUNCH-P4 C7 — display text for a server combo line's items: each chosen
 /// item ("> 2 x Fries (+0.300)") followed by its add-ons ("   + Large").
 List<String> serverComboLabels(
