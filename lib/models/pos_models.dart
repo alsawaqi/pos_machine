@@ -340,11 +340,14 @@ class AddonOption {
     this.linkedProductId,
     this.consumption = const <AddonConsumptionLine>[],
     this.allergens = const <String>[],
+    this.mayContain = const <String>[],
   });
   final int id;
   final String label;
   final String? labelAr;
   final double priceDelta; // OMR added to the line when selected
+  // K-6 — what the option may contain (traces, from a linked product).
+  final List<String> mayContain;
   // LAUNCH costs & allergens add-on — the allergen codes this option ADDS
   // (empty for Remove / instruction options).
   final List<String> allergens;

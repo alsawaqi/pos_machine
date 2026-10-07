@@ -9206,6 +9206,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   // sold at this branch (never because of stock).
                   soldOut: controller.isAddonOptionUnavailable(option),
                   allergens: option.allergens,
+                  mayContain: option.mayContain,
                 ),
               )
               .toList(),
@@ -14383,8 +14384,10 @@ class _ModifierOptionDefinition {
   // catalog (not sold here): the tile greys out and refuses selection.
   // Stock never sets this (LAUNCH-P2 "sell, but warn").
   final bool soldOut;
-  // LAUNCH costs & allergens add-on — the allergen codes it ADDS.
+  // LAUNCH costs & allergens add-on — the allergen codes it ADDS, and what
+  // it may contain (K-6).
   final List<String> allergens;
+  final List<String> mayContain;
 
   const _ModifierOptionDefinition({
     required this.id,
@@ -14393,6 +14396,7 @@ class _ModifierOptionDefinition {
     required this.price,
     this.soldOut = false,
     this.allergens = const <String>[],
+    this.mayContain = const <String>[],
   });
 
   /// The option label to SHOW for [arabic] UI (English stays the identity).
@@ -14983,6 +14987,20 @@ class _CustomizationOptionTile extends StatelessWidget {
                               color: Color(0xFFB54708),
                             ),
                           ),
+                        if (option.mayContain.isNotEmpty)
+                          Text(
+                            optionMayContainText(
+                              context,
+                              option.mayContain,
+                              allergenCatalog,
+                            ),
+                            key: ValueKey('option-may-contain-${option.id}'),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF8A5A00),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -15041,6 +15059,21 @@ class _CustomizationOptionTile extends StatelessWidget {
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                               color: Color(0xFFB54708),
+                            ),
+                          ),
+                        if (option.mayContain.isNotEmpty)
+                          Text(
+                            optionMayContainText(
+                              context,
+                              option.mayContain,
+                              allergenCatalog,
+                            ),
+                            key: ValueKey('option-may-contain-${option.id}'),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF8A5A00),
                             ),
                           ),
                         if (option.soldOut) ...[

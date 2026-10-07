@@ -4,7 +4,7 @@ import '../order_workspace/current_order_workspace.dart';
 import '../services/local_order_storage_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/qr_pending_order.dart';
-import '../models/pos_models.dart' show MealSetup, Product;
+import '../models/pos_models.dart' show AllergenSet, MealSetup, Product;
 import '../providers/providers.dart';
 import '../qr_quick/qr_quick_controller.dart';
 import '../qr_quick/qr_quick_gateway.dart';
@@ -63,6 +63,11 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
               ids(p).every(groups.containsKey),
           combo: p.isCombo,
           comboLines: p.comboLines,
+          allergens: AllergenSet(
+            contains: p.allergens,
+            mayContain: p.mayContain,
+          ),
+          allergenCatalog: catalog.allergenCatalog,
           meal: switch (mealOf(p)) {
             final MealSetup m => QuickMeal(
               m.id,
@@ -71,6 +76,10 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
               mealPriceBaisas: m.mealPriceBaisas,
               lines: m.lines,
               available: linesSellable(m.lines),
+              allergens: AllergenSet(
+                contains: m.allergens,
+                mayContain: m.mayContain,
+              ),
             ),
             null => null,
           },
@@ -87,6 +96,10 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
                         nameAr: o.labelAr ?? '',
                         selected: o.isDefault,
                         priceBaisas: (o.priceDelta * 1000).round(),
+                        allergens: AllergenSet(
+                          contains: o.allergens,
+                          mayContain: o.mayContain,
+                        ),
                       ),
                   ],
                   nameAr: g.nameAr ?? '',

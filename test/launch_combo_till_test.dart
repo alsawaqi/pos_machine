@@ -974,7 +974,7 @@ void main() {
           ),
         );
         addTearDown(db.close);
-        expect(db.schemaVersion, 32);
+        expect(db.schemaVersion, 33);
         final before = await db.getSyncMeta();
         expect(before?.branchId, 6);
         expect(before?.companyTaxJson, '{"vat_registered":true}');

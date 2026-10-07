@@ -488,8 +488,10 @@ class ConfigMapper {
           // PD3b — the option's stock-usage lines, cached raw.
           consumptionJson: Value(jsonEncode(_list(a['consumption']))),
           status: Value(_strN(a['status'])),
-          // LAUNCH costs & allergens add-on — what the option adds.
+          // LAUNCH costs & allergens add-on — what the option adds, and
+          // what it may contain (K-6).
           allergensJson: Value(_codesJson(a['allergens'])),
+          mayContainJson: Value(_codesJson(a['may_contain'])),
         ));
       }
     }
@@ -978,6 +980,7 @@ class ConfigMapper {
         // PD3b — stock-usage lines for per-option availability gating.
         consumption: _consumptionFromJson(a.consumptionJson),
         allergens: allergenCodes(_tryDecode(a.allergensJson ?? '')),
+        mayContain: allergenCodes(_tryDecode(a.mayContainJson ?? '')),
       ));
     }
     final addonGroups = addonGroupRows

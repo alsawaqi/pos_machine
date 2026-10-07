@@ -4,6 +4,7 @@ import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 import '../combo/combo_sheet.dart';
 import '../models/pos_models.dart' show CartItemModifier, ComboSelection;
 import '../order_workspace/current_order_workspace.dart';
+import '../widgets/allergen_info.dart';
 import 'qr_quick_controller.dart';
 import 'qr_expired_cancel.dart';
 import 'qr_payment_review.dart';
@@ -1230,6 +1231,16 @@ class _ProductPickerState extends State<_ProductPicker> {
                       key: ValueKey('quick-product-${p.id}'),
                       enabled: p.available,
                       title: Text(copy.name(p.name, p.nameAr)),
+                      // LAUNCH costs & allergens add-on — staff can answer
+                      // customers while picking.
+                      subtitle: p.allergens.isEmpty
+                          ? null
+                          : AllergenInfoBlock(
+                              key: ValueKey('quick-product-allergens-${p.id}'),
+                              allergens: p.allergens,
+                              catalog: p.allergenCatalog,
+                              fontSize: 11,
+                            ),
                       onTap: () => Navigator.pop(context, p),
                     ),
                 ],
@@ -1287,6 +1298,15 @@ class _ProductOptionsState extends State<_ProductOptions> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (!widget.product.allergens.isEmpty)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: AllergenInfoBlock(
+                    key: const ValueKey('quick-product-allergens'),
+                    allergens: widget.product.allergens,
+                    catalog: widget.product.allergenCatalog,
+                  ),
+                ),
               Row(
                 children: [
                   IconButton(
@@ -1309,6 +1329,18 @@ class _ProductOptionsState extends State<_ProductOptions> {
                   CheckboxListTile(
                     controlAffinity: ListTileControlAffinity.leading,
                     title: Text(copy.name(option.name, option.nameAr)),
+                    subtitle: option.allergens.isEmpty
+                        ? null
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: optionAllergenLines(
+                              context,
+                              keyPrefix: 'quick-choice',
+                              id: option.id,
+                              allergens: option.allergens,
+                              catalog: widget.product.allergenCatalog,
+                            ),
+                          ),
                     value: selected.contains(option.id),
                     onChanged: (checked) => setState(() {
                       if (checked != true) {
@@ -1458,6 +1490,12 @@ Future<QrQuickLine?> _quickComboSheet(
             : '${copy.name(product.name, product.nameAr)} '
                   '${copy.name(mealSetup.name, mealSetup.nameAr)}',
         isMeal: mealSetup != null,
+        // LAUNCH costs & allergens add-on — a meal: the main's allergens
+        // together with the meal's.
+        allergens: mealSetup == null
+            ? product.allergens
+            : product.allergens.union(mealSetup.allergens),
+        allergenCatalog: product.allergenCatalog,
         lines: lines,
         main: mealSetup == null
             ? null
@@ -1487,6 +1525,7 @@ Future<QrQuickLine?> _quickComboSheet(
               nameAr: p.nameAr,
               available: p.available,
               hasOptions: p.groups.isNotEmpty,
+              allergens: p.allergens,
             ),
             null => null,
           },
@@ -1582,6 +1621,12 @@ class _QuickItemOptionsState extends State<_QuickItemOptions> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (!widget.product.allergens.isEmpty)
+                AllergenInfoBlock(
+                  key: const ValueKey('quick-item-allergens'),
+                  allergens: widget.product.allergens,
+                  catalog: widget.product.allergenCatalog,
+                ),
               for (final group in widget.product.groups) ...[
                 Text(
                   '${copy.name(group.name, group.nameAr)} (${group.min}–${group.max})',
@@ -1591,11 +1636,25 @@ class _QuickItemOptionsState extends State<_QuickItemOptions> {
                     key: ValueKey('quick-item-option-${option.id}'),
                     controlAffinity: ListTileControlAffinity.leading,
                     title: Text(copy.name(option.name, option.nameAr)),
-                    subtitle: option.priceBaisas == 0
+                    subtitle:
+                        option.priceBaisas == 0 && option.allergens.isEmpty
                         ? null
-                        : Text(
-                            '${option.priceBaisas < 0 ? '-' : '+'}'
-                            '${(option.priceBaisas.abs() / 1000).toStringAsFixed(3)}',
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (option.priceBaisas != 0)
+                                Text(
+                                  '${option.priceBaisas < 0 ? '-' : '+'}'
+                                  '${(option.priceBaisas.abs() / 1000).toStringAsFixed(3)}',
+                                ),
+                              ...optionAllergenLines(
+                                context,
+                                keyPrefix: 'quick-item-choice',
+                                id: option.id,
+                                allergens: option.allergens,
+                                catalog: widget.product.allergenCatalog,
+                              ),
+                            ],
                           ),
                     value: selected.contains(option.id),
                     onChanged: (checked) => setState(() {

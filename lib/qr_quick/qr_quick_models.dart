@@ -3,6 +3,8 @@ import 'dart:math';
 
 import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 
+import '../models/pos_models.dart' show AllergenInfo, AllergenSet;
+
 Map<String, dynamic> qrMap(Object? value) =>
     (value as Map).cast<String, dynamic>();
 
@@ -358,12 +360,16 @@ class QuickChoice {
     this.nameAr = '',
     this.selected = false,
     this.priceBaisas = 0,
+    this.allergens = const AllergenSet(),
   });
   final int id;
   final String name;
   final String nameAr;
   final bool selected;
   final int priceBaisas;
+  // LAUNCH costs & allergens add-on — what the option adds (`contains`) and
+  // may contain.
+  final AllergenSet allergens;
 }
 
 class QuickGroup {
@@ -525,7 +531,11 @@ class QuickMeal {
     this.mealPriceBaisas = 0,
     this.lines = const [],
     this.available = true,
+    this.allergens = const AllergenSet(),
   });
+  // LAUNCH costs & allergens add-on — the meal LINES' allergens (the main
+  // adds its own).
+  final AllergenSet allergens;
   final int id;
   final String name;
   final String nameAr;
@@ -547,7 +557,14 @@ class QuickProduct {
     this.combo = false,
     this.comboLines = const [],
     this.meal,
+    this.allergens = const AllergenSet(),
+    this.allergenCatalog = const <AllergenInfo>[],
   });
+  // LAUNCH costs & allergens add-on — what it contains / may contain, and
+  // the catalogue names (one shared list for the whole quick catalogue), so
+  // the server-priced pickers show them as the till's own sheets do.
+  final AllergenSet allergens;
+  final List<AllergenInfo> allergenCatalog;
   final int id;
   final String name;
   final String nameAr;

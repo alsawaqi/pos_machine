@@ -51,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 32;
+  int get schemaVersion => 33;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -269,6 +269,14 @@ class AppDatabase extends _$AppDatabase {
         ]);
         await extend(addons, [addons.allergensJson]);
         await extend(syncMeta, [syncMeta.allergenCatalogJson]);
+      }
+      if (from < 33) {
+        // LAUNCH costs & allergens add-on (K-6) — an option's "may contain".
+        final found = await customSelect(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+          variables: [Variable<String>(addons.actualTableName)],
+        ).get();
+        if (found.isNotEmpty) await m.addColumn(addons, addons.mayContainJson);
       }
     },
   );

@@ -4103,6 +4103,17 @@ class $AddonsTable extends Addons with TableInfo<$AddonsTable, AddonRow> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _mayContainJsonMeta = const VerificationMeta(
+    'mayContainJson',
+  );
+  @override
+  late final GeneratedColumn<String> mayContainJson = GeneratedColumn<String>(
+    'may_contain_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -4116,6 +4127,7 @@ class $AddonsTable extends Addons with TableInfo<$AddonsTable, AddonRow> {
     consumptionJson,
     status,
     allergensJson,
+    mayContainJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4212,6 +4224,15 @@ class $AddonsTable extends Addons with TableInfo<$AddonsTable, AddonRow> {
         ),
       );
     }
+    if (data.containsKey('may_contain_json')) {
+      context.handle(
+        _mayContainJsonMeta,
+        mayContainJson.isAcceptableOrUnknown(
+          data['may_contain_json']!,
+          _mayContainJsonMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -4265,6 +4286,10 @@ class $AddonsTable extends Addons with TableInfo<$AddonsTable, AddonRow> {
         DriftSqlType.string,
         data['${effectivePrefix}allergens_json'],
       ),
+      mayContainJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}may_contain_json'],
+      ),
     );
   }
 
@@ -4286,6 +4311,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
   final String consumptionJson;
   final String? status;
   final String? allergensJson;
+  final String? mayContainJson;
   const AddonRow({
     required this.id,
     required this.addOnGroupId,
@@ -4298,6 +4324,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     required this.consumptionJson,
     this.status,
     this.allergensJson,
+    this.mayContainJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4322,6 +4349,9 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     }
     if (!nullToAbsent || allergensJson != null) {
       map['allergens_json'] = Variable<String>(allergensJson);
+    }
+    if (!nullToAbsent || mayContainJson != null) {
+      map['may_contain_json'] = Variable<String>(mayContainJson);
     }
     return map;
   }
@@ -4349,6 +4379,9 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
       allergensJson: allergensJson == null && nullToAbsent
           ? const Value.absent()
           : Value(allergensJson),
+      mayContainJson: mayContainJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mayContainJson),
     );
   }
 
@@ -4369,6 +4402,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
       consumptionJson: serializer.fromJson<String>(json['consumptionJson']),
       status: serializer.fromJson<String?>(json['status']),
       allergensJson: serializer.fromJson<String?>(json['allergensJson']),
+      mayContainJson: serializer.fromJson<String?>(json['mayContainJson']),
     );
   }
   @override
@@ -4386,6 +4420,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
       'consumptionJson': serializer.toJson<String>(consumptionJson),
       'status': serializer.toJson<String?>(status),
       'allergensJson': serializer.toJson<String?>(allergensJson),
+      'mayContainJson': serializer.toJson<String?>(mayContainJson),
     };
   }
 
@@ -4401,6 +4436,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     String? consumptionJson,
     Value<String?> status = const Value.absent(),
     Value<String?> allergensJson = const Value.absent(),
+    Value<String?> mayContainJson = const Value.absent(),
   }) => AddonRow(
     id: id ?? this.id,
     addOnGroupId: addOnGroupId ?? this.addOnGroupId,
@@ -4417,6 +4453,9 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     allergensJson: allergensJson.present
         ? allergensJson.value
         : this.allergensJson,
+    mayContainJson: mayContainJson.present
+        ? mayContainJson.value
+        : this.mayContainJson,
   );
   AddonRow copyWithCompanion(AddonsCompanion data) {
     return AddonRow(
@@ -4443,6 +4482,9 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
       allergensJson: data.allergensJson.present
           ? data.allergensJson.value
           : this.allergensJson,
+      mayContainJson: data.mayContainJson.present
+          ? data.mayContainJson.value
+          : this.mayContainJson,
     );
   }
 
@@ -4459,7 +4501,8 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
           ..write('linkedProductId: $linkedProductId, ')
           ..write('consumptionJson: $consumptionJson, ')
           ..write('status: $status, ')
-          ..write('allergensJson: $allergensJson')
+          ..write('allergensJson: $allergensJson, ')
+          ..write('mayContainJson: $mayContainJson')
           ..write(')'))
         .toString();
   }
@@ -4477,6 +4520,7 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
     consumptionJson,
     status,
     allergensJson,
+    mayContainJson,
   );
   @override
   bool operator ==(Object other) =>
@@ -4492,7 +4536,8 @@ class AddonRow extends DataClass implements Insertable<AddonRow> {
           other.linkedProductId == this.linkedProductId &&
           other.consumptionJson == this.consumptionJson &&
           other.status == this.status &&
-          other.allergensJson == this.allergensJson);
+          other.allergensJson == this.allergensJson &&
+          other.mayContainJson == this.mayContainJson);
 }
 
 class AddonsCompanion extends UpdateCompanion<AddonRow> {
@@ -4507,6 +4552,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
   final Value<String> consumptionJson;
   final Value<String?> status;
   final Value<String?> allergensJson;
+  final Value<String?> mayContainJson;
   const AddonsCompanion({
     this.id = const Value.absent(),
     this.addOnGroupId = const Value.absent(),
@@ -4519,6 +4565,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     this.consumptionJson = const Value.absent(),
     this.status = const Value.absent(),
     this.allergensJson = const Value.absent(),
+    this.mayContainJson = const Value.absent(),
   });
   AddonsCompanion.insert({
     this.id = const Value.absent(),
@@ -4532,6 +4579,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     this.consumptionJson = const Value.absent(),
     this.status = const Value.absent(),
     this.allergensJson = const Value.absent(),
+    this.mayContainJson = const Value.absent(),
   }) : addOnGroupId = Value(addOnGroupId);
   static Insertable<AddonRow> custom({
     Expression<int>? id,
@@ -4545,6 +4593,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     Expression<String>? consumptionJson,
     Expression<String>? status,
     Expression<String>? allergensJson,
+    Expression<String>? mayContainJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -4558,6 +4607,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
       if (consumptionJson != null) 'consumption_json': consumptionJson,
       if (status != null) 'status': status,
       if (allergensJson != null) 'allergens_json': allergensJson,
+      if (mayContainJson != null) 'may_contain_json': mayContainJson,
     });
   }
 
@@ -4573,6 +4623,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     Value<String>? consumptionJson,
     Value<String?>? status,
     Value<String?>? allergensJson,
+    Value<String?>? mayContainJson,
   }) {
     return AddonsCompanion(
       id: id ?? this.id,
@@ -4586,6 +4637,7 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
       consumptionJson: consumptionJson ?? this.consumptionJson,
       status: status ?? this.status,
       allergensJson: allergensJson ?? this.allergensJson,
+      mayContainJson: mayContainJson ?? this.mayContainJson,
     );
   }
 
@@ -4625,6 +4677,9 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
     if (allergensJson.present) {
       map['allergens_json'] = Variable<String>(allergensJson.value);
     }
+    if (mayContainJson.present) {
+      map['may_contain_json'] = Variable<String>(mayContainJson.value);
+    }
     return map;
   }
 
@@ -4641,7 +4696,8 @@ class AddonsCompanion extends UpdateCompanion<AddonRow> {
           ..write('linkedProductId: $linkedProductId, ')
           ..write('consumptionJson: $consumptionJson, ')
           ..write('status: $status, ')
-          ..write('allergensJson: $allergensJson')
+          ..write('allergensJson: $allergensJson, ')
+          ..write('mayContainJson: $mayContainJson')
           ..write(')'))
         .toString();
   }
@@ -14559,6 +14615,7 @@ typedef $$AddonsTableCreateCompanionBuilder =
       Value<String> consumptionJson,
       Value<String?> status,
       Value<String?> allergensJson,
+      Value<String?> mayContainJson,
     });
 typedef $$AddonsTableUpdateCompanionBuilder =
     AddonsCompanion Function({
@@ -14573,6 +14630,7 @@ typedef $$AddonsTableUpdateCompanionBuilder =
       Value<String> consumptionJson,
       Value<String?> status,
       Value<String?> allergensJson,
+      Value<String?> mayContainJson,
     });
 
 class $$AddonsTableFilterComposer
@@ -14636,6 +14694,11 @@ class $$AddonsTableFilterComposer
 
   ColumnFilters<String> get allergensJson => $composableBuilder(
     column: $table.allergensJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mayContainJson => $composableBuilder(
+    column: $table.mayContainJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -14703,6 +14766,11 @@ class $$AddonsTableOrderingComposer
     column: $table.allergensJson,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get mayContainJson => $composableBuilder(
+    column: $table.mayContainJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AddonsTableAnnotationComposer
@@ -14758,6 +14826,11 @@ class $$AddonsTableAnnotationComposer
     column: $table.allergensJson,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get mayContainJson => $composableBuilder(
+    column: $table.mayContainJson,
+    builder: (column) => column,
+  );
 }
 
 class $$AddonsTableTableManager
@@ -14799,6 +14872,7 @@ class $$AddonsTableTableManager
                 Value<String> consumptionJson = const Value.absent(),
                 Value<String?> status = const Value.absent(),
                 Value<String?> allergensJson = const Value.absent(),
+                Value<String?> mayContainJson = const Value.absent(),
               }) => AddonsCompanion(
                 id: id,
                 addOnGroupId: addOnGroupId,
@@ -14811,6 +14885,7 @@ class $$AddonsTableTableManager
                 consumptionJson: consumptionJson,
                 status: status,
                 allergensJson: allergensJson,
+                mayContainJson: mayContainJson,
               ),
           createCompanionCallback:
               ({
@@ -14825,6 +14900,7 @@ class $$AddonsTableTableManager
                 Value<String> consumptionJson = const Value.absent(),
                 Value<String?> status = const Value.absent(),
                 Value<String?> allergensJson = const Value.absent(),
+                Value<String?> mayContainJson = const Value.absent(),
               }) => AddonsCompanion.insert(
                 id: id,
                 addOnGroupId: addOnGroupId,
@@ -14837,6 +14913,7 @@ class $$AddonsTableTableManager
                 consumptionJson: consumptionJson,
                 status: status,
                 allergensJson: allergensJson,
+                mayContainJson: mayContainJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

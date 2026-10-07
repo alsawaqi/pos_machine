@@ -241,7 +241,7 @@ void main() {
     });
 
     test(
-      'Drift 29 to 32 keeps cached rows and adds the allergen columns',
+      'Drift 29 to head keeps cached rows and adds the allergen columns',
       () async {
         final db = AppDatabase.forTesting(
           NativeDatabase.memory(
@@ -303,7 +303,7 @@ void main() {
           ),
         );
         addTearDown(db.close);
-        expect(db.schemaVersion, 32);
+        expect(db.schemaVersion, 33);
         final product = (await db.select(db.products).get()).single;
         expect(product.name, 'Tea');
         expect(product.allergensJson, isNull);

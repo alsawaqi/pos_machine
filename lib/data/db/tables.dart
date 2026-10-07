@@ -182,8 +182,10 @@ class Addons extends Table {
   // qty, unit}]). Never used to gate the option (LAUNCH-P2).
   TextColumn get consumptionJson => text().withDefault(const Constant('[]'))();
   TextColumn get status => text().nullable()();
-  // LAUNCH costs & allergens add-on — the allergen codes this option ADDS.
+  // LAUNCH costs & allergens add-on — the allergen codes this option ADDS,
+  // and what it may contain (K-6: from a linked product).
   TextColumn get allergensJson => text().nullable()();
+  TextColumn get mayContainJson => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

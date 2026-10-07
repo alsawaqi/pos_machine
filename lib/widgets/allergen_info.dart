@@ -27,6 +27,8 @@ class AllergenInfoBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Nothing to say: build nothing (never needs the localizations).
+    if (allergens.isEmpty && !showNone) return const SizedBox.shrink();
     final l10n = L10n.of(context);
     final arabic = Localizations.localeOf(context).languageCode == 'ar';
     String names(List<String> codes) => allergenNames(
@@ -75,6 +77,51 @@ class AllergenInfoBlock extends StatelessWidget {
     );
   }
 }
+
+/// K-6 — "May contain: Tree nuts" under an option (empty = nothing).
+String optionMayContainText(
+  BuildContext context,
+  List<String> codes,
+  List<AllergenInfo> catalog,
+) {
+  if (codes.isEmpty) return '';
+  final arabic = Localizations.localeOf(context).languageCode == 'ar';
+  return L10n.of(context).posAllergensMayContain(
+    allergenNames(codes, catalog, arabic: arabic).join(arabic ? '، ' : ', '),
+  );
+}
+
+/// An option's lines in the server-priced pickers: "Adds: Milk" and "May
+/// contain: Tree nuts" (keys `prefix-adds-id` / `prefix-may-contain-id`);
+/// nothing when it has none.
+List<Widget> optionAllergenLines(
+  BuildContext context, {
+  required String keyPrefix,
+  required int id,
+  required AllergenSet allergens,
+  required List<AllergenInfo> catalog,
+}) => [
+  if (allergens.contains.isNotEmpty)
+    Text(
+      optionAllergenText(context, allergens.contains, catalog),
+      key: ValueKey('$keyPrefix-adds-$id'),
+      style: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: Color(0xFFB54708),
+      ),
+    ),
+  if (allergens.mayContain.isNotEmpty)
+    Text(
+      optionMayContainText(context, allergens.mayContain, catalog),
+      key: ValueKey('$keyPrefix-may-contain-$id'),
+      style: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        color: Color(0xFF8A5A00),
+      ),
+    ),
+];
 
 /// "Adds: Milk" under an option that adds allergens (empty = nothing).
 String optionAllergenText(
