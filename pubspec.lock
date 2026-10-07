@@ -785,11 +785,11 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "v0.3.0"
-      resolved-ref: "d63ba6c6633e2e887b538366fbb0c02ba0e1c9f6"
+      ref: "v0.4.0"
+      resolved-ref: "dbe5ad8066b975bfdb9df3bedfa572bc6e727d1c"
       url: "https://github.com/alsawaqi/mithqal_pricing.git"
     source: git
-    version: "0.3.0"
+    version: "0.4.0"
   mithqal_softpos:
     dependency: "direct main"
     description:

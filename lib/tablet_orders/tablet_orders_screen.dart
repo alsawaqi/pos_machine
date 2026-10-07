@@ -1166,8 +1166,7 @@ class _TabletEditLinesDialogState extends State<TabletEditLinesDialog> {
     ];
   }
 
-  QrQuickLine _withQty(QrQuickLine line, int qty) =>
-      QrQuickLine(line.productId, qty, line.addonIds, combo: line.combo);
+  QrQuickLine _withQty(QrQuickLine line, int qty) => line.withQuantity(qty);
 
   @override
   Widget build(BuildContext context) {

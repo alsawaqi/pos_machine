@@ -228,18 +228,14 @@ bool get activePricesIncludeTax => activeTaxSettings.pricesIncludeTax;
 List<TaxLineAmount> taxLinesFor(double subtotal) {
   final base = (subtotal * 1000).round();
   return [
-    for (final line in pricing.taxLinesBaisasFor(
-      base < 0 ? 0 : base,
-      [
-        for (final t in activeCompanyTaxes)
-          pricing.TaxSpec(
-            name: t.name,
-            nameAr: t.nameAr,
-            ratePercent: t.ratePercent,
-          ),
-      ],
-      pricesIncludeTax: activePricesIncludeTax,
-    ))
+    for (final line in pricing.taxLinesBaisasFor(base < 0 ? 0 : base, [
+      for (final t in activeCompanyTaxes)
+        pricing.TaxSpec(
+          name: t.name,
+          nameAr: t.nameAr,
+          ratePercent: t.ratePercent,
+        ),
+    ], pricesIncludeTax: activePricesIncludeTax))
       TaxLineAmount(
         name: line.name,
         nameAr: line.nameAr,
@@ -278,18 +274,14 @@ List<TaxLineAmount> serverBillTaxLines({
   }
   if (active.length > 1) {
     final base = pricesIncludeTax ? grandBaisas : grandBaisas - taxBaisas;
-    final lines = pricing.taxLinesBaisasFor(
-      base < 0 ? 0 : base,
-      [
-        for (final t in active)
-          pricing.TaxSpec(
-            name: t.name,
-            nameAr: t.nameAr,
-            ratePercent: t.ratePercent,
-          ),
-      ],
-      pricesIncludeTax: pricesIncludeTax,
-    );
+    final lines = pricing.taxLinesBaisasFor(base < 0 ? 0 : base, [
+      for (final t in active)
+        pricing.TaxSpec(
+          name: t.name,
+          nameAr: t.nameAr,
+          ratePercent: t.ratePercent,
+        ),
+    ], pricesIncludeTax: pricesIncludeTax);
     if (lines.fold<int>(0, (s, l) => s + l.amountBaisas) == taxBaisas) {
       return [
         for (final l in lines)
@@ -582,81 +574,184 @@ class RecipeLine {
   final double quantity;
 }
 
-/// LAUNCH-P4 C7 — one choice inside a combo slot: a standard product, with
-/// the extra it costs on top of the combo price (the same on every channel).
-class ComboOption {
-  const ComboOption({
-    required this.productId,
-    this.extraPrice = 0,
-    this.isDefault = false,
+/// LAUNCH combo add-on — a combo product's or a meal's LINES (device config
+/// `combo.lines[]` / `meals[].lines[]`, pos_api handback §7.1), parsed by the
+/// shared pricing package: a FIXED line (a product x quantity, optionally
+/// with upgrades) or a CHOICE line ("pick N" of the items it offers, each at
+/// its extra price, repeats allowed). Empty on anything malformed.
+List<pricing.ComboLineDef> comboLinesFromJson(Object? combo) =>
+    combo is Map ? pricing.ComboLineDef.listFromJson(combo['lines']) : const [];
+
+/// LAUNCH combo add-on — a "Make it a meal?" setup (device config `meals[]`,
+/// handback §7.2): a meal price added to the main's own price, its lines,
+/// and the mains it is offered on ([mains] = products sold here today). A
+/// product's meal is the one whose [mains] contains it (one at most; the
+/// server already resolved clashes).
+class MealSetup {
+  const MealSetup({
+    required this.id,
+    required this.name,
+    this.uuid = '',
+    this.nameAr = '',
+    this.mealPriceBaisas = 0,
     this.sortOrder = 0,
+    this.onSaleFrom,
+    this.onSaleUntil,
+    this.mains = const <int>{},
+    this.lines = const <pricing.ComboLineDef>[],
   });
 
-  final int productId;
-  final double extraPrice; // OMR
-  final bool isDefault;
+  final int id;
+  final String uuid;
+  final String name;
+  final String nameAr;
+  final int mealPriceBaisas;
   final int sortOrder;
+  // 'YYYY-MM-DD' (inclusive); null = open-ended.
+  final String? onSaleFrom;
+  final String? onSaleUntil;
+  final Set<int> mains;
+  final List<pricing.ComboLineDef> lines;
+
+  double get mealPrice => mealPriceBaisas / 1000.0;
+
+  String displayName(bool arabic) =>
+      arabic && nameAr.trim().isNotEmpty ? nameAr : name;
+
+  /// Whether the meal is on sale on [day] (its limited-time dates; the
+  /// server sends only meals on sale today, but a cached config can age).
+  bool onSaleOn(DateTime day) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    final today = '${day.year}-${two(day.month)}-${two(day.day)}';
+    final from = (onSaleFrom ?? '').length >= 10
+        ? onSaleFrom!.substring(0, 10)
+        : null;
+    final until = (onSaleUntil ?? '').length >= 10
+        ? onSaleUntil!.substring(0, 10)
+        : null;
+    if (from != null && today.compareTo(from) < 0) return false;
+    if (until != null && today.compareTo(until) > 0) return false;
+    return true;
+  }
+
+  static int? _int(Object? v) => switch (v) {
+    final int i => i,
+    final num n => n.toInt(),
+    final String s => int.tryParse(s),
+    _ => null,
+  };
+
+  /// Parse one `meals[]` entry; null when it has no id.
+  static MealSetup? fromJson(Object? raw) {
+    if (raw is! Map) return null;
+    final id = _int(raw['id']);
+    if (id == null) return null;
+    String? date(Object? v) {
+      final text = v?.toString().trim() ?? '';
+      return text.isEmpty ? null : text;
+    }
+
+    return MealSetup(
+      id: id,
+      uuid: raw['uuid']?.toString() ?? '',
+      name: raw['name']?.toString() ?? '',
+      nameAr: raw['name_ar']?.toString() ?? '',
+      mealPriceBaisas: _int(raw['meal_price_baisas']) ?? 0,
+      sortOrder: _int(raw['sort_order']) ?? 0,
+      onSaleFrom: date(raw['on_sale_from']),
+      onSaleUntil: date(raw['on_sale_until']),
+      mains: {
+        for (final m in (raw['mains'] as List?) ?? const [])
+          if (_int(m) case final int id) id,
+      },
+      lines: pricing.ComboLineDef.listFromJson(raw['lines']),
+    );
+  }
+
+  /// Parse the `meals` list, by (sort_order, id) like the server.
+  static List<MealSetup> listFromJson(Object? raw) {
+    final meals = <MealSetup>[
+      for (final m in (raw is List ? raw : const []))
+        if (fromJson(m) case final MealSetup meal) meal,
+    ];
+    meals.sort(
+      (a, b) => a.sortOrder != b.sortOrder
+          ? a.sortOrder.compareTo(b.sortOrder)
+          : a.id.compareTo(b.id),
+    );
+    return meals;
+  }
 }
 
-/// LAUNCH-P4 C7 — one choice slot of a combo ("Main", "Side", "Drink"):
-/// pick between [min] and [max] of its [options].
-class ComboSlot {
-  const ComboSlot({
+/// LAUNCH combo add-on — the meal a cart line was sold as: the line's
+/// product is the MAIN; the meal adds [price] and its items.
+class CartMeal {
+  const CartMeal({
     required this.id,
     required this.name,
     this.nameAr = '',
-    this.min = 1,
-    this.max = 1,
-    this.sortOrder = 0,
-    this.options = const <ComboOption>[],
+    this.price = 0,
   });
 
   final int id;
   final String name;
   final String nameAr;
-  final int min;
-  final int max;
-  final int sortOrder;
-  final List<ComboOption> options;
+  final double price; // OMR
 
   String displayName(bool arabic) =>
       arabic && nameAr.trim().isNotEmpty ? nameAr : name;
 
-  /// Parse one `combo.slots[]` entry from /device/config (money in baisas).
-  static ComboSlot fromJson(Map<String, dynamic> json) {
-    int asInt(Object? v, int fallback) => (v as num?)?.toInt() ?? fallback;
-    final options = <ComboOption>[
-      for (final raw in (json['options'] as List?) ?? const [])
-        if (raw is Map && raw['product_id'] is num)
-          ComboOption(
-            productId: (raw['product_id'] as num).toInt(),
-            extraPrice: asInt(raw['extra_price_baisas'], 0) / 1000.0,
-            isDefault: raw['is_default'] == true,
-            sortOrder: asInt(raw['sort_order'], 0),
-          ),
-    ]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-    final min = asInt(json['min'] ?? json['min_choices'], 1);
-    final max = asInt(json['max'] ?? json['max_choices'], 1);
-    return ComboSlot(
-      id: asInt(json['id'], 0),
-      name: json['name']?.toString() ?? '',
-      nameAr: json['name_ar']?.toString() ?? '',
-      min: min < 0 ? 0 : min,
-      max: max < 1 ? 1 : max,
-      sortOrder: asInt(json['sort_order'], 0),
-      options: options,
+  static CartMeal? fromMap(Object? raw) {
+    if (raw is! Map || raw['id'] is! num) return null;
+    return CartMeal(
+      id: (raw['id'] as num).toInt(),
+      name: raw['name']?.toString() ?? '',
+      nameAr: raw['nameAr']?.toString() ?? '',
+      price: (raw['price'] as num?)?.toDouble() ?? 0,
     );
   }
 
-  /// Parse a `combo` object ({slots: [...]}) — empty on anything malformed.
-  static List<ComboSlot> listFromJson(Object? combo) {
-    if (combo is! Map) return const <ComboSlot>[];
-    final slots = <ComboSlot>[
-      for (final raw in (combo['slots'] as List?) ?? const [])
-        if (raw is Map) ComboSlot.fromJson(raw.cast<String, dynamic>()),
-    ]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-    return slots;
-  }
+  Map<String, dynamic> toMap() => {
+    'id': id,
+    'name': name,
+    if (nameAr.isNotEmpty) 'nameAr': nameAr,
+    'price': price,
+  };
+}
+
+/// LAUNCH combo add-on — what the combo / meal sheet picked for one line,
+/// per ONE combo / meal: a choice line's item (any number of times), a fixed
+/// line's upgrade, or a fixed line's own product given options. A fixed
+/// line without a selection is served as is.
+class ComboSelection {
+  const ComboSelection({
+    required this.lineId,
+    required this.productId,
+    this.qty = 1,
+    this.modifiers = const <CartItemModifier>[],
+    this.notes = '',
+  });
+
+  final int lineId;
+  final String productId;
+  final int qty;
+  final List<CartItemModifier> modifiers;
+  final String notes;
+
+  /// The selections that rebuild [components] (an edit reopens the sheet
+  /// with them; filled fixed lines stay unselected).
+  static List<ComboSelection> fromComponents(List<ComboComponent> components) =>
+      [
+        for (final c in components)
+          if (!c.filled)
+            ComboSelection(
+              lineId: c.lineId,
+              productId: c.productId,
+              qty: c.qty,
+              modifiers: c.modifiers,
+              notes: c.notes,
+            ),
+      ];
 }
 
 class Product {
@@ -711,8 +806,8 @@ class Product {
   final bool soldOut;
   // LAUNCH-P4 L5 — the Arabic description (display-only).
   final String descriptionAr;
-  // LAUNCH-P4 C7 — a combo's choice slots (empty for a standard product).
-  final List<ComboSlot> comboSlots;
+  // LAUNCH combo add-on — a combo's lines (empty for a standard product).
+  final List<pricing.ComboLineDef> comboLines;
 
   const Product({
     required this.id,
@@ -739,7 +834,7 @@ class Product {
     this.deliveryUnlistedProviderIds = const <int>{},
     this.soldOut = false,
     this.descriptionAr = '',
-    this.comboSlots = const <ComboSlot>[],
+    this.comboLines = const <pricing.ComboLineDef>[],
   });
 
   /// The name to SHOW for [arabic] UI — falls back to the English identity
@@ -747,8 +842,14 @@ class Product {
   String displayName(bool arabic) =>
       arabic && nameAr.trim().isNotEmpty ? nameAr : name;
 
-  /// LAUNCH-P4 C7 — a set-price combo with choice slots.
+  /// LAUNCH combo add-on — a combo product: one price for its lines.
   bool get isCombo => productType == 'combo';
+
+  /// LAUNCH combo add-on — a combo with only fixed lines and no upgrades is
+  /// added with one tap (nobody picks anything).
+  bool get isFixedOnlyCombo =>
+      isCombo &&
+      comboLines.every((line) => line.isFixed && line.upgrades.isEmpty);
 
   /// LAUNCH-P4 C5 — whether delivery provider [providerId] sells it.
   bool isListedOn(int providerId) =>
@@ -757,11 +858,9 @@ class Product {
   /// LAUNCH-P4 H11 — up to two initials for the photo placeholder (Arabic
   /// name when [arabic] and present), e.g. "Iced Latte" → "IL".
   String initials(bool arabic) {
-    final words = displayName(arabic)
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((w) => w.isNotEmpty)
-        .toList();
+    final words = displayName(
+      arabic,
+    ).trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
     if (words.isEmpty) return '?';
     String firstOf(String word) => String.fromCharCode(word.runes.first);
     if (words.length == 1) return firstOf(words.first).toUpperCase();
@@ -833,7 +932,7 @@ class Product {
         deliveryUnlistedProviderIds: deliveryUnlistedProviderIds,
         soldOut: soldOut ?? this.soldOut,
         descriptionAr: descriptionAr,
-        comboSlots: comboSlots,
+        comboLines: comboLines,
       );
 
   factory Product.fromMap(Map<String, dynamic> map) {
@@ -915,57 +1014,117 @@ class CartItemModifier {
   }
 }
 
-/// LAUNCH-P4 C7 — one chosen item inside a combo line: the slot it fills,
-/// the standard product picked, how many per ONE combo, the extra it costs,
-/// and its own add-ons (at their prices). Its stock and kitchen work are its
-/// own; the revenue stays on the combo line.
+int _baisas(double omr) => (omr * 1000).round();
+
+/// A signed money suffix for an add-on / extra: " (+0.300 OMR)", a minus
+/// remove " (-0.100 OMR)", nothing at 0.
+String signedOmrSuffix(double price) => price == 0
+    ? ''
+    : ' (${price > 0 ? '+' : '-'}${price.abs().toStringAsFixed(3)} OMR)';
+
+/// LAUNCH combo add-on — one served item of a combo or meal line, per ONE
+/// combo / meal: the line it belongs to, its kind (`fixed` = the line's own
+/// product served as is, `upgrade` = a fixed line swapped to an upgrade,
+/// `choice` = picked on a choice line), the REAL product served, how many,
+/// the extra it costs (a choice extra or an upgrade price; 0 for a plain
+/// fixed item) and its own add-ons and notes. [weightBaisas] is the item's
+/// normal price for the order's type (the profit-split weight); [filled] is
+/// a fixed line nobody touched (served as is).
 class ComboComponent {
   const ComboComponent({
-    required this.slotId,
+    required this.lineId,
     required this.productId,
     required this.name,
+    this.kind = 'choice',
     this.nameAr = '',
-    this.slotName = '',
-    this.slotNameAr = '',
+    this.lineName = '',
+    this.lineNameAr = '',
     this.qty = 1,
     this.extraPrice = 0,
     this.modifiers = const <CartItemModifier>[],
     this.notes = '',
+    this.filled = false,
+    this.weightBaisas = 0,
   });
 
-  final int slotId;
+  final int lineId;
+  final String kind; // fixed | upgrade | choice
   final String productId;
   final String name;
   final String nameAr;
-  // Display only (the slot's name when the combo was built).
-  final String slotName;
-  final String slotNameAr;
-  final int qty; // per ONE combo
+  // Display only (a choice line's question when the item was picked).
+  final String lineName;
+  final String lineNameAr;
+  final int qty; // per ONE combo / meal
   final double extraPrice; // OMR, per unit
   final List<CartItemModifier> modifiers;
   final String notes;
+  final bool filled;
+  final int weightBaisas;
 
   String displayName(bool arabic) =>
       arabic && nameAr.trim().isNotEmpty ? nameAr : name;
 
-  /// Extra + add-ons for ONE unit of this component.
-  double get unitDelta =>
-      extraPrice + modifiers.fold<double>(0, (sum, m) => sum + m.price);
+  pricing.ComboItemKind get _kind => switch (kind) {
+    'fixed' => pricing.ComboItemKind.fixed,
+    'upgrade' => pricing.ComboItemKind.upgrade,
+    _ => pricing.ComboItemKind.choice,
+  };
 
-  /// What this component adds to ONE combo: qty × (extra + add-ons).
-  double get comboDelta => qty * unitDelta;
+  /// The pricing package's item (money in baisas). Demo add-ons without a
+  /// numeric id still count towards the price.
+  pricing.ComboItem toPricingItem() => pricing.ComboItem(
+    lineId: lineId,
+    kind: _kind,
+    productId: int.tryParse(productId) ?? 0,
+    qty: qty,
+    extraPriceBaisas: _baisas(extraPrice),
+    addOns: [
+      for (final m in modifiers)
+        pricing.ComboAddOn(
+          addOnId: int.tryParse(m.id) ?? 0,
+          priceDeltaBaisas: _baisas(m.price),
+        ),
+    ],
+    notes: notes,
+    weightBaisas: weightBaisas,
+    filled: filled,
+  );
+
+  /// One unit: max(0, extra + add-ons) — an item never goes below 0.
+  double get unitDelta => toPricingItem().unitPriceBaisas / 1000.0;
+
+  /// What this item adds to ONE combo / meal: qty × max(0, extra + add-ons).
+  double get comboDelta => toPricingItem().priceBaisas / 1000.0;
 
   String get signature =>
-      '$slotId:$productId:$qty:${modifiers.map((m) => m.id).join(',')}'
+      '$lineId:$kind:$productId:$qty:${modifiers.map((m) => m.id).join(',')}'
       ':${notes.trim().toLowerCase()}';
 
+  ComboComponent copyWith({int? weightBaisas}) => ComboComponent(
+    lineId: lineId,
+    kind: kind,
+    productId: productId,
+    name: name,
+    nameAr: nameAr,
+    lineName: lineName,
+    lineNameAr: lineNameAr,
+    qty: qty,
+    extraPrice: extraPrice,
+    modifiers: modifiers,
+    notes: notes,
+    filled: filled,
+    weightBaisas: weightBaisas ?? this.weightBaisas,
+  );
+
   factory ComboComponent.fromMap(Map<String, dynamic> map) => ComboComponent(
-    slotId: (map['slotId'] as num?)?.toInt() ?? 0,
+    lineId: (map['lineId'] as num?)?.toInt() ?? 0,
+    kind: map['kind']?.toString() ?? 'choice',
     productId: map['productId']?.toString() ?? '',
     name: map['name']?.toString() ?? '',
     nameAr: map['nameAr']?.toString() ?? '',
-    slotName: map['slotName']?.toString() ?? '',
-    slotNameAr: map['slotNameAr']?.toString() ?? '',
+    lineName: map['lineName']?.toString() ?? '',
+    lineNameAr: map['lineNameAr']?.toString() ?? '',
     qty: (map['qty'] as num?)?.toInt() ?? 1,
     extraPrice: (map['extraPrice'] as num?)?.toDouble() ?? 0,
     modifiers: [
@@ -973,20 +1132,25 @@ class ComboComponent {
         if (m is Map) CartItemModifier.fromMap(Map<String, dynamic>.from(m)),
     ],
     notes: map['notes']?.toString() ?? '',
+    filled: map['filled'] == true,
+    weightBaisas: (map['weightBaisas'] as num?)?.toInt() ?? 0,
   );
 
   Map<String, dynamic> toMap() => {
-    'slotId': slotId,
+    'lineId': lineId,
+    'kind': kind,
     'productId': productId,
     'name': name,
     if (nameAr.isNotEmpty) 'nameAr': nameAr,
-    if (slotName.isNotEmpty) 'slotName': slotName,
-    if (slotNameAr.isNotEmpty) 'slotNameAr': slotNameAr,
+    if (lineName.isNotEmpty) 'lineName': lineName,
+    if (lineNameAr.isNotEmpty) 'lineNameAr': lineNameAr,
     'qty': qty,
     'extraPrice': extraPrice,
     if (modifiers.isNotEmpty)
       'modifiers': [for (final m in modifiers) m.toMap()],
     if (notes.trim().isNotEmpty) 'notes': notes.trim(),
+    if (filled) 'filled': true,
+    'weightBaisas': weightBaisas,
   };
 }
 
@@ -1003,9 +1167,15 @@ class CartItem {
   // application ('<offerId>:<instance>'). Bundle lines never merge with
   // regular lines; the offer engine re-validates the set on every change.
   String bundleKey;
-  // LAUNCH-P4 C7 — a combo line's chosen items (per ONE combo). Empty for a
-  // standard line.
+  // LAUNCH combo add-on — a combo's or meal's served items (per ONE combo /
+  // meal), in the server's order. Empty for a standard line.
   List<ComboComponent> components;
+  // LAUNCH combo add-on — set when this line is a MEAL: [product] is the
+  // main (its [modifiers] / [notes] are the main's), the meal adds its price
+  // and its [components].
+  CartMeal? meal;
+  // The main's profit-split weight (its price for the order's type).
+  int mainWeightBaisas;
 
   CartItem({
     required this.product,
@@ -1015,12 +1185,16 @@ class CartItem {
     this.gifted = false,
     this.bundleKey = '',
     List<ComboComponent>? components,
+    this.meal,
+    int? mainWeightBaisas,
   }) : modifiers = List<CartItemModifier>.from(modifiers ?? const []),
-       components = List<ComboComponent>.from(components ?? const []);
+       components = List<ComboComponent>.from(components ?? const []),
+       mainWeightBaisas = mainWeightBaisas ?? _baisas(product.price);
 
   factory CartItem.fromMap(Map<String, dynamic> map) {
+    final product = Product.fromMap(map);
     return CartItem(
-      product: Product.fromMap(map),
+      product: product,
       qty: (map['qty'] as num?)?.toInt() ?? 1,
       modifiers: ((map['modifiers'] as List?) ?? const [])
           .map(
@@ -1036,12 +1210,14 @@ class CartItem {
         for (final c in (map['components'] as List?) ?? const [])
           if (c is Map) ComboComponent.fromMap(Map<String, dynamic>.from(c)),
       ],
+      meal: CartMeal.fromMap(map['meal']),
+      mainWeightBaisas: (map['mainWeightBaisas'] as num?)?.toInt(),
     );
   }
 
   /// The same line on a different [product] copy (a re-price): quantity,
-  /// add-ons, notes, the gift flag, the bundle instance and the combo
-  /// components all carry over.
+  /// add-ons, notes, the gift flag, the bundle instance, the combo items
+  /// and the meal all carry over.
   CartItem withProduct(Product product) => CartItem(
     product: product,
     qty: qty,
@@ -1050,26 +1226,79 @@ class CartItem {
     gifted: gifted,
     bundleKey: bundleKey,
     components: List<ComboComponent>.from(components),
+    meal: meal,
+    mainWeightBaisas: mainWeightBaisas,
   );
 
-  bool get isCombo => components.isNotEmpty || product.isCombo;
+  /// LAUNCH combo add-on — a meal line ("Make it a meal?").
+  bool get isMeal => meal != null;
+
+  /// A combo or a meal (one money line with items under it).
+  bool get isCombo => components.isNotEmpty || product.isCombo || isMeal;
+
+  /// The name to SHOW: a meal is "`<main> <meal name>`" ("Beef burger meal",
+  /// the server's display name); anything else is its product's name.
+  String displayName(bool arabic) => isMeal
+      ? '${product.displayName(arabic)} ${meal!.displayName(arabic)}'
+      : product.displayName(arabic);
 
   double get modifierTotal =>
       modifiers.fold(0, (sum, modifier) => sum + modifier.price);
 
-  /// LAUNCH-P4 C7 — Σ component qty × (extra + add-ons), per ONE combo.
+  /// Σ item qty × max(0, extra + add-ons), per ONE combo / meal.
   double get componentTotal =>
       components.fold(0, (sum, component) => sum + component.comboDelta);
 
-  /// Base (channel) price + add-ons (+ a combo's components).
-  double get unitPrice => product.price + modifierTotal + componentTotal;
+  /// LAUNCH combo add-on — this line as the pricing package's sale (null for
+  /// a standard line): the combo at its channel price, or the meal's main
+  /// (channel price + its add-ons) + meal price, plus the items.
+  pricing.ComboSale? get comboSale {
+    if (!isCombo) return null;
+    final items = [for (final c in components) c.toPricingItem()];
+    if (isMeal) {
+      return pricing.ComboSale.meal(
+        mealId: meal!.id,
+        mealPriceBaisas: _baisas(meal!.price),
+        main: pricing.MealMain(
+          productId: int.tryParse(product.id) ?? 0,
+          priceBaisas: _baisas(product.price),
+          addOns: [
+            for (final m in modifiers)
+              pricing.ComboAddOn(
+                addOnId: int.tryParse(m.id) ?? 0,
+                priceDeltaBaisas: _baisas(m.price),
+              ),
+          ],
+          notes: normalizedNotes,
+          weightBaisas: mainWeightBaisas,
+        ),
+        items: items,
+      );
+    }
+    return pricing.ComboSale.combo(
+      comboProductId: int.tryParse(product.id) ?? 0,
+      comboPriceBaisas: _baisas(product.price),
+      items: items,
+    );
+  }
+
+  /// A standard line: max(0, channel price + add-ons) (a minus remove never
+  /// takes it below 0). A combo / meal: the pricing package's unit price
+  /// (§7.5: every item, a meal's main and the line floored at 0).
+  double get unitPrice {
+    final sale = comboSale;
+    if (sale != null) return sale.unitPriceBaisas / 1000.0;
+    final raw = product.price + modifierTotal;
+    return raw < 0 ? 0 : raw;
+  }
 
   double get lineTotal => unitPrice * qty;
 
   bool get hasCustomization =>
       modifiers.isNotEmpty ||
       notes.trim().isNotEmpty ||
-      components.isNotEmpty;
+      components.isNotEmpty ||
+      isMeal;
 
   String get normalizedNotes => notes.trim();
 
@@ -1079,10 +1308,11 @@ class CartItem {
         .join('|');
     // P-F5 — a gifted line never merges with a paid one (table merges);
     // P-F9 — bundle lines stay distinct per bundle instance;
-    // LAUNCH-P4 C7 — combos merge only with the same choices.
+    // combos and meals merge only with the same items.
     return '${product.id}|$modifierSignature|${normalizedNotes.toLowerCase()}'
         '${gifted ? '|gift' : ''}'
         '${bundleKey.isNotEmpty ? '|b:$bundleKey' : ''}'
+        '${isMeal ? '|m:${meal!.id}' : ''}'
         '${components.isEmpty ? '' : '|c:${components.map((c) => c.signature).join(';')}'}';
   }
 
@@ -1101,26 +1331,33 @@ class CartItem {
   /// Phase C4 — the cart line's modifier/notes summary, with add-on labels in
   /// Arabic when [arabic] (group names + the 'Notes:' prefix stay as authored;
   /// the stored English remains the identity everywhere else).
-  /// LAUNCH-P4 C7 — a combo lists each chosen item (with its extra and its
-  /// add-ons) first.
+  /// LAUNCH combo add-on — a meal lists its main first (with the main's
+  /// options), then every item with its upgrade / extra price and its own
+  /// options indented under it; a combo lists its items the same way.
   List<String> detailLinesFor(bool arabic) {
     final lines = <String>[];
-    for (final component in components) {
-      final qty = component.qty > 1 ? '${component.qty} x ' : '';
-      final extra = component.extraPrice <= 0
-          ? ''
-          : ' (+${component.extraPrice.toStringAsFixed(3)} OMR)';
-      lines.add('• $qty${component.displayName(arabic)}$extra');
-      for (final m in component.modifiers) {
-        final mExtra = m.price <= 0
-            ? ''
-            : ' (+${m.price.toStringAsFixed(3)} OMR)';
-        lines.add('   + ${m.displayLabel(arabic)}$mExtra');
+    void itemOptions(List<CartItemModifier> mods, String itemNotes) {
+      for (final m in mods) {
+        lines.add('   + ${m.displayLabel(arabic)}${signedOmrSuffix(m.price)}');
       }
-      if (component.notes.trim().isNotEmpty) {
-        lines.add('   Notes: ${component.notes.trim()}');
+      if (itemNotes.trim().isNotEmpty) {
+        lines.add('   Notes: ${itemNotes.trim()}');
       }
     }
+
+    if (isMeal) {
+      lines.add('• ${product.displayName(arabic)}');
+      itemOptions(modifiers, notes);
+    }
+    for (final component in components) {
+      final qty = component.qty > 1 ? '${component.qty} x ' : '';
+      lines.add(
+        '• $qty${component.displayName(arabic)}'
+        '${component.extraPrice > 0 ? signedOmrSuffix(component.extraPrice) : ''}',
+      );
+      itemOptions(component.modifiers, component.notes);
+    }
+    if (isMeal) return lines;
     final grouped = <String, List<CartItemModifier>>{};
 
     for (final modifier in modifiers) {
@@ -1131,12 +1368,10 @@ class CartItem {
 
     for (final entry in grouped.entries) {
       final formattedValues = entry.value
-          .map((modifier) {
-            final extra = modifier.price <= 0
-                ? ''
-                : ' (+${modifier.price.toStringAsFixed(3)} OMR)';
-            return '${modifier.displayLabel(arabic)}$extra';
-          })
+          .map(
+            (modifier) =>
+                '${modifier.displayLabel(arabic)}${signedOmrSuffix(modifier.price)}',
+          )
           .join(', ');
       lines.add('${entry.key}: $formattedValues');
     }
@@ -1167,6 +1402,12 @@ class CartItem {
       'notes': normalizedNotes,
       if (gifted) 'gifted': true,
       if (bundleKey.isNotEmpty) 'bundleKey': bundleKey,
+      if (isMeal) ...{
+        'meal': meal!.toMap(),
+        'mainWeightBaisas': mainWeightBaisas,
+        'displayName': displayName(false),
+        'displayNameAr': displayName(true),
+      },
       if (components.isNotEmpty) ...{
         'componentTotal': componentTotal,
         'components': [for (final c in components) c.toMap()],

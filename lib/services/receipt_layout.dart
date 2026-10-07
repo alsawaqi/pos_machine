@@ -314,8 +314,16 @@ List<ReceiptLine> buildReceiptLines(
   // ---- 9: items ------------------------------------------------------------------
   lines.add(const ReceiptLine(ReceiptLineKind.divider));
   for (final item in order.items) {
-    final name = item['name']?.toString() ?? '';
-    final nameAr = item['nameAr']?.toString().trim() ?? '';
+    // LAUNCH combo add-on — a meal prints as "Beef burger meal" with its
+    // total; its main is the first item under it.
+    final isMeal = item['meal'] is Map;
+    final name =
+        (isMeal ? item['displayName'] : null)?.toString() ??
+        item['name']?.toString() ??
+        '';
+    final nameAr =
+        (isMeal ? item['displayNameAr'] : item['nameAr'])?.toString().trim() ??
+        '';
     final qty = (item['qty'] as num?)?.toInt() ?? 1;
     final total = (item['lineTotal'] as num?)?.toDouble() ?? 0;
     lines.add(
@@ -325,8 +333,21 @@ List<ReceiptLine> buildReceiptLines(
         amount: receiptAmount(total),
       ),
     );
-    if (nameAr.isNotEmpty) {
+    if (nameAr.isNotEmpty && nameAr != name) {
       lines.add(ReceiptLine(ReceiptLineKind.itemAr, text: nameAr));
+    }
+    if (isMeal) {
+      lines.add(
+        ReceiptLine(
+          ReceiptLineKind.detail,
+          text:
+              '> ${_bi(item['name']?.toString() ?? '', item['nameAr']?.toString() ?? '')}',
+        ),
+      );
+      for (final m in (item['modifiers'] as List?) ?? const []) {
+        if (m is! Map) continue;
+        lines.add(ReceiptLine(ReceiptLineKind.detail, text: '   ${_addon(m)}'));
+      }
     }
     for (final raw in (item['components'] as List?) ?? const []) {
       if (raw is! Map) continue;
@@ -347,9 +368,11 @@ List<ReceiptLine> buildReceiptLines(
         lines.add(ReceiptLine(ReceiptLineKind.detail, text: '   ${_addon(m)}'));
       }
     }
-    for (final m in (item['modifiers'] as List?) ?? const []) {
-      if (m is! Map) continue;
-      lines.add(ReceiptLine(ReceiptLineKind.detail, text: _addon(m)));
+    if (!isMeal) {
+      for (final m in (item['modifiers'] as List?) ?? const []) {
+        if (m is! Map) continue;
+        lines.add(ReceiptLine(ReceiptLineKind.detail, text: _addon(m)));
+      }
     }
   }
   lines.add(const ReceiptLine(ReceiptLineKind.divider));
@@ -520,6 +543,8 @@ String _addon(Map<dynamic, dynamic> m) {
   final label = m['label']?.toString() ?? '';
   final labelAr = m['labelAr']?.toString().trim() ?? '';
   final price = (m['price'] as num?)?.toDouble() ?? 0;
+  // LAUNCH combo add-on — a minus remove shows its price too ("-0.100").
   return '+ ${_bi(label, labelAr)}'
-      '${price > 0 ? ' (+${receiptAmount(price)})' : ''}';
+      '${price > 0 ? ' (+${receiptAmount(price)})' : ''}'
+      '${price < 0 ? ' (-${receiptAmount(-price)})' : ''}';
 }

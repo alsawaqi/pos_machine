@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
+import '../combo/combo_sheet.dart';
+import '../models/pos_models.dart' show CartItemModifier, ComboSelection;
 import '../order_workspace/current_order_workspace.dart';
 import 'qr_quick_controller.dart';
 import 'qr_expired_cancel.dart';
@@ -22,10 +25,7 @@ Future<(String, QrQuickLine)?> pickStaffRoundItem(
     ),
   );
   if (product == null || !context.mounted) return null;
-  final line = await showDialog<QrQuickLine>(
-    context: context,
-    builder: (_) => quickOptionsDialog(product, copy, catalogue: products),
-  );
+  final line = await quickPickLine(context, product, copy, catalogue: products);
   return line == null ? null : (copy.name(product.name, product.nameAr), line);
 }
 
@@ -40,14 +40,12 @@ Future<(String, QrQuickLine)?> pickStaffRoundProduct(
 }) async {
   if (!product.available) return null;
   final copy = QuickCopy(arabic);
-  final line = await showDialog<QrQuickLine>(
-    context: context,
-    builder: (_) => quickOptionsDialog(
-      product,
-      copy,
-      catalogue: catalogue,
-      initial: initial,
-    ),
+  final line = await quickPickLine(
+    context,
+    product,
+    copy,
+    catalogue: catalogue,
+    initial: initial,
   );
   return line == null ? null : (copy.name(product.name, product.nameAr), line);
 }
@@ -786,15 +784,18 @@ class _QuickEditorState extends State<_QuickEditor> {
         );
     if (product == null || !mounted) return;
     _pickedProducts[product.id] = product;
-    // LAUNCH-P4 C7 — a combo always opens its picker (never a plain line).
+    // A combo opens its picker and a meal main asks "Make it a meal?"
+    // (never a plain line).
     if (widget.workspace?.mainCart == true &&
         selected != null &&
-        !product.isCombo) {
+        !product.isCombo &&
+        product.meal == null) {
       final index = drafts.indexWhere(
         (d) =>
             d.$2.productId == product.id &&
             d.$2.addonIds.isEmpty &&
             d.$2.combo.isEmpty &&
+            d.$2.mealId == null &&
             (d.$2.notes ?? '').isEmpty,
       );
       if (index >= 0 && drafts[index].$2.quantity >= 99) return;
@@ -816,9 +817,11 @@ class _QuickEditorState extends State<_QuickEditor> {
       if (_draftsValid) await _submit();
       return;
     }
-    final line = await showDialog<QrQuickLine>(
-      context: context,
-      builder: (_) => quickOptionsDialog(product, copy, catalogue: products),
+    final line = await quickPickLine(
+      context,
+      product,
+      copy,
+      catalogue: products,
     );
     if (line != null && mounted) {
       setState(
@@ -845,13 +848,8 @@ class _QuickEditorState extends State<_QuickEditor> {
               .length;
           return count >= group.min && count <= group.max;
         }) &&
-        // LAUNCH-P4 C7 — every combo slot holds between min and max picks.
-        product.comboSlots.every((slot) {
-          final count = draft.$2.combo
-              .where((pick) => pick.slotId == slot.id)
-              .fold<int>(0, (n, pick) => n + pick.quantity);
-          return count >= slot.min && count <= slot.max;
-        });
+        // LAUNCH combo add-on — a combo / meal's picks fit its lines.
+        quickComboValid(draft.$2, product);
   });
 
   List<Map<String, dynamic>> get _draftRows => [
@@ -867,11 +865,11 @@ class _QuickEditorState extends State<_QuickEditor> {
           if (line.addonIds.contains(choice.id)) choice,
     ];
     final combo = quickComboRows(line, product, _product);
-    final unit =
-        (product?.priceBaisas ?? 0) +
-        choices.fold<int>(0, (sum, c) => sum + c.priceBaisas) +
-        combo.fold<int>(0, (sum, c) => sum + (c['unit_delta_baisas'] as int));
+    final unit = quickDraftUnitBaisas(line, product, combo, [
+      for (final c in choices) c.priceBaisas,
+    ]);
     return {
+      ...quickMealKeys(line, product),
       'id': 'draft-$index',
       'draft_index': index,
       'product_id': line.productId,
@@ -918,18 +916,7 @@ class _QuickEditorState extends State<_QuickEditor> {
         return;
       }
       final old = drafts[index];
-      setState(
-        () => drafts[index] = (
-          old.$1,
-          QrQuickLine(
-            old.$2.productId,
-            quantity,
-            old.$2.addonIds,
-            notes: old.$2.notes,
-            combo: old.$2.combo,
-          ),
-        ),
-      );
+      setState(() => drafts[index] = (old.$1, old.$2.withQuantity(quantity)));
       c.reviewDraft(widget.uuid);
       _publish();
       return;
@@ -948,8 +935,9 @@ class _QuickEditorState extends State<_QuickEditor> {
               if (qrMap(a)['add_on_id'] is int) qrMap(a)['add_on_id'] as int,
           ],
           notes: line['notes'] as String?,
-          // LAUNCH-P4 C7 — more of a combo = the same choices again.
+          // More of a combo / meal = the same items again.
           combo: serverComboPicks(line),
+          mealId: (line['meal_id'] as num?)?.toInt(),
         ),
       ]);
     } else {
@@ -979,14 +967,12 @@ class _QuickEditorState extends State<_QuickEditor> {
     try {
       replacement = widget.workspace?.editOptions != null
           ? await widget.workspace!.editOptions!(line)
-          : await showDialog<QrQuickLine>(
-              context: context,
-              builder: (_) => quickOptionsDialog(
-                product,
-                copy,
-                catalogue: widget.catalogue(),
-                initial: line,
-              ),
+          : await quickPickLine(
+              context,
+              product,
+              copy,
+              catalogue: widget.catalogue(),
+              initial: line,
             );
     } finally {
       childOpen = false;
@@ -1107,10 +1093,7 @@ class _QuickEditorState extends State<_QuickEditor> {
                             subtitle: Text(
                               [
                                 // LAUNCH-P4 C7 — a combo's chosen items.
-                                ...serverComboLabels(
-                                  item,
-                                  arabic: copy.arabic,
-                                ),
+                                ...serverComboLabels(item, arabic: copy.arabic),
                                 for (final addon
                                     in (item['addons'] as List? ?? const []))
                                   qrMap(addon)['add_on_name'].toString(),
@@ -1377,246 +1360,255 @@ class _ProductOptionsState extends State<_ProductOptions> {
   }
 }
 
-/// LAUNCH-P4 C7 — the server-priced combo picker (quick QR, staff table
-/// rounds): each slot's options (defaults picked), each picked item's own
-/// add-on groups, a combo quantity and notes. Pops a [QrQuickLine] whose
-/// `combo` carries identity only (slot, product, qty, add-on ids) — the
-/// server prices it and refuses client prices.
-class _ComboOptions extends StatefulWidget {
-  const _ComboOptions(
-    this.product,
-    this.copy,
-    this.catalogue, {
-    this.initial,
-  });
-  final QuickProduct product;
-  final QuickCopy copy;
-  final List<QuickProduct> catalogue;
-  final Map<String, dynamic>? initial;
-  @override
-  State<_ComboOptions> createState() => _ComboOptionsState();
-}
-
-class _ComboOptionsState extends State<_ComboOptions> {
-  late int qty = (widget.initial?['qty'] as num?)?.toInt() ?? 1;
-  late String notes = widget.initial?['notes'] as String? ?? '';
-  // slot id -> picked product ids (in order) and each pick's add-on ids.
-  final picks = <int, List<int>>{};
-  final addons = <String, Set<int>>{};
-
-  String _key(int slot, int product) => '$slot:$product';
-
-  QuickProduct? _item(int id) =>
-      widget.catalogue.where((p) => p.id == id).firstOrNull;
-
-  Set<int> _defaults(QuickProduct? item) => {
-    for (final g in item?.groups ?? const <QuickGroup>[])
-      ...() {
-        final chosen = [
-          for (final o in g.choices)
-            if (o.selected) o.id,
-        ];
-        if (chosen.isEmpty && g.min > 0 && g.choices.isNotEmpty) {
-          chosen.add(g.choices.first.id);
-        }
-        return chosen.take(g.max < 1 ? 1 : g.max);
-      }(),
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    for (final slot in widget.product.comboSlots) {
-      picks[slot.id] = [];
-    }
-    final initial = widget.initial;
-    if (initial != null) {
-      for (final pick in serverComboPicks(initial)) {
-        picks.putIfAbsent(pick.slotId, () => []).add(pick.productId);
-        addons[_key(pick.slotId, pick.productId)] = pick.addonIds.toSet();
-      }
-      return;
-    }
-    for (final slot in widget.product.comboSlots) {
-      for (final option in slot.options) {
-        if (!option.isDefault || picks[slot.id]!.length >= slot.max) continue;
-        final item = _item(option.productId);
-        if (item == null || !item.available) continue;
-        picks[slot.id]!.add(option.productId);
-        addons[_key(slot.id, option.productId)] = _defaults(item);
-      }
-    }
-  }
-
-  void _toggle(QuickComboSlot slot, QuickComboOption option) {
-    final list = picks[slot.id]!;
-    setState(() {
-      if (list.contains(option.productId)) {
-        list.remove(option.productId);
-        return;
-      }
-      if (slot.max == 1) {
-        list.clear();
-      } else if (list.length >= slot.max) {
-        return;
-      }
-      list.add(option.productId);
-      addons[_key(slot.id, option.productId)] = _defaults(
-        _item(option.productId),
+/// LAUNCH combo add-on — the server-priced picks of a combo or meal (quick
+/// QR, staff table rounds, tablet edits) in the till's combo sheet. Pops a
+/// [QrQuickLine] whose `combo` carries identity only (line, product, qty,
+/// add-on ids, notes) — the server prices it and refuses client prices. A
+/// meal line's product is its main (`meal_id`; the main's add-ons / notes).
+Future<QrQuickLine?> _quickComboSheet(
+  BuildContext context,
+  QuickProduct product,
+  QuickCopy copy, {
+  required List<QuickProduct> catalogue,
+  Map<String, dynamic>? initial,
+  bool meal = false,
+}) async {
+  final mealSetup = meal ? product.meal : null;
+  final lines = mealSetup?.lines ?? product.comboLines;
+  QuickProduct? item(int id) => catalogue.where((p) => p.id == id).firstOrNull;
+  CartItemModifier modifier(QuickGroup group, QuickChoice choice) =>
+      CartItemModifier(
+        id: '${choice.id}',
+        group: group.name,
+        label: choice.name,
+        labelAr: choice.nameAr,
+        price: choice.priceBaisas / 1000,
       );
-    });
+  List<CartItemModifier> modifiersFor(int productId, Iterable<int> ids) => [
+    for (final g in item(productId)?.groups ?? const <QuickGroup>[])
+      for (final c in g.choices)
+        if (ids.contains(c.id)) modifier(g, c),
+  ];
+  bool complete(String productId, List<CartItemModifier> modifiers) {
+    final ids = {for (final m in modifiers) int.tryParse(m.id)};
+    return (item(int.tryParse(productId) ?? 0)?.groups ?? const <QuickGroup>[])
+        .every((g) {
+          final count = g.choices.where((c) => ids.contains(c.id)).length;
+          return count >= g.min && count <= g.max;
+        });
   }
 
-  bool get valid => widget.product.comboSlots.every((slot) {
-    final list = picks[slot.id]!;
-    if (list.length < slot.min || list.length > slot.max) return false;
-    return list.every((productId) {
-      final chosen = addons[_key(slot.id, productId)] ?? const <int>{};
-      return (_item(productId)?.groups ?? const <QuickGroup>[]).every((g) {
-        final count = g.choices.where((o) => chosen.contains(o.id)).length;
-        return count >= g.min && count <= g.max;
-      });
-    });
-  });
-
-  int get _unitBaisas {
-    var total = widget.product.priceBaisas;
-    for (final slot in widget.product.comboSlots) {
-      for (final productId in picks[slot.id]!) {
-        total += slot.options
-            .where((o) => o.productId == productId)
-            .fold<int>(0, (n, o) => n + o.extraPriceBaisas);
-        final chosen = addons[_key(slot.id, productId)] ?? const <int>{};
-        for (final g in _item(productId)?.groups ?? const <QuickGroup>[]) {
-          for (final o in g.choices) {
-            if (chosen.contains(o.id)) total += o.priceBaisas;
-          }
-        }
-      }
+  List<pricing.ComboAddOn> addOns(List<CartItemModifier> modifiers) => [
+    for (final m in modifiers)
+      pricing.ComboAddOn(
+        addOnId: int.tryParse(m.id) ?? 0,
+        priceDeltaBaisas: (m.price * 1000).round(),
+      ),
+  ];
+  int price(ComboSheetResult draft) {
+    final items = pricing.resolveComboPicks(lines, [
+      for (final s in draft.selections)
+        pricing.ComboPick(
+          lineId: s.lineId,
+          productId: int.tryParse(s.productId) ?? 0,
+          qty: s.qty,
+          addOns: addOns(s.modifiers),
+        ),
+    ]).items;
+    if (mealSetup != null) {
+      return pricing.ComboSale.meal(
+        mealId: mealSetup.id,
+        mealPriceBaisas: mealSetup.mealPriceBaisas,
+        main: pricing.MealMain(
+          productId: product.id,
+          priceBaisas: product.priceBaisas,
+          addOns: addOns(draft.mainModifiers),
+        ),
+        items: items,
+      ).unitPriceBaisas;
     }
-    return total;
+    return pricing.ComboSale.combo(
+      comboProductId: product.id,
+      comboPriceBaisas: product.priceBaisas,
+      items: items,
+    ).unitPriceBaisas;
   }
 
-  QrQuickLine _line() => QrQuickLine(
-    widget.product.id,
-    qty,
-    const [],
-    notes: notes.isEmpty ? null : notes,
-    combo: [
-      for (final slot in widget.product.comboSlots)
-        for (final productId in picks[slot.id]!)
-          QrQuickComboPick(
-            slot.id,
-            productId,
-            addons: (addons[_key(slot.id, productId)] ?? const <int>{})
-                .toList(),
+  final initialMainIds = <int>{
+    for (final a in (initial?['addons'] as List?) ?? const [])
+      if (a is Map && (a['add_on_id'] as num?) != null)
+        (a['add_on_id'] as num).toInt(),
+    for (final id in (initial?['addon_ids'] as List?) ?? const [])
+      if (id is num) id.toInt(),
+  };
+  final defaultMain = [
+    for (final g in product.groups)
+      for (final c in g.choices)
+        if (c.selected) modifier(g, c),
+  ];
+  final result = await showDialog<ComboSheetResult>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => Directionality(
+      textDirection: copy.arabic ? TextDirection.rtl : TextDirection.ltr,
+      child: ComboSheet(
+        key: const ValueKey('quick-combo-options'),
+        title: mealSetup == null
+            ? copy.name(product.name, product.nameAr)
+            : '${copy.name(product.name, product.nameAr)} '
+                  '${copy.name(mealSetup.name, mealSetup.nameAr)}',
+        isMeal: mealSetup != null,
+        lines: lines,
+        main: mealSetup == null
+            ? null
+            : ComboSheetMain(
+                productId: '${product.id}',
+                modifiers: initial == null
+                    ? defaultMain
+                    : modifiersFor(product.id, initialMainIds),
+                notes: initial?['notes'] as String? ?? '',
+              ),
+        initial: [
+          if (initial != null)
+            for (final pick in serverComboPicks(initial))
+              ComboSelection(
+                lineId: pick.lineId,
+                productId: '${pick.productId}',
+                qty: pick.quantity,
+                modifiers: modifiersFor(pick.productId, pick.addonIds),
+                notes: pick.notes ?? '',
+              ),
+        ],
+        source: ComboSheetSource(
+          itemFor: (id) => switch (item(int.tryParse(id) ?? 0)) {
+            final QuickProduct p => ComboSheetItem(
+              id: id,
+              name: p.name,
+              nameAr: p.nameAr,
+              available: p.available,
+              hasOptions: p.groups.isNotEmpty,
+            ),
+            null => null,
+          },
+          unitPriceBaisas: price,
+          defaultOptions: (id) => [
+            for (final g
+                in item(int.tryParse(id) ?? 0)?.groups ?? const <QuickGroup>[])
+              for (final c in g.choices)
+                if (c.selected) modifier(g, c),
+          ],
+          optionsComplete: complete,
+          editOptions: (sheetContext, id, current) => showDialog(
+            context: sheetContext,
+            builder: (_) => Directionality(
+              textDirection: copy.arabic
+                  ? TextDirection.rtl
+                  : TextDirection.ltr,
+              child: _QuickItemOptions(
+                item(int.tryParse(id) ?? 0) ??
+                    QuickProduct(int.tryParse(id) ?? 0, '#$id'),
+                copy,
+                current,
+              ),
+            ),
           ),
+        ),
+      ),
+    ),
+  );
+  if (result == null) return null;
+  return QrQuickLine(
+    product.id,
+    ((initial?['qty'] as num?) ?? 1).round().clamp(1, 99),
+    mealSetup == null
+        ? const []
+        : [
+            for (final m in result.mainModifiers)
+              if (int.tryParse(m.id) case final int id) id,
+          ],
+    notes: mealSetup == null
+        ? (initial?['notes'] as String?)
+        : (result.mainNotes.trim().isEmpty ? null : result.mainNotes.trim()),
+    mealId: mealSetup?.id,
+    combo: [
+      for (final s in result.selections)
+        QrQuickComboPick(
+          s.lineId,
+          int.parse(s.productId),
+          quantity: s.qty,
+          addons: [
+            for (final m in s.modifiers)
+              if (int.tryParse(m.id) case final int id) id,
+          ],
+          notes: s.notes.trim().isEmpty ? null : s.notes.trim(),
+        ),
     ],
   );
+}
+
+/// One item's own options inside a server-priced combo / meal: its add-on
+/// groups (minus remove prices shown; nothing auto-ticked) and notes.
+class _QuickItemOptions extends StatefulWidget {
+  const _QuickItemOptions(this.product, this.copy, this.current);
+  final QuickProduct product;
+  final QuickCopy copy;
+  final ComboItemOptions current;
+  @override
+  State<_QuickItemOptions> createState() => _QuickItemOptionsState();
+}
+
+class _QuickItemOptionsState extends State<_QuickItemOptions> {
+  late final selected = <int>{
+    for (final m in widget.current.modifiers)
+      if (int.tryParse(m.id) case final int id) id,
+  };
+  late String notes = widget.current.notes;
+
+  bool get valid => widget.product.groups.every((g) {
+    final count = g.choices.where((o) => selected.contains(o.id)).length;
+    return count >= g.min && count <= g.max;
+  });
 
   @override
   Widget build(BuildContext context) {
     final copy = widget.copy;
     return AlertDialog(
-      key: const ValueKey('quick-combo-options'),
+      key: const ValueKey('quick-item-options'),
       title: Text(copy.name(widget.product.name, widget.product.nameAr)),
       content: SizedBox(
-        width: 520,
+        width: 480,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: qty > 1 ? () => setState(() => qty--) : null,
-                    icon: const Icon(Icons.remove),
-                  ),
-                  Text('$qty'),
-                  IconButton(
-                    onPressed: qty < 99 ? () => setState(() => qty++) : null,
-                    icon: const Icon(Icons.add),
-                  ),
-                  const Spacer(),
-                  Text(
-                    ((_unitBaisas * qty) / 1000).toStringAsFixed(3),
-                    key: const ValueKey('quick-combo-price'),
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ],
-              ),
-              for (final slot in widget.product.comboSlots) ...[
-                const SizedBox(height: 8),
+              for (final group in widget.product.groups) ...[
                 Text(
-                  '${copy.name(slot.name, slot.nameAr)} (${slot.min}–${slot.max})',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  '${copy.name(group.name, group.nameAr)} (${group.min}–${group.max})',
                 ),
-                for (final option in slot.options)
-                  if (_item(option.productId) case final item?) ...[
-                    CheckboxListTile(
-                      key: ValueKey(
-                        'quick-combo-option-${slot.id}-${option.productId}',
-                      ),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      title: Text(copy.name(item.name, item.nameAr)),
-                      subtitle: option.extraPriceBaisas > 0
-                          ? Text(
-                              '+${(option.extraPriceBaisas / 1000).toStringAsFixed(3)}',
-                            )
-                          : null,
-                      value: picks[slot.id]!.contains(option.productId),
-                      onChanged:
-                          !item.available &&
-                              !picks[slot.id]!.contains(option.productId)
-                          ? null
-                          : (_) => _toggle(slot, option),
-                    ),
-                    if (picks[slot.id]!.contains(option.productId))
-                      for (final group in item.groups)
-                        Padding(
-                          padding: const EdgeInsetsDirectional.only(start: 32),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                '${copy.name(group.name, group.nameAr)} (${group.min}–${group.max})',
-                              ),
-                              for (final choice in group.choices)
-                                CheckboxListTile(
-                                  dense: true,
-                                  controlAffinity:
-                                      ListTileControlAffinity.leading,
-                                  title: Text(
-                                    copy.name(choice.name, choice.nameAr),
-                                  ),
-                                  value: (addons[_key(
-                                            slot.id,
-                                            option.productId,
-                                          )] ??
-                                          const <int>{})
-                                      .contains(choice.id),
-                                  onChanged: (checked) => setState(() {
-                                    final set = addons.putIfAbsent(
-                                      _key(slot.id, option.productId),
-                                      () => <int>{},
-                                    );
-                                    if (checked != true) {
-                                      set.remove(choice.id);
-                                    } else {
-                                      if (group.max == 1) {
-                                        set.removeAll(
-                                          group.choices.map((o) => o.id),
-                                        );
-                                      }
-                                      set.add(choice.id);
-                                    }
-                                  }),
-                                ),
-                            ],
+                for (final option in group.choices)
+                  CheckboxListTile(
+                    key: ValueKey('quick-item-option-${option.id}'),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(copy.name(option.name, option.nameAr)),
+                    subtitle: option.priceBaisas == 0
+                        ? null
+                        : Text(
+                            '${option.priceBaisas < 0 ? '-' : '+'}'
+                            '${(option.priceBaisas.abs() / 1000).toStringAsFixed(3)}',
                           ),
-                        ),
-                  ],
+                    value: selected.contains(option.id),
+                    onChanged: (checked) => setState(() {
+                      if (checked != true) {
+                        selected.remove(option.id);
+                      } else {
+                        if (group.max == 1) {
+                          selected.removeAll(group.choices.map((o) => o.id));
+                        }
+                        selected.add(option.id);
+                      }
+                    }),
+                  ),
               ],
               TextFormField(
                 initialValue: notes,
@@ -1636,25 +1628,101 @@ class _ComboOptionsState extends State<_ComboOptions> {
           child: Text(copy.cancel),
         ),
         FilledButton(
-          key: const ValueKey('quick-combo-add'),
-          onPressed: valid ? () => Navigator.pop(context, _line()) : null,
-          child: Text(copy.add),
+          key: const ValueKey('quick-item-options-done'),
+          onPressed: valid
+              ? () => Navigator.pop<ComboItemOptions>(context, (
+                  modifiers: [
+                    for (final g in widget.product.groups)
+                      for (final c in g.choices)
+                        if (selected.contains(c.id))
+                          CartItemModifier(
+                            id: '${c.id}',
+                            group: g.name,
+                            label: c.name,
+                            labelAr: c.nameAr,
+                            price: c.priceBaisas / 1000,
+                          ),
+                  ],
+                  notes: notes,
+                ))
+              : null,
+          child: Text(copy.pair('Done', 'تم')),
         ),
       ],
     );
   }
 }
 
-/// LAUNCH-P4 C7 — the options dialog for any server-priced pick: the combo
-/// picker for a combo, the add-on sheet for anything else.
-Widget quickOptionsDialog(
+/// LAUNCH combo add-on — pick (or edit, [initial]) one server-priced line:
+/// a combo opens the combo sheet (a fixed-only combo is added at once); a
+/// main with a meal asks "Make it a meal?" (an existing meal line reopens
+/// the meal sheet); anything else opens the add-on sheet.
+Future<QrQuickLine?> quickPickLine(
+  BuildContext context,
   QuickProduct product,
   QuickCopy copy, {
   List<QuickProduct> catalogue = const [],
   Map<String, dynamic>? initial,
+}) async {
+  if (product.isCombo) {
+    if (initial == null &&
+        !comboNeedsSheet(product.comboLines) &&
+        product.comboLines.every(
+          (l) =>
+              catalogue
+                  .where((p) => p.id == l.productId)
+                  .firstOrNull
+                  ?.groups
+                  .every((g) => g.min == 0) ??
+              true,
+        )) {
+      return QrQuickLine(product.id, 1, const []);
+    }
+    return _quickComboSheet(
+      context,
+      product,
+      copy,
+      catalogue: catalogue,
+      initial: initial,
+    );
+  }
+  final meal = product.meal;
+  if (meal != null) {
+    final editingMeal = initial != null && initial['meal_id'] == meal.id;
+    final yes = initial != null
+        ? editingMeal
+        : await showMealOffer(
+            context,
+            mainName: copy.name(product.name, product.nameAr),
+            mealName: copy.name(meal.name, meal.nameAr),
+            mealPriceBaisas: meal.mealPriceBaisas,
+          );
+    if (yes == null || !context.mounted) return null;
+    if (yes) {
+      return _quickComboSheet(
+        context,
+        product,
+        copy,
+        catalogue: catalogue,
+        initial: initial,
+        meal: true,
+      );
+    }
+  }
+  if (!context.mounted) return null;
+  return showDialog<QrQuickLine>(
+    context: context,
+    builder: (_) => quickOptionsDialog(product, copy, initial: initial),
+  );
+}
+
+/// The add-on sheet for a standard server-priced pick (a combo or a meal
+/// goes through [quickPickLine]).
+Widget quickOptionsDialog(
+  QuickProduct product,
+  QuickCopy copy, {
+  Map<String, dynamic>? initial,
 }) => Directionality(
   textDirection: copy.arabic ? TextDirection.rtl : TextDirection.ltr,
-  child: product.isCombo
-      ? _ComboOptions(product, copy, catalogue, initial: initial)
-      : _ProductOptions(product, copy, initial: initial),
+  child: _ProductOptions(product, copy, initial: initial),
 );

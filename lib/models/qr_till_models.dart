@@ -157,8 +157,16 @@ class QrRoundDisplayLine {
     this.notes,
     this.cancelledQuantity = 0,
     this.components = const <Map<String, dynamic>>[],
+    this.mealId,
+    this.displayName,
+    this.displayNameAr,
   });
 
+  // LAUNCH combo add-on — a meal line (§7.9): [name] is the main; the
+  // kitchen heads it with [displayName] ("Beef burger meal").
+  final int? mealId;
+  final String? displayName;
+  final String? displayNameAr;
   final String name;
   final String? nameAr;
   // LAUNCH-P4 C7 — a combo line's chosen items as the server froze them
@@ -197,6 +205,9 @@ class QrRoundDisplayLine {
         for (final c in (json['components'] as List?) ?? const [])
           if (c is Map) c.cast<String, dynamic>(),
       ],
+      mealId: (json['meal_id'] as num?)?.toInt(),
+      displayName: _nullableString(json['display_name']),
+      displayNameAr: _nullableString(json['display_name_ar']),
     );
   }
 
@@ -204,6 +215,11 @@ class QrRoundDisplayLine {
     'name': arabic && nameAr != null ? nameAr : name,
     'qty': remainingQuantity,
     'notes': ?notes,
+    if (mealId != null) 'meal_id': mealId,
+    if (mealId != null)
+      'displayName': arabic && displayNameAr != null
+          ? displayNameAr
+          : displayName ?? name,
     'modifiers': [
       for (final addon in addons)
         {

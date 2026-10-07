@@ -2348,7 +2348,10 @@ class _DisplayItemCard extends StatelessWidget {
     // Phase C4 — prefer the snapshot's Arabic product name when the display
     // locale is Arabic ('name' stays the identity key in the snapshot map).
     final nameAr = item['nameAr']?.toString() ?? '';
-    final displayName = isAr && nameAr.isNotEmpty
+    // LAUNCH combo add-on — a meal shows as "Beef burger meal".
+    final displayName = item['meal'] is Map
+        ? (isAr ? item['displayNameAr'] : item['displayName'])?.toString() ?? ''
+        : isAr && nameAr.isNotEmpty
         ? nameAr
         : item['name']?.toString() ?? '';
     final detailLines = ((item['detailLines'] as List?) ?? const [])
@@ -2476,7 +2479,6 @@ class _DisplayItemCard extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _CustomerEmptyState extends StatelessWidget {

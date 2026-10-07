@@ -4901,6 +4901,17 @@ class $SyncMetaTable extends SyncMeta
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _mealsJsonMeta = const VerificationMeta(
+    'mealsJson',
+  );
+  @override
+  late final GeneratedColumn<String> mealsJson = GeneratedColumn<String>(
+    'meals_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -4914,6 +4925,7 @@ class $SyncMetaTable extends SyncMeta
     orderNumberingJson,
     tableSessionsMode,
     companyTaxJson,
+    mealsJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -5014,6 +5026,12 @@ class $SyncMetaTable extends SyncMeta
         ),
       );
     }
+    if (data.containsKey('meals_json')) {
+      context.handle(
+        _mealsJsonMeta,
+        mealsJson.isAcceptableOrUnknown(data['meals_json']!, _mealsJsonMeta),
+      );
+    }
     return context;
   }
 
@@ -5067,6 +5085,10 @@ class $SyncMetaTable extends SyncMeta
         DriftSqlType.string,
         data['${effectivePrefix}company_tax_json'],
       ),
+      mealsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}meals_json'],
+      ),
     );
   }
 
@@ -5088,6 +5110,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
   final String? orderNumberingJson;
   final String? tableSessionsMode;
   final String? companyTaxJson;
+  final String? mealsJson;
   const SyncMetaRow({
     required this.id,
     this.companyId,
@@ -5100,6 +5123,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     this.orderNumberingJson,
     this.tableSessionsMode,
     this.companyTaxJson,
+    this.mealsJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -5134,6 +5158,9 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     }
     if (!nullToAbsent || companyTaxJson != null) {
       map['company_tax_json'] = Variable<String>(companyTaxJson);
+    }
+    if (!nullToAbsent || mealsJson != null) {
+      map['meals_json'] = Variable<String>(mealsJson);
     }
     return map;
   }
@@ -5171,6 +5198,9 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
       companyTaxJson: companyTaxJson == null && nullToAbsent
           ? const Value.absent()
           : Value(companyTaxJson),
+      mealsJson: mealsJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mealsJson),
     );
   }
 
@@ -5201,6 +5231,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
         json['tableSessionsMode'],
       ),
       companyTaxJson: serializer.fromJson<String?>(json['companyTaxJson']),
+      mealsJson: serializer.fromJson<String?>(json['mealsJson']),
     );
   }
   @override
@@ -5218,6 +5249,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
       'orderNumberingJson': serializer.toJson<String?>(orderNumberingJson),
       'tableSessionsMode': serializer.toJson<String?>(tableSessionsMode),
       'companyTaxJson': serializer.toJson<String?>(companyTaxJson),
+      'mealsJson': serializer.toJson<String?>(mealsJson),
     };
   }
 
@@ -5233,6 +5265,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     Value<String?> orderNumberingJson = const Value.absent(),
     Value<String?> tableSessionsMode = const Value.absent(),
     Value<String?> companyTaxJson = const Value.absent(),
+    Value<String?> mealsJson = const Value.absent(),
   }) => SyncMetaRow(
     id: id ?? this.id,
     companyId: companyId.present ? companyId.value : this.companyId,
@@ -5261,6 +5294,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     companyTaxJson: companyTaxJson.present
         ? companyTaxJson.value
         : this.companyTaxJson,
+    mealsJson: mealsJson.present ? mealsJson.value : this.mealsJson,
   );
   SyncMetaRow copyWithCompanion(SyncMetaCompanion data) {
     return SyncMetaRow(
@@ -5291,6 +5325,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
       companyTaxJson: data.companyTaxJson.present
           ? data.companyTaxJson.value
           : this.companyTaxJson,
+      mealsJson: data.mealsJson.present ? data.mealsJson.value : this.mealsJson,
     );
   }
 
@@ -5307,7 +5342,8 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
           ..write('kitchenPositions: $kitchenPositions, ')
           ..write('orderNumberingJson: $orderNumberingJson, ')
           ..write('tableSessionsMode: $tableSessionsMode, ')
-          ..write('companyTaxJson: $companyTaxJson')
+          ..write('companyTaxJson: $companyTaxJson, ')
+          ..write('mealsJson: $mealsJson')
           ..write(')'))
         .toString();
   }
@@ -5325,6 +5361,7 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
     orderNumberingJson,
     tableSessionsMode,
     companyTaxJson,
+    mealsJson,
   );
   @override
   bool operator ==(Object other) =>
@@ -5340,7 +5377,8 @@ class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
           other.kitchenPositions == this.kitchenPositions &&
           other.orderNumberingJson == this.orderNumberingJson &&
           other.tableSessionsMode == this.tableSessionsMode &&
-          other.companyTaxJson == this.companyTaxJson);
+          other.companyTaxJson == this.companyTaxJson &&
+          other.mealsJson == this.mealsJson);
 }
 
 class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
@@ -5355,6 +5393,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
   final Value<String?> orderNumberingJson;
   final Value<String?> tableSessionsMode;
   final Value<String?> companyTaxJson;
+  final Value<String?> mealsJson;
   const SyncMetaCompanion({
     this.id = const Value.absent(),
     this.companyId = const Value.absent(),
@@ -5367,6 +5406,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
     this.orderNumberingJson = const Value.absent(),
     this.tableSessionsMode = const Value.absent(),
     this.companyTaxJson = const Value.absent(),
+    this.mealsJson = const Value.absent(),
   });
   SyncMetaCompanion.insert({
     this.id = const Value.absent(),
@@ -5380,6 +5420,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
     this.orderNumberingJson = const Value.absent(),
     this.tableSessionsMode = const Value.absent(),
     this.companyTaxJson = const Value.absent(),
+    this.mealsJson = const Value.absent(),
   });
   static Insertable<SyncMetaRow> custom({
     Expression<int>? id,
@@ -5393,6 +5434,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
     Expression<String>? orderNumberingJson,
     Expression<String>? tableSessionsMode,
     Expression<String>? companyTaxJson,
+    Expression<String>? mealsJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -5409,6 +5451,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
         'order_numbering_json': orderNumberingJson,
       if (tableSessionsMode != null) 'table_sessions_mode': tableSessionsMode,
       if (companyTaxJson != null) 'company_tax_json': companyTaxJson,
+      if (mealsJson != null) 'meals_json': mealsJson,
     });
   }
 
@@ -5424,6 +5467,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
     Value<String?>? orderNumberingJson,
     Value<String?>? tableSessionsMode,
     Value<String?>? companyTaxJson,
+    Value<String?>? mealsJson,
   }) {
     return SyncMetaCompanion(
       id: id ?? this.id,
@@ -5437,6 +5481,7 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
       orderNumberingJson: orderNumberingJson ?? this.orderNumberingJson,
       tableSessionsMode: tableSessionsMode ?? this.tableSessionsMode,
       companyTaxJson: companyTaxJson ?? this.companyTaxJson,
+      mealsJson: mealsJson ?? this.mealsJson,
     );
   }
 
@@ -5480,6 +5525,9 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
     if (companyTaxJson.present) {
       map['company_tax_json'] = Variable<String>(companyTaxJson.value);
     }
+    if (mealsJson.present) {
+      map['meals_json'] = Variable<String>(mealsJson.value);
+    }
     return map;
   }
 
@@ -5496,7 +5544,8 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
           ..write('kitchenPositions: $kitchenPositions, ')
           ..write('orderNumberingJson: $orderNumberingJson, ')
           ..write('tableSessionsMode: $tableSessionsMode, ')
-          ..write('companyTaxJson: $companyTaxJson')
+          ..write('companyTaxJson: $companyTaxJson, ')
+          ..write('mealsJson: $mealsJson')
           ..write(')'))
         .toString();
   }
@@ -14703,6 +14752,7 @@ typedef $$SyncMetaTableCreateCompanionBuilder =
       Value<String?> orderNumberingJson,
       Value<String?> tableSessionsMode,
       Value<String?> companyTaxJson,
+      Value<String?> mealsJson,
     });
 typedef $$SyncMetaTableUpdateCompanionBuilder =
     SyncMetaCompanion Function({
@@ -14717,6 +14767,7 @@ typedef $$SyncMetaTableUpdateCompanionBuilder =
       Value<String?> orderNumberingJson,
       Value<String?> tableSessionsMode,
       Value<String?> companyTaxJson,
+      Value<String?> mealsJson,
     });
 
 class $$SyncMetaTableFilterComposer
@@ -14780,6 +14831,11 @@ class $$SyncMetaTableFilterComposer
 
   ColumnFilters<String> get companyTaxJson => $composableBuilder(
     column: $table.companyTaxJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mealsJson => $composableBuilder(
+    column: $table.mealsJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -14847,6 +14903,11 @@ class $$SyncMetaTableOrderingComposer
     column: $table.companyTaxJson,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get mealsJson => $composableBuilder(
+    column: $table.mealsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SyncMetaTableAnnotationComposer
@@ -14906,6 +14967,9 @@ class $$SyncMetaTableAnnotationComposer
     column: $table.companyTaxJson,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get mealsJson =>
+      $composableBuilder(column: $table.mealsJson, builder: (column) => column);
 }
 
 class $$SyncMetaTableTableManager
@@ -14950,6 +15014,7 @@ class $$SyncMetaTableTableManager
                 Value<String?> orderNumberingJson = const Value.absent(),
                 Value<String?> tableSessionsMode = const Value.absent(),
                 Value<String?> companyTaxJson = const Value.absent(),
+                Value<String?> mealsJson = const Value.absent(),
               }) => SyncMetaCompanion(
                 id: id,
                 companyId: companyId,
@@ -14962,6 +15027,7 @@ class $$SyncMetaTableTableManager
                 orderNumberingJson: orderNumberingJson,
                 tableSessionsMode: tableSessionsMode,
                 companyTaxJson: companyTaxJson,
+                mealsJson: mealsJson,
               ),
           createCompanionCallback:
               ({
@@ -14976,6 +15042,7 @@ class $$SyncMetaTableTableManager
                 Value<String?> orderNumberingJson = const Value.absent(),
                 Value<String?> tableSessionsMode = const Value.absent(),
                 Value<String?> companyTaxJson = const Value.absent(),
+                Value<String?> mealsJson = const Value.absent(),
               }) => SyncMetaCompanion.insert(
                 id: id,
                 companyId: companyId,
@@ -14988,6 +15055,7 @@ class $$SyncMetaTableTableManager
                 orderNumberingJson: orderNumberingJson,
                 tableSessionsMode: tableSessionsMode,
                 companyTaxJson: companyTaxJson,
+                mealsJson: mealsJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

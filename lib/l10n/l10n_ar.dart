@@ -3841,36 +3841,64 @@ class L10nAr extends L10n {
 
   @override
   String ctrlMsgComboIncomplete(String product) {
-    return '$product: أكمل اختيار عناصر الوجبة قبل الدفع.';
+    return '$product: أكمل اختيار عناصر الكومبو أو الوجبة قبل الدفع.';
   }
 
   @override
-  String get posComboBadge => 'وجبة';
+  String get posComboBadge => 'كومبو';
 
   @override
-  String get posComboTitle => 'تكوين الوجبة';
-
-  @override
-  String posComboChooseRange(int min, int max) {
-    return 'اختر من $min إلى $max';
-  }
-
-  @override
-  String posComboChooseExactly(int count) {
-    return 'اختر $count';
-  }
-
-  @override
-  String posComboOptional(int max) {
-    return 'اختياري، حتى $max';
-  }
+  String get posComboTitle => 'تكوين الكومبو';
 
   @override
   String get posComboItemOptions => 'الخيارات';
 
   @override
-  String posComboAdd(String price) {
+  String get posComboIncluded => 'مشمول';
+
+  @override
+  String get posComboUpgradeAsk => 'ترقية؟';
+
+  @override
+  String posComboNoUpgrade(String item) {
+    return 'إبقاء $item';
+  }
+
+  @override
+  String posComboPickQuestion(String name, int count) {
+    return '$name — اختر $count';
+  }
+
+  @override
+  String posComboPickedOf(int picked, int count) {
+    return '$picked من $count';
+  }
+
+  @override
+  String get posComboNeedsOptions => 'اختر الخيارات';
+
+  @override
+  String get posComboItemNotes => 'ملاحظات';
+
+  @override
+  String posMealAdd(String price) {
     return 'إضافة الوجبة · $price';
+  }
+
+  @override
+  String posMealOfferTitle(String price) {
+    return 'هل تريدها وجبة؟ $price';
+  }
+
+  @override
+  String get posMealOfferYes => 'نعم، اجعلها وجبة';
+
+  @override
+  String get posMealOfferNo => 'لا، الصنف وحده';
+
+  @override
+  String posComboAdd(String price) {
+    return 'إضافة الكومبو · $price';
   }
 
   @override

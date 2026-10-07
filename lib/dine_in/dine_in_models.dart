@@ -256,8 +256,18 @@ class DineInRequest {
     }
     for (final raw in lines) {
       final line = tableMap(raw);
+      // LAUNCH combo add-on — a combo / meal line also carries its served
+      // items and meal id (identity only; QrQuickLine.fromJson refuses any
+      // price inside them).
       if (line.keys.any(
-        (k) => !const {'product_id', 'qty', 'addon_ids', 'notes'}.contains(k),
+        (k) => !const {
+          'product_id',
+          'qty',
+          'addon_ids',
+          'notes',
+          'combo',
+          'meal_id',
+        }.contains(k),
       )) {
         throw const FormatException('Client price or ownership field');
       }

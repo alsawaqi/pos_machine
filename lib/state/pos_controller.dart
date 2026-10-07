@@ -738,6 +738,8 @@ class PosController extends ChangeNotifier
   /// Company add-on groups (each with its options) from the API config, set in
   /// [applyCatalog]. Products reference them by id (see [addonGroupsForProduct]).
   List<AddonGroup> addonGroups = const <AddonGroup>[];
+  // LAUNCH combo add-on — the "Make it a meal?" setups from the config.
+  List<MealSetup> meals = const <MealSetup>[];
 
   /// Company delivery providers (Talabat, Otlob, …) for the delivery picker.
   List<DeliveryProvider> deliveryProviders = const <DeliveryProvider>[];
@@ -811,8 +813,7 @@ class PosController extends ChangeNotifier
   // carries no approvals (the server then records them as missing).
   // ---------------------------------------------------------------------------
   final Map<String, ActionAuthorization> _orderAuthorizations = {};
-  final Map<CartItem, ActionAuthorization> _giftAuthorizations =
-      Map.identity();
+  final Map<CartItem, ActionAuthorization> _giftAuthorizations = Map.identity();
 
   /// LAUNCH-P5 fix order 2 (T2) — the gift amount (baisas) each approver
   /// saw when they approved the line. A gift block is never signed over a
@@ -1449,8 +1450,10 @@ class PosController extends ChangeNotifier
     CompanyTaxSettings companyTax = CompanyTaxSettings.legacy,
     String branchName = '',
     String branchNameAr = '',
+    List<MealSetup> meals = const <MealSetup>[],
   }) {
     _hasRealCatalog = branchId != null;
+    this.meals = meals;
     receiptBranchName = branchName;
     receiptBranchNameAr = branchNameAr;
     this.categories = categories;
@@ -1569,6 +1572,32 @@ class PosController extends ChangeNotifier
         // bundle instance and the combo components used to be dropped here.
         _cart[i] = item.withProduct(src.copyWith(price: newPrice));
       }
+      // LAUNCH combo add-on — the profit-split weights follow the order
+      // type (delivery price on a delivery order, else the base price).
+      _reweighCombo(_cart[i]);
+    }
+  }
+
+  /// LAUNCH combo add-on — [productId]'s profit-split weight for the
+  /// current order type (fix order A1 call 2): its delivery price on a
+  /// delivery order, its base price otherwise (baisas).
+  int comboWeightBaisas(String productId) {
+    final p = productForId(productId);
+    if (p == null) return 0;
+    final price = selectedOrderType == OrderType.delivery
+        ? (p.deliveryPrice ?? p.price)
+        : p.price;
+    return pricing.omrToBaisas(price);
+  }
+
+  void _reweighCombo(CartItem item) {
+    if (!item.isCombo) return;
+    item.components = [
+      for (final c in item.components)
+        c.copyWith(weightBaisas: comboWeightBaisas(c.productId)),
+    ];
+    if (item.isMeal && productForId(item.product.id) != null) {
+      item.mainWeightBaisas = comboWeightBaisas(item.product.id);
     }
   }
 
@@ -1641,7 +1670,30 @@ class PosController extends ChangeNotifier
   bool isUnorderable(Product product) =>
       isOutsideHours(product) ||
       !isSoldOnCurrentChannel(product) ||
-      isSoldOut(product);
+      isSoldOut(product) ||
+      isComboUnavailable(product);
+
+  /// LAUNCH combo add-on — a combo cannot be sold when one of its fixed
+  /// items is sold out (or not sold here), or a choice line has no item
+  /// left to pick (owner decision 10; pos_api deviation 1: one available
+  /// item is enough, repeats allowed).
+  bool isComboUnavailable(Product product) {
+    final live = _liveProduct(product);
+    if (!live.isCombo) return false;
+    bool sellable(int? id) {
+      final item = id == null ? null : productForId('$id');
+      return item != null && !item.soldOut && !isOutsideHours(item);
+    }
+
+    for (final line in live.comboLines) {
+      if (line.isFixed) {
+        if (!sellable(line.productId)) return true;
+      } else if (!line.items.any((i) => sellable(i.productId))) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   /// LAUNCH-P4 C6 — this branch switched [product] off by hand ("sold out").
   /// Never driven by stock (owner decision 4).
@@ -1673,8 +1725,7 @@ class PosController extends ChangeNotifier
 
   /// The catalog's current copy of [product] (cart lines restored from
   /// storage carry a reduced copy), falling back to [product] itself.
-  Product _liveProduct(Product product) =>
-      productForId(product.id) ?? product;
+  Product _liveProduct(Product product) => productForId(product.id) ?? product;
 
   // An id index over the base catalog, rebuilt whenever the list is replaced
   // (the grid asks per tile and per frame).
@@ -2948,66 +2999,133 @@ class PosController extends ChangeNotifier
     return null;
   }
 
-  /// LAUNCH-P4 C7 — a combo's slots from the live catalog.
-  List<ComboSlot> comboSlotsFor(Product combo) =>
-      _liveProduct(combo).comboSlots;
+  /// LAUNCH combo add-on — a combo's lines from the live catalog.
+  List<pricing.ComboLineDef> comboLinesFor(Product combo) =>
+      _liveProduct(combo).comboLines;
 
-  /// LAUNCH-P4 C7 — why [components] are not a valid choice for [combo]
-  /// (null = valid): every slot between its min and max picks, every pick an
-  /// option of its slot, priced at that option's extra, and each pick's
-  /// required add-ons chosen. English identity names (the screen localizes).
-  String? comboChoiceError(Product combo, List<ComboComponent> components) {
-    final slots = comboSlotsFor(combo);
-    if (slots.isEmpty) return 'combo has no slots';
-    for (final slot in slots) {
-      final picks = components.where((c) => c.slotId == slot.id).toList();
-      final count = picks.fold<int>(0, (sum, c) => sum + c.qty);
-      if (count < slot.min || count > slot.max) return slot.name;
-      for (final pick in picks) {
-        final option = slot.options
-            .where((o) => o.productId.toString() == pick.productId)
-            .firstOrNull;
-        if (option == null) return slot.name;
-        if (pricing.omrToBaisas(option.extraPrice) !=
-            pricing.omrToBaisas(pick.extraPrice)) {
-          return slot.name;
-        }
-        final product = productForId(pick.productId);
-        if (product != null &&
-            missingRequiredGroup(product, pick.modifiers) != null) {
-          return slot.name;
-        }
-      }
-    }
-    if (components.any((c) => !slots.any((s) => s.id == c.slotId))) {
-      return 'unknown slot';
+  /// LAUNCH combo add-on — the meal [product] is a main of ("Make it a
+  /// meal?"), or null: the meal whose mains contain it and that is on sale
+  /// today (config `meals[]`, already in the server's order).
+  MealSetup? mealFor(Product product, {DateTime? now}) {
+    final id = int.tryParse(product.id);
+    if (id == null) return null;
+    final day = now ?? DateTime.now();
+    for (final meal in meals) {
+      if (meal.mains.contains(id) && meal.onSaleOn(day)) return meal;
     }
     return null;
   }
 
-  /// LAUNCH-P4 C7 — add a combo built in the combo sheet. Refused (no line)
-  /// when the channel does not sell the combo (e.g. a delivery app that
-  /// does not list it), it is sold out, or the choices are invalid. The
-  /// same combo with the same choices merges into the existing line.
-  bool addCombo(Product combo, List<ComboComponent> components) {
-    BusinessBoundary.assertWritable();
-    if (releaseBuild && !_hasRealCatalog) {
-      throw StateError('Load this branch configuration before selling.');
+  /// The configured meal with [id] (null when the config no longer has it).
+  MealSetup? mealById(int id) => meals.where((m) => m.id == id).firstOrNull;
+
+  /// LAUNCH combo add-on — the sheet's [picks] resolved against [lines] by
+  /// the shared pricing package into the line's served items: kinds,
+  /// extras / upgrade prices, the fixed lines nobody touched (served as is)
+  /// and each item's profit-split weight for this order type. [problems] is
+  /// empty when the picks fit the lines.
+  ({List<ComboComponent> components, List<pricing.ComboProblem> problems})
+  resolveCombo(List<pricing.ComboLineDef> lines, List<ComboSelection> picks) {
+    final byKey = <String, ComboSelection>{
+      for (final p in picks) '${p.lineId}:${p.productId}': p,
+    };
+    final resolution = pricing.resolveComboPicks(lines, [
+      for (final p in picks)
+        pricing.ComboPick(
+          lineId: p.lineId,
+          productId: int.tryParse(p.productId) ?? 0,
+          qty: p.qty,
+        ),
+    ], weightOf: (id) => comboWeightBaisas('$id'));
+    final lineById = {for (final l in lines) l.id: l};
+    final components = <ComboComponent>[
+      for (final item in resolution.items)
+        () {
+          final pick = byKey['${item.lineId}:${item.productId}'];
+          final product = productForId('${item.productId}');
+          final line = lineById[item.lineId];
+          return ComboComponent(
+            lineId: item.lineId,
+            kind: item.kind.wire,
+            productId: '${item.productId}',
+            name: product?.name ?? '#${item.productId}',
+            nameAr: product?.nameAr ?? '',
+            lineName: line?.name ?? '',
+            lineNameAr: line?.nameAr ?? '',
+            qty: item.qty,
+            extraPrice: item.extraPriceBaisas / 1000.0,
+            modifiers: pick?.modifiers ?? const <CartItemModifier>[],
+            notes: pick?.notes ?? '',
+            filled: item.filled,
+            weightBaisas: item.weightBaisas,
+          );
+        }(),
+    ];
+    return (components: components, problems: resolution.problems);
+  }
+
+  /// LAUNCH combo add-on — why [components] are not a valid set of items
+  /// for [lines] (null = valid): every choice line holds exactly pick N
+  /// (repeats allowed), every item is offered by its line at the line's
+  /// extra / upgrade price, a fixed line is its product or an upgrade, and
+  /// every item's required add-on groups are chosen. English identity
+  /// names (the screen localizes).
+  String? comboItemsError(
+    List<pricing.ComboLineDef> lines,
+    List<ComboComponent> components,
+  ) {
+    final resolution = pricing.resolveComboPicks(lines, [
+      for (final c in components)
+        pricing.ComboPick(
+          lineId: c.lineId,
+          productId: int.tryParse(c.productId) ?? 0,
+          qty: c.qty,
+        ),
+    ]);
+    if (!resolution.isValid) return resolution.problems.first.toString();
+    for (var i = 0; i < components.length; i++) {
+      final c = components[i];
+      final resolved = resolution.items
+          .where((r) => r.lineId == c.lineId && '${r.productId}' == c.productId)
+          .firstOrNull;
+      if (resolved == null ||
+          resolved.extraPriceBaisas != pricing.omrToBaisas(c.extraPrice)) {
+        return 'item ${c.productId} price';
+      }
+      final product = productForId(c.productId);
+      if (product != null &&
+          missingRequiredGroup(product, c.modifiers) != null) {
+        return 'item ${c.productId} options';
+      }
     }
-    if (!_cartMutationAllowed()) return false;
-    final live = _liveProduct(combo);
-    if (!live.isCombo ||
-        !isSoldOnCurrentChannel(live) ||
-        isSoldOut(live) ||
-        comboChoiceError(live, components) != null) {
-      return false;
+    return null;
+  }
+
+  /// LAUNCH combo add-on — why [item] (a combo or meal line) cannot be
+  /// sold as it is (null = it can): a combo's items against its lines; a
+  /// meal must still be the main's meal at the same meal price.
+  String? comboChoiceError(CartItem item) {
+    if (item.isMeal) {
+      final meal = mealFor(item.product);
+      if (meal == null || meal.id != item.meal!.id) return 'not a meal main';
+      if (meal.mealPriceBaisas != pricing.omrToBaisas(item.meal!.price)) {
+        return 'meal price';
+      }
+      return comboItemsError(meal.lines, item.components);
     }
-    // The channel price published in allProducts (delivery re-priced).
-    final priced = allProducts.firstWhere(
-      (p) => p.id == live.id,
-      orElse: () => live,
-    );
-    final line = CartItem(product: priced, components: components);
+    if (!_liveProduct(item.product).isCombo) return null;
+    return comboItemsError(comboLinesFor(item.product), item.components);
+  }
+
+  CartItem _priced(Product product) => CartItem(
+    product: allProducts.firstWhere(
+      (p) => p.id == product.id,
+      orElse: () => product,
+    ),
+  );
+
+  bool _insertComboLine(CartItem line, String productId) {
+    if (comboChoiceError(line) != null) return false;
     final index = _cart.indexWhere(
       (item) => item.mergeSignature == line.mergeSignature,
     );
@@ -3020,20 +3138,85 @@ class PosController extends ChangeNotifier
       existing.qty++;
       _cart.insert(0, existing);
     }
-    _markOrderUpdated(live.id);
+    _markOrderUpdated(productId);
     maybeAutoApplyOrderDiscount();
     _broadcast();
     return true;
   }
 
-  /// LAUNCH-P4 C7 — edit a combo line's choices (the quantity stays).
-  bool updateComboComponents(CartItem item, List<ComboComponent> components) {
+  /// LAUNCH combo add-on — add a combo with its served [components] (from
+  /// [resolveCombo]; a fixed-only combo passes the filled items). Refused
+  /// (no line) when the channel does not sell the combo (e.g. a delivery
+  /// app that does not list it), it is sold out, or the items do not fit
+  /// its lines. The same combo with the same items merges into one line.
+  bool addCombo(Product combo, List<ComboComponent> components) {
+    BusinessBoundary.assertWritable();
+    if (releaseBuild && !_hasRealCatalog) {
+      throw StateError('Load this branch configuration before selling.');
+    }
+    if (!_cartMutationAllowed()) return false;
+    final live = _liveProduct(combo);
+    if (!live.isCombo || !isSoldOnCurrentChannel(live) || isSoldOut(live)) {
+      return false;
+    }
+    final line = _priced(live)..components = List.of(components);
+    return _insertComboLine(line, live.id);
+  }
+
+  /// LAUNCH combo add-on — "Make it a meal?" said yes: [main] (with its
+  /// own [modifiers] / [notes]) + [meal]'s price + its [components].
+  bool addMeal(
+    Product main,
+    MealSetup meal, {
+    List<CartItemModifier> modifiers = const <CartItemModifier>[],
+    String notes = '',
+    List<ComboComponent> components = const <ComboComponent>[],
+  }) {
+    BusinessBoundary.assertWritable();
+    if (releaseBuild && !_hasRealCatalog) {
+      throw StateError('Load this branch configuration before selling.');
+    }
+    if (!_cartMutationAllowed()) return false;
+    final live = _liveProduct(main);
+    if (!isSoldOnCurrentChannel(live) || isSoldOut(live)) return false;
+    if (mealFor(live)?.id != meal.id) return false;
+    final priced = _priced(live).product;
+    final line = CartItem(
+      product: priced,
+      modifiers: modifiers,
+      notes: notes,
+      components: components,
+      meal: CartMeal(
+        id: meal.id,
+        name: meal.name,
+        nameAr: meal.nameAr,
+        price: meal.mealPrice,
+      ),
+      mainWeightBaisas: comboWeightBaisas(live.id),
+    );
+    return _insertComboLine(line, live.id);
+  }
+
+  /// LAUNCH combo add-on — edit a combo / meal line's items (and a meal's
+  /// main options); the quantity stays.
+  bool updateComboComponents(
+    CartItem item,
+    List<ComboComponent> components, {
+    List<CartItemModifier>? modifiers,
+    String? notes,
+  }) {
     if (!_cartMutationAllowed()) return false;
     final index = _cart.indexOf(item);
     if (index == -1) return false;
-    if (comboChoiceError(item.product, components) != null) return false;
+    final probe = item.withProduct(item.product)
+      ..components = List<ComboComponent>.from(components)
+      ..modifiers = List<CartItemModifier>.from(modifiers ?? item.modifiers)
+      ..notes = notes ?? item.notes;
+    if (comboChoiceError(probe) != null) return false;
     _dropCompForCartMutation();
-    item.components = List<ComboComponent>.from(components);
+    item.components = probe.components;
+    item.modifiers = probe.modifiers;
+    item.notes = probe.notes;
     _markOrderUpdated(item.product.id);
     _broadcast();
     return true;
@@ -3088,17 +3271,17 @@ class PosController extends ChangeNotifier
       if (!isSoldOnCurrentChannel(item.product)) {
         return _l10n.ctrlMsgNotSoldOnChannel(item.product.displayName(arabic));
       }
-      // LAUNCH-P4 C7 — a combo must carry a valid set of choices (a combo
-      // line restored without its components cannot be paid).
-      if (_liveProduct(item.product).isCombo &&
-          comboChoiceError(item.product, item.components) != null) {
-        return _l10n.ctrlMsgComboIncomplete(item.product.displayName(arabic));
+      // LAUNCH combo add-on — a combo / meal must carry items that fit its
+      // lines (a line restored without them, or a meal no longer offered on
+      // its main, cannot be paid).
+      if (item.isCombo && comboChoiceError(item) != null) {
+        return _l10n.ctrlMsgComboIncomplete(item.displayName(arabic));
       }
     }
     final missing = firstMissingRequiredChoice();
     if (missing != null) {
       return _l10n.ctrlMsgRequiredChoiceMissing(
-        missing.item.product.displayName(arabic),
+        missing.item.displayName(arabic),
         arabic && (missing.group.nameAr ?? '').trim().isNotEmpty
             ? missing.group.nameAr!.trim()
             : missing.group.name,

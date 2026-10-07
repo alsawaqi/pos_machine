@@ -42,6 +42,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 import '../l10n/l10n.dart';
+import '../combo/combo_sheet.dart';
 import '../models/pos_models.dart';
 import '../models/qr_till_models.dart' show QrDeviceRound, QrRoundEnvelope;
 import '../models/remote_table_state.dart';
@@ -1325,9 +1326,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       return;
     }
     if (controller.isUnorderable(product)) return;
-    // LAUNCH-P4 C7 — a combo opens the combo builder.
+    // LAUNCH combo add-on — a combo: one tap for a fixed-only one, else the
+    // combo sheet. An eligible main offers "Make it a meal?".
     if (product.isCombo) {
       unawaited(_openComboBuilder(product));
+      return;
+    }
+    if (controller.mealFor(product) case final meal?) {
+      unawaited(_offerMeal(product, meal));
       return;
     }
     // LAUNCH-P4 H4 — a product with a required add-on group (e.g. "Size")
@@ -1419,30 +1425,162 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     );
   }
 
-  /// LAUNCH-P4 C7 — build a combo (or edit [editing]'s choices): slots and
-  /// options with defaults, extras, each item's add-ons and a live price.
+  /// LAUNCH combo add-on — the merchant's default options of [product] (a
+  /// freshly picked item inside a combo / meal). Never an auto-tick of a
+  /// required group without a default (owner rule): that item then asks.
+  List<CartItemModifier> _defaultModifiers(Product product) => [
+    for (final group in controller.addonGroupsForProduct(product))
+      ...group.options
+          .where((o) => o.isDefault && !controller.isAddonOptionUnavailable(o))
+          .take(group.effectiveMax)
+          .map(
+            (o) => CartItemModifier(
+              id: o.id.toString(),
+              group: group.name,
+              label: o.label,
+              labelAr: o.labelAr ?? '',
+              price: o.priceDelta,
+            ),
+          ),
+  ];
+
+  bool _optionsComplete(String productId, List<CartItemModifier> modifiers) {
+    final product = controller.productForId(productId);
+    return product == null ||
+        controller.missingRequiredGroup(product, modifiers) == null;
+  }
+
+  /// One item's own options inside a combo / meal (remove / instructions /
+  /// extras, minus remove prices included); required groups never
+  /// auto-tick here.
+  Future<ComboItemOptions?> _editComboItemOptions(
+    String productId,
+    ComboItemOptions current,
+  ) async {
+    final product = controller.productForId(productId);
+    if (product == null || !mounted) return null;
+    ComboItemOptions? result;
+    await showDialog<_CartItemCustomizationResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _CustomizeCartItemDialog(
+        // Inside a combo the item's own price is not charged — only its
+        // add-ons are, so the preview shows those alone.
+        item: CartItem(
+          product: product.copyWith(price: 0),
+          modifiers: current.modifiers,
+          notes: current.notes,
+        ),
+        groups: controller.addonGroups.isEmpty
+            ? const <_ModifierGroupDefinition>[]
+            : _resolveModifierGroups(product),
+        autoPickRequired: false,
+        apply: (picked) async {
+          result = (modifiers: picked.modifiers, notes: picked.notes);
+          return true;
+        },
+      ),
+    );
+    return result;
+  }
+
+  ComboSheetSource _comboSheetSource(
+    int Function(ComboSheetResult draft) price,
+  ) => ComboSheetSource(
+    itemFor: (id) {
+      final product = controller.productForId(id);
+      if (product == null) return null;
+      return ComboSheetItem(
+        id: id,
+        name: product.name,
+        nameAr: product.nameAr,
+        available:
+            !controller.isSoldOut(product) &&
+            product.isAvailableAt(DateTime.now()),
+        hasOptions: controller.addonGroupsForProduct(product).isNotEmpty,
+      );
+    },
+    unitPriceBaisas: price,
+    defaultOptions: (id) {
+      final product = controller.productForId(id);
+      return product == null ? const [] : _defaultModifiers(product);
+    },
+    optionsComplete: _optionsComplete,
+    editOptions: (_, id, current) => _editComboItemOptions(id, current),
+  );
+
+  /// The fixed lines' default selections (their items' default options),
+  /// or null when an item still needs a required choice (then the sheet
+  /// must open).
+  List<ComboSelection>? _fixedDefaults(List<pricing.ComboLineDef> lines) {
+    final picks = <ComboSelection>[];
+    for (final line in lines) {
+      if (!line.isFixed) return null;
+      final product = controller.productForId('${line.productId}');
+      if (product == null) continue;
+      final defaults = _defaultModifiers(product);
+      if (!_optionsComplete(product.id, defaults)) return null;
+      if (defaults.isEmpty) continue;
+      picks.add(
+        ComboSelection(
+          lineId: line.id,
+          productId: product.id,
+          qty: line.quantity,
+          modifiers: defaults,
+        ),
+      );
+    }
+    return picks;
+  }
+
+  /// LAUNCH combo add-on — a combo. Only fixed lines (no upgrades): one tap
+  /// adds it, nobody picks. Choices or upgrades: the combo sheet (also to
+  /// edit [editing]'s items).
   Future<void> _openComboBuilder(Product combo, {CartItem? editing}) async {
-    final slots = controller.comboSlotsFor(combo);
-    if (slots.isEmpty || !mounted) return;
+    final lines = controller.comboLinesFor(combo);
+    if (editing == null && !comboNeedsSheet(lines)) {
+      final defaults = _fixedDefaults(lines);
+      if (defaults != null) {
+        controller.addCombo(
+          combo,
+          controller.resolveCombo(lines, defaults).components,
+        );
+        return;
+      }
+    }
+    if (!mounted) return;
     final priced =
         editing?.product ??
         controller.allProducts.firstWhere(
           (p) => p.id == combo.id,
           orElse: () => combo,
         );
-    final components = await showDialog<List<ComboComponent>>(
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final l10n = L10n.of(context);
+    final result = await showDialog<ComboSheetResult>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _ComboBuilderDialog(
-        combo: priced,
-        slots: slots,
-        productFor: controller.productForId,
-        groupsFor: _resolveModifierGroups,
-        isSoldOut: controller.isSoldOut,
-        initial: editing?.components ?? const <ComboComponent>[],
+      builder: (_) => ComboSheet(
+        title: priced.displayName(isAr),
+        subtitle: l10n.posComboTitle,
+        lines: lines,
+        initial: editing == null
+            ? const <ComboSelection>[]
+            : ComboSelection.fromComponents(editing.components),
+        source: _comboSheetSource(
+          (draft) => CartItem(
+            product: priced,
+            components: controller
+                .resolveCombo(lines, draft.selections)
+                .components,
+          ).comboSale!.unitPriceBaisas,
+        ),
       ),
     );
-    if (!mounted || components == null) return;
+    if (!mounted || result == null) return;
+    final components = controller
+        .resolveCombo(lines, result.selections)
+        .components;
     if (editing != null) {
       controller.updateComboComponents(editing, components);
     } else {
@@ -1450,7 +1588,117 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     }
   }
 
-  /// LAUNCH-P4 H4 — the options sheet for a NEW line: Apply adds the product
+  /// LAUNCH combo add-on — "Make it a meal? +1.200" on an eligible main.
+  /// No: the main alone (its options sheet first when it needs one). Yes:
+  /// the meal sheet (the main with its options, then the meal's lines).
+  Future<void> _offerMeal(Product main, MealSetup meal) async {
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final yes = await showMealOffer(
+      context,
+      mainName: main.displayName(isAr),
+      mealName: meal.displayName(isAr),
+      mealPriceBaisas: meal.mealPriceBaisas,
+    );
+    if (!mounted || yes == null) return;
+    if (!yes) {
+      if (controller.needsOptionsBeforeAdd(main)) {
+        await _openNewLineOptions(main);
+      } else {
+        controller.addProduct(main);
+      }
+      return;
+    }
+    await _openMealSheet(main, meal);
+  }
+
+  Future<void> _openMealSheet(
+    Product main,
+    MealSetup meal, {
+    CartItem? editing,
+  }) async {
+    final lines = meal.lines;
+    final mainDefaults = editing?.modifiers ?? _defaultModifiers(main);
+    if (editing == null &&
+        !comboNeedsSheet(lines) &&
+        _optionsComplete(main.id, mainDefaults)) {
+      final defaults = _fixedDefaults(lines);
+      if (defaults != null) {
+        controller.addMeal(
+          main,
+          meal,
+          modifiers: mainDefaults,
+          components: controller.resolveCombo(lines, defaults).components,
+        );
+        return;
+      }
+    }
+    if (!mounted) return;
+    final priced =
+        editing?.product ??
+        controller.allProducts.firstWhere(
+          (p) => p.id == main.id,
+          orElse: () => main,
+        );
+    final isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final cartMeal = CartMeal(
+      id: meal.id,
+      name: meal.name,
+      nameAr: meal.nameAr,
+      price: meal.mealPrice,
+    );
+    final result = await showDialog<ComboSheetResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ComboSheet(
+        title: '${priced.displayName(isAr)} ${meal.displayName(isAr)}',
+        subtitle:
+            '${meal.displayName(isAr)} '
+            '+${meal.mealPrice.toStringAsFixed(3)}',
+        isMeal: true,
+        lines: lines,
+        main: ComboSheetMain(
+          productId: main.id,
+          modifiers: mainDefaults,
+          notes: editing?.notes ?? '',
+        ),
+        initial: editing == null
+            ? const <ComboSelection>[]
+            : ComboSelection.fromComponents(editing.components),
+        source: _comboSheetSource(
+          (draft) => CartItem(
+            product: priced,
+            modifiers: draft.mainModifiers,
+            meal: cartMeal,
+            components: controller
+                .resolveCombo(lines, draft.selections)
+                .components,
+          ).comboSale!.unitPriceBaisas,
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+    final components = controller
+        .resolveCombo(lines, result.selections)
+        .components;
+    if (editing != null) {
+      controller.updateComboComponents(
+        editing,
+        components,
+        modifiers: result.mainModifiers,
+        notes: result.mainNotes,
+      );
+    } else {
+      controller.addMeal(
+        main,
+        meal,
+        modifiers: result.mainModifiers,
+        notes: result.mainNotes,
+        components: components,
+      );
+    }
+  }
+
+  // LAUNCH-P4 H4 — the options sheet for a NEW line: Apply adds the product
   /// with the picked add-ons; Cancel adds nothing.
   Future<void> _openNewLineOptions(Product product) async {
     await showDialog<_CartItemCustomizationResult>(
@@ -1481,7 +1729,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final quickProduct = quick
         .where((p) => p.id == (line['product_id'] as num?)?.toInt())
         .firstOrNull;
-    if (quickProduct != null && quickProduct.isCombo) {
+    if (quickProduct != null &&
+        (quickProduct.isCombo || line['meal_id'] != null)) {
       final picked = await pickStaffRoundProduct(
         context,
         quickProduct,
@@ -1895,6 +2144,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           companyTax: catalog.companyTax,
           branchName: catalog.branchName,
           branchNameAr: catalog.branchNameAr,
+          meals: catalog.meals,
         );
         // P-G6 — pop a notice when a NEW announcement lands for the
         // signed-in staff member (delta sync or live push). The first
@@ -2401,6 +2651,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final items = transferClaimCartItems(
       order,
       productForId: controller.productForId,
+      mealFor: controller.mealById,
     );
 
     return controller.receiveTransferredOrder(
@@ -2646,7 +2897,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                         DropdownMenuItem(
                           value: i,
                           child: Text(
-                            '${cart[i].product.displayName(isAr)} ×${cart[i].qty}',
+                            '${cart[i].displayName(isAr)} ×${cart[i].qty}',
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -6581,7 +6832,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       title: wasGifted
           ? l10n.posGiftItemRemovedTitle
           : l10n.posGiftItemGiftedTitle,
-      message: item.product.displayName(isAr),
+      message: item.displayName(isAr),
       tone: FeedbackTone.success,
     );
   }
@@ -8888,8 +9139,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Future<void> _openCustomizeDialog(CartItem item) async {
-    // LAUNCH-P4 C7 — a combo line edits its choices in the combo builder.
-    if (item.isCombo && controller.comboSlotsFor(item.product).isNotEmpty) {
+    // LAUNCH combo add-on — a combo / meal line reopens its sheet.
+    if (item.isMeal) {
+      final meal =
+          controller.mealById(item.meal!.id) ??
+          controller.mealFor(item.product);
+      if (meal != null) {
+        await _openMealSheet(item.product, meal, editing: item);
+        return;
+      }
+    } else if (item.isCombo) {
       await _openComboBuilder(item.product, editing: item);
       return;
     }
@@ -13715,7 +13974,7 @@ class _OrderItemCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        item.product.displayName(isAr).toUpperCase(),
+                        item.displayName(isAr).toUpperCase(),
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w900,
@@ -13936,10 +14195,7 @@ class _PaymentOrderItemCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  l10n.posCartQtyTimesName(
-                    item.qty,
-                    item.product.displayName(isAr),
-                  ),
+                  l10n.posCartQtyTimesName(item.qty, item.displayName(isAr)),
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
@@ -14075,10 +14331,14 @@ class _CustomizeCartItemDialog extends StatefulWidget {
   final List<_ModifierGroupDefinition> groups;
 
   final Future<bool> Function(_CartItemCustomizationResult)? apply;
+  // LAUNCH combo add-on — false inside a combo / meal: a required group
+  // never auto-ticks there (owner rule); the cashier picks.
+  final bool autoPickRequired;
   const _CustomizeCartItemDialog({
     required this.item,
     required this.groups,
     this.apply,
+    this.autoPickRequired = true,
   });
 
   @override
@@ -14120,7 +14380,9 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
           }
         }
       }
-      if (group.requiredSelection && selected.isEmpty) {
+      if (widget.autoPickRequired &&
+          group.requiredSelection &&
+          selected.isEmpty) {
         // P-G3 — auto-pick the first option that's actually sellable (all
         // sold out leaves the group empty and Apply blocked).
         for (final option in group.options) {
@@ -14176,7 +14438,9 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
       0,
       (sum, modifier) => sum + modifier.price,
     );
-    return (widget.item.product.price + modifierTotal) * widget.item.qty;
+    // A minus remove never takes the line below 0.
+    final unit = widget.item.product.price + modifierTotal;
+    return (unit < 0 ? 0.0 : unit) * widget.item.qty;
   }
 
   void _toggleOption(
@@ -14608,9 +14872,9 @@ class _CustomizationOptionTile extends StatelessWidget {
                         letterSpacing: 0.5,
                       ),
                     )
-                  else if (option.price > 0)
+                  else if (option.price != 0)
                     Text(
-                      '+${SunmiReceiptService.money(option.price)}',
+                      _signedMoney(option.price),
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
@@ -14651,10 +14915,10 @@ class _CustomizationOptionTile extends StatelessWidget {
                               letterSpacing: 0.5,
                             ),
                           ),
-                        ] else if (option.price > 0) ...[
+                        ] else if (option.price != 0) ...[
                           const SizedBox(height: 4),
                           Text(
-                            '+${SunmiReceiptService.money(option.price)}',
+                            _signedMoney(option.price),
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
@@ -17660,7 +17924,7 @@ class _HeldOrderCard extends StatelessWidget {
                       .map(
                         (item) => l10n.posStorageItemQtyName(
                           item.qty,
-                          item.product.displayName(isAr),
+                          item.displayName(isAr),
                         ),
                       )
                       .take(4)
@@ -20908,423 +21172,7 @@ const _softShadow = <BoxShadow>[
   BoxShadow(color: Color(0x14FFFFFF), blurRadius: 1, offset: Offset(0, 1)),
 ];
 
-/// LAUNCH-P4 C7 — one pick inside the combo sheet.
-class _ComboChoice {
-  _ComboChoice({
-    required this.productId,
-    required this.extraPrice,
-    List<CartItemModifier>? modifiers,
-    this.notes = '',
-  }) : modifiers = List<CartItemModifier>.from(modifiers ?? const []);
-
-  final String productId;
-  final double extraPrice;
-  List<CartItemModifier> modifiers;
-  String notes;
-
-  double get delta =>
-      extraPrice + modifiers.fold<double>(0, (sum, m) => sum + m.price);
-}
-
-/// LAUNCH-P4 C7 — the combo builder: each slot with its options (defaults
-/// picked), the extra each option costs, each chosen item's own add-ons
-/// (required groups pre-filled, editable with "Options"), and a live price.
-/// Pops the chosen [ComboComponent]s (per ONE combo) or null on Cancel.
-class _ComboBuilderDialog extends StatefulWidget {
-  const _ComboBuilderDialog({
-    required this.combo,
-    required this.slots,
-    required this.productFor,
-    required this.groupsFor,
-    required this.isSoldOut,
-    this.initial = const <ComboComponent>[],
-  });
-
-  /// The combo at its current channel price.
-  final Product combo;
-  final List<ComboSlot> slots;
-  final Product? Function(String id) productFor;
-  final List<_ModifierGroupDefinition> Function(Product product) groupsFor;
-  final bool Function(Product product) isSoldOut;
-  final List<ComboComponent> initial;
-
-  @override
-  State<_ComboBuilderDialog> createState() => _ComboBuilderDialogState();
-}
-
-class _ComboBuilderDialogState extends State<_ComboBuilderDialog> {
-  late final Map<int, List<_ComboChoice>> _picked;
-
-  @override
-  void initState() {
-    super.initState();
-    _picked = {for (final slot in widget.slots) slot.id: <_ComboChoice>[]};
-    if (widget.initial.isNotEmpty) {
-      for (final c in widget.initial) {
-        for (var i = 0; i < c.qty; i++) {
-          _picked[c.slotId]?.add(
-            _ComboChoice(
-              productId: c.productId,
-              extraPrice: c.extraPrice,
-              modifiers: c.modifiers,
-              notes: c.notes,
-            ),
-          );
-        }
-      }
-      return;
-    }
-    for (final slot in widget.slots) {
-      for (final option in slot.options) {
-        if (!option.isDefault) continue;
-        if (_picked[slot.id]!.length >= slot.max) break;
-        final product = widget.productFor(option.productId.toString());
-        if (product == null || widget.isSoldOut(product)) continue;
-        _picked[slot.id]!.add(_choiceFor(option, product));
-      }
-    }
-  }
-
-  /// A fresh pick with its add-on defaults (and the first option of any
-  /// required group without a default) already chosen.
-  _ComboChoice _choiceFor(ComboOption option, Product product) {
-    final modifiers = <CartItemModifier>[];
-    for (final group in widget.groupsFor(product)) {
-      final picked = <_ModifierOptionDefinition>[
-        for (final o in group.options)
-          if (group.defaultOptionIds.contains(o.id) && !o.soldOut) o,
-      ];
-      final max = group.maxSelections;
-      if (max != null && picked.length > max) {
-        picked.removeRange(max, picked.length);
-      }
-      if (picked.isEmpty && group.requiredSelection) {
-        final first = group.options.where((o) => !o.soldOut).firstOrNull;
-        if (first != null) picked.add(first);
-      }
-      for (final o in picked) {
-        modifiers.add(
-          CartItemModifier(
-            id: o.id,
-            group: group.title,
-            label: o.label,
-            labelAr: o.labelAr,
-            price: o.price,
-          ),
-        );
-      }
-    }
-    return _ComboChoice(
-      productId: option.productId.toString(),
-      extraPrice: option.extraPrice,
-      modifiers: modifiers,
-    );
-  }
-
-  int _count(ComboSlot slot) => _picked[slot.id]!.length;
-
-  bool get _valid => widget.slots.every(
-    (slot) => _count(slot) >= slot.min && _count(slot) <= slot.max,
-  );
-
-  double get _price =>
-      widget.combo.price +
-      _picked.values
-          .expand((choices) => choices)
-          .fold<double>(0, (sum, c) => sum + c.delta);
-
-  void _toggle(ComboSlot slot, ComboOption option, Product product) {
-    final picks = _picked[slot.id]!;
-    final index = picks.indexWhere(
-      (c) => c.productId == option.productId.toString(),
-    );
-    setState(() {
-      if (index != -1) {
-        picks.removeAt(index);
-        return;
-      }
-      if (widget.isSoldOut(product)) return;
-      if (slot.max == 1) {
-        picks
-          ..clear()
-          ..add(_choiceFor(option, product));
-        return;
-      }
-      if (picks.length >= slot.max) return;
-      picks.add(_choiceFor(option, product));
-    });
-  }
-
-  Future<void> _editOptions(_ComboChoice choice, Product product) async {
-    await showDialog<_CartItemCustomizationResult>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => _CustomizeCartItemDialog(
-        // Inside a combo the item's own price is not charged — only its
-        // add-ons are, so the preview shows those alone.
-        item: CartItem(
-          product: product.copyWith(price: 0),
-          modifiers: choice.modifiers,
-          notes: choice.notes,
-        ),
-        groups: widget.groupsFor(product),
-        apply: (result) async {
-          if (!mounted) return false;
-          setState(() {
-            choice.modifiers = List<CartItemModifier>.from(result.modifiers);
-            choice.notes = result.notes;
-          });
-          return true;
-        },
-      ),
-    );
-  }
-
-  List<ComboComponent> _result(bool arabic) {
-    final components = <ComboComponent>[];
-    for (final slot in widget.slots) {
-      // Identical picks (same item, add-ons and notes) fold into one
-      // component with a quantity.
-      final folded = <String, ComboComponent>{};
-      for (final choice in _picked[slot.id]!) {
-        final product = widget.productFor(choice.productId);
-        final key =
-            '${choice.productId}|${choice.modifiers.map((m) => m.id).join(',')}'
-            '|${choice.notes.trim().toLowerCase()}';
-        final existing = folded[key];
-        folded[key] = ComboComponent(
-          slotId: slot.id,
-          productId: choice.productId,
-          name: product?.name ?? choice.productId,
-          nameAr: product?.nameAr ?? '',
-          slotName: slot.name,
-          slotNameAr: slot.nameAr,
-          qty: (existing?.qty ?? 0) + 1,
-          extraPrice: choice.extraPrice,
-          modifiers: choice.modifiers,
-          notes: choice.notes,
-        );
-      }
-      components.addAll(folded.values);
-    }
-    return components;
-  }
-
-  String _hint(L10n l10n, ComboSlot slot) {
-    if (slot.min == 0) return l10n.posComboOptional(slot.max);
-    if (slot.min == slot.max) return l10n.posComboChooseExactly(slot.min);
-    return l10n.posComboChooseRange(slot.min, slot.max);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = L10n.of(context);
-    final isAr = Localizations.localeOf(context).languageCode == 'ar';
-    return Dialog(
-      key: const ValueKey('combo-builder'),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 28),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760, maxHeight: 760),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                widget.combo.displayName(isAr),
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF17232B),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                l10n.posComboTitle,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF5B6B73),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final slot in widget.slots) ...[
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              slot.displayName(isAr),
-                              style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF17232B),
-                              ),
-                            ),
-                          ),
-                          Text(
-                            _hint(l10n, slot),
-                            key: ValueKey('combo-slot-hint-${slot.id}'),
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color:
-                                  _count(slot) >= slot.min &&
-                                      _count(slot) <= slot.max
-                                  ? const Color(0xFF2E7D5B)
-                                  : const Color(0xFFB54708),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          for (final option in slot.options)
-                            if (widget.productFor(option.productId.toString())
-                                case final product?)
-                              _comboOptionChip(slot, option, product, isAr),
-                        ],
-                      ),
-                      for (final choice in _picked[slot.id]!)
-                        if (widget.productFor(choice.productId)
-                            case final product?
-                            when widget.groupsFor(product).isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    [
-                                      product.displayName(isAr),
-                                      ...choice.modifiers.map(
-                                        (m) => m.displayLabel(isAr),
-                                      ),
-                                    ].join(' · '),
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      color: Color(0xFF33454E),
-                                    ),
-                                  ),
-                                ),
-                                TextButton.icon(
-                                  key: ValueKey(
-                                    'combo-options-${slot.id}-${choice.productId}',
-                                  ),
-                                  onPressed: () =>
-                                      _editOptions(choice, product),
-                                  icon: const Icon(
-                                    Icons.tune_rounded,
-                                    size: 18,
-                                  ),
-                                  label: Text(l10n.posComboItemOptions),
-                                ),
-                              ],
-                            ),
-                          ),
-                      const SizedBox(height: 16),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 64,
-                      child: _OutlineActionButton(
-                        label: l10n.commonCancel,
-                        icon: Icons.close_rounded,
-                        onTap: () => Navigator.of(context).pop(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: SizedBox(
-                      height: 64,
-                      child: _FilledActionButton(
-                        buttonKey: const ValueKey('combo-confirm'),
-                        label: l10n.posComboAdd(
-                          SunmiReceiptService.money(_price),
-                        ),
-                        onTap: _valid
-                            ? () => Navigator.of(context).pop(_result(isAr))
-                            : null,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _comboOptionChip(
-    ComboSlot slot,
-    ComboOption option,
-    Product product,
-    bool isAr,
-  ) {
-    final selected = _picked[slot.id]!.any(
-      (c) => c.productId == option.productId.toString(),
-    );
-    final soldOut = widget.isSoldOut(product);
-    return InkWell(
-      key: ValueKey('combo-option-${slot.id}-${option.productId}'),
-      onTap: soldOut && !selected ? null : () => _toggle(slot, option, product),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected
-              ? const Color(0xFF17232B)
-              : (soldOut ? const Color(0xFFEDEFF1) : Colors.white),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected ? const Color(0xFF17232B) : const Color(0xFFD5DEE3),
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              product.displayName(isAr),
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: selected
-                    ? Colors.white
-                    : (soldOut
-                          ? const Color(0xFF8A969C)
-                          : const Color(0xFF17232B)),
-              ),
-            ),
-            if (option.extraPrice > 0 || soldOut)
-              Text(
-                soldOut
-                    ? L10n.of(context).posSoldOutBadge
-                    : '+${option.extraPrice.toStringAsFixed(3)}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white70 : const Color(0xFF5B6B73),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+/// LAUNCH combo add-on — an option price with its sign: "+0.300 OMR", a
+/// minus remove "-0.100 OMR".
+String _signedMoney(double price) =>
+    '${price < 0 ? '-' : '+'}${SunmiReceiptService.money(price.abs())}';

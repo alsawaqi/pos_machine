@@ -266,7 +266,8 @@ class CurrentOrderWorkspace extends ChangeNotifier {
         );
     final pendingLineDiscount = pending.fold<int>(
       0,
-      (sum, line) => sum + ((line['line_discount_baisas'] as num?) ?? 0).toInt(),
+      (sum, line) =>
+          sum + ((line['line_discount_baisas'] as num?) ?? 0).toInt(),
     );
     final pendingTotal =
         cartControls?.pendingTotal ??
@@ -385,14 +386,21 @@ class WorkspaceCartItem extends CartItem {
   WorkspaceCartItem(Map<String, dynamic> line)
     : serverQuantity = line['qty'] as num,
       frozenTotal = (line['line_total_baisas'] as int) / 1000,
-      // LAUNCH-P4 C7 — the server's nested combo items, display-only (the
-      // money stays the server's frozen line total).
-      comboLine = {'combo': serverComboOf(line)},
+      // LAUNCH combo add-on — the server's nested combo / meal items,
+      // display-only (the money stays the server's frozen line total).
+      comboLine = {
+        'combo': serverComboOf(line),
+        if (line['meal_id'] != null) 'meal_id': line['meal_id'],
+        if (line['meal_id'] != null) 'product_name': line['product_name'],
+        if (line['meal_id'] != null) 'product_name_ar': line['product_name_ar'],
+        if (line['meal_id'] != null) 'addons': line['addons'],
+      },
       super(
         components: [
           for (final c in serverComboOf(line))
             ComboComponent(
-              slotId: (c['slot_id'] as num?)?.toInt() ?? 0,
+              lineId: (c['line_id'] as num?)?.toInt() ?? 0,
+              kind: (c['kind'] ?? 'choice').toString(),
               productId: '${c['product_id'] ?? ''}',
               name: (c['name'] ?? c['product_name'] ?? '').toString(),
               nameAr: (c['name_ar'] ?? c['product_name_ar'] ?? '').toString(),
@@ -402,8 +410,11 @@ class WorkspaceCartItem extends CartItem {
         ],
         product: Product(
           id: (line['product_id'] ?? line['order_item_id'] ?? '').toString(),
-          name: line['product_name'] as String,
-          nameAr: line['product_name_ar'] as String? ?? '',
+          // A meal shows as "Beef burger meal" (the server's display name).
+          name: (line['display_name'] ?? line['product_name']) as String,
+          nameAr:
+              (line['display_name_ar'] ?? line['product_name_ar']) as String? ??
+              '',
           category: '',
           price: (line['qty'] as num) > 0
               ? (line['line_total_baisas'] as int) / 1000 / (line['qty'] as num)
@@ -436,9 +447,11 @@ class WorkspaceCartItem extends CartItem {
   @override
   List<String> detailLinesFor(bool arabic) => [
     ...serverComboLabels(comboLine, arabic: arabic),
-    for (final modifier in modifiers)
-      if (modifier.displayLabel(arabic).isNotEmpty)
-        modifier.displayLabel(arabic),
+    // A meal's main options are listed under its main by the labels.
+    if (comboLine['meal_id'] == null)
+      for (final modifier in modifiers)
+        if (modifier.displayLabel(arabic).isNotEmpty)
+          modifier.displayLabel(arabic),
     if (notes.isNotEmpty) notes,
   ];
 }

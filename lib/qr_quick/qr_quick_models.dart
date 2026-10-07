@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
+
 Map<String, dynamic> qrMap(Object? value) =>
     (value as Map).cast<String, dynamic>();
 
@@ -60,17 +62,19 @@ class QrQuickOrder {
       json['transferred_to_device_id'] == null;
 }
 
-/// LAUNCH-P4 C7 — one chosen item of a combo on a server-priced line (quick
-/// QR, staff table rounds): identity only, per ONE combo — never a price.
+/// LAUNCH combo add-on — one served item of a combo / meal on a
+/// server-priced line (quick QR, staff table rounds, tablet edits; §7.4):
+/// identity only, per ONE combo / meal — never a price. A fixed line left
+/// out is served as is.
 class QrQuickComboPick {
   QrQuickComboPick(
-    this.slotId,
+    this.lineId,
     this.productId, {
     this.quantity = 1,
     List<int> addons = const [],
     this.notes,
   }) : addonIds = List.unmodifiable(addons) {
-    if (slotId < 1 ||
+    if (lineId < 1 ||
         productId < 1 ||
         quantity < 1 ||
         quantity > 99 ||
@@ -81,14 +85,14 @@ class QrQuickComboPick {
       throw const FormatException('Invalid combo choice');
     }
   }
-  final int slotId;
+  final int lineId;
   final int productId;
   final int quantity;
   final List<int> addonIds;
   final String? notes;
 
   Map<String, dynamic> toJson() => {
-    'slot_id': slotId,
+    'line_id': lineId,
     'product_id': productId,
     'qty': quantity,
     'addon_ids': addonIds,
@@ -98,12 +102,12 @@ class QrQuickComboPick {
   factory QrQuickComboPick.fromJson(Map<String, dynamic> json) {
     if (json.keys.any(
       (key) =>
-          !{'slot_id', 'product_id', 'qty', 'addon_ids', 'notes'}.contains(key),
+          !{'line_id', 'product_id', 'qty', 'addon_ids', 'notes'}.contains(key),
     )) {
       throw const FormatException('Unexpected combo field');
     }
     return QrQuickComboPick(
-      json['slot_id'] as int,
+      json['line_id'] as int,
       json['product_id'] as int,
       quantity: json['qty'] as int? ?? 1,
       addons: ((json['addon_ids'] as List?) ?? const []).cast<int>(),
@@ -113,7 +117,7 @@ class QrQuickComboPick {
 
   String get signature {
     final ids = [...addonIds]..sort();
-    return '$slotId:$productId:$quantity:${ids.join(',')}:'
+    return '$lineId:$productId:$quantity:${ids.join(',')}:'
         '${(notes ?? '').trim().toLowerCase()}';
   }
 }
@@ -128,9 +132,11 @@ class QrQuickLine {
     List<int> addons, {
     this.notes,
     List<QrQuickComboPick> combo = const [],
+    this.mealId,
   }) : addonIds = List.unmodifiable(addons),
        combo = List.unmodifiable(combo) {
     if (productId < 1 ||
+        (mealId != null && mealId! < 1) ||
         quantity < 1 ||
         quantity > 99 ||
         addonIds.length > 30 ||
@@ -146,22 +152,43 @@ class QrQuickLine {
   final List<int> addonIds;
   final String? notes;
   final List<QrQuickComboPick> combo;
+  // LAUNCH combo add-on — "Make it a meal?": [productId] is the MAIN.
+  final int? mealId;
 
-  /// The same choices (combo picks compared as a set).
+  /// The same items (combo picks compared as a set; a meal is never its
+  /// main alone).
   String get comboSignature =>
-      (combo.map((c) => c.signature).toList()..sort()).join(';');
+      '${mealId ?? ''}|'
+      '${(combo.map((c) => c.signature).toList()..sort()).join(';')}';
+
+  /// The same line with another quantity (choices kept).
+  QrQuickLine withQuantity(int quantity) => QrQuickLine(
+    productId,
+    quantity,
+    addonIds,
+    notes: notes,
+    combo: combo,
+    mealId: mealId,
+  );
 
   Map<String, dynamic> toJson() => {
     'product_id': productId,
     'qty': quantity,
     'addon_ids': addonIds,
     'notes': notes,
+    if (mealId != null) 'meal_id': mealId,
     if (combo.isNotEmpty) 'combo': [for (final c in combo) c.toJson()],
   };
   factory QrQuickLine.fromJson(Map<String, dynamic> json) {
     if (json.keys.any(
-      (key) =>
-          !{'product_id', 'qty', 'addon_ids', 'notes', 'combo'}.contains(key),
+      (key) => !{
+        'product_id',
+        'qty',
+        'addon_ids',
+        'notes',
+        'combo',
+        'meal_id',
+      }.contains(key),
     )) {
       throw const FormatException('Unexpected addition field');
     }
@@ -174,6 +201,7 @@ class QrQuickLine {
         for (final c in (json['combo'] as List?) ?? const [])
           QrQuickComboPick.fromJson(qrMap(c)),
       ],
+      mealId: json['meal_id'] as int?,
     );
   }
 }
@@ -186,28 +214,31 @@ List<Map<String, dynamic>> serverComboOf(Map<dynamic, dynamic> line) => [
     if (c is Map) c.cast<String, dynamic>(),
 ];
 
-/// LAUNCH-P4 C7 — the choices of a server combo line as request picks, so an
-/// edit (more of the same, options changed) sends the same combo back.
+/// LAUNCH combo add-on — the items of a server combo / meal line as request
+/// picks, so an edit (more of the same, options changed) sends the same
+/// items back. A fixed line the server filled (served as is) and a meal's
+/// main (the line itself) are left out.
 List<QrQuickComboPick> serverComboPicks(Map<dynamic, dynamic> line) => [
   for (final c in serverComboOf(line))
-    if ((c['slot_id'] as num?)?.toInt() case final int slot when slot > 0)
-      if ((c['product_id'] as num?)?.toInt() case final int product
-          when product > 0)
-        QrQuickComboPick(
-          slot,
-          product,
-          quantity: ((c['qty'] as num?) ?? 1).round().clamp(1, 99),
-          addons: [
-            for (final a in (c['addons'] as List?) ?? const [])
-              if (a is Map && (a['add_on_id'] as num?)?.toInt() != null)
-                (a['add_on_id'] as num).toInt(),
-            for (final id in (c['addon_ids'] as List?) ?? const [])
-              if (id is num) id.toInt(),
-          ].toSet().toList(),
-          notes: (c['notes'] as String?)?.trim().isEmpty ?? true
-              ? null
-              : c['notes'] as String,
-        ),
+    if (c['filled'] != true && c['kind'] != 'main')
+      if ((c['line_id'] as num?)?.toInt() case final int slot when slot > 0)
+        if ((c['product_id'] as num?)?.toInt() case final int product
+            when product > 0)
+          QrQuickComboPick(
+            slot,
+            product,
+            quantity: ((c['qty'] as num?) ?? 1).round().clamp(1, 99),
+            addons: [
+              for (final a in (c['addons'] as List?) ?? const [])
+                if (a is Map && (a['add_on_id'] as num?)?.toInt() != null)
+                  (a['add_on_id'] as num).toInt(),
+              for (final id in (c['addon_ids'] as List?) ?? const [])
+                if (id is num) id.toInt(),
+            ].toSet().toList(),
+            notes: (c['notes'] as String?)?.trim().isEmpty ?? true
+                ? null
+                : c['notes'] as String,
+          ),
 ];
 
 /// LAUNCH-P4 C7 — display text for a server combo line's items: each chosen
@@ -231,6 +262,24 @@ List<String> serverComboLabels(
   }
 
   final labels = <String>[];
+  // A meal's main is the line itself: listed first, with its add-ons.
+  if (line['meal_id'] != null) {
+    final main = pick(
+      line.cast<String, dynamic>(),
+      ['product_name', 'name'],
+      ['product_name_ar', 'name_ar'],
+    );
+    if (main.isNotEmpty) labels.add('> $main');
+    for (final a in (line['addons'] as List?) ?? const []) {
+      if (a is! Map) continue;
+      final label = pick(
+        a.cast<String, dynamic>(),
+        ['name', 'add_on_name'],
+        ['name_ar', 'add_on_name_ar'],
+      );
+      if (label.isNotEmpty) labels.add('   + $label');
+    }
+  }
   for (final c in serverComboOf(line)) {
     final qty = (c['qty'] as num?) ?? 1;
     final extra = (c['extra_price_baisas'] as num?)?.toInt() ?? 0;
@@ -332,82 +381,155 @@ class QuickGroup {
   final int max;
 }
 
-/// LAUNCH-P4 C7 — a draft combo line's items in the server bill shape (so the
-/// cart shows them like a saved bill), each with `unit_delta_baisas` = qty ×
-/// (extra + add-ons) for the draft's estimated total. The server prices the
-/// real line.
+/// LAUNCH combo add-on — the lines a draft line's combo / meal is built
+/// from: the meal's lines for a meal line, else the combo product's.
+List<pricing.ComboLineDef> quickComboLines(
+  QrQuickLine line,
+  QuickProduct? product,
+) => line.mealId != null && product?.meal?.id == line.mealId
+    ? product!.meal!.lines
+    : product?.comboLines ?? const [];
+
+/// LAUNCH combo add-on — a draft combo / meal line's items in the server
+/// bill shape (so the cart shows them like a saved bill), each with
+/// `unit_delta_baisas` = qty × max(0, extra + add-ons) for the draft's
+/// estimated total. The server prices the real line.
 List<Map<String, dynamic>> quickComboRows(
   QrQuickLine line,
   QuickProduct? product,
   QuickProduct? Function(int id) lookup,
-) => [
-  for (final pick in line.combo)
-    () {
-      final slot = product?.comboSlots
-          .where((s) => s.id == pick.slotId)
-          .firstOrNull;
-      final option = slot?.options
-          .where((o) => o.productId == pick.productId)
-          .firstOrNull;
-      final item = lookup(pick.productId);
-      final choices = [
-        for (final group in item?.groups ?? const <QuickGroup>[])
-          for (final choice in group.choices)
-            if (pick.addonIds.contains(choice.id)) choice,
-      ];
-      final extra = option?.extraPriceBaisas ?? 0;
-      return <String, dynamic>{
-        'slot_id': pick.slotId,
-        'product_id': pick.productId,
-        'product_name': item?.name ?? '#${pick.productId}',
-        'product_name_ar': item?.nameAr ?? '',
-        'qty': pick.quantity,
-        'extra_price_baisas': extra,
-        if ((pick.notes ?? '').trim().isNotEmpty) 'notes': pick.notes,
-        'addons': [
-          for (final c in choices)
-            {
-              'add_on_id': c.id,
-              'add_on_name': c.name,
-              'add_on_name_ar': c.nameAr,
-              'price_delta_baisas': c.priceBaisas,
-            },
-        ],
-        'unit_delta_baisas':
-            pick.quantity *
-            (extra + choices.fold<int>(0, (n, c) => n + c.priceBaisas)),
-      };
-    }(),
-];
-
-/// LAUNCH-P4 C7 — one option of a combo slot in the server-priced picker.
-class QuickComboOption {
-  const QuickComboOption(
-    this.productId, {
-    this.extraPriceBaisas = 0,
-    this.isDefault = false,
-  });
-  final int productId;
-  final int extraPriceBaisas; // display only; the server prices it
-  final bool isDefault;
+) {
+  final lines = quickComboLines(line, product);
+  final resolved = pricing.resolveComboPicks(lines, [
+    for (final pick in line.combo)
+      pricing.ComboPick(
+        lineId: pick.lineId,
+        productId: pick.productId,
+        qty: pick.quantity,
+      ),
+  ]);
+  return [
+    for (final pick in line.combo)
+      () {
+        final item = lookup(pick.productId);
+        final choices = [
+          for (final group in item?.groups ?? const <QuickGroup>[])
+            for (final choice in group.choices)
+              if (pick.addonIds.contains(choice.id)) choice,
+        ];
+        final served = resolved.items
+            .where(
+              (i) => i.lineId == pick.lineId && i.productId == pick.productId,
+            )
+            .firstOrNull;
+        final extra = served?.extraPriceBaisas ?? 0;
+        return <String, dynamic>{
+          'line_id': pick.lineId,
+          'kind': served?.kind.wire ?? 'choice',
+          'product_id': pick.productId,
+          'product_name': item?.name ?? '#${pick.productId}',
+          'product_name_ar': item?.nameAr ?? '',
+          'qty': pick.quantity,
+          'extra_price_baisas': extra,
+          if ((pick.notes ?? '').trim().isNotEmpty) 'notes': pick.notes,
+          'addons': [
+            for (final c in choices)
+              {
+                'add_on_id': c.id,
+                'add_on_name': c.name,
+                'add_on_name_ar': c.nameAr,
+                'price_delta_baisas': c.priceBaisas,
+              },
+          ],
+          'unit_delta_baisas': pricing.comboItemPriceBaisas(
+            qty: pick.quantity,
+            extraPriceBaisas: extra,
+            addOnDeltasBaisas: [for (final c in choices) c.priceBaisas],
+          ),
+        };
+      }(),
+  ];
 }
 
-/// LAUNCH-P4 C7 — one choice slot of a combo in the server-priced picker.
-class QuickComboSlot {
-  const QuickComboSlot(
+/// LAUNCH combo add-on — a draft line's estimated unit price (§7.5 with the
+/// floors): a standard line max(0, price + add-ons); a combo its price +
+/// its items; a meal its main (+ add-ons) + meal price + its items. Display
+/// only — the server prices the real line.
+int quickDraftUnitBaisas(
+  QrQuickLine line,
+  QuickProduct? product,
+  List<Map<String, dynamic>> comboRows,
+  List<int> addOnDeltasBaisas,
+) {
+  final items = [for (final c in comboRows) c['unit_delta_baisas'] as int];
+  final price = product?.priceBaisas ?? 0;
+  final meal = product?.meal;
+  if (line.mealId != null && meal != null && meal.id == line.mealId) {
+    return pricing.mealUnitPriceBaisas(
+      mainPriceBaisas: price,
+      mainAddOnDeltasBaisas: addOnDeltasBaisas,
+      mealPriceBaisas: meal.mealPriceBaisas,
+      itemPricesBaisas: items,
+    );
+  }
+  if (product?.isCombo == true || comboRows.isNotEmpty) {
+    return pricing.comboUnitPriceBaisas(
+      comboPriceBaisas: price,
+      itemPricesBaisas: items,
+    );
+  }
+  return pricing.standardUnitPriceBaisas(
+    basePriceBaisas: price,
+    addOnDeltasBaisas: addOnDeltasBaisas,
+  );
+}
+
+/// LAUNCH combo add-on — a draft meal line's keys in the server bill shape
+/// (`meal_id`, `display_name` "Beef burger meal"); empty for anything else.
+Map<String, dynamic> quickMealKeys(QrQuickLine line, QuickProduct? product) {
+  final meal = product?.meal;
+  if (line.mealId == null || meal == null || meal.id != line.mealId) {
+    return const <String, dynamic>{};
+  }
+  return {
+    'meal_id': meal.id,
+    'display_name': '${product!.name} ${meal.name}',
+    'display_name_ar':
+        '${product.nameAr.isEmpty ? product.name : product.nameAr} '
+        '${meal.nameAr.isEmpty ? meal.name : meal.nameAr}',
+  };
+}
+
+/// LAUNCH combo add-on — whether a draft line's combo / meal picks fit its
+/// lines (choice lines exactly pick N; nothing not offered).
+bool quickComboValid(QrQuickLine line, QuickProduct? product) {
+  final lines = quickComboLines(line, product);
+  if (lines.isEmpty) return line.combo.isEmpty;
+  return pricing.resolveComboPicks(lines, [
+    for (final pick in line.combo)
+      pricing.ComboPick(
+        lineId: pick.lineId,
+        productId: pick.productId,
+        qty: pick.quantity,
+      ),
+  ]).isValid;
+}
+
+/// LAUNCH combo add-on — the "Make it a meal?" setup a main offers in the
+/// server-priced picker.
+class QuickMeal {
+  const QuickMeal(
     this.id,
     this.name, {
     this.nameAr = '',
-    this.min = 1,
-    this.max = 1,
-    this.options = const [],
+    this.mealPriceBaisas = 0,
+    this.lines = const [],
   });
   final int id;
   final String name;
   final String nameAr;
-  final int min;
-  final int max;
-  final List<QuickComboOption> options;
+  final int mealPriceBaisas; // display only; the server prices it
+  final List<pricing.ComboLineDef> lines;
 }
 
 class QuickProduct {
@@ -418,7 +540,9 @@ class QuickProduct {
     this.groups = const [],
     this.available = true,
     this.priceBaisas = 0,
-    this.comboSlots = const [],
+    this.combo = false,
+    this.comboLines = const [],
+    this.meal,
   });
   final int id;
   final String name;
@@ -426,7 +550,10 @@ class QuickProduct {
   final List<QuickGroup> groups;
   final bool available;
   final int priceBaisas;
-  // LAUNCH-P4 C7 — a combo's slots (empty for a standard product).
-  final List<QuickComboSlot> comboSlots;
-  bool get isCombo => comboSlots.isNotEmpty;
+  // LAUNCH combo add-on — a combo product and its lines.
+  final bool combo;
+  final List<pricing.ComboLineDef> comboLines;
+  // LAUNCH combo add-on — the meal this product is a main of.
+  final QuickMeal? meal;
+  bool get isCombo => combo;
 }

@@ -40,7 +40,7 @@ dependencies:
   mithqal_pricing:
     git:
       url: https://github.com/alsawaqi/mithqal_pricing.git
-      ref: v0.3.0
+      ref: v0.4.0
   shared_preferences: ^2.5.3
   sqflite: ^2.4.2
   sqflite_common_ffi: ^2.3.6

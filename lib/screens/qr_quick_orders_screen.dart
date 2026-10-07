@@ -3,7 +3,7 @@ import '../order_workspace/current_order_workspace.dart';
 import '../services/local_order_storage_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/qr_pending_order.dart';
-import '../models/pos_models.dart' show Product;
+import '../models/pos_models.dart' show MealSetup, Product;
 import '../providers/providers.dart';
 import '../qr_quick/qr_quick_controller.dart';
 import '../qr_quick/qr_quick_gateway.dart';
@@ -21,6 +21,10 @@ import '../services/qr_settlement_coordinator.dart' show GeolocatorQrLocation;
 List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
   if (catalog == null) return [];
   final groups = {for (final group in catalog.addonGroups) group.id: group};
+  final today = DateTime.now();
+  MealSetup? mealOf(Product p) => catalog.meals
+      .where((m) => m.mains.contains(int.tryParse(p.id)) && m.onSaleOn(today))
+      .firstOrNull;
   List<int> ids(Product p) => <int>{
     ...p.addonGroupIds,
     ...?catalog.categoryAddonGroupIds[p.categoryId],
@@ -37,31 +41,25 @@ List<QuickProduct> machineQuickCatalogue(CatalogSnapshot? catalog) {
           p.name,
           nameAr: p.nameAr,
           priceBaisas: (p.price * 1000).round(),
-          // LAUNCH-P4 C6 — sold out is unavailable. C7 — a combo carries its
-          // slots; the picker sends its choices (identity only).
+          // LAUNCH-P4 C6 — sold out is unavailable. Combo add-on — a combo
+          // carries its lines and a main its meal; the picker sends the
+          // served items (identity only).
           available:
               p.isAvailableAt(DateTime.now()) &&
               !p.soldOut &&
-              (!p.isCombo || p.comboSlots.isNotEmpty) &&
               ids(p).every(groups.containsKey),
-          comboSlots: [
-            for (final slot in p.comboSlots)
-              QuickComboSlot(
-                slot.id,
-                slot.name,
-                nameAr: slot.nameAr,
-                min: slot.min,
-                max: slot.max,
-                options: [
-                  for (final option in slot.options)
-                    QuickComboOption(
-                      option.productId,
-                      extraPriceBaisas: (option.extraPrice * 1000).round(),
-                      isDefault: option.isDefault,
-                    ),
-                ],
-              ),
-          ],
+          combo: p.isCombo,
+          comboLines: p.comboLines,
+          meal: switch (mealOf(p)) {
+            final MealSetup m => QuickMeal(
+              m.id,
+              m.name,
+              nameAr: m.nameAr,
+              mealPriceBaisas: m.mealPriceBaisas,
+              lines: m.lines,
+            ),
+            null => null,
+          },
           groups: [
             for (final id in ids(p))
               if (groups[id] case final g?)

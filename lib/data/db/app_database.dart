@@ -51,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 30;
+  int get schemaVersion => 31;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -236,6 +236,14 @@ class AppDatabase extends _$AppDatabase {
         await extend(categories, [categories.branchIdsJson]);
         await extend(addonGroups, [addonGroups.isGlobal]);
         await extend(syncMeta, [syncMeta.companyTaxJson]);
+      }
+      if (from < 31) {
+        // LAUNCH combo add-on — the meal setups (`meals[]`).
+        final found = await customSelect(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+          variables: [Variable<String>(syncMeta.actualTableName)],
+        ).get();
+        if (found.isNotEmpty) await m.addColumn(syncMeta, syncMeta.mealsJson);
       }
     },
   );
@@ -793,6 +801,7 @@ class AppDatabase extends _$AppDatabase {
     String? orderNumberingJson,
     String? tableSessionsMode,
     String? companyTaxJson,
+    String? mealsJson,
   }) {
     return transaction(() async {
       BusinessBoundary.assertGeneration(_ownerGeneration);
@@ -935,6 +944,10 @@ class AppDatabase extends _$AppDatabase {
           companyTaxJson: companyTaxJson == null
               ? const Value.absent()
               : Value(companyTaxJson),
+          // LAUNCH combo add-on — every pull carries the full meal set.
+          mealsJson: mealsJson == null
+              ? const Value.absent()
+              : Value(mealsJson),
         ),
       );
     });

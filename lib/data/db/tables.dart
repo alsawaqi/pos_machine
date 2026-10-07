@@ -241,6 +241,9 @@ class SyncMeta extends Table {
   // LAUNCH-P4 — `company.tax` ({vat_registered, prices_include_vat,
   // vat_number}) as JSON; null = a pre-P4 server sent none.
   TextColumn get companyTaxJson => text().nullable()();
+  // LAUNCH combo add-on — the "Make it a meal?" setups (`meals[]`, the full
+  // set on every pull, replaced wholesale) as JSON; null = none sent yet.
+  TextColumn get mealsJson => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

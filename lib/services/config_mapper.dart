@@ -36,6 +36,7 @@ class CatalogSnapshot {
     this.companyTax = CompanyTaxSettings.legacy,
     this.branchName = '',
     this.branchNameAr = '',
+    this.meals = const <MealSetup>[],
   });
 
   final List<String> categories;
@@ -98,6 +99,8 @@ class CatalogSnapshot {
   // LAUNCH-P4 C2 — the branch name printed on receipts (EN / AR).
   final String branchName;
   final String branchNameAr;
+  // LAUNCH combo add-on — the "Make it a meal?" setups (config `meals[]`).
+  final List<MealSetup> meals;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -717,6 +720,11 @@ class ConfigMapper {
       ),
       // LAUNCH-P4 — company.tax; null when a pre-P4 server sent none.
       companyTaxJson: Value(companyTax is Map ? jsonEncode(companyTax) : null),
+      // LAUNCH combo add-on — `meals[]` (full set on every pull); absent =
+      // a server without meals: keep what is cached.
+      mealsJson: data['meals'] is List
+          ? Value(jsonEncode(data['meals']))
+          : const Value.absent(),
     );
 
     return ParsedConfig(
@@ -874,9 +882,9 @@ class ConfigMapper {
             _intsFromJson(p.deliveryUnlistedJson ?? '[]').toSet(),
         soldOut: p.soldOut ?? false,
         descriptionAr: p.descriptionAr ?? '',
-        comboSlots: (p.comboJson ?? '').isEmpty
-            ? const <ComboSlot>[]
-            : ComboSlot.listFromJson(_tryDecode(p.comboJson!)),
+        comboLines: (p.comboJson ?? '').isEmpty
+            ? const []
+            : comboLinesFromJson(_tryDecode(p.comboJson!)),
       );
     }).toList();
 
@@ -1164,6 +1172,9 @@ class ConfigMapper {
           .toList(),
       adSlides: adSlides,
       companyTax: companyTaxSettings,
+      meals: (meta?.mealsJson ?? '').isEmpty
+          ? const <MealSetup>[]
+          : MealSetup.listFromJson(_tryDecode(meta!.mealsJson!)),
       branchName: branch?.name ?? '',
       branchNameAr: branch?.nameAr ?? '',
     );

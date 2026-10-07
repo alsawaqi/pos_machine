@@ -2413,7 +2413,7 @@
   "posSoldOutFailed": "Could not update sold out. Check the connection and try again.",
   "posSoldOutNowOff": "Marked sold out at this branch.",
   "posSoldOutNowOn": "Back on sale at this branch.",
-  "ctrlMsgComboIncomplete": "{product}: finish choosing the combo items before paying.",
+  "ctrlMsgComboIncomplete": "{product}: finish choosing the combo or meal items before paying.",
   "@ctrlMsgComboIncomplete": {
     "placeholders": {
       "product": {
@@ -2423,34 +2423,59 @@
   },
   "posComboBadge": "Combo",
   "posComboTitle": "Build the combo",
-  "posComboChooseRange": "Choose {min} to {max}",
-  "@posComboChooseRange": {
+  "posComboItemOptions": "Options",
+  "posComboIncluded": "Included",
+  "posComboUpgradeAsk": "Upgrade?",
+  "posComboNoUpgrade": "Keep {item}",
+  "@posComboNoUpgrade": {
     "placeholders": {
-      "min": {
-        "type": "int"
-      },
-      "max": {
-        "type": "int"
+      "item": {
+        "type": "String"
       }
     }
   },
-  "posComboChooseExactly": "Choose {count}",
-  "@posComboChooseExactly": {
+  "posComboPickQuestion": "{name} — pick {count}",
+  "@posComboPickQuestion": {
     "placeholders": {
+      "name": {
+        "type": "String"
+      },
       "count": {
         "type": "int"
       }
     }
   },
-  "posComboOptional": "Optional, up to {max}",
-  "@posComboOptional": {
+  "posComboPickedOf": "{picked} of {count}",
+  "@posComboPickedOf": {
     "placeholders": {
-      "max": {
+      "picked": {
+        "type": "int"
+      },
+      "count": {
         "type": "int"
       }
     }
   },
-  "posComboItemOptions": "Options",
+  "posComboNeedsOptions": "Choose the options",
+  "posComboItemNotes": "Notes",
+  "posMealAdd": "Add meal · {price}",
+  "@posMealAdd": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "posMealOfferTitle": "Make it a meal? {price}",
+  "@posMealOfferTitle": {
+    "placeholders": {
+      "price": {
+        "type": "String"
+      }
+    }
+  },
+  "posMealOfferYes": "Yes, make it a meal",
+  "posMealOfferNo": "No, just the item",
   "posComboAdd": "Add combo · {price}",
   "@posComboAdd": {
     "placeholders": {

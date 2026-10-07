@@ -124,6 +124,7 @@ class TabletOrderRow {
               if (id is num) id.toInt(),
           }.toList(),
           combo: serverComboPicks(line),
+          mealId: (line['meal_id'] as num?)?.toInt(),
         ),
   ];
 

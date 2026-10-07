@@ -500,8 +500,9 @@ class _DineInScreenState extends State<DineInScreen>
     if (!c.canAdd || childOpen) return;
     if (widget.workspace?.mainCart == true && product != null) {
       if (!product.available) return;
-      // LAUNCH-P4 C7 — a combo opens its picker; anything else adds plain.
-      if (!product.isCombo) {
+      // A combo opens its picker, a meal main asks "Make it a meal?";
+      // anything else adds plain.
+      if (!product.isCombo && product.meal == null) {
         await _addDraft(product, const [], null);
         return;
       }
@@ -579,10 +580,17 @@ class _DineInScreenState extends State<DineInScreen>
     String? notes, {
     int qty = 1,
     List<QrQuickComboPick> combo = const [],
+    int? mealId,
   }) async {
     if (!_editDrafts) return;
     final selected = [...addons]..sort();
-    final probe = QrQuickLine(product.id, 1, selected, combo: combo);
+    final probe = QrQuickLine(
+      product.id,
+      1,
+      selected,
+      combo: combo,
+      mealId: mealId,
+    );
     final index = drafts.indexWhere((d) {
       final existing = [...d.$2.addonIds]..sort();
       return d.$2.productId == product.id &&
@@ -600,7 +608,14 @@ class _DineInScreenState extends State<DineInScreen>
     setState(() {
       final entry = (
         widget.arabic ? product.nameAr : product.name,
-        QrQuickLine(product.id, quantity, selected, notes: notes, combo: combo),
+        QrQuickLine(
+          product.id,
+          quantity,
+          selected,
+          notes: notes,
+          combo: combo,
+          mealId: mealId,
+        ),
       );
       if (index < 0) {
         drafts.add(entry);
@@ -615,7 +630,7 @@ class _DineInScreenState extends State<DineInScreen>
   Map<String, dynamic> _draftRow(int index) {
     final line = drafts[index].$2,
         product = _product(drafts[index].$2.productId);
-    // LAUNCH-P4 C7 — a combo draft shows its items and their extras.
+    // A combo / meal draft shows its items and their extras.
     final combo = quickComboRows(line, product, _product);
     final addons = [
       for (final group in product?.groups ?? <QuickGroup>[])
@@ -623,6 +638,7 @@ class _DineInScreenState extends State<DineInScreen>
           if (line.addonIds.contains(choice.id)) choice,
     ];
     return {
+      ...quickMealKeys(line, product),
       'id': 'draft-$index',
       'draft_index': index,
       'product_id': line.productId,
@@ -630,12 +646,9 @@ class _DineInScreenState extends State<DineInScreen>
       'product_name_ar': product?.nameAr ?? '',
       'qty': line.quantity,
       'line_total_baisas':
-          ((product?.priceBaisas ?? 0) +
-              addons.fold<int>(0, (n, a) => n + a.priceBaisas) +
-              combo.fold<int>(
-                0,
-                (n, c) => n + (c['unit_delta_baisas'] as int),
-              )) *
+          quickDraftUnitBaisas(line, product, combo, [
+            for (final a in addons) a.priceBaisas,
+          ]) *
           line.quantity,
       'notes': line.notes,
       'addons': [
@@ -659,13 +672,8 @@ class _DineInScreenState extends State<DineInScreen>
               .length;
           return count >= g.min && count <= g.max;
         }) &&
-        // LAUNCH-P4 C7 — every combo slot holds between min and max picks.
-        product.comboSlots.every((slot) {
-          final count = d.$2.combo
-              .where((pick) => pick.slotId == slot.id)
-              .fold<int>(0, (n, pick) => n + pick.quantity);
-          return count >= slot.min && count <= slot.max;
-        });
+        // LAUNCH combo add-on — a combo / meal's picks fit its lines.
+        quickComboValid(d.$2, product);
   });
 
   Future<void> _quantity(Map<String, dynamic> row, int qty) async {
@@ -678,16 +686,7 @@ class _DineInScreenState extends State<DineInScreen>
         if (qty == 0) {
           drafts.removeAt(index);
         } else {
-          drafts[index] = (
-            old.$1,
-            QrQuickLine(
-              old.$2.productId,
-              qty,
-              old.$2.addonIds,
-              notes: old.$2.notes,
-              combo: old.$2.combo,
-            ),
-          );
+          drafts[index] = (old.$1, old.$2.withQuantity(qty));
         }
       });
       await _persistDrafts();
@@ -703,8 +702,9 @@ class _DineInScreenState extends State<DineInScreen>
           ],
           row['notes'] as String?,
           qty: qty - (row['qty'] as num).toInt(),
-          // LAUNCH-P4 C7 — more of a combo = the same choices again.
+          // More of a combo / meal = the same items again.
           combo: serverComboPicks(row),
+          mealId: (row['meal_id'] as num?)?.toInt(),
         );
       }
     } else if (qty < (row['qty'] as num) &&
@@ -769,6 +769,7 @@ class _DineInScreenState extends State<DineInScreen>
               changed.notes,
               qty: changed.quantity,
               combo: changed.combo,
+              mealId: changed.mealId,
             );
           }
         }

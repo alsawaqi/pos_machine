@@ -3804,7 +3804,7 @@ class L10nEn extends L10n {
 
   @override
   String ctrlMsgComboIncomplete(String product) {
-    return '$product: finish choosing the combo items before paying.';
+    return '$product: finish choosing the combo or meal items before paying.';
   }
 
   @override
@@ -3814,22 +3814,50 @@ class L10nEn extends L10n {
   String get posComboTitle => 'Build the combo';
 
   @override
-  String posComboChooseRange(int min, int max) {
-    return 'Choose $min to $max';
-  }
-
-  @override
-  String posComboChooseExactly(int count) {
-    return 'Choose $count';
-  }
-
-  @override
-  String posComboOptional(int max) {
-    return 'Optional, up to $max';
-  }
-
-  @override
   String get posComboItemOptions => 'Options';
+
+  @override
+  String get posComboIncluded => 'Included';
+
+  @override
+  String get posComboUpgradeAsk => 'Upgrade?';
+
+  @override
+  String posComboNoUpgrade(String item) {
+    return 'Keep $item';
+  }
+
+  @override
+  String posComboPickQuestion(String name, int count) {
+    return '$name — pick $count';
+  }
+
+  @override
+  String posComboPickedOf(int picked, int count) {
+    return '$picked of $count';
+  }
+
+  @override
+  String get posComboNeedsOptions => 'Choose the options';
+
+  @override
+  String get posComboItemNotes => 'Notes';
+
+  @override
+  String posMealAdd(String price) {
+    return 'Add meal · $price';
+  }
+
+  @override
+  String posMealOfferTitle(String price) {
+    return 'Make it a meal? $price';
+  }
+
+  @override
+  String get posMealOfferYes => 'Yes, make it a meal';
+
+  @override
+  String get posMealOfferNo => 'No, just the item';
 
   @override
   String posComboAdd(String price) {

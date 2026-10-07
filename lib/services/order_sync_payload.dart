@@ -29,62 +29,76 @@ class OrderSyncPayload {
 /// OMR (double, 3 dp) → integer baisas (1 OMR = 1000 baisas).
 int omrToBaisas(double omr) => (omr * 1000).round();
 
-/// LAUNCH-P4 C7 — a combo line's components on the device sync wire, per ONE
-/// combo: `[{slot_id, product_id, qty, extra_price_baisas, notes?,
-/// addons?: [{add_on_id, price_delta_baisas}]}]`. [components] are
-/// [ComboComponent.toMap] maps (snapshot items carry them in that shape).
-/// Demo (non-numeric) products and add-ons are skipped like on lines.
-List<Map<String, dynamic>> comboWireComponents(List<Object?> components) => [
-  for (final raw in components)
-    if (raw is Map)
-      if (int.tryParse('${raw['productId']}') case final int productId)
-        {
-          'slot_id': (raw['slotId'] as num?)?.toInt() ?? 0,
-          'product_id': productId,
-          'qty': (raw['qty'] as num?)?.toInt() ?? 1,
-          'extra_price_baisas': omrToBaisas(
-            (raw['extraPrice'] as num?)?.toDouble() ?? 0,
-          ),
-          if ((raw['notes']?.toString() ?? '').trim().isNotEmpty)
-            'notes': raw['notes'].toString().trim(),
-          if (_comboAddons(raw['modifiers']) case final addons
-              when addons.isNotEmpty)
-            'addons': addons,
-        },
-];
-
-List<Map<String, dynamic>> _comboAddons(Object? modifiers) => [
-  for (final m in (modifiers as List?) ?? const [])
-    if (m is Map)
-      if (int.tryParse('${m['id']}') case final int addOnId)
-        {
-          'add_on_id': addOnId,
-          'price_delta_baisas': omrToBaisas(
-            (m['price'] as num?)?.toDouble() ?? 0,
-          ),
-        },
-];
+/// LAUNCH combo add-on — the §7.6 fields of a priced combo / meal device
+/// line (order.create / order.hold / order.transfer), built by the shared
+/// pricing package: `combo` (every served item per ONE combo / meal, in the
+/// server's child order, with its kind, line id, extra / upgrade price,
+/// add-ons, notes and `allocated_revenue_baisas`), and for a meal `meal_id`
+/// and `main_allocated_revenue_baisas`. The profit split is of
+/// [lineTotalBaisas] − [lineDiscountBaisas] (the line's own discount rows;
+/// order-level discounts are not spread), so the server keeps it. The line
+/// discount itself still rides as a `discounts[]` row, never as
+/// `line_discount_baisas` here. Empty for a standard line.
+Map<String, dynamic> comboDeviceFields(
+  CartItem item, {
+  required int lineTotalBaisas,
+  int lineDiscountBaisas = 0,
+}) {
+  final sale = item.comboSale;
+  if (sale == null || item.qty < 1) return const <String, dynamic>{};
+  final wire = pricing.comboDeviceWireLine(
+    sale,
+    qty: item.qty,
+    lineDiscountBaisas: lineDiscountBaisas,
+  );
+  final combo = [
+    for (final c in (wire['combo'] as List).cast<Map<String, dynamic>>())
+      Map<String, dynamic>.of(c),
+  ];
+  var mainShare = wire['main_allocated_revenue_baisas'] as int?;
+  if (wire['line_total_baisas'] != lineTotalBaisas) {
+    // The stored line total wins (a snapshot priced earlier); re-split it.
+    final split = sale.allocate(
+      qty: item.qty,
+      lineTotalBaisas: lineTotalBaisas,
+      lineDiscountBaisas: lineDiscountBaisas,
+    );
+    mainShare = split.mainBaisas;
+    for (var i = 0; i < combo.length; i++) {
+      combo[i]['allocated_revenue_baisas'] = split.itemsBaisas[i];
+    }
+  }
+  return {
+    if (sale.isMeal) 'meal_id': sale.mealId,
+    if (sale.isMeal) 'main_allocated_revenue_baisas': mainShare,
+    'combo': combo,
+  };
+}
 
 /// The catalogue identity portion of order.create's line mapping, without
 /// client money. Demo products/add-ons are excluded by the same integer parse.
-/// LAUNCH-P4 C7 — a combo round line also carries its `combo` components.
+Map<String, dynamic> _standardRoundLine(CartItem item) => {
+  'product_id': int.parse(item.product.id),
+  'qty': item.qty,
+  if (item.normalizedNotes.isNotEmpty) 'notes': item.normalizedNotes,
+  if (item.modifiers.any((m) => int.tryParse(m.id) != null))
+    'addon_ids': [
+      for (final modifier in item.modifiers)
+        if (int.tryParse(modifier.id) case final int id) id,
+    ],
+};
+
+/// LAUNCH combo add-on — table round lines: a combo / meal is the §7.4
+/// request line from the shared pricing package (identity only: line ids,
+/// served products, quantities, add-on ids; a fixed line served as is is
+/// left out; a meal carries `meal_id` and the main's add-ons / notes).
 List<Map<String, dynamic>> buildTableRoundLines(List<CartItem> items) => [
   for (final item in items)
-    if (int.tryParse(item.product.id) case final int productId)
-      {
-        'product_id': productId,
-        'qty': item.qty,
-        if (item.normalizedNotes.isNotEmpty) 'notes': item.normalizedNotes,
-        if (item.modifiers.any((m) => int.tryParse(m.id) != null))
-          'addon_ids': [
-            for (final modifier in item.modifiers)
-              if (int.tryParse(modifier.id) case final int id) id,
-          ],
-        if (item.components.isNotEmpty)
-          'combo': comboWireComponents([
-            for (final c in item.components) c.toMap(),
-          ]),
-      },
+    if (int.tryParse(item.product.id) != null)
+      if (item.comboSale case final sale?)
+        pricing.comboRequestLine(sale, qty: item.qty, notes: item.notes)
+      else
+        _standardRoundLine(item),
 ];
 
 String tableLineFingerprint(Map<String, dynamic> line) {
@@ -99,24 +113,26 @@ String tableLineFingerprint(Map<String, dynamic> line) {
       .trim()
       .replaceAll(RegExp(r'\s+'), ' ')
       .toLowerCase();
-  // LAUNCH-P4 C7 — combos with different choices are different lines; a
-  // standard line's fingerprint is unchanged.
+  // LAUNCH combo add-on — combos / meals with different items are
+  // different lines (and a meal is never its main alone); a standard
+  // line's fingerprint is unchanged.
   final combo = line['combo'];
-  if (combo is List && combo.isNotEmpty) {
+  if ((combo is List && combo.isNotEmpty) || line['meal_id'] != null) {
     final parts = [
-      for (final c in combo.whereType<Map>())
+      for (final c in (combo as List? ?? const []).whereType<Map>())
         [
-          c['slot_id'],
+          c['line_id'],
           c['product_id'],
           c['qty'],
           [
             for (final a in (c['addons'] as List? ?? const []).whereType<Map>())
               a['add_on_id'],
+            for (final id in (c['addon_ids'] as List? ?? const [])) id,
           ]..sort((a, b) => '$a'.compareTo('$b')),
           (c['notes']?.toString() ?? '').trim().toLowerCase(),
         ],
     ];
-    return jsonEncode([line['product_id'], ids, notes, parts]);
+    return jsonEncode([line['product_id'], ids, notes, line['meal_id'], parts]);
   }
   return jsonEncode([line['product_id'], ids, notes]);
 }
@@ -358,6 +374,14 @@ OrderSyncPayload buildOrderSyncPayload(
   // line_index -> order_item).
   final lineDiscounts = <Map<String, dynamic>>[];
   final wireLineIndexBySnapshotIndex = <int, int>{};
+  // LAUNCH combo add-on — each line's own discount rows (the server splits a
+  // combo's revenue over what the line paid after them, C-13).
+  final lineDiscountBaisas = <int, int>{};
+  for (final result in priced.lineDiscounts) {
+    if (result.amountBaisas <= 0) continue;
+    lineDiscountBaisas[result.lineIndex] =
+        (lineDiscountBaisas[result.lineIndex] ?? 0) + result.amountBaisas;
+  }
   for (
     var snapshotIndex = 0;
     snapshotIndex < snapshot.items.length;
@@ -386,11 +410,16 @@ OrderSyncPayload buildOrderSyncPayload(
     final notes = (raw['notes'] as String?)?.trim();
     final lineIndex = lines.length;
     wireLineIndexBySnapshotIndex[snapshotIndex] = lineIndex;
-    // LAUNCH-P4 C7 — a combo line: unit price = combo price + Σ component
-    // qty × (extra + add-ons); the components ride along per ONE combo.
-    final combo = comboWireComponents(
-      (raw['components'] as List?) ?? const [],
-    );
+    // LAUNCH combo add-on — a combo / meal line carries its served items
+    // and the profit split (§7.6, the shared pricing package); a meal's
+    // product is its main, with the main's add-ons and notes.
+    final combo = raw['components'] is List || raw['meal'] is Map
+        ? comboDeviceFields(
+            CartItem.fromMap(Map<String, dynamic>.from(raw)),
+            lineTotalBaisas: omrToBaisas(lineTotal),
+            lineDiscountBaisas: lineDiscountBaisas[snapshotIndex] ?? 0,
+          )
+        : const <String, dynamic>{};
     lines.add({
       'product_id': productId,
       'qty': qty,
@@ -398,7 +427,7 @@ OrderSyncPayload buildOrderSyncPayload(
       'line_total_baisas': omrToBaisas(lineTotal),
       if (notes != null && notes.isNotEmpty) 'notes': notes,
       if (addons.isNotEmpty) 'addons': addons,
-      if (combo.isNotEmpty) 'combo': combo,
+      ...combo,
     });
   }
   for (final result in priced.lineDiscounts) {
@@ -796,10 +825,8 @@ Map<String, dynamic>? buildOrderHoldEvent(
     }
 
     final notes = item.normalizedNotes;
-    // LAUNCH-P4 C7 — held / transferred combos keep their components.
-    final combo = comboWireComponents([
-      for (final c in item.components) c.toMap(),
-    ]);
+    // LAUNCH combo add-on — held / transferred combos and meals keep their
+    // served items and their split (§7.6).
     lines.add({
       'product_id': productId,
       'qty': item.qty,
@@ -807,7 +834,7 @@ Map<String, dynamic>? buildOrderHoldEvent(
       'line_total_baisas': omrToBaisas(item.lineTotal),
       if (notes.isNotEmpty) 'notes': notes,
       if (addons.isNotEmpty) 'addons': addons,
-      if (combo.isNotEmpty) 'combo': combo,
+      ...comboDeviceFields(item, lineTotalBaisas: omrToBaisas(item.lineTotal)),
     });
   }
   if (lines.isEmpty) return null;
@@ -943,7 +970,10 @@ Map<String, dynamic> buildOrderVoidEvent({
 /// `comp:<index>` and a gift line `gift:<index>` (index = position in
 /// `comps`). Each carries its amount and the snapshot line it belongs to.
 /// Mirrors the emission order of [buildOrderSyncPayload]; pure.
-({int orderDiscountBaisas, List<({String ref, int amountBaisas, bool gift, int? lineIndex})> comps})
+({
+  int orderDiscountBaisas,
+  List<({String ref, int amountBaisas, bool gift, int? lineIndex})> comps,
+})
 orderAuthorizationTargets(OrderSnapshot snapshot) {
   final priced = frozenPriceResultFromSnapshot(snapshot);
   final comps = <({String ref, int amountBaisas, bool gift, int? lineIndex})>[];

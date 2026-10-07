@@ -46,10 +46,13 @@ class AppliedOffer {
   );
 }
 
+/// LAUNCH combo add-on — a meal line is invisible to product / category
+/// discounts and offers (no product, no category), like the server; a combo
+/// line is its combo product.
 pricing.PricingLine pricingLineFromCartItem(CartItem item) =>
     pricing.PricingLine(
-      productId: int.tryParse(item.product.id),
-      categoryId: item.product.categoryId,
+      productId: item.isMeal ? null : int.tryParse(item.product.id),
+      categoryId: item.isMeal ? null : item.product.categoryId,
       unitPriceBaisas: (item.unitPrice * 1000).round(),
       qty: item.qty,
       gifted: item.gifted,

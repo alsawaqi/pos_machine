@@ -6338,7 +6338,7 @@ abstract class L10n {
   /// No description provided for @ctrlMsgComboIncomplete.
   ///
   /// In en, this message translates to:
-  /// **'{product}: finish choosing the combo items before paying.'**
+  /// **'{product}: finish choosing the combo or meal items before paying.'**
   String ctrlMsgComboIncomplete(String product);
 
   /// No description provided for @posComboBadge.
@@ -6353,29 +6353,77 @@ abstract class L10n {
   /// **'Build the combo'**
   String get posComboTitle;
 
-  /// No description provided for @posComboChooseRange.
-  ///
-  /// In en, this message translates to:
-  /// **'Choose {min} to {max}'**
-  String posComboChooseRange(int min, int max);
-
-  /// No description provided for @posComboChooseExactly.
-  ///
-  /// In en, this message translates to:
-  /// **'Choose {count}'**
-  String posComboChooseExactly(int count);
-
-  /// No description provided for @posComboOptional.
-  ///
-  /// In en, this message translates to:
-  /// **'Optional, up to {max}'**
-  String posComboOptional(int max);
-
   /// No description provided for @posComboItemOptions.
   ///
   /// In en, this message translates to:
   /// **'Options'**
   String get posComboItemOptions;
+
+  /// No description provided for @posComboIncluded.
+  ///
+  /// In en, this message translates to:
+  /// **'Included'**
+  String get posComboIncluded;
+
+  /// No description provided for @posComboUpgradeAsk.
+  ///
+  /// In en, this message translates to:
+  /// **'Upgrade?'**
+  String get posComboUpgradeAsk;
+
+  /// No description provided for @posComboNoUpgrade.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep {item}'**
+  String posComboNoUpgrade(String item);
+
+  /// No description provided for @posComboPickQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} — pick {count}'**
+  String posComboPickQuestion(String name, int count);
+
+  /// No description provided for @posComboPickedOf.
+  ///
+  /// In en, this message translates to:
+  /// **'{picked} of {count}'**
+  String posComboPickedOf(int picked, int count);
+
+  /// No description provided for @posComboNeedsOptions.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the options'**
+  String get posComboNeedsOptions;
+
+  /// No description provided for @posComboItemNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes'**
+  String get posComboItemNotes;
+
+  /// No description provided for @posMealAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add meal · {price}'**
+  String posMealAdd(String price);
+
+  /// No description provided for @posMealOfferTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Make it a meal? {price}'**
+  String posMealOfferTitle(String price);
+
+  /// No description provided for @posMealOfferYes.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes, make it a meal'**
+  String get posMealOfferYes;
+
+  /// No description provided for @posMealOfferNo.
+  ///
+  /// In en, this message translates to:
+  /// **'No, just the item'**
+  String get posMealOfferNo;
 
   /// No description provided for @posComboAdd.
   ///

@@ -152,6 +152,7 @@ class ConfigRepository {
         tableSessionsMode: c.meta.tableSessionsMode.value,
         // LAUNCH-P4 — company.tax rides every config response.
         companyTaxJson: c.meta.companyTaxJson.value,
+        mealsJson: c.meta.mealsJson.present ? c.meta.mealsJson.value : null,
       );
       BusinessBoundary.assertGeneration(_ownerGeneration);
       await _session.saveTerminalId(res.terminalId);
