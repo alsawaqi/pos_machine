@@ -82,9 +82,10 @@ void main() {
       );
       addTearDown(db.close);
       final row = await db.watchSyncMeta().first;
-      // LAUNCH-P4 moved the head to 30; the 28 -> head upgrade still keeps
+      // LAUNCH-P4 moved the head to 30, the combo add-on to 31; the 28 ->
+      // head upgrade still keeps
       // the row and adds the nullable mode.
-      expect(db.schemaVersion, 30);
+      expect(db.schemaVersion, 31);
       expect(row?.companyId, 7);
       expect(row?.branchId, 9);
       expect(row?.configSchemaVersion, 'keep');
@@ -94,7 +95,7 @@ void main() {
             .data
             .values
             .single,
-        30,
+        31,
       );
     },
   );

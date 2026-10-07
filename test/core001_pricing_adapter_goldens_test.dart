@@ -9,14 +9,17 @@ import 'package:mithqal_pricing/mithqal_pricing.dart' as core;
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/services/pricing_adapter.dart';
 
-const _v030GoldenCorpusSha256 =
-    '37d2741c0e7a801e6ffb9aef0ae6bbaeb9b13ed4f18201898e13c98d3f772d4f';
+// LAUNCH combo add-on — v0.4.0 keeps the 39 v0.3.0 vectors unchanged and
+// adds the two shared combo vector files (goldens/combo/, byte-identical to
+// pos_api's fixtures).
+const _v040GoldenCorpusSha256 =
+    'c74b2366919adb83406a8c80211a9fce20f73da54c3813ab01dd1fe2c2df501c';
 
 void main() {
   final packageRoot = _mithqalPackageRoot;
 
   test(
-    'mithqal_pricing v0.3.0 dependency contains the pinned 39-vector corpus',
+    'mithqal_pricing v0.4.0 dependency contains the pinned 41-vector corpus',
     () async {
       final root = await packageRoot();
       final files = _goldenFiles(root);
@@ -26,7 +29,7 @@ void main() {
         File(
           '${root.path}${Platform.pathSeparator}pubspec.yaml',
         ).readAsStringSync(),
-        contains(RegExp(r'^version:\s*0\.3\.0\s*$', multiLine: true)),
+        contains(RegExp(r'^version:\s*0\.4\.0\s*$', multiLine: true)),
       );
 
       final manifestFile = File(
@@ -38,14 +41,31 @@ void main() {
           .convert(existing)
           .where((line) => line.isNotEmpty)
           .toList(growable: false);
-      expect(manifestLines, hasLength(40));
-      expect(manifestLines.last, 'TOTAL $_v030GoldenCorpusSha256');
+      expect(manifestLines, hasLength(42));
+      expect(manifestLines.last, 'TOTAL $_v040GoldenCorpusSha256');
 
+      final comboFiles =
+          Directory(
+                '${root.path}${Platform.pathSeparator}goldens'
+                '${Platform.pathSeparator}combo',
+              )
+              .listSync()
+              .whereType<File>()
+              .where((file) => file.path.endsWith('.json'))
+              .toList()
+            ..sort((a, b) => _basename(a).compareTo(_basename(b)));
+      expect(comboFiles.map(_basename), [
+        'combo_allocation_vectors.json',
+        'combo_pricing_vectors.json',
+      ]);
       final calculatedLines = <String>[];
-      for (final file in files) {
+      for (final (file, name) in [
+        for (final file in files) (file, _basename(file)),
+        for (final file in comboFiles) (file, 'combo/${_basename(file)}'),
+      ]) {
         final normalized = file.readAsStringSync().replaceAll('\r\n', '\n');
         calculatedLines.add(
-          '${sha256.convert(utf8.encode(normalized))}  ${_basename(file)}',
+          '${sha256.convert(utf8.encode(normalized))}  $name',
         );
       }
       final calculatedBody = calculatedLines.map((line) => '$line\n').join();

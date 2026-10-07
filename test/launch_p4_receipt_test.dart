@@ -72,13 +72,21 @@ void main() {
         ),
         components: const [
           ComboComponent(
-            slotId: 6,
+            lineId: 6,
+            kind: 'upgrade',
             productId: '33',
             name: 'Chicken burger',
             nameAr: 'برجر دجاج',
             extraPrice: 0.300,
           ),
-          ComboComponent(slotId: 7, productId: '31', name: 'Fries', nameAr: 'بطاطس'),
+          ComboComponent(
+            lineId: 7,
+            kind: 'fixed',
+            productId: '31',
+            name: 'Fries',
+            nameAr: 'بطاطس',
+            filled: true,
+          ),
         ],
       ).toMap(),
     ],
@@ -138,10 +146,7 @@ void main() {
       expect(t, contains('1 x Burger meal  3.800'));
       expect(t, contains('> Chicken burger / برجر دجاج (+0.300)'));
       expect(t, contains('> Fries / بطاطس'));
-      expect(
-        t,
-        contains('VAT 5% / ضريبة القيمة المضافة  0.262'),
-      );
+      expect(t, contains('VAT 5% / ضريبة القيمة المضافة  0.262'));
       expect(t, contains('Prices include VAT / الأسعار شاملة الضريبة'));
       expect(t, contains('TOTAL / الإجمالي  5.500 OMR'));
       expect(t, contains('Payment / طريقة الدفع  Cash / نقدي'));
@@ -231,8 +236,10 @@ void main() {
       expect(methods, isNot(contains('printQrcode')));
       expect(methods, isNot(contains('printText')));
       expect(methods.last, 'cutPaper');
-      final png = (calls.firstWhere((c) => c.method == 'printImage').arguments
-          as Map)['image'] as Uint8List;
+      final png =
+          (calls.firstWhere((c) => c.method == 'printImage').arguments
+                  as Map)['image']
+              as Uint8List;
       expect(png.sublist(1, 4), 'PNG'.codeUnits);
     });
 

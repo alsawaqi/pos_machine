@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
+import 'package:pos_machine/l10n/l10n.dart';
 import 'package:pos_machine/models/pos_models.dart';
 import 'package:pos_machine/models/qr_till_models.dart';
 import 'package:pos_machine/order_workspace/current_order_workspace.dart';
-import 'package:pos_machine/qr_quick/qr_quick_copy.dart';
 import 'package:pos_machine/qr_quick/qr_quick_models.dart';
 import 'package:pos_machine/qr_quick/qr_quick_screen.dart';
 import 'package:pos_machine/screens/qr_quick_orders_screen.dart';
@@ -13,9 +14,10 @@ import 'package:pos_machine/services/kitchen_ticket.dart';
 import 'package:pos_machine/services/order_sync_payload.dart';
 import 'package:pos_machine/services/transfer_claim.dart';
 
-/// LAUNCH-P4 C7 follow-up (Part A shapes at api 73be87b):
+/// LAUNCH-P4 C7 follow-up, moved to the combo add-on's line model (pos_api
+/// combo handback §7.4 / §7.7 / §7.9):
 ///  (a) the till's server-priced quick-QR / staff-round picker builds combos
-///      as `combo: [{slot_id, product_id, qty, addon_ids}]` — no prices;
+///      as `combo: [{line_id, product_id, qty, addon_ids}]` — no prices;
 ///  (b) every server-bill reader shows the nested `combo` items and keeps
 ///      them through edits (more of the same, options changed) and payment;
 ///  (c) the customer display shows one row per tax;
@@ -36,20 +38,20 @@ void main() {
     category: 'Food',
     price: 3.5,
     productType: 'combo',
-    comboSlots: [
-      ComboSlot(
+    // Burger (upgrade: Chicken burger +0.300) + "Drink — pick 1".
+    comboLines: [
+      pricing.ComboLineDef.fixed(
         id: 6,
-        name: 'Main',
-        options: [
-          ComboOption(productId: 30, isDefault: true),
-          ComboOption(productId: 33, extraPrice: 0.3, sortOrder: 1),
+        productId: 30,
+        upgrades: [
+          pricing.ComboUpgradeDef(productId: 33, upgradePriceBaisas: 300),
         ],
       ),
-      ComboSlot(
+      pricing.ComboLineDef.choice(
         id: 8,
         name: 'Drink',
         sortOrder: 1,
-        options: [ComboOption(productId: 32, isDefault: true)],
+        items: [pricing.ComboChoiceItemDef(productId: 32)],
       ),
     ],
   );
@@ -94,7 +96,8 @@ void main() {
     'combo': [
       {
         'id': 901,
-        'slot_id': 6,
+        'line_id': 6,
+        'kind': 'upgrade',
         'product_id': 33,
         'product_name': 'Chicken burger',
         'qty': 1.0,
@@ -104,7 +107,8 @@ void main() {
       },
       {
         'id': 902,
-        'slot_id': 8,
+        'line_id': 8,
+        'kind': 'choice',
         'product_id': 32,
         'product_name': 'Cola',
         'qty': 1.0,
@@ -118,7 +122,7 @@ void main() {
   };
 
   group('(a) the server-priced picker', () {
-    test('a combo pick is identity only: slot, product, qty, add-on ids', () {
+    test('a combo pick is identity only: line, product, qty, add-on ids', () {
       final line = QrQuickLine(
         20,
         2,
@@ -134,9 +138,9 @@ void main() {
         'addon_ids': <int>[],
         'notes': null,
         'combo': [
-          {'slot_id': 6, 'product_id': 33, 'qty': 1, 'addon_ids': <int>[]},
+          {'line_id': 6, 'product_id': 33, 'qty': 1, 'addon_ids': <int>[]},
           {
-            'slot_id': 8,
+            'line_id': 8,
             'product_id': 32,
             'qty': 1,
             'addon_ids': [52],
@@ -153,41 +157,49 @@ void main() {
         () => QrQuickLine.fromJson({
           ...line.toJson(),
           'combo': [
-            {'slot_id': 6, 'product_id': 33, 'qty': 1, 'extra_price_baisas': 300},
+            {
+              'line_id': 6,
+              'product_id': 33,
+              'qty': 1,
+              'extra_price_baisas': 300,
+            },
           ],
         }),
         throwsFormatException,
       );
     });
 
-    test('the till catalogue offers combos with their slots', () {
+    test('the till catalogue offers combos with their lines', () {
       final quick = machineQuickCatalogue(catalog);
       final combo = quick.firstWhere((p) => p.id == 20);
       expect(combo.available, isTrue);
       expect(combo.isCombo, isTrue);
-      expect(combo.comboSlots.map((s) => s.id), [6, 8]);
-      expect(combo.comboSlots.first.options.last.extraPriceBaisas, 300);
-      expect(combo.comboSlots.first.options.first.isDefault, isTrue);
+      expect(combo.comboLines.map((l) => l.id), [6, 8]);
+      expect(combo.comboLines.first.upgrades.single.upgradePriceBaisas, 300);
+      expect(combo.comboLines.last.pickCount, 1);
     });
 
-    testWidgets('the combo picker returns the choices (defaults, a swap)', (
+    testWidgets('the combo sheet returns the items (an upgrade, a pick)', (
       tester,
     ) async {
+      tester.view.physicalSize = const Size(1400, 1100);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       final quick = machineQuickCatalogue(catalog);
       final combo = quick.firstWhere((p) => p.id == 20);
-      QrQuickLine? result;
+      (String, QrQuickLine)? result;
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: L10n.localizationsDelegates,
+          supportedLocales: L10n.supportedLocales,
           home: Builder(
             builder: (context) => TextButton(
               onPressed: () async {
-                result = await showDialog<QrQuickLine>(
-                  context: context,
-                  builder: (_) => quickOptionsDialog(
-                    combo,
-                    const QuickCopy(false),
-                    catalogue: quick,
-                  ),
+                result = await pickStaffRoundProduct(
+                  context,
+                  combo,
+                  arabic: false,
+                  catalogue: quick,
                 );
               },
               child: const Text('open'),
@@ -198,20 +210,25 @@ void main() {
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('quick-combo-options')), findsOneWidget);
-      expect(find.text('3.500'), findsOneWidget); // defaults, no extra
-      await tester.tap(find.byKey(const ValueKey('quick-combo-option-6-33')));
+      expect(find.textContaining('3.500'), findsOneWidget); // nothing picked
+      // The drink line starts empty: Add stays off.
+      final add = find.byKey(const ValueKey('combo-confirm'));
+      expect(tester.widget<FilledButton>(add).onPressed, isNull);
+      await tester.tap(find.byKey(const ValueKey('combo-upgrade-6-33')));
       await tester.pumpAndSettle();
-      expect(find.text('3.800'), findsOneWidget); // + chicken 0.300
-      await tester.tap(find.byKey(const ValueKey('quick-combo-add')));
+      expect(find.textContaining('3.800'), findsOneWidget); // + chicken 0.300
+      await tester.tap(find.byKey(const ValueKey('combo-choice-8-32-plus')));
       await tester.pumpAndSettle();
-      expect(result?.productId, 20);
-      expect(result!.combo.map((c) => [c.slotId, c.productId]), [
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(result?.$2.productId, 20);
+      expect(result!.$2.combo.map((c) => [c.lineId, c.productId]), [
         [6, 33],
         [8, 32],
       ]);
-      // The drink's required size was pre-filled with its default.
-      expect(result!.combo.last.addonIds, [51]);
-      expect(result!.toJson().toString(), isNot(contains('price')));
+      // The drink's required size took its merchant default (no auto-tick).
+      expect(result!.$2.combo.last.addonIds, [51]);
+      expect(result!.$2.toJson().toString(), isNot(contains('price')));
     });
 
     test('draft rows estimate the combo and show its items', () {
@@ -246,9 +263,9 @@ void main() {
     test('edits send the same choices back (more of the same)', () {
       final picks = serverComboPicks(serverComboLine());
       expect(picks.map((p) => p.toJson()), [
-        {'slot_id': 6, 'product_id': 33, 'qty': 1, 'addon_ids': <int>[]},
+        {'line_id': 6, 'product_id': 33, 'qty': 1, 'addon_ids': <int>[]},
         {
-          'slot_id': 8,
+          'line_id': 8,
           'product_id': 32,
           'qty': 1,
           'addon_ids': [52],
@@ -267,7 +284,7 @@ void main() {
       final round = {
         'components': [
           {
-            'slot_id': 8,
+            'line_id': 8,
             'product_id': 32,
             'name': 'Cola',
             'name_ar': 'كولا',
@@ -279,7 +296,10 @@ void main() {
           },
         ],
       };
-      expect(serverComboLabels(round, arabic: true), ['> 2 x كولا', '   + كبير']);
+      expect(serverComboLabels(round, arabic: true), [
+        '> 2 x كولا',
+        '   + كبير',
+      ]);
     });
 
     test('active, pending and quick bills show the items on the line', () {
@@ -304,7 +324,8 @@ void main() {
         ..['id'] = 950
         ..['combo'] = [
           {
-            'slot_id': 6,
+            'line_id': 6,
+            'kind': 'fixed',
             'product_id': 30,
             'product_name': 'Burger',
             'qty': 1.0,
@@ -330,8 +351,10 @@ void main() {
     test('active / pending order items parse the nested combo', () {
       final item = QrOrderItem.fromJson(serverComboLine());
       expect(item.combo, hasLength(2));
-      expect(serverComboLabels({'combo': item.combo}, arabic: false).first,
-          '> Chicken burger (+0.300)');
+      expect(
+        serverComboLabels({'combo': item.combo}, arabic: false).first,
+        '> Chicken burger (+0.300)',
+      );
     });
 
     test('a transfer claim keeps the combo through to payment', () {
@@ -355,17 +378,29 @@ void main() {
         total: line.lineTotal,
       );
       final order =
-          (buildOrderSyncPayload(snapshot).events.first['payload'] as Map)['order']
+          (buildOrderSyncPayload(snapshot).events.first['payload']
+                  as Map)['order']
               as Map;
       final wire = (order['lines'] as List).single as Map;
       expect(wire['unit_price_baisas'], 4000);
+      // §7.6: every item with its kind, line and share of the 8.000 paid
+      // (weights: Chicken burger 2.700, Cola 0.500).
       expect(wire['combo'], [
-        {'slot_id': 6, 'product_id': 33, 'qty': 1, 'extra_price_baisas': 300},
         {
-          'slot_id': 8,
+          'line_id': 6,
+          'kind': 'upgrade',
+          'product_id': 33,
+          'qty': 1,
+          'extra_price_baisas': 300,
+          'allocated_revenue_baisas': 6750,
+        },
+        {
+          'line_id': 8,
+          'kind': 'choice',
           'product_id': 32,
           'qty': 1,
           'extra_price_baisas': 0,
+          'allocated_revenue_baisas': 1250,
           'notes': 'no ice',
           'addons': [
             {'add_on_id': 52, 'price_delta_baisas': 200},
@@ -385,7 +420,7 @@ void main() {
       'line_total_baisas': 12000,
       'components': [
         {
-          'slot_id': 8,
+          'line_id': 8,
           'product_id': 32,
           'name': 'Cola',
           'product_name': 'Cola',

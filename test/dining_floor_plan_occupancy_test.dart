@@ -614,7 +614,7 @@ void _registerSchemaTests() {
         ],
       );
       // LAUNCH-P4 moved the Drift head to 30.
-      expect(outbox.schemaVersion, 30);
+      expect(outbox.schemaVersion, 31);
       expect(await outboxRows(), beforeOutbox);
       expect((await outbox.pendingOutbox()).single.orderUuid, 'pending');
       expect((await outbox.getOutbox('synced'))!.syncedAt!.toUtc(), at);
