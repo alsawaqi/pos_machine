@@ -339,11 +339,15 @@ class AddonOption {
     this.isDefault = false,
     this.linkedProductId,
     this.consumption = const <AddonConsumptionLine>[],
+    this.allergens = const <String>[],
   });
   final int id;
   final String label;
   final String? labelAr;
   final double priceDelta; // OMR added to the line when selected
+  // LAUNCH costs & allergens add-on — the allergen codes this option ADDS
+  // (empty for Remove / instruction options).
+  final List<String> allergens;
   // Phase B — starts selected when the customize sheet opens.
   final bool isDefault;
   // P-G3 — the real product this option sells (cake slice = the Cake
@@ -574,6 +578,91 @@ class RecipeLine {
   final double quantity;
 }
 
+/// LAUNCH costs & allergens add-on — the allergen codes of a config list
+/// (`allergens` / `may_contain`): strings only, de-duplicated, in the order
+/// the server sent (already the fixed 14-code order).
+List<String> allergenCodes(Object? raw) {
+  if (raw is! List) return const <String>[];
+  final out = <String>[];
+  for (final c in raw) {
+    final code = c is String ? c.trim() : '';
+    if (code.isNotEmpty && !out.contains(code)) out.add(code);
+  }
+  return out;
+}
+
+/// LAUNCH costs & allergens add-on — one of the 14 allergens with its
+/// English and Arabic names (config `allergens` catalogue, §6.1). The names
+/// come from the server; the app keeps no second copy.
+class AllergenInfo {
+  const AllergenInfo({
+    required this.code,
+    required this.name,
+    this.nameAr = '',
+  });
+
+  final String code;
+  final String name;
+  final String nameAr;
+
+  String displayName(bool arabic) =>
+      arabic && nameAr.trim().isNotEmpty ? nameAr : name;
+
+  static List<AllergenInfo> listFromJson(Object? raw) => [
+    for (final a in (raw is List ? raw : const []))
+      if (a is Map && a['code'] is String)
+        AllergenInfo(
+          code: a['code'] as String,
+          name: a['name']?.toString() ?? a['code'] as String,
+          nameAr: a['name_ar']?.toString() ?? '',
+        ),
+  ];
+}
+
+/// LAUNCH costs & allergens add-on — what an item contains and may
+/// contain (codes). "May contain" never repeats a "contains" code.
+class AllergenSet {
+  const AllergenSet({
+    this.contains = const <String>[],
+    this.mayContain = const <String>[],
+  });
+
+  final List<String> contains;
+  final List<String> mayContain;
+
+  bool get isEmpty => contains.isEmpty && mayContain.isEmpty;
+
+  /// Both together (a meal: its main's plus its lines').
+  AllergenSet union(AllergenSet other) {
+    final all = <String>[...contains];
+    for (final c in other.contains) {
+      if (!all.contains(c)) all.add(c);
+    }
+    final traces = <String>[];
+    for (final c in [...mayContain, ...other.mayContain]) {
+      if (!all.contains(c) && !traces.contains(c)) traces.add(c);
+    }
+    return AllergenSet(contains: all, mayContain: traces);
+  }
+}
+
+/// [codes] as display names from [catalog] (catalogue order; an unknown
+/// code shows as itself).
+List<String> allergenNames(
+  List<String> codes,
+  List<AllergenInfo> catalog, {
+  required bool arabic,
+}) {
+  final byCode = {for (final a in catalog) a.code: a};
+  final ordered = [
+    for (final a in catalog)
+      if (codes.contains(a.code)) a.code,
+    for (final c in codes)
+      if (!byCode.containsKey(c)) c,
+  ];
+  return [for (final c in ordered) byCode[c]?.displayName(arabic) ?? c];
+}
+
 /// LAUNCH combo add-on — a combo product's or a meal's LINES (device config
 /// `combo.lines[]` / `meals[].lines[]`, pos_api handback §7.1), parsed by the
 /// shared pricing package: a FIXED line (a product x quantity, optionally
@@ -599,8 +688,14 @@ class MealSetup {
     this.onSaleUntil,
     this.mains = const <int>{},
     this.lines = const <pricing.ComboLineDef>[],
+    this.allergens = const <String>[],
+    this.mayContain = const <String>[],
   });
 
+  // LAUNCH costs & allergens add-on — the meal LINES' allergens only (the
+  // main adds its own: show main ∪ meal).
+  final List<String> allergens;
+  final List<String> mayContain;
   final int id;
   final String uuid;
   final String name;
@@ -665,6 +760,8 @@ class MealSetup {
           if (_int(m) case final int id) id,
       },
       lines: pricing.ComboLineDef.listFromJson(raw['lines']),
+      allergens: allergenCodes(raw['allergens']),
+      mayContain: allergenCodes(raw['may_contain']),
     );
   }
 
@@ -808,6 +905,10 @@ class Product {
   final String descriptionAr;
   // LAUNCH combo add-on — a combo's lines (empty for a standard product).
   final List<pricing.ComboLineDef> comboLines;
+  // LAUNCH costs & allergens add-on — what it contains (own ticks + worked
+  // out; a combo: every item it can serve) and "may contain" (traces).
+  final List<String> allergens;
+  final List<String> mayContain;
 
   const Product({
     required this.id,
@@ -835,6 +936,8 @@ class Product {
     this.soldOut = false,
     this.descriptionAr = '',
     this.comboLines = const <pricing.ComboLineDef>[],
+    this.allergens = const <String>[],
+    this.mayContain = const <String>[],
   });
 
   /// The name to SHOW for [arabic] UI — falls back to the English identity
@@ -927,6 +1030,8 @@ class Product {
         soldOut: soldOut ?? this.soldOut,
         descriptionAr: descriptionAr,
         comboLines: comboLines,
+        allergens: allergens,
+        mayContain: mayContain,
       );
 
   factory Product.fromMap(Map<String, dynamic> map) {

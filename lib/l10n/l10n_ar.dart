@@ -3897,6 +3897,27 @@ class L10nAr extends L10n {
   String get posMealOfferNo => 'لا، الصنف وحده';
 
   @override
+  String get posAllergensTitle => 'مسببات الحساسية';
+
+  @override
+  String get posAllergensNone => 'لا توجد مسببات حساسية مسجلة لهذا الصنف.';
+
+  @override
+  String posAllergensContains(String list) {
+    return 'يحتوي على: $list';
+  }
+
+  @override
+  String posAllergensMayContain(String list) {
+    return 'قد يحتوي على: $list';
+  }
+
+  @override
+  String posAllergensAdds(String list) {
+    return 'يضيف: $list';
+  }
+
+  @override
   String get posMealNoLongerAvailable =>
       'هذه الوجبة لم تعد متاحة — ألغها ثم أضفها من جديد.';
 

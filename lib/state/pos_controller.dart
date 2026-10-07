@@ -740,6 +740,8 @@ class PosController extends ChangeNotifier
   List<AddonGroup> addonGroups = const <AddonGroup>[];
   // LAUNCH combo add-on — the "Make it a meal?" setups from the config.
   List<MealSetup> meals = const <MealSetup>[];
+  // LAUNCH costs & allergens add-on — the 14 allergens with their names.
+  List<AllergenInfo> allergenCatalog = const <AllergenInfo>[];
 
   /// Company delivery providers (Talabat, Otlob, …) for the delivery picker.
   List<DeliveryProvider> deliveryProviders = const <DeliveryProvider>[];
@@ -1451,9 +1453,11 @@ class PosController extends ChangeNotifier
     String branchName = '',
     String branchNameAr = '',
     List<MealSetup> meals = const <MealSetup>[],
+    List<AllergenInfo> allergenCatalog = const <AllergenInfo>[],
   }) {
     _hasRealCatalog = branchId != null;
     this.meals = meals;
+    this.allergenCatalog = allergenCatalog;
     receiptBranchName = branchName;
     receiptBranchNameAr = branchNameAr;
     this.categories = categories;
@@ -3102,6 +3106,18 @@ class PosController extends ChangeNotifier
     }
     return null;
   }
+
+  /// LAUNCH costs & allergens add-on — [product]'s allergens from the live
+  /// catalog (a combo's already cover every item it can serve).
+  AllergenSet allergensOf(Product product) {
+    final live = _liveProduct(product);
+    return AllergenSet(contains: live.allergens, mayContain: live.mayContain);
+  }
+
+  /// A meal's allergens: the main's own plus the meal lines' (§6.2).
+  AllergenSet mealAllergens(Product main, MealSetup meal) => allergensOf(
+    main,
+  ).union(AllergenSet(contains: meal.allergens, mayContain: meal.mayContain));
 
   /// The configured meal with [id] (null when the config no longer has it).
   MealSetup? mealById(int id) => meals.where((m) => m.id == id).firstOrNull;

@@ -22,6 +22,7 @@ import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 
 import '../l10n/l10n.dart';
 import '../models/pos_models.dart';
+import '../widgets/allergen_info.dart';
 
 /// What the sheet shows about one product.
 class ComboSheetItem {
@@ -31,11 +32,14 @@ class ComboSheetItem {
     this.nameAr = '',
     this.available = true,
     this.hasOptions = false,
+    this.allergens = const AllergenSet(),
   });
 
   final String id;
   final String name;
   final String nameAr;
+  // LAUNCH costs & allergens add-on — the item's own allergens.
+  final AllergenSet allergens;
 
   /// False = sold out / not sold here: greyed, never newly picked.
   final bool available;
@@ -125,8 +129,14 @@ class ComboSheet extends StatefulWidget {
     this.main,
     this.initial = const <ComboSelection>[],
     this.isMeal = false,
+    this.allergens = const AllergenSet(),
+    this.allergenCatalog = const <AllergenInfo>[],
   });
 
+  // LAUNCH costs & allergens add-on — the combo's / meal's allergens (a meal:
+  // its main's plus its lines') and the allergen names.
+  final AllergenSet allergens;
+  final List<AllergenInfo> allergenCatalog;
   final String title;
   final String subtitle;
   final List<pricing.ComboLineDef> lines;
@@ -382,6 +392,14 @@ class _ComboSheetState extends State<ComboSheet> {
                   ),
                 ),
               ],
+              if (!widget.allergens.isEmpty) ...[
+                const SizedBox(height: 6),
+                AllergenInfoBlock(
+                  key: const ValueKey('combo-allergens'),
+                  allergens: widget.allergens,
+                  catalog: widget.allergenCatalog,
+                ),
+              ],
               const SizedBox(height: 16),
               Flexible(
                 child: ListView(
@@ -523,6 +541,19 @@ class _ComboSheetState extends State<ComboSheet> {
     );
   }
 
+  /// The item's own allergens, small, under its name.
+  Widget _itemAllergens(String productId) {
+    final allergens =
+        widget.source.itemFor(productId)?.allergens ?? const AllergenSet();
+    if (allergens.isEmpty) return const SizedBox.shrink();
+    return AllergenInfoBlock(
+      key: ValueKey('combo-item-allergens-$productId'),
+      allergens: allergens,
+      catalog: widget.allergenCatalog,
+      fontSize: 11,
+    );
+  }
+
   Widget _heading(String text, {Widget? trailing}) => Row(
     children: [
       Expanded(
@@ -608,12 +639,18 @@ class _ComboSheetState extends State<ComboSheet> {
             const Icon(Icons.check_circle_rounded, size: 18, color: _ok),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: _ink,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: _ink,
+                    ),
+                  ),
+                  _itemAllergens(productId),
+                ],
               ),
             ),
             if (extra != null && extra != 0)
@@ -800,6 +837,7 @@ class _ComboSheetState extends State<ComboSheet> {
                         color: item.available ? _ink : const Color(0xFF8A969C),
                       ),
                     ),
+                    _itemAllergens(id),
                     if (!item.available || stale)
                       Text(
                         stale

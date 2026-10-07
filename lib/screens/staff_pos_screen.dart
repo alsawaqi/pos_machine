@@ -43,6 +43,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mithqal_pricing/mithqal_pricing.dart' as pricing;
 import '../l10n/l10n.dart';
 import '../combo/combo_edit.dart';
+import '../widgets/allergen_info.dart';
 import '../combo/combo_sheet.dart';
 import '../models/pos_models.dart';
 import '../models/qr_till_models.dart' show QrDeviceRound, QrRoundEnvelope;
@@ -1353,10 +1354,14 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// directly; anyone else needs an approver's PIN. The request carries the
   /// authorization block. The server writes the branch row (every channel)
   /// and audits it; the till then reflects it at once.
+  /// LAUNCH costs & allergens add-on — the long-press is also the item
+  /// details: the product's allergens (Contains / May contain) so staff can
+  /// answer customers, shown even when the switch itself is not offered.
   Future<void> _openSoldOutSwitch(Product product) async {
     final productId = int.tryParse(product.id);
     final staff = ref.read(sessionServiceProvider).staff;
-    if (productId == null || staff == null || !mounted) return;
+    if (!mounted) return;
+    final canSwitch = productId != null && staff != null;
     final l10n = L10n.of(context);
     final isAr = Localizations.localeOf(context).languageCode == 'ar';
     final next = !controller.isSoldOut(product);
@@ -1365,21 +1370,44 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       builder: (dialogContext) => AlertDialog(
         key: const ValueKey('sold-out-switch'),
         title: Text(product.displayName(isAr)),
-        content: Text(l10n.posSoldOutSwitchHint),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.posAllergensTitle,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            AllergenInfoBlock(
+              allergens: controller.allergensOf(product),
+              catalog: controller.allergenCatalog,
+              showNone: true,
+            ),
+            if (canSwitch) ...[
+              const SizedBox(height: 14),
+              Text(l10n.posSoldOutSwitchHint),
+            ],
+          ],
+        ),
         actions: [
           TextButton(
+            key: const ValueKey('item-details-close'),
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(l10n.commonCancel),
+            child: Text(canSwitch ? l10n.commonCancel : l10n.commonClose),
           ),
-          FilledButton(
-            key: const ValueKey('sold-out-switch-confirm'),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(next ? l10n.posSoldOutMark : l10n.posSoldOutRestore),
-          ),
+          if (canSwitch)
+            FilledButton(
+              key: const ValueKey('sold-out-switch-confirm'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(next ? l10n.posSoldOutMark : l10n.posSoldOutRestore),
+            ),
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted || productId == null || staff == null) {
+      return;
+    }
     // Asked right before sending: the server takes an approval for an
     // online action only within 10 minutes of its own clock.
     final authorization = await _authorizeAction('sold_out.toggle');
@@ -1478,6 +1506,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             ? const <_ModifierGroupDefinition>[]
             : _resolveModifierGroups(product),
         autoPickRequired: false,
+        allergens: controller.allergensOf(product),
+        allergenCatalog: controller.allergenCatalog,
         apply: (picked) async {
           result = (modifiers: picked.modifiers, notes: picked.notes);
           return true;
@@ -1501,6 +1531,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             !controller.isSoldOut(product) &&
             product.isAvailableAt(DateTime.now()),
         hasOptions: controller.addonGroupsForProduct(product).isNotEmpty,
+        allergens: controller.allergensOf(product),
       );
     },
     unitPriceBaisas: price,
@@ -1566,6 +1597,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       builder: (_) => ComboSheet(
         title: priced.displayName(isAr),
         subtitle: l10n.posComboTitle,
+        allergens: controller.allergensOf(combo),
+        allergenCatalog: controller.allergenCatalog,
         lines: lines,
         initial: editing == null
             ? const <ComboSelection>[]
@@ -1671,6 +1704,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             '${meal.displayName(isAr)} '
             '+${meal.mealPrice.toStringAsFixed(3)}',
         isMeal: true,
+        allergens: controller.mealAllergens(main, meal),
+        allergenCatalog: controller.allergenCatalog,
         lines: lines,
         main: ComboSheetMain(
           productId: main.id,
@@ -1738,6 +1773,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       builder: (context) => _CustomizeCartItemDialog(
         item: CartItem(product: product),
         groups: _resolveModifierGroups(product),
+        allergens: controller.allergensOf(product),
+        allergenCatalog: controller.allergenCatalog,
         apply: (result) async {
           if (!mounted) return false;
           controller.addCustomizedProduct(
@@ -1811,7 +1848,12 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     final result = await showDialog<_CartItemCustomizationResult>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _CustomizeCartItemDialog(item: item, groups: groups),
+      builder: (_) => _CustomizeCartItemDialog(
+        item: item,
+        groups: groups,
+        allergens: controller.allergensOf(product),
+        allergenCatalog: controller.allergenCatalog,
+      ),
     );
     if (!mounted || result == null) return null;
     return QrQuickLine(
@@ -2181,6 +2223,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           branchName: catalog.branchName,
           branchNameAr: catalog.branchNameAr,
           meals: catalog.meals,
+          allergenCatalog: catalog.allergenCatalog,
         );
         // P-G6 — pop a notice when a NEW announcement lands for the
         // signed-in staff member (delta sync or live push). The first
@@ -9162,6 +9205,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                   // P-G3 — grey the option when its linked product is not
                   // sold at this branch (never because of stock).
                   soldOut: controller.isAddonOptionUnavailable(option),
+                  allergens: option.allergens,
                 ),
               )
               .toList(),
@@ -9200,6 +9244,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
       builder: (context) => _CustomizeCartItemDialog(
         item: item,
         groups: _resolveModifierGroups(item.product),
+        allergens: controller.allergensOf(item.product),
+        allergenCatalog: controller.allergenCatalog,
         apply: (result) => _applyCartCustomization(item, result),
       ),
     );
@@ -14337,6 +14383,8 @@ class _ModifierOptionDefinition {
   // catalog (not sold here): the tile greys out and refuses selection.
   // Stock never sets this (LAUNCH-P2 "sell, but warn").
   final bool soldOut;
+  // LAUNCH costs & allergens add-on — the allergen codes it ADDS.
+  final List<String> allergens;
 
   const _ModifierOptionDefinition({
     required this.id,
@@ -14344,6 +14392,7 @@ class _ModifierOptionDefinition {
     this.labelAr = '',
     required this.price,
     this.soldOut = false,
+    this.allergens = const <String>[],
   });
 
   /// The option label to SHOW for [arabic] UI (English stays the identity).
@@ -14369,11 +14418,16 @@ class _CustomizeCartItemDialog extends StatefulWidget {
   // LAUNCH combo add-on — false inside a combo / meal: a required group
   // never auto-ticks there (owner rule); the cashier picks.
   final bool autoPickRequired;
+  // LAUNCH costs & allergens add-on — the item's allergens and the names.
+  final AllergenSet allergens;
+  final List<AllergenInfo> allergenCatalog;
   const _CustomizeCartItemDialog({
     required this.item,
     required this.groups,
     this.apply,
     this.autoPickRequired = true,
+    this.allergens = const AllergenSet(),
+    this.allergenCatalog = const <AllergenInfo>[],
   });
 
   @override
@@ -14592,6 +14646,14 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
                                 color: Color(0xFF73828E),
                               ),
                             ),
+                            // LAUNCH costs & allergens add-on.
+                            if (!widget.allergens.isEmpty) ...[
+                              const SizedBox(height: 6),
+                              AllergenInfoBlock(
+                                allergens: widget.allergens,
+                                catalog: widget.allergenCatalog,
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -14624,6 +14686,7 @@ class _CustomizeCartItemDialogState extends State<_CustomizeCartItemDialog> {
                           for (final group in widget.groups) ...[
                             _CustomizeGroupSection(
                               group: group,
+                              allergenCatalog: widget.allergenCatalog,
                               selectedIds:
                                   _selectedByGroup[group.title] ??
                                   const <String>{},
@@ -14733,11 +14796,14 @@ class _CustomizeGroupSection extends StatelessWidget {
   final _ModifierGroupDefinition group;
   final Set<String> selectedIds;
   final ValueChanged<_ModifierOptionDefinition> onToggle;
+  // LAUNCH costs & allergens add-on — names for "Adds: …".
+  final List<AllergenInfo> allergenCatalog;
 
   const _CustomizeGroupSection({
     required this.group,
     required this.selectedIds,
     required this.onToggle,
+    this.allergenCatalog = const <AllergenInfo>[],
   });
 
   @override
@@ -14807,6 +14873,7 @@ class _CustomizeGroupSection extends StatelessWidget {
                     multiSelect: group.multiSelect,
                     selected: selectedIds.contains(option.id),
                     onTap: () => onToggle(option),
+                    allergenCatalog: allergenCatalog,
                   ),
                 ),
               )
@@ -14822,12 +14889,14 @@ class _CustomizationOptionTile extends StatelessWidget {
   final bool multiSelect;
   final bool selected;
   final VoidCallback onTap;
+  final List<AllergenInfo> allergenCatalog;
 
   const _CustomizationOptionTile({
     required this.option,
     required this.multiSelect,
     required this.selected,
     required this.onTap,
+    this.allergenCatalog = const <AllergenInfo>[],
   });
 
   @override
@@ -14884,17 +14953,37 @@ class _CustomizationOptionTile extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      option.displayLabel(isAr),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: option.soldOut
-                            ? const Color(0xFF9AA8B1)
-                            : selected
-                            ? const Color(0xFF175E36)
-                            : const Color(0xFF2C3C45),
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          option.displayLabel(isAr),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: option.soldOut
+                                ? const Color(0xFF9AA8B1)
+                                : selected
+                                ? const Color(0xFF175E36)
+                                : const Color(0xFF2C3C45),
+                          ),
+                        ),
+                        if (option.allergens.isNotEmpty)
+                          Text(
+                            optionAllergenText(
+                              context,
+                              option.allergens,
+                              allergenCatalog,
+                            ),
+                            key: ValueKey('option-allergens-${option.id}'),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFB54708),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   if (option.soldOut)
@@ -14939,6 +15028,21 @@ class _CustomizationOptionTile extends StatelessWidget {
                                 : const Color(0xFF364852),
                           ),
                         ),
+                        if (option.allergens.isNotEmpty)
+                          Text(
+                            optionAllergenText(
+                              context,
+                              option.allergens,
+                              allergenCatalog,
+                            ),
+                            key: ValueKey('option-allergens-${option.id}'),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFB54708),
+                            ),
+                          ),
                         if (option.soldOut) ...[
                           const SizedBox(height: 4),
                           Text(

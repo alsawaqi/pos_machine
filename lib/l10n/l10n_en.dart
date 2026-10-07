@@ -3860,6 +3860,27 @@ class L10nEn extends L10n {
   String get posMealOfferNo => 'No, just the item';
 
   @override
+  String get posAllergensTitle => 'Allergens';
+
+  @override
+  String get posAllergensNone => 'No allergens recorded for this item.';
+
+  @override
+  String posAllergensContains(String list) {
+    return 'Contains: $list';
+  }
+
+  @override
+  String posAllergensMayContain(String list) {
+    return 'May contain: $list';
+  }
+
+  @override
+  String posAllergensAdds(String list) {
+    return 'Adds: $list';
+  }
+
+  @override
   String get posMealNoLongerAvailable =>
       'This meal is no longer available — cancel it and add it again.';
 

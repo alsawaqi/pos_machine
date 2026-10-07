@@ -6425,6 +6425,36 @@ abstract class L10n {
   /// **'No, just the item'**
   String get posMealOfferNo;
 
+  /// No description provided for @posAllergensTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Allergens'**
+  String get posAllergensTitle;
+
+  /// No description provided for @posAllergensNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No allergens recorded for this item.'**
+  String get posAllergensNone;
+
+  /// No description provided for @posAllergensContains.
+  ///
+  /// In en, this message translates to:
+  /// **'Contains: {list}'**
+  String posAllergensContains(String list);
+
+  /// No description provided for @posAllergensMayContain.
+  ///
+  /// In en, this message translates to:
+  /// **'May contain: {list}'**
+  String posAllergensMayContain(String list);
+
+  /// No description provided for @posAllergensAdds.
+  ///
+  /// In en, this message translates to:
+  /// **'Adds: {list}'**
+  String posAllergensAdds(String list);
+
   /// No description provided for @posMealNoLongerAvailable.
   ///
   /// In en, this message translates to:

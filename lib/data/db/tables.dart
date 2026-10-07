@@ -100,6 +100,11 @@ class Products extends Table {
   TextColumn get deliveryUnlistedJson =>
       text().nullable().withDefault(const Constant('[]'))();
   TextColumn get comboJson => text().nullable()();
+  // LAUNCH costs & allergens add-on — allergen codes (JSON lists of the 14
+  // fixed codes): what it contains, and "may contain" (traces). Null = a
+  // server without allergens.
+  TextColumn get allergensJson => text().nullable()();
+  TextColumn get mayContainJson => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -177,6 +182,8 @@ class Addons extends Table {
   // qty, unit}]). Never used to gate the option (LAUNCH-P2).
   TextColumn get consumptionJson => text().withDefault(const Constant('[]'))();
   TextColumn get status => text().nullable()();
+  // LAUNCH costs & allergens add-on — the allergen codes this option ADDS.
+  TextColumn get allergensJson => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -244,6 +251,9 @@ class SyncMeta extends Table {
   // LAUNCH combo add-on — the "Make it a meal?" setups (`meals[]`, the full
   // set on every pull, replaced wholesale) as JSON; null = none sent yet.
   TextColumn get mealsJson => text().nullable()();
+  // LAUNCH costs & allergens add-on — the 14 allergens with their English
+  // and Arabic names (`allergens` catalogue, every pull) as JSON.
+  TextColumn get allergenCatalogJson => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

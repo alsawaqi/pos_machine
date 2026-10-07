@@ -373,7 +373,7 @@ void main() {
     );
     addTearDown(db.close);
     final rows = await db.select(db.products).get();
-    expect(db.schemaVersion, 31);
+    expect(db.schemaVersion, 32);
     expect(rows.single.name, 'Tea');
     expect(rows.single.soldInStore, isTrue);
     expect(rows.single.soldOut, isFalse);

@@ -37,6 +37,7 @@ class CatalogSnapshot {
     this.branchName = '',
     this.branchNameAr = '',
     this.meals = const <MealSetup>[],
+    this.allergenCatalog = const <AllergenInfo>[],
   });
 
   final List<String> categories;
@@ -101,6 +102,8 @@ class CatalogSnapshot {
   final String branchNameAr;
   // LAUNCH combo add-on — the "Make it a meal?" setups (config `meals[]`).
   final List<MealSetup> meals;
+  // LAUNCH costs & allergens add-on — the 14 allergens with their names.
+  final List<AllergenInfo> allergenCatalog;
 }
 
 /// Drift companions parsed from an API config bundle, ready for replaceConfig().
@@ -422,6 +425,9 @@ class ConfigMapper {
               comboJson: Value(
                 p['combo'] is Map ? jsonEncode(p['combo']) : null,
               ),
+              // LAUNCH costs & allergens add-on — allergen codes.
+              allergensJson: Value(_codesJson(p['allergens'])),
+              mayContainJson: Value(_codesJson(p['may_contain'])),
             ))
         .toList();
 
@@ -482,6 +488,8 @@ class ConfigMapper {
           // PD3b — the option's stock-usage lines, cached raw.
           consumptionJson: Value(jsonEncode(_list(a['consumption']))),
           status: Value(_strN(a['status'])),
+          // LAUNCH costs & allergens add-on — what the option adds.
+          allergensJson: Value(_codesJson(a['allergens'])),
         ));
       }
     }
@@ -725,6 +733,11 @@ class ConfigMapper {
       mealsJson: data['meals'] is List
           ? Value(jsonEncode(data['meals']))
           : const Value.absent(),
+      // LAUNCH costs & allergens add-on — the allergen catalogue (14 codes
+      // with EN / AR names); absent = keep what is cached.
+      allergenCatalogJson: data['allergens'] is List
+          ? Value(jsonEncode(data['allergens']))
+          : const Value.absent(),
     );
 
     return ParsedConfig(
@@ -885,6 +898,8 @@ class ConfigMapper {
         comboLines: (p.comboJson ?? '').isEmpty
             ? const []
             : comboLinesFromJson(_tryDecode(p.comboJson!)),
+        allergens: allergenCodes(_tryDecode(p.allergensJson ?? '')),
+        mayContain: allergenCodes(_tryDecode(p.mayContainJson ?? '')),
       );
     }).toList();
 
@@ -962,6 +977,7 @@ class ConfigMapper {
         linkedProductId: a.linkedProductId,
         // PD3b — stock-usage lines for per-option availability gating.
         consumption: _consumptionFromJson(a.consumptionJson),
+        allergens: allergenCodes(_tryDecode(a.allergensJson ?? '')),
       ));
     }
     final addonGroups = addonGroupRows
@@ -1175,6 +1191,9 @@ class ConfigMapper {
       meals: (meta?.mealsJson ?? '').isEmpty
           ? const <MealSetup>[]
           : MealSetup.listFromJson(_tryDecode(meta!.mealsJson!)),
+      allergenCatalog: AllergenInfo.listFromJson(
+        _tryDecode(meta?.allergenCatalogJson ?? ''),
+      ),
       branchName: branch?.name ?? '',
       branchNameAr: branch?.nameAr ?? '',
     );
@@ -1190,6 +1209,10 @@ class ConfigMapper {
     final ids = _intsFromJson(branchIdsJson);
     return ids.isEmpty || branchId == null || ids.contains(branchId);
   }
+
+  /// A JSON list of allergen codes, or null when the server sent none.
+  static String? _codesJson(Object? codes) =>
+      codes is List ? jsonEncode(allergenCodes(codes)) : null;
 
   static Object? _tryDecode(String json) {
     try {

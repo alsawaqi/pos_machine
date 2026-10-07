@@ -51,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 31;
+  int get schemaVersion => 32;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -244,6 +244,31 @@ class AppDatabase extends _$AppDatabase {
           variables: [Variable<String>(syncMeta.actualTableName)],
         ).get();
         if (found.isNotEmpty) await m.addColumn(syncMeta, syncMeta.mealsJson);
+      }
+      if (from < 32) {
+        // LAUNCH costs & allergens add-on — allergen codes on products and
+        // add-on options, and the allergen catalogue. Each table is extended
+        // only when it exists.
+        Future<void> extend(
+          TableInfo<Table, dynamic> table,
+          List<GeneratedColumn<Object>> columns,
+        ) async {
+          final found = await customSelect(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+            variables: [Variable<String>(table.actualTableName)],
+          ).get();
+          if (found.isEmpty) return;
+          for (final column in columns) {
+            await m.addColumn(table, column);
+          }
+        }
+
+        await extend(products, [
+          products.allergensJson,
+          products.mayContainJson,
+        ]);
+        await extend(addons, [addons.allergensJson]);
+        await extend(syncMeta, [syncMeta.allergenCatalogJson]);
       }
     },
   );
@@ -802,6 +827,7 @@ class AppDatabase extends _$AppDatabase {
     String? tableSessionsMode,
     String? companyTaxJson,
     String? mealsJson,
+    String? allergenCatalogJson,
   }) {
     return transaction(() async {
       BusinessBoundary.assertGeneration(_ownerGeneration);
@@ -948,6 +974,9 @@ class AppDatabase extends _$AppDatabase {
           mealsJson: mealsJson == null
               ? const Value.absent()
               : Value(mealsJson),
+          allergenCatalogJson: allergenCatalogJson == null
+              ? const Value.absent()
+              : Value(allergenCatalogJson),
         ),
       );
     });

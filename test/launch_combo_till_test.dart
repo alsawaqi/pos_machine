@@ -950,7 +950,7 @@ void main() {
     });
 
     test(
-      'Drift 30 to 31 keeps the sync metadata and adds meals_json',
+      'Drift 30 to head keeps the sync metadata and adds meals_json',
       () async {
         final db = AppDatabase.forTesting(
           NativeDatabase.memory(
@@ -974,7 +974,7 @@ void main() {
           ),
         );
         addTearDown(db.close);
-        expect(db.schemaVersion, 31);
+        expect(db.schemaVersion, 32);
         final before = await db.getSyncMeta();
         expect(before?.branchId, 6);
         expect(before?.companyTaxJson, '{"vat_registered":true}');

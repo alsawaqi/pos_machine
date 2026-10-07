@@ -2476,6 +2476,32 @@
   },
   "posMealOfferYes": "Yes, make it a meal",
   "posMealOfferNo": "No, just the item",
+  "posAllergensTitle": "Allergens",
+  "posAllergensNone": "No allergens recorded for this item.",
+  "posAllergensContains": "Contains: {list}",
+  "@posAllergensContains": {
+    "placeholders": {
+      "list": {
+        "type": "String"
+      }
+    }
+  },
+  "posAllergensMayContain": "May contain: {list}",
+  "@posAllergensMayContain": {
+    "placeholders": {
+      "list": {
+        "type": "String"
+      }
+    }
+  },
+  "posAllergensAdds": "Adds: {list}",
+  "@posAllergensAdds": {
+    "placeholders": {
+      "list": {
+        "type": "String"
+      }
+    }
+  },
   "posMealNoLongerAvailable": "This meal is no longer available — cancel it and add it again.",
   "posComboNoLongerOffered": "No longer offered",
   "posComboStalePick": "{item} is no longer offered here — remove it.",

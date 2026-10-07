@@ -153,6 +153,9 @@ class ConfigRepository {
         // LAUNCH-P4 — company.tax rides every config response.
         companyTaxJson: c.meta.companyTaxJson.value,
         mealsJson: c.meta.mealsJson.present ? c.meta.mealsJson.value : null,
+        allergenCatalogJson: c.meta.allergenCatalogJson.present
+            ? c.meta.allergenCatalogJson.value
+            : null,
       );
       BusinessBoundary.assertGeneration(_ownerGeneration);
       await _session.saveTerminalId(res.terminalId);
