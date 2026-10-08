@@ -11,10 +11,13 @@ permissions:
 
 jobs:
   flutter:
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # The approved receipt golden is rendered on Windows. Keep the same OS
+    # and SDK so the exact pixel comparison remains deterministic.
+    runs-on: windows-latest
+    timeout-minutes: 60
     defaults:
       run:
+        shell: bash
         working-directory: pos_machine
     env:
       PAY002_PEER_ROOTS: ${{ github.workspace }}/pos_machine;${{ github.workspace }}/pos_handheld;${{ github.workspace }}/pos_station
@@ -45,6 +48,8 @@ jobs:
           flutter-version: '3.47.1'
           channel: stable
           cache: true
+      - name: Use the configured Java 17 runtime
+        run: flutter config --jdk-dir "$JAVA_HOME"
       - name: Dependencies from committed lockfile
         run: |
           test ! -e pubspec_overrides.yaml
