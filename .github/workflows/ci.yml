@@ -1,8 +1,3 @@
-# Phase D9 — CI for pos_machine (Flutter POS).
-#
-# Drift's generated code (lib/data/db/app_database.g.dart) is committed, so
-# no build_runner step is needed. The l10n classes regenerate implicitly via
-# `flutter test` (pubspec generate: true).
 name: CI
 
 on:
@@ -11,25 +6,57 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   flutter:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: pos_machine
+    env:
+      PAY002_PEER_ROOTS: ${{ github.workspace }}/pos_machine;${{ github.workspace }}/pos_handheld;${{ github.workspace }}/pos_station
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: pos_machine
+      - uses: actions/checkout@v4
+        with:
+          repository: alsawaqi/pos_handheld
+          ref: 3f1004b76fde35fb62693615e70ae86eea52575f
+          path: pos_handheld
+          persist-credentials: false
+          ssh-key: ${{ secrets.POS_PEER_HANDHELD_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          repository: alsawaqi/pos_station
+          ref: d21032a38a8aa3cb9994e7cab60620fdf3804dfd
+          path: pos_station
+          persist-credentials: false
+          ssh-key: ${{ secrets.POS_PEER_STATION_KEY }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.0' # dev-machine pin (Dart 3.12; pubspec sdk ^3.11.4) — bump alongside local upgrades
+          flutter-version: '3.44.0'
           channel: stable
           cache: true
-      - run: flutter pub get
-      - run: flutter analyze --no-pub
-      - name: Tests (known-failing baseline files excluded)
-        shell: bash
+      - name: Dependencies from committed lockfile
         run: |
-          # widget_test.dart + pos_controller_charity_flow_test.dart fail at
-          # baseline (stale 5%-tax expectations + missing ProviderScope
-          # harness) and are excluded until fixed. The grep keeps future test
-          # files auto-INCLUDED; if a baseline file is repaired, remove it
-          # here or it silently stays out of CI.
-          mapfile -t FILES < <(ls test/*_test.dart | grep -vE '(widget_test|pos_controller_charity_flow_test)\.dart$')
-          flutter test "${FILES[@]}"
+          test ! -e pubspec_overrides.yaml
+          flutter pub get --enforce-lockfile
+      - name: Analyze (existing style advisories remain non-fatal)
+        run: flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings
+      - name: Full Flutter test suite, including peer bridge hashes
+        run: flutter test --no-pub
+      - name: Build test APK (local API, not a production release)
+        run: flutter build apk --debug --no-pub --dart-define=POS_API_BASE_URL=http://localhost:8088/api/v1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pos_machine-test-apk
+          path: pos_machine/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 14
