@@ -28,6 +28,16 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
+  mithqal_kitchen_core:
+    git:
+      url: file:///C:/src/projects/pos_kds
+      ref: d6686e82b5d6e658f45ab12fd5dea439afa5e42e
+      path: packages/mithqal_kitchen_core
+  mithqal_kitchen_android:
+    git:
+      url: file:///C:/src/projects/pos_kds
+      ref: d6686e82b5d6e658f45ab12fd5dea439afa5e42e
+      path: packages/mithqal_kitchen_android
   flutter_cache_manager: ^3.4.1
   package_info_plus: ^9.0.1
   mithqal_softpos:

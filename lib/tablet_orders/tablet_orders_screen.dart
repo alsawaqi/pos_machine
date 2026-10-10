@@ -26,6 +26,7 @@ class TabletOrderActions {
     this.myStaffId,
     this.onOpened,
     this.printsKitchenTickets,
+    this.managedKitchen,
     this.openTableToPay,
   });
 
@@ -47,6 +48,7 @@ class TabletOrderActions {
   /// T-3 — false when this till does not print QR / tablet kitchen tickets
   /// (the "QR kitchen rounds" setting is off): staff are warned on send.
   final bool Function()? printsKitchenTickets;
+  final bool Function()? managedKitchen;
 
   /// The existing `order.void` (durable outbox) with its gate's block.
   final Future<void> Function(
@@ -77,6 +79,11 @@ class TabletOrderActions {
   /// Opening an order stops its ring on this device.
   final void Function(String attentionKey)? onOpened;
 }
+
+String kitchenQueueLabel(BuildContext context) =>
+    Localizations.localeOf(context).languageCode == 'ar'
+    ? 'في قائمة المطبخ'
+    : 'In kitchen queue';
 
 String tabletMoney(int baisas) => (baisas / 1000).toStringAsFixed(3);
 
@@ -497,6 +504,7 @@ class _TabletOrdersScreenState extends State<TabletOrdersScreen> {
                   row: row,
                   devices: c.devices,
                   myStaffId: widget.actions.myStaffId,
+                  managedKitchen: widget.actions.managedKitchen?.call() == true,
                   onTap: () => unawaited(_open(row.uuid)),
                 ),
             ],
@@ -515,11 +523,13 @@ class TabletOrderCard extends StatelessWidget {
     required this.onTap,
     this.devices = const {},
     this.myStaffId,
+    this.managedKitchen = false,
   });
   final TabletOrderRow row;
   final VoidCallback onTap;
   final Map<int, String> devices;
   final int? myStaffId;
+  final bool managedKitchen;
 
   @override
   Widget build(BuildContext context) {
@@ -555,7 +565,13 @@ class TabletOrderCard extends StatelessWidget {
                 spacing: 6,
                 runSpacing: 4,
                 children: [
-                  _Chip(row.pending ? l10n.tabletWaiting : l10n.tabletSent),
+                  _Chip(
+                    row.pending
+                        ? l10n.tabletWaiting
+                        : managedKitchen
+                        ? kitchenQueueLabel(context)
+                        : l10n.tabletSent,
+                  ),
                   if (row.sentUnpaid)
                     _Chip(
                       l10n.tabletUnpaid,
@@ -693,7 +709,13 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
 
   /// T-3 — sent, but this till does not print the ticket.
   void _warnIfNoPrint() {
-    if (a.printsKitchenTickets?.call() == false && mounted) {
+    if (a.managedKitchen?.call() == true && mounted) {
+      setState(
+        () => _message = Localizations.localeOf(context).languageCode == 'ar'
+            ? 'حُفظ في قائمة المطبخ. افتح المطبخ للتحقق من الاستلام والطباعة.'
+            : 'Saved to the kitchen queue. Open Kitchen to check receipt and printing.',
+      );
+    } else if (a.printsKitchenTickets?.call() == false && mounted) {
       setState(() => _message = L10n.of(context).tabletPrintOffWarning);
     }
   }
@@ -744,7 +766,9 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
       }
     }
     setState(
-      () => _done = wasPending ? l10n.tabletPaidAndSent : l10n.tabletPaid,
+      () => _done = wasPending && a.managedKitchen?.call() != true
+          ? l10n.tabletPaidAndSent
+          : l10n.tabletPaid,
     );
     _warnIfNoPrint();
   });
@@ -1034,7 +1058,13 @@ class _TabletOrderSheetState extends State<TabletOrderSheet> {
                 Wrap(
                   spacing: 6,
                   children: [
-                    _Chip(row.pending ? l10n.tabletWaiting : l10n.tabletSent),
+                    _Chip(
+                      row.pending
+                          ? l10n.tabletWaiting
+                          : a.managedKitchen?.call() == true
+                          ? kitchenQueueLabel(context)
+                          : l10n.tabletSent,
+                    ),
                     if (row.sentUnpaid)
                       _Chip(
                         l10n.tabletUnpaid,

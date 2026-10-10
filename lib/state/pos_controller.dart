@@ -1295,7 +1295,7 @@ class PosController extends ChangeNotifier
   /// the outbox so an `order.void` reaches pos_api (which unwinds the sale's
   /// inventory / loyalty / round-up / commission). Fire-and-forget; never blocks
   /// the local cancel. Carries the server order_uuid the order was pushed under.
-  void Function(
+  FutureOr<void> Function(
     String orderUuid, {
     int? orderNumber,
     String? reason,
@@ -1318,6 +1318,8 @@ class PosController extends ChangeNotifier
   /// Phase C1 — whether to print an items-only kitchen ticket on completion
   /// and on hold (blueprint §6.10). Driven by Settings like [printReceipts].
   bool printKitchenTickets = true;
+  bool Function()? managedKitchen;
+  bool get legacyKitchenAllowed => managedKitchen?.call() != true;
 
   bool _presentationEnabled =
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -4005,6 +4007,7 @@ class PosController extends ChangeNotifier
   /// banner. Fail-safe (the service swallows printer errors); returns false
   /// on a print failure (Phase G4).
   Future<bool> printHistoricalKitchenTicket(OrderHistoryRecord record) async {
+    if (!legacyKitchenAllowed) return false;
     final ok = await SunmiReceiptService.printKitchenTicket(
       _kitchenTicketFromSnapshot(
         record.snapshot,
@@ -4130,7 +4133,7 @@ class PosController extends ChangeNotifier
       // Mirror server-side via the durable outbox (fire-and-forget).
       onOrderHeld?.call(draft);
       _activeServerOrderUuid = null; // consumed by the draft
-      if (printKitchenTickets) {
+      if (legacyKitchenAllowed && printKitchenTickets) {
         // Phase C1 — holding IS the "send to kitchen" moment today, so the
         // kitchen gets its ticket now (fail-safe; before the reset below so
         // the delivery-provider pick is still readable).
@@ -4234,6 +4237,31 @@ class PosController extends ChangeNotifier
   /// emits an order.void (an unpaid void has no inventory unwind) so the
   /// mirror leaves the branch's active list. The CALLER owns any
   /// confirmation / manager gate.
+  String get _kitchenCancellationPending => _l10n.localeName.startsWith('ar')
+      ? 'لم يتم تأكيد الإلغاء بعد. أبقِ الطلب نشطاً حتى تأكيد الخادم؛ أعد المحاولة للتحقق من الطلب المحفوظ.'
+      : 'Cancellation is not confirmed yet. Keep the order active until server confirmation; retry to check the saved request.';
+  Future<bool> _confirmKitchenVoid(
+    String uuid, {
+    int? orderNumber,
+    String? reason,
+    int? voidReasonId,
+    ActionAuthorization? authorization,
+  }) async {
+    if (uuid.isEmpty || onOrderVoided == null) return false;
+    try {
+      await onOrderVoided!(
+        uuid,
+        orderNumber: orderNumber,
+        reason: reason,
+        voidReasonId: voidReasonId,
+        authorization: authorization,
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<String> discardHeldOrder(
     HeldOrderRecord record, {
     ActionAuthorization? authorization,
@@ -4249,10 +4277,20 @@ class PosController extends ChangeNotifier
         !_cartMutationAllowed()) {
       return lastPaymentMessage;
     }
+    final uuid = record.draft.serverOrderUuid;
+    if (managedKitchen?.call() == true &&
+        uuid.isNotEmpty &&
+        !await _confirmKitchenVoid(
+          uuid,
+          orderNumber: record.orderNumber,
+          reason: 'Held order discarded',
+          authorization: authorization,
+        )) {
+      return _kitchenCancellationPending;
+    }
     await _orderStorage.deleteHeldOrder(record.id);
     await refreshHeldOrders();
-    final uuid = record.draft.serverOrderUuid;
-    if (uuid.isNotEmpty) {
+    if (uuid.isNotEmpty && managedKitchen?.call() != true) {
       onOrderVoided?.call(
         uuid,
         orderNumber: record.orderNumber,
@@ -4305,6 +4343,23 @@ class PosController extends ChangeNotifier
       return _l10n.ctrlMsgOrderAlreadyCanceled(record.orderNumber);
     }
 
+    if (managedKitchen?.call() == true) {
+      if (!cancelFullOrder) {
+        return _l10n.localeName.startsWith('ar')
+            ? 'ألغِ أصناف المطبخ المرسلة من الفاتورة المتصلة. الإلغاء الجزئي المحلي غير متاح.'
+            : 'Cancel sent kitchen items from the connected bill. Local partial cancellation is unavailable.';
+      }
+      if (!await _confirmKitchenVoid(
+        snapshot.serverOrderUuid,
+        orderNumber: record.orderNumber,
+        reason: voidReason?.name ?? 'Canceled by manager at POS',
+        voidReasonId: voidReason?.id,
+        authorization: authorization,
+      )) {
+        return _kitchenCancellationPending;
+      }
+    }
+
     // P-F1 — a server-history record (cross-device) cancels FULL-ORDER only:
     // the wire supports a whole-order order.void, pos_api's handler is
     // branch-scoped (any device of the branch may void), and the record
@@ -4347,13 +4402,14 @@ class PosController extends ChangeNotifier
       ];
       _notifySafely();
 
-      onOrderVoided?.call(
-        serverUuid,
-        orderNumber: record.orderNumber,
-        reason: voidReason?.name ?? 'Canceled by manager at POS',
-        voidReasonId: voidReason?.id,
-        authorization: authorization,
-      );
+      if (managedKitchen?.call() != true)
+        onOrderVoided?.call(
+          serverUuid,
+          orderNumber: record.orderNumber,
+          reason: voidReason?.name ?? 'Canceled by manager at POS',
+          voidReasonId: voidReason?.id,
+          authorization: authorization,
+        );
       return _l10n.ctrlMsgOrderFullyCanceled(record.orderNumber);
     }
 
@@ -4445,13 +4501,14 @@ class PosController extends ChangeNotifier
       // commission. Local-only when there's no server uuid (e.g. demo orders).
       final serverUuid = snapshot.serverOrderUuid;
       if (serverUuid.isNotEmpty && !record.fromServer) {
-        onOrderVoided?.call(
-          serverUuid,
-          orderNumber: record.orderNumber,
-          reason: voidReason?.name ?? 'Canceled by manager at POS',
-          voidReasonId: voidReason?.id,
-          authorization: authorization,
-        );
+        if (managedKitchen?.call() != true)
+          onOrderVoided?.call(
+            serverUuid,
+            orderNumber: record.orderNumber,
+            reason: voidReason?.name ?? 'Canceled by manager at POS',
+            voidReasonId: voidReason?.id,
+            authorization: authorization,
+          );
       }
       return _l10n.ctrlMsgOrderFullyCanceled(record.orderNumber);
     }
@@ -5265,7 +5322,7 @@ class PosController extends ChangeNotifier
       );
     }
     _activeServerOrderUuid = null;
-    if (printKitchenTickets && !tableRoundHandled) {
+    if (legacyKitchenAllowed && printKitchenTickets && !tableRoundHandled) {
       // Phase C1 — the kitchen copy: items + add-ons + notes, no prices. The
       // service itself swallows printer errors.
       final ok = await SunmiReceiptService.printKitchenTicket(

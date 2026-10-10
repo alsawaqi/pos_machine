@@ -156,6 +156,7 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
     required void Function(QrRoundPrintNotice notice) onNotice,
     required void Function(bool unavailable) onPollingStatus,
     this.pollInterval = QrPollingPolicy.acceptedRoundsInterval,
+    this.managedKitchen,
   }) : _gateway = gateway,
        _kitchenGateway = kitchenGateway,
        _preferences = preferences,
@@ -180,6 +181,7 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
   final void Function(QrRoundPrintNotice notice) _onNotice;
   final void Function(bool unavailable) _onPollingStatus;
   final Duration pollInterval;
+  final bool Function()? managedKitchen;
 
   Timer? _timer;
   bool _started = false;
@@ -412,6 +414,7 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
     required String scope,
     bool confirmed = false,
   }) async {
+    if (managedKitchen?.call() == true) return _PrintAttempt.skipped;
     // Device print evidence is authoritative. Accepted tickets remain
     // claimable on the server, so skip before claims, notices or local sets.
     if (envelope.printedAt != null) return _PrintAttempt.skipped;
@@ -510,6 +513,7 @@ class QrRoundAutoPrintController with WidgetsBindingObserver {
             ticket.orderUuid != envelope.orderUuid)) {
       throw const FormatException('Kitchen claim identity mismatch.');
     }
+    if (managedKitchen?.call() == true) return _PrintAttempt.skipped;
     final toPrint = ticket?.forPrinting(envelope) ?? envelope;
     var ok = false;
     try {

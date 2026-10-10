@@ -1,3 +1,4 @@
+import '../kitchen/kitchen_orders_page.dart';
 import '../dine_in/table_loyalty.dart';
 import '../draft_recovery/closed_round_proof.dart';
 import '../qr_checkout/qr_checkout_receipt.dart';
@@ -618,7 +619,8 @@ class TableKitchenBridge implements DiningTableSyncHooks {
     DiningTableSession session,
     List<Map<String, dynamic>> items,
   ) async {
-    if (!controller.printKitchenTickets) return false;
+    if (!controller.legacyKitchenAllowed || !controller.printKitchenTickets)
+      return false;
     final printed = _localPrinted(session);
     final localItems = <Map<String, dynamic>>[];
     for (final item in _localOnly(session)) {
@@ -1179,6 +1181,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             initialKey: initialKey,
             openRequests: _tabletOpenRequest,
             actions: TabletOrderActions(
+              managedKitchen: () =>
+                  ref.read(sessionServiceProvider).kitchenV2Enabled,
               myStaffId: staff?.id,
               onOpened: (key) => OrderAttentionScope.read(context)?.opened(key),
               authorize: (action, {subtitle, alwaysApproval = false}) =>
@@ -2048,6 +2052,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
     // Keep the printing toggles in sync with Settings.
     final settings = ref.read(settingsControllerProvider);
     controller.printReceipts = settings.printReceipts;
+    controller.managedKitchen = () =>
+        ref.read(sessionServiceProvider).kitchenV2Enabled;
     controller.printKitchenTickets = settings.printKitchenTickets;
     ref.listenManual(settingsControllerProvider, (prev, next) {
       controller.printReceipts = next.printReceipts;
@@ -2770,16 +2776,16 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   /// Mirror a full order cancellation to pos_api via the durable outbox (an
   /// order.void). Fire-and-forget: the local cancel already succeeded, and the
   /// outbox persists + retries the void independently of the network.
-  void _handleOrderVoided(
+  Future<void> _handleOrderVoided(
     String orderUuid, {
     int? orderNumber,
     String? reason,
     int? voidReasonId,
     ActionAuthorization? authorization,
-  }) {
+  }) async {
     final staffId = ref.read(sessionServiceProvider).staff?.id;
-    unawaited(
-      _orderPreparations.run(
+    try {
+      await _orderPreparations.run(
         () => ref
             .read(orderSyncRepositoryProvider)
             .resolveTableBillUuid(orderUuid)
@@ -2799,10 +2805,11 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
                     authorizedBy: authorization?.authorizedByName,
                     authorization: block,
                   );
-            })
-            .catchError((_) {}),
-      ),
-    );
+            }),
+      );
+    } catch (_) {
+      if (ref.read(sessionServiceProvider).kitchenV2Enabled) rethrow;
+    }
   }
 
   /// Phase B — manager comp: write off one line or the whole order under a
@@ -4493,6 +4500,19 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
         0;
     final sentReduction = math.max(0, reduction - math.max(0, unsent)).toInt();
     if (sentReduction == 0) return true;
+    if (ref.read(sessionServiceProvider).kitchenV2Enabled) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              Localizations.localeOf(context).languageCode == 'ar'
+                  ? 'ألغِ الأصناف المرسلة من الفاتورة المتصلة بالإنترنت. لم يُلغَ أي صنف.'
+                  : 'Cancel sent items from the connected table bill. No items were cancelled.',
+            ),
+          ),
+        );
+      return false;
+    }
     if (!mounted) return false;
     // LAUNCH-P5 C1 — the table.cancel_line tick, or an approver's PIN.
     ActionAuthorization? gate;
@@ -5079,7 +5099,8 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
             },
             printAccepted: (detail, round) async {
               gateway.check();
-              if (!ref.read(settingsControllerProvider).printKitchenTickets) {
+              if (ref.read(sessionServiceProvider).kitchenV2Enabled ||
+                  !ref.read(settingsControllerProvider).printKitchenTickets) {
                 return true;
               }
               return ref
@@ -11367,6 +11388,7 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
   }
 
   Widget _buildTopBar() {
+    final kitchen = ref.watch(kitchenPosProvider);
     final attentionSalesCount =
         ref.watch(orderSyncAttentionProvider).asData?.value.length ?? 0;
     return _glassPanel(
@@ -11392,6 +11414,27 @@ class _StaffPosScreenState extends ConsumerState<StaffPosScreen> {
           const SizedBox(width: 8),
           _buildTimeBlock(),
           const SizedBox(width: 8),
+          if (kitchen != null)
+            AnimatedBuilder(
+              animation: kitchen,
+              builder: (context, _) => Tooltip(
+                message: Localizations.localeOf(context).languageCode == 'ar'
+                    ? 'طلبات المطبخ'
+                    : 'Kitchen orders',
+                child: _CircleGlassButton(
+                  icon: Icons.restaurant_outlined,
+                  badgeCount:
+                      kitchen.pendingCount +
+                      kitchen.readyCount +
+                      kitchen.unsentCount,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const KitchenOrdersPage(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           OrderAttentionBell(
             onQuickOrders: () => unawaited(_openQuickOrders()),
             onTables: () => unawaited(_handleOrderTypeTap(OrderType.dineIn)),

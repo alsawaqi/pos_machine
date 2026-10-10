@@ -1,3 +1,5 @@
+import 'package:mithqal_kitchen_core/mithqal_kitchen_core.dart'
+    show DomainEvidence, domainDigest;
 import '../tenancy/business_identity.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -76,6 +78,7 @@ class OrderSyncRepository {
   /// LAUNCH-P5 C3 — the logged-in staff member, stamped on a standalone
   /// QR order.pay (wired by the provider).
   int? Function()? payStaffId;
+  bool Function()? managedKitchen;
   final _ownerIdentity = BusinessBoundary.current;
   final _ownerGeneration = BusinessBoundary.generation.value;
   Future<void> _flushTail = Future<void>.value();
@@ -132,6 +135,8 @@ class OrderSyncRepository {
 
   Future<T> _prepare<T>(Future<T> Function() operation) => _serialize(() async {
     await mutationGuard?.call();
+    BusinessBoundary.assertGeneration(_ownerGeneration);
+    BusinessBoundary.assertWritable();
     return operation();
   });
 
@@ -167,6 +172,7 @@ class OrderSyncRepository {
               createdAt: Value(at),
             ),
           );
+          await _recordKitchenEvents([entry.value]);
         }
       });
       if (beforeFlush != null) {
@@ -229,6 +235,195 @@ class OrderSyncRepository {
     );
   }
 
+  /// K3: the proof and existing financial outbox row commit in ONE database
+  /// transaction. This does not dispatch to the kitchen or wait for internet.
+  Future<void> persistKitchenDomain(
+    String id,
+    String originalJson,
+  ) => _prepare(() async {
+    final event = (jsonDecode(originalJson) as Map).cast<String, dynamic>();
+    if (event.containsKey('identity') &&
+        !BusinessBoundary.owns(event['identity'])) {
+      throw StateError('Foreign domain identity');
+    }
+    if (event['client_event_id'] != id)
+      throw StateError('Domain event mismatch');
+    final digest = domainDigest(originalJson);
+    final identity = jsonEncode(BusinessBoundary.storageIdentity?.toJson());
+    final stamped = BusinessBoundary.stampEvent(event);
+    await _db.transaction(() async {
+      await _db.customStatement(
+        'CREATE TABLE IF NOT EXISTS kitchen_domain_proofs (id TEXT PRIMARY KEY, digest TEXT NOT NULL, identity TEXT NOT NULL)',
+      );
+      final rows = await _db
+          .customSelect(
+            'SELECT * FROM kitchen_domain_proofs WHERE id = ?',
+            variables: [Variable<String>(id)],
+          )
+          .get();
+      BusinessBoundary.assertGeneration(_ownerGeneration);
+      if (rows.isNotEmpty) {
+        if (rows.single.read<String>('digest') != digest ||
+            rows.single.read<String>('identity') != identity)
+          throw StateError('Domain proof conflict');
+        return;
+      }
+      final key = 'kitchen-domain:$id';
+      if (await _db.getOutbox(key) != null)
+        throw StateError('Unproven domain row');
+      await _db.enqueueOutbox(
+        OrderOutboxCompanion(
+          orderUuid: Value(key),
+          eventsJson: Value(jsonEncode([stamped])),
+          orderNumber: const Value(0),
+          createdAt: Value(DateTime.now()),
+        ),
+      );
+      await _db.customStatement(
+        'INSERT INTO kitchen_domain_proofs (id,digest,identity) VALUES (?,?,?)',
+        [id, digest, identity],
+      );
+      BusinessBoundary.assertGeneration(_ownerGeneration);
+    });
+  });
+
+  /// K4: called synchronously inside the SAME transaction as the original
+  /// finance batch. Only explicit creates/rounds are candidates, never pay/hold.
+  Map<String, dynamic>? Function(Map<String, dynamic>)? kitchenIntentBuilder;
+  Future<void> _recordKitchenEvents(List<Map<String, dynamic>> events) async {
+    final builder = kitchenIntentBuilder;
+    if (builder == null) return;
+    for (final event in events) {
+      if (event.containsKey('identity') &&
+          !BusinessBoundary.owns(event['identity'])) {
+        throw StateError('Foreign domain identity');
+      }
+      if (![
+        'order.create',
+        'table.session.round',
+      ].contains(event['event_type']))
+        continue;
+      Map<String, dynamic>? pending;
+      try {
+        pending = builder(event);
+      } catch (_) {
+        pending = {
+          'domain_id': event['client_event_id'],
+          'error': 'kitchen_intent_needs_review',
+        };
+      }
+      if (pending == null) continue;
+      final original = jsonEncode(event),
+          id = event['client_event_id'] as String;
+      final identity = jsonEncode(BusinessBoundary.storageIdentity?.toJson());
+      await _db.customStatement(
+        'CREATE TABLE IF NOT EXISTS kitchen_domain_proofs (id TEXT PRIMARY KEY, digest TEXT NOT NULL, identity TEXT NOT NULL)',
+      );
+      await _db.customStatement(
+        'CREATE TABLE IF NOT EXISTS kitchen_domain_intake (id TEXT PRIMARY KEY, document TEXT NOT NULL, identity TEXT NOT NULL, receipt TEXT)',
+      );
+      final old = await _db
+          .customSelect(
+            'SELECT digest,identity FROM kitchen_domain_proofs WHERE id=?',
+            variables: [Variable<String>(id)],
+          )
+          .get();
+      if (old.isNotEmpty) {
+        if (old.single.read<String>('digest') != domainDigest(original) ||
+            old.single.read<String>('identity') != identity)
+          throw StateError('Domain proof conflict');
+        continue;
+      }
+      await _db.customStatement(
+        'INSERT INTO kitchen_domain_proofs (id,digest,identity) VALUES (?,?,?)',
+        [id, domainDigest(original), identity],
+      );
+      await _db.customStatement(
+        'INSERT INTO kitchen_domain_intake (id,document,identity) VALUES (?,?,?)',
+        [id, jsonEncode(pending), identity],
+      );
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> pendingKitchen() async {
+    final tables = await _db
+        .customSelect(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='kitchen_domain_intake'",
+        )
+        .get();
+    if (tables.isEmpty) return [];
+    final identity = jsonEncode(BusinessBoundary.storageIdentity?.toJson());
+    final rows = await _db
+        .customSelect(
+          'SELECT document FROM kitchen_domain_intake WHERE receipt IS NULL AND identity=? ORDER BY rowid',
+          variables: [Variable<String>(identity)],
+        )
+        .get();
+    return [
+      for (final row in rows)
+        (jsonDecode(row.read<String>('document')) as Map)
+            .cast<String, dynamic>(),
+    ];
+  }
+
+  Future<void> acknowledgeKitchen(
+    String id,
+    Map<String, dynamic> receipt,
+  ) => _prepare(() async {
+    if (receipt['durable'] != true)
+      throw StateError('Kitchen receipt not durable');
+    final rows = await _db
+        .customSelect(
+          'SELECT document FROM kitchen_domain_intake WHERE id=? AND identity=?',
+          variables: [
+            Variable<String>(id),
+            Variable<String>(
+              jsonEncode(BusinessBoundary.storageIdentity?.toJson()),
+            ),
+          ],
+        )
+        .get();
+    if (rows.length != 1 ||
+        (jsonDecode(rows.single.read<String>('document'))
+                as Map)['intent']?['event_id'] !=
+            receipt['event_id'])
+      throw StateError('Kitchen receipt identity conflict');
+    await _db.customStatement(
+      'UPDATE kitchen_domain_intake SET receipt=? WHERE id=? AND identity=?',
+      [
+        jsonEncode(receipt),
+        id,
+        jsonEncode(BusinessBoundary.storageIdentity?.toJson()),
+      ],
+    );
+  });
+
+  Future<DomainEvidence> kitchenDomainEvidence(String id, String hash) async {
+    try {
+      final tables = await _db
+          .customSelect(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='kitchen_domain_proofs'",
+          )
+          .get();
+      if (tables.isEmpty) return DomainEvidence.absent;
+      final rows = await _db
+          .customSelect(
+            'SELECT * FROM kitchen_domain_proofs WHERE id=?',
+            variables: [Variable<String>(id)],
+          )
+          .get();
+      if (rows.isEmpty) return DomainEvidence.absent;
+      final row = rows.single;
+      return row.read<String>('digest') == hash &&
+              row.read<String>('identity') ==
+                  jsonEncode(BusinessBoundary.storageIdentity?.toJson())
+          ? DomainEvidence.matching
+          : DomainEvidence.conflict;
+    } catch (_) {
+      return DomainEvidence.unreadable;
+    }
+  }
+
   Future<List<OrderOutboxRow>> allRows() => _db.select(_db.orderOutbox).get();
 
   /// LAUNCH-P5 C5 — the paid sales this device queued since [since] (a
@@ -247,9 +442,7 @@ class OrderSyncRepository {
   >
   paidSalesSince(DateTime since) async {
     final from = since.subtract(const Duration(minutes: 1));
-    final pendingKeys = {
-      for (final row in await pendingRows()) row.orderUuid,
-    };
+    final pendingKeys = {for (final row in await pendingRows()) row.orderUuid};
     final unsent = <OrderOutboxRow>[];
     final parked = <OrderOutboxRow>[];
     final uuids = <String>[];
@@ -602,14 +795,17 @@ class OrderSyncRepository {
             return false;
           }
 
-          await _db.enqueueOutbox(
-            OrderOutboxCompanion(
-              orderUuid: Value(payload.orderUuid),
-              eventsJson: Value(jsonEncode(events)),
-              orderNumber: Value(snapshot.orderNumber),
-              createdAt: Value(DateTime.now()),
-            ),
-          );
+          await _db.transaction(() async {
+            await _db.enqueueOutbox(
+              OrderOutboxCompanion(
+                orderUuid: Value(payload.orderUuid),
+                eventsJson: Value(jsonEncode(events)),
+                orderNumber: Value(snapshot.orderNumber),
+                createdAt: Value(DateTime.now()),
+              ),
+            );
+            await _recordKitchenEvents(events);
+          });
           sentryBreadcrumb(
             'sync',
             'order enqueued',
@@ -723,6 +919,8 @@ class OrderSyncRepository {
   }) async {
     final enqueued = await _prepare(() async {
       if (orderUuid.isEmpty) return false;
+      // Retry the original durable cancellation, including an already-ACKed one.
+      if (await _db.getOutbox('$orderUuid:void') != null) return true;
 
       final event = buildOrderVoidEvent(
         orderUuid: orderUuid,
@@ -744,6 +942,15 @@ class OrderSyncRepository {
       return true;
     });
     if (enqueued) await flush();
+    if (managedKitchen?.call() == true && enqueued) {
+      BusinessBoundary.assertGeneration(_ownerGeneration);
+      final row = await _db.getOutbox('$orderUuid:void');
+      if (row?.syncedAt == null) {
+        throw StateError(
+          'Cancellation is saved but not confirmed. Keep this order active until the server confirms it.',
+        );
+      }
+    }
   }
 
   /// QR-002 S2 — queue exactly one standalone `order.pay` for a server-owned
@@ -1113,6 +1320,24 @@ class OrderSyncRepository {
 
         // Every event must have settled `processed` (a duplicate re-push echoes
         // the original processed state, which is also success).
+        if (managedKitchen?.call() == true &&
+            events.any((e) => e['event_type'] == 'order.void') &&
+            (results.length != events.length ||
+                events.any(
+                  (event) =>
+                      results
+                          .where(
+                            (r) =>
+                                r['client_event_id'] ==
+                                event['client_event_id'],
+                          )
+                          .length !=
+                      1,
+                ))) {
+          throw StateError(
+            'Cancellation acknowledgment does not match the saved request.',
+          );
+        }
         final allProcessed =
             results.isNotEmpty &&
             results.every((r) => r['status'] == 'processed');

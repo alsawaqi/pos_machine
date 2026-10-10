@@ -767,6 +767,11 @@ class TableSyncCoordinator implements DiningTableSyncHooks {
     ActionAuthorization? authorization,
   }) async {
     if (!live) return;
+    if (outbox.managedKitchen?.call() == true) {
+      throw StateError(
+        'Use the connected table bill to cancel sent kitchen items.',
+      );
+    }
     if (authorizedBy.trim().isEmpty || qty <= 0) {
       throw ArgumentError('A positive cancellation needs manager approval.');
     }

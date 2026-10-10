@@ -1,10 +1,14 @@
+import 'package:mithqal_kitchen_android/mithqal_kitchen_android.dart';
+import 'package:mithqal_kitchen_core/mithqal_kitchen_core.dart' as kitchen;
+import '../kitchen/kitchen_domain_store.dart';
 import '../tenancy/business_identity.dart';
 import '../services/server_receipt_history.dart';
 import 'dart:async';
 import 'dart:ui' show Locale;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/foundation.dart' show ValueListenable, kReleaseMode;
+import 'package:flutter/foundation.dart'
+    show Listenable, ValueListenable, kReleaseMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
@@ -512,6 +516,66 @@ final orderSyncRepositoryProvider = Provider<OrderSyncRepository>((ref) {
         (debugOrderStorageOverride ?? LocalOrderStorageService.instance)
             .assertNoPendingCombine(),
   );
+  repository.managedKitchen = () =>
+      ref.read(sessionServiceProvider).kitchenV2Enabled;
+  repository.kitchenIntentBuilder = (event) {
+    final session = ref.read(sessionServiceProvider);
+    if (!session.kitchenV2Enabled || TrainingMode.active) return null;
+    final catalog = ref.read(catalogProvider).asData?.value;
+    if (catalog == null) throw StateError('Kitchen catalogue unavailable');
+    return kitchen.kitchenDomainIntent(
+      event: event,
+      settings: session.kitchenV2,
+      source: 'main_pos',
+      products: {
+        for (final p in catalog.products)
+          p.id: {
+            'name': p.name,
+            'name_ar': p.nameAr,
+            'cooking_minutes': session.kitchenV2['cooking_minutes']?[p.id],
+            'category_id': p.categoryId,
+            'combo_lines': [
+              for (final l in p.comboLines)
+                {
+                  'line_id': l.id,
+                  'fixed': l.isFixed,
+                  'product_id': l.productId,
+                  'qty': l.quantity,
+                },
+            ],
+            'allergens': p.allergens,
+            'may_contain': p.mayContain,
+          },
+      },
+      meals: {
+        for (final m in catalog.meals)
+          '${m.id}': {
+            'name': m.name,
+            'lines': [
+              for (final l in m.lines)
+                {
+                  'line_id': l.id,
+                  'fixed': l.isFixed,
+                  'product_id': l.productId,
+                  'qty': l.quantity,
+                },
+            ],
+          },
+      },
+      addons: {
+        for (final g in catalog.addonGroups)
+          for (final a in g.options)
+            '${a.id}': {
+              'name': a.label,
+              'is_removal':
+                  (session.kitchenV2['removal_group_ids'] as List? ?? [])
+                      .contains(g.id),
+              'allergens': a.allergens,
+              'may_contain': a.mayContain,
+            },
+      },
+    );
+  };
   repository.payStaffId = () {
     try {
       return ref.read(sessionServiceProvider).staff?.id;
@@ -532,6 +596,54 @@ final orderSyncRepositoryProvider = Provider<OrderSyncRepository>((ref) {
   );
   ref.onDispose(repository.dispose);
   return repository;
+});
+
+final kitchenPosProvider = Provider<KitchenPosController?>((ref) {
+  ref.watch(sessionControllerProvider.select((s) => s.staff?.id));
+  ref.watch(staffSettingsRevisionProvider);
+  final session = ref.read(sessionServiceProvider);
+  final config = session.kitchenV2;
+  final owner = BusinessBoundary.current;
+  if (!session.kitchenV2SetupAvailable ||
+      session.staff == null ||
+      owner == null ||
+      config['device_uuid'] != owner.deviceUuid ||
+      config['identity'] is! Map)
+    return null;
+  final generation = BusinessBoundary.generation.value;
+  final staff = session.staff!.id;
+  final token = session.staffToken;
+  if (token == null || session.deviceToken == null) return null;
+  final controller = KitchenPosController(
+    apiUrl: ref.read(apiServiceProvider).quickOrderBaseUrl,
+    deviceToken: session.deviceToken!,
+    staffToken: token,
+    staffId: staff,
+    scope: Map<String, dynamic>.from(config['identity']),
+    domain: TillKitchenDomainStore(ref.read(orderSyncRepositoryProvider)),
+    onConfigurationApplied: ref.read(configRepositoryProvider).fetchAndCache,
+    boundary: Listenable.merge([
+      BusinessBoundary.blocked,
+      BusinessBoundary.generation,
+    ]),
+    deviceCurrent: () =>
+        BusinessBoundary.generation.value == generation &&
+        BusinessBoundary.canWork,
+    isCurrent: () =>
+        BusinessBoundary.generation.value == generation &&
+        BusinessBoundary.canWork &&
+        session.staff?.id == staff &&
+        session.staffToken == token &&
+        !TrainingMode.active,
+  );
+  session.onKitchenLogout = controller.logout;
+  ref.onDispose(() {
+    if (session.onKitchenLogout == controller.logout)
+      session.onKitchenLogout = null;
+    controller.dispose();
+  });
+  unawaited(controller.initialize());
+  return controller;
 });
 
 final tableLedgerStoreProvider = Provider<TableLedgerStore>(
@@ -763,6 +875,7 @@ final qrRoundAutoPrintControllerProvider = Provider<QrRoundAutoPrintController>(
     final controller = QrRoundAutoPrintController(
       gateway: ref.read(qrRoundGatewayProvider),
       kitchenGateway: ref.read(kitchenPrintGatewayProvider),
+      managedKitchen: () => ref.read(sessionServiceProvider).kitchenV2Enabled,
       preferences: ref.read(sharedPreferencesProvider),
       printer: ref.read(qrKitchenRoundPrinterProvider),
       deviceKey: () => ref.read(sessionServiceProvider).kioskId ?? '',

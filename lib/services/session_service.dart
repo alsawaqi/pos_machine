@@ -247,6 +247,7 @@ class SessionService {
       );
     }
     Future<void> install() async {
+      await _prefs.remove('kitchen_v2_settings');
       if (result.deviceUuid != null)
         await _prefs.setString('device_uuid', result.deviceUuid!);
 
@@ -360,26 +361,61 @@ class SessionService {
 
   /// Persist the P5 keys of the config `settings` block. A key the server
   /// did not send keeps the stored value; an explicit null clears it.
+  Map<String, dynamic> get kitchenV2 {
+    try {
+      return (jsonDecode(_prefs.getString('kitchen_v2_settings') ?? '{}')
+              as Map)
+          .cast<String, dynamic>();
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// Enrollment is available before routing is activated by the merchant.
+  bool get kitchenV2SetupAvailable =>
+      kitchenV2Enabled || kitchenV2['setup_enabled'] == true;
+  bool get kitchenV2Enabled =>
+      kitchenV2['mode'] != null && kitchenV2['mode'] != 'legacy';
+
   Future<void> saveStaffSettings(Map<String, dynamic>? settings) async {
     if (settings == null) return;
     var changed = false;
+    if (settings['kitchen_v2'] is Map) {
+      final value = jsonEncode(settings['kitchen_v2']);
+      // Routine config polling must not retire the active kitchen controller
+      // or reset the operator's selected view when the settings are unchanged.
+      if (_prefs.getString('kitchen_v2_settings') != value) {
+        if (!await _prefs.setString('kitchen_v2_settings', value)) {
+          throw StateError('Kitchen settings could not be saved.');
+        }
+        changed = true;
+      }
+    }
     if (settings.containsKey('position_permissions')) {
       final value = settings['position_permissions'];
-      if (value is Map) {
-        await _prefs.setString(_kPositionPermissions, jsonEncode(value));
-      } else {
-        await _prefs.remove(_kPositionPermissions);
+      final encoded = value is Map ? jsonEncode(value) : null;
+      if (_prefs.getString(_kPositionPermissions) != encoded) {
+        if (encoded != null) {
+          await _prefs.setString(_kPositionPermissions, encoded);
+        } else {
+          await _prefs.remove(_kPositionPermissions);
+        }
+        changed = true;
       }
-      changed = true;
     }
     if (settings.containsKey('shift_end_reminder_at')) {
       final value = settings['shift_end_reminder_at'];
-      if (value is String && value.trim().isNotEmpty) {
-        await _prefs.setString(_kShiftEndReminderAt, value.trim());
-      } else {
-        await _prefs.remove(_kShiftEndReminderAt);
+      final normalized = value is String && value.trim().isNotEmpty
+          ? value.trim()
+          : null;
+      if (_prefs.getString(_kShiftEndReminderAt) != normalized) {
+        if (normalized != null) {
+          await _prefs.setString(_kShiftEndReminderAt, normalized);
+        } else {
+          await _prefs.remove(_kShiftEndReminderAt);
+        }
+        changed = true;
       }
-      changed = true;
     }
     if (changed) _staffSettingsRevision.value++;
   }
@@ -494,7 +530,10 @@ class SessionService {
   /// Staff logout (layer 2 only — keeps the device activated and retains the
   /// shift record so the next login can adopt its own shift or close a foreign
   /// drawer before selling).
+  Future<void> Function()? onKitchenLogout;
+
   Future<void> clearStaff() async {
+    await onKitchenLogout?.call();
     await _prefs.remove(_kStaff);
     // LAUNCH-P5 F1 — the token leaves with the person.
     _staffToken = null;

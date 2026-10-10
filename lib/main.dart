@@ -1,3 +1,4 @@
+import 'package:mithqal_kitchen_android/mithqal_kitchen_android.dart' show kitchenServiceMain;
 import 'dart:convert';
 import 'services/sunmi_receipt_service.dart';
 import 'tenancy/merchant_caches.dart';
@@ -261,3 +262,8 @@ class _FullscreenShellState extends State<_FullscreenShell>
     return widget.child;
   }
 }
+
+// Keep the shared service entrypoint in this app's AOT graph. Starting it
+// still requires the explicit visible user action; this function is not main.
+@pragma('vm:entry-point')
+Future<void> mithqalKitchenServiceEntryPoint() => kitchenServiceMain();
